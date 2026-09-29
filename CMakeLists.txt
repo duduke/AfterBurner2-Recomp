@@ -23,6 +23,11 @@ add_executable(afterburner2
     src/main/hwaudio/soundchip.cpp
     src/main/hwaudio/segapcm.cpp
     src/main/hwaudio/ym2151.cpp
+    src/main/engine/osprites.cpp
+    src/main/engine/oroad.cpp
+    src/main/engine/opalette.cpp
+    src/main/engine/olevelobjs.cpp
+    src/main/engine/oengine.cpp
 )
 
 target_include_directories(afterburner2 PRIVATE src/main ${SDL2_INCLUDE_DIRS})
