@@ -1,0 +1,20 @@
+# Build output
+build/
+out/
+cmake-build-*/
+
+# Original arcade ROM data (copyrighted, not redistributable)
+roms/*.zip
+roms/*.bin
+roms/*.rom
+roms/epr-*
+roms/mpr-*
+roms/opr-*
+!roms/roms.txt
+!roms/README.md
+
+# OS / editor cruft
+.DS_Store
+*.swp
+.vscode/
+.idea/
