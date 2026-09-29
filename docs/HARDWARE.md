@@ -80,9 +80,38 @@ byte value.
 | `3F8000-3FBFFF` | Mirror of `backup1` |
 | `3FC000-3FFFFF` | Mirror of `backup2` |
 
-(The sub CPU's own memory map largely mirrors this from its own
-perspective; not fully detailed here yet — read `segaxbd_state::sub_map`
-before starting the sub-CPU logic port.)
+### Sub CPU memory map (`segaxbd_state::sub_map`)
+
+**Notably narrower than the main map**: 20-bit address bus
+(`global_mask(0xfffff)`, a 1MB space, vs. the main CPU's 22-bit/4MB), and
+**no access at all** to tilemap RAM, text RAM, sprite RAM, palette RAM, the
+ADC, or either I/O chip — every one of those is exclusively main-CPU
+territory. What the sub CPU *does* have:
+
+| Range | Target |
+|---|---|
+| `000000-07FFFF` | Sub CPU program ROM |
+| `080000-083FFF` (mirror `0x1C000`) | `subram0` — shared with main CPU (main sees the same chip at `280000-283FFF`) |
+| `0A0000-0A3FFF` (mirror `0x1C000`) | `subram1` — shared with main CPU (main: `2A0000-2A3FFF`) |
+| `0E0000-0E0007` (mirror `0x3FF8`) | Sub's own hardware multiplier (315-5248) — same chip main can also reach at `2E0000` |
+| `0E4000-0E401F` (mirror `0x3FE0`) | Sub's own hardware divider (315-5249) — main: `2E4000` |
+| `0E8000-0E800F` (mirror `0x3FF0`) | Sub's own compare/timer chip (315-5250, a **separate physical instance** from the main CPU's own `cmptimer_main`) — main: `2E8000` |
+| `0EC000-0ECFFF` (mirror `0x1000`) | Road/ground control RAM — shared with main (main: `2EC000`) |
+| `0EE000-0EFFFF` | Road control register (bank-swap trigger) — main: `2EE000` |
+
+Both CPUs have an identical relative layout for their *own* multiplier/
+divider/compare-timer chips, and can each additionally peek at the
+*other* CPU's instances via a fixed `+0x200000` offset from the sub CPU's
+own addresses (i.e. main sees sub's chips at `sub_addr + 0x200000`).
+
+**This significantly narrows the sub CPU's likely role**: with no path to
+any rendering hardware except the road controller, and its own dedicated
+multiplier/divider, it reads as a math coprocessor dedicated to the
+road/ground perspective-scaling calculation (and/or precomputing values
+the main CPU's sprite-scaler math needs) — not a general "second half of
+the game logic" CPU. Communication with main CPU is only through
+`subram0`/`subram1` and whatever handshake convention the game uses
+within them (not yet identified).
 
 ## 3. Video hardware
 

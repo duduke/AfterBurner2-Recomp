@@ -7,6 +7,13 @@ wrong.
 
 Usage: m68k_disasm.py <binfile> <start_addr_hex> <end_addr_hex> [--base 0]
 Prints address: bytes  mnemonic operands
+
+Note: this does purely linear disassembly (no control-flow following), so
+blindly sweeping a wide address range will walk into embedded data tables
+past a function's end and print "unknown opcode" for them — that's
+expected, not necessarily a decoder gap. Only treat "unknown opcode" as a
+real gap to fix when it happens while following an actual execution path
+(reached via a BSR/JSR/Bcc from code already confirmed to be real).
 """
 import sys
 
@@ -262,11 +269,16 @@ def disasm_one(data, base, addr):
             ea = ea_str(r, mode, m_reg, size)
             base_name = {0x8: 'OR', 0x9: 'SUB', 0xB: 'EOR', 0xC: 'AND', 0xD: 'ADD'}[fam]
             return r.addr, f'{base_name}.{SIZE_CODES[size]} D{reg},{ea}'
-        if opmode in (3, 7):
+        if opmode in (3, 7) and fam in (0x9, 0xB, 0xD):
             size = 1 if opmode == 3 else 2
             ea = ea_str(r, mode, m_reg, size)
-            base_name = {0x9: 'SUBA', 0xB: 'CMPA', 0xD: 'ADDA'}.get(fam, '???A')
+            base_name = {0x9: 'SUBA', 0xB: 'CMPA', 0xD: 'ADDA'}[fam]
             return r.addr, f'{base_name}.{SIZE_CODES[size]} {ea},A{reg}'
+        if opmode in (3, 7) and fam in (0x8, 0xC):
+            # word-size-only: 0x8=OR family -> DIVU/DIVS, 0xC=AND family -> MULU/MULS
+            ea = ea_str(r, mode, m_reg, 1)
+            name = {(0x8, 3): 'DIVU', (0x8, 7): 'DIVS', (0xC, 3): 'MULU', (0xC, 7): 'MULS'}[(fam, opmode)]
+            return r.addr, f'{name}.W {ea},D{reg}'
 
     if (op & 0xF138) == 0x0108:  # MOVEP (rare on this era of code, but include)
         raise ValueError('MOVEP not implemented')
@@ -316,6 +328,13 @@ def disasm_one(data, base, addr):
             count = 8 if count == 0 else count
             count_str = f'#{count}'
         return r.addr, f'{op_kind}{direction}.{SIZE_CODES[size]} {count_str},D{reg}'
+
+    if (op & 0xF000) == 0xE000 and ((op >> 6) & 3) == 3:  # shift/rotate, memory form (word, count=1)
+        direction = 'L' if (op >> 8) & 1 else 'R'
+        op_kind = ['AS', 'LS', 'ROX', 'RO'][(op >> 9) & 3]
+        mode, reg = mode_reg_src()
+        ea = ea_str(r, mode, reg, 1)
+        return r.addr, f'{op_kind}{direction}.W {ea}'
 
     if (op & 0xFFC0) == 0x4AC0:  # TAS
         mode, reg = mode_reg_src()

@@ -38,8 +38,10 @@ captures where possible:
       near-verbatim from Cannonball, since these are the literal same
       generic Yamaha/Sega chips, not OutRun-specific code (attribution
       preserved in each file's header)
-- [ ] Sub CPU memory map (`segaxbd_state::sub_map`) — not yet transcribed
-      into `docs/HARDWARE.md`, needed before the sub-CPU logic port
+- [x] Sub CPU memory map (`segaxbd_state::sub_map`) transcribed into
+      `docs/HARDWARE.md` — notably narrower than main's (no tilemap/
+      sprite/palette/I-O access at all), pointing at a dedicated
+      road/perspective math coprocessor role, confirmed in Phase 3 below
 
 Audio is deliberately deprioritized until the visual side and game logic
 are further along (see "Deferred: audio" at the end of this document) —
@@ -67,11 +69,20 @@ disassembled and read directly.
       `docs/ENGINE_NOTES.md` for the full breakdown (30/60Hz split,
       lamp updates, sprite draw-trigger timing, several not-yet-identified
       subsystem calls)
-- [ ] Confirm the object/task table hypothesis and start mapping individual
-      object types (see `docs/ENGINE_NOTES.md`'s "Open threads")
-- [ ] Map the road/ground and sprite-object update subroutines
-      (`$014A86`, `$013F92`)
-- [ ] Sub CPU vector table + reset routine (nothing mapped yet)
+- [x] Sub CPU vector table, reset routine, and VBLANK handler mapped —
+      confirms it's a dedicated road/perspective math coprocessor (no
+      access to tilemap/sprite/palette/I-O hardware at all), with a
+      counting-sort-then-drive-the-multiplier-chip routine that's the
+      strongest evidence yet for that role
+- [x] Mapped the two per-VBLANK subsystem calls (`$014A86`, `$013F92`) —
+      turned out to both be palette animation systems (a fade/flash
+      effect and a multi-rate color-cycling player), not road/sprite
+      update as originally guessed
+- [ ] **Still not found**: the actual road/ground-scroll and
+      sprite-object update logic — now the top priority alongside the
+      object table below
+- [ ] Confirm the object/task table hypothesis (`$9FC0`) and start mapping
+      individual object types (see `docs/ENGINE_NOTES.md`'s "Open threads")
 - [ ] Once enough is understood: start the actual port, file-per-subsystem,
       into `src/main/engine/`
 
