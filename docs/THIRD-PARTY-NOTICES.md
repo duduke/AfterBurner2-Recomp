@@ -23,3 +23,10 @@ X-Board-specific to reimplement:
   Cannonball, not MAME-derived.
 
 See each file's own header comment for its specific attribution.
+
+`src/third_party/z80.h` is Andre Weissflog's cycle-stepped Z80 core from
+https://github.com/floooh/chips (zlib/libpng license, copyright 2021).
+The upstream license and attribution remain in the unmodified header.
+Only the sound CPU uses this core; the 68000 game logic is native C++.
+
+Vendored header SHA-256: `6ca70ffd91b1bdbaf00f7a41e7092b326145fd1c95dcdd7bb01183370de734f3`

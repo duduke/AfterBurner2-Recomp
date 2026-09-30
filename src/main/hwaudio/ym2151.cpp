@@ -103,7 +103,9 @@ int32_t        dt1_freq[8*32];      /* 8 DT1 levels, 32 KC values */
 uint32_t       noise_tab[32];       /* 17bit Noise Generator periods */
 
 
+#ifndef M_PI
 #define M_PI             3.14159265358979323846
+#endif
 
 #define FREQ_SH          16  /* 16.16 fixed point (frequency calculations) */
 #define EG_SH            16  /* 16.16 fixed point (envelope generator timing) */
@@ -1024,7 +1026,6 @@ void YM2151::write_reg(int r, int v)
                 status &= ~1;
                 device->machine().scheduler().timer_set(attotime::zero, FUNC(irqAoff_callback), 0, chip);
 #else
-                int oldstate = status & 3;
                 status &= ~1;
                 //if ((oldstate==1) && (irqhandler)) (*irqhandler)(device, 0);
 #endif
@@ -1036,7 +1037,6 @@ void YM2151::write_reg(int r, int v)
                 status &= ~2;
                 device->machine().scheduler().timer_set(attotime::zero, FUNC(irqBoff_callback), 0, chip);
 #else
-                int oldstate = status & 3;
                 status &= ~2;
                 //if ((oldstate==2) && (irqhandler)) (*irqhandler)(device, 0);
 #endif
@@ -1139,7 +1139,7 @@ void YM2151::write_reg(int r, int v)
 
         case 0x08:    /* Key Code */
             v &= 0x7f;
-            if (v != op->kc)
+            if (static_cast<uint32_t>(v) != op->kc)
             {
                 uint32_t kc, kc_channel;
 
@@ -2041,9 +2041,8 @@ void YM2151::stream_update()
         if (tim_B_val <= 0) {
             tim_B_val = tim_B_tab[timer_B_index];     // single assignment
             if (irq_enable & 0x08) {
-                int oldstate = status & 3;
                 status |= 2;
-                if (oldstate == 0) irq = true;
+                irq = true;
             }
         }
     }
@@ -2093,9 +2092,8 @@ void YM2151::stream_update()
             if (tim_A_val <= 0) {
                 tim_A_val = tim_A_tab[timer_A_index];  // single assignment
                 if (irq_enable & 0x04) {
-                    int oldstate = status & 3;
                     status |= 1;
-                    if (oldstate == 0) irq = true;
+                    irq = true;
                 }
                 if (irq_enable & 0x80) csm_req = 2;
             }
@@ -2127,10 +2125,9 @@ void YM2151::stream_update()
             tim_B_val = tim_B_tab[ timer_B_index ];
             if ( irq_enable & 0x08 )
             {
-                int oldstate = status & 3;
                 status |= 2;
                 //if ((!oldstate) && (irqhandler)) (*irqhandler)(device, 1);
-                if (oldstate==0) irq = true;
+                irq = true;
             }
         }
     }
@@ -2202,10 +2199,9 @@ void YM2151::stream_update()
                 tim_A_val = tim_A_tab[ timer_A_index ]; // re-initialise timer
                 if (irq_enable & 0x04)
                 {
-                    int oldstate = status & 3;
                     status |= 1;
                     //if ((!oldstate) && (irqhandler)) (*irqhandler)(device, 1);
-                    if (oldstate==0) irq = true;
+                    irq = true;
                 }
                 if (irq_enable & 0x80)
                     csm_req = 2;    // request KEY ON / KEY OFF sequence

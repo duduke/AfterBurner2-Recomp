@@ -198,14 +198,25 @@ same idiom).
 
 After a `TRAP #10` (set interrupt mask) and clearing a byte at `subram0`
 offset `$321`, it **spin-waits for a fixed 32-bit signature
-(`$55555555`) at offset `$70`** before proceeding — the sub CPU's own
-version of the main CPU's NVRAM-signature check, but implemented as a
-*wait for the main CPU to write it* rather than a self-contained check.
-Strongly suggests **the main CPU writes this signature into shared RAM
-once its own init is done, and the sub CPU's reset routine blocks until
-that handshake completes** — i.e. main CPU boots first and the sub CPU
-waits on it, not the other way around. Worth confirming from the main
-CPU's side (grep its code for a write of `$55555555`).
+(`$55555555`) at offset `$70`** (`112(A6)`) at `$000420` before proceeding:
+```
+000420: CMPI.L #$55555555,112(A6)
+000428: BNE    $000420
+00042A: CLR.L  112(A6)
+```
+**Confirmed on Main CPU**: Main CPU's reset sequence calls init routine
+`$01381E` (via `BSR $01381C` at `$01452A`). After completing all subsystem
+hardware setup and clearing sprite RAM, Main CPU writes this signature:
+```
+0138B4: CLR.L  ($0029C070).L        ; clear handshake slot during init
+...
+0138F4: MOVE.L #$55555555,($0029C070).L  ; signal Sub CPU to proceed
+0138FE: RTS
+```
+(`$0029C070` is `subram0` offset `$70` in Main CPU's address space;
+`112(A6)` is the exact same location in Sub CPU's space). As soon as Sub
+detects the signature, it clears the slot back to 0 at `$00042A` and continues
+its boot.
 
 The rest of the reset routine is a state machine over a byte at offset
 `$321` (values 0-4ish) that progressively zeroes a large block at hardware
@@ -218,39 +229,115 @@ inside the road *control register* range, `docs/HARDWARE.md` section
 3.2 — consistent with "poke a test pattern, then read the control
 register to see if the road hardware accepted it").
 
-### VBLANK handler (`$55E`)
+Sub CPU then enters its continuous processing loop at `$000432`:
+1. Executes road geometry / scanline updates (`$5C4`, `$5EE`).
+2. Calls the perspective / counting-sort math routine at `$000640` (see below).
+3. Waits for hardware completion (`TST.W $7C00(A6)` at `$000452`).
+4. Signals road buffer readiness: `BSET #1,214(A6)` (`subram0[$D6]` bit 1).
+5. Triggers road RAM double-buffer swap: reads `$000EE001` (control register),
+   then writes active road priority/bank byte (`MOVE.B 800(A6),(A1)`).
+6. Runs stage road segment state machine and loops back to step 1.
 
-1. Saves all registers, sets `A6` to the shared-RAM base again.
-2. **Spin-waits for bit 0 of `subram0` offset 0 to clear.** The main
-   CPU's own VBLANK handler sets that exact bit at its very start
-   (`BSET #0,$29C0D6` — `$29C0D6` is another mirror of `subram0`, real
-   offset `$D6`... **correction while writing this up**: offset-0 and
-   offset-`$D6` are different bytes, so this specific bit is not
-   obviously the same one main sets — needs a closer look before treating
-   this as confirmed cross-CPU handshake, but the *shape* (sub spins on a
-   flag near the top of its VBLANK, main sets/clears a flag at the
-   top/bottom of its own) strongly suggests some kind of "don't let sub
-   read shared state mid-update" mutex either way.
-3. A small countdown/backoff mechanism (byte at offset `$49`), then a
-   fixed-count delay loop (`DBF` from `$39` — **the exact same constant
-   the main CPU's VBLANK handler uses** for its own delay loop; another
-   sign of shared low-level conventions between the two programs).
-4. The main body (from `$640`): reads a count `D7` and a "current" value
-   `D6` from two pointer-variables in shared RAM, and if in range
-   (0 < D7 < 255), runs what reads as a **counting sort**: for each of
-   up to 256 source entries (a byte value 0-255 read via a pointer that
-   advances by 16 bytes per entry — i.e. a 16-byte-stride source table,
-   plausibly per-object distance/depth), bucket it into a 32-byte-stride
-   array of small linked lists by that byte value, then walk the buckets
-   in order (near-to-far or far-to-near) to produce a **depth-sorted
-   index list**, finally using each sorted entry to index into a region
-   nudged by the hardware multiplier chip's base (`$0E4000`) and store a
-   value into a 4th pointer-variable's target (`+14` field of a struct).
-   Reads exactly like "sort game objects/road segments by distance, then
-   drive the scaling-math hardware for each one in sorted order" — the
-   single strongest piece of evidence yet for "sub CPU = road/sprite-scale
-   perspective coprocessor," though the exact data (road segments? sprite
-   Z-order? both?) isn't pinned down yet.
+### VBLANK & Inter-CPU Synchronization
+
+There are **two distinct mutex / handshake flags** in `subram0`:
+
+#### 1. Frame-Update Mutex (`subram0[$D6]`, bit 0)
+- **Main CPU VBLANK entry/exit**:
+  ```
+  014674: BSET #0,($0029C0D6).L    ; lock Sub CPU during frame update
+  ... (double-buffer swaps, palette anim, lamp updates, sprite draw trigger)
+  014798: BCLR #0,($0029C0D6).L    ; release Sub CPU
+  ```
+- **Sub CPU background math engine (`$000640`)**:
+  At the very start of the perspective / counting sort routine:
+  ```
+  000640: BTST #0,214(A6)          ; test subram0[$D6] bit 0
+  000646: BNE  $000640             ; spin-wait while Main VBLANK is running
+  ```
+  This guarantees Sub CPU never mutates shared perspective/road data while
+  Main CPU's VBLANK interrupt is reading it or updating hardware registers.
+
+#### 2. Pause / VBLANK Hold Mutex (`subram0[$00]`, bit 0)
+- **Sub CPU VBLANK handler (`$00055E`)**:
+  ```
+  00055E: MOVEM.L ... -(A7)
+  000562: LEA ($0009C000).L,A6
+  000568: BTST #0,0(A6)            ; test subram0[0] bit 0
+  00056E: BNE  $000568             ; spin-wait if paused/held by Main
+  ...
+  000586: MOVE.W #$39,D0; DBF D0...; MOVEM.L (A7)+...; RTE
+  ```
+- **Main CPU pause handler (`$0145BA`-`$01460C`)**:
+  Checked during input polling when the Pause switch (bit 3 of I/O chip 1
+  port A at `$150001`) transitions:
+  ```
+  0145DA: BSET #0,($0029C000).L    ; lock Sub CPU VBLANK
+  0145E2: BSR  $014856             ; wait for VBLANK loop
+  ... (waits until Pause is released/toggled again)
+  014604: BCLR #0,($0029C000).L    ; unlock Sub CPU VBLANK
+  01460C: RTS
+  ```
+
+#### 3. Sprite Pipeline & Sub CPU Depth-Sorting (`$000640`)
+The 4 double-buffered pointer pairs swapped in Main CPU VBLANK at `$01468E`
+form an inter-CPU sprite pipeline:
+
+| Offset in `subram0` | Sub CPU (`A6=$09C000`) | Main CPU (`$0029C000`) | Description |
+|---|---|---|---|
+| `$7C00` | `31744(A6)` | `$002A3C00` | Frame sync / VBLANK counter |
+| `$7C04` / `$7C08` | `31752(A6)` | `$002A3C04` / `$002A3C08` | Unsorted Sprite Buffer pointers (Source) |
+| `$7C0C` / `$7C10` | `31760(A6)` | `$002A3C0C` / `$002A3C10` | Unsorted Sprite Count pointers |
+| `$7C14` / `$7C18` | `31768(A6)` | `$002A3C14` / `$002A3C18` | Sorted Sprite Buffer pointers (Destination) |
+| `$7C1C` / `$7C20` | `31776(A6)` | `$002A3C1C` / `$002A3C20` | Sorted Sprite Count pointers |
+
+1. **Emission by Game Objects**: During the main object loop (`$0145A0`),
+   each active object calls `append_sprite` (`$00B628`), copying its 16-byte
+   sprite descriptor into the **Unsorted Sprite Buffer** `($002A3C04)`.
+   When all objects are processed, `$00B67E` writes the count to `($002A3C0C)`
+   and mirrors it to `subram0[$58]`.
+2. **Sub CPU Z-Sorting & Perspective**: Once the VBLANK mutex clears, Sub CPU
+   reads the unsorted count from `31760(A6)` and buffer from `31752(A6)`.
+   At `$000672`, it extracts the Z-distance byte (`MOVE.B (A2), D0`) and runs a
+   **counting sort** into bucket arrays at `22528(A6)` (`$0A1800`), building a
+   depth-sorted list of indices at `32000(A6)` (`$0A3D00`). It then iterates through
+   the sorted indices, uses its hardware multiplier/divider (`$0E4000`) to compute
+   perspective scaling, and stores the final sorted 16-byte descriptors into the
+   **Sorted Sprite Buffer** `31768(A6)` (`$002A3C18`).
+3. **Double-Buffer Pointer Swap**: At the top of Main CPU VBLANK (`$01468E`),
+   Main CPU swaps each of the 4 pointer pairs so the newly sorted buffer becomes
+   active for display while the next frame writes into the alternate buffer.
+4. **Hardware Blit & Trigger**: Main CPU VBLANK (`$00B7D2` / `$00B7E4`) blits
+   the active sorted buffer `($002A3C14)` directly into Hardware Sprite RAM at
+   `$00100000`, then writes `$FF` to `$00110001` (`$014744`) to kick off the
+   hardware line scaler!
+
+#### 4. Road / Ground-Scroll Generation Pipeline
+The road layer is completely generated by Sub CPU using flight parameters from Main:
+
+1. **Main CPU Control & Flight Model**:
+   - `subram0[$9C]`: Current stage index (stages 1..24).
+   - `subram0[$CE]`: Desired roll / camera bank target from flight controls.
+   - `subram0[$AE]`, `[$B0]`, `[$B2]`, `[$B4]`, `[$B6]`: Interpolated pitch,
+     horizon position, horizon slew rate, and curve curvature.
+   - `subram0[$9E]`, `[$60]`: Stage-specific curve and elevation parameters.
+2. **Sub CPU Road Engine** (`$000432`-`$000538`):
+   - At `$00046A`-`$0004A0`, Sub CPU reads stage index `subram0[$9C]` and
+     dispatches to the appropriate ground/sky generator (`$000C0A` for standard
+     stages 1/7/16, `$000CEA` for stage 3, etc.).
+   - Computes horizon scanline position (`112 + horizon_offset` at `$000F70`,
+     where 112 is the half-screen midpoint of the 224 scanlines).
+   - Computes per-scanline road curve and writes the 224-word raster tables
+     into Road Control RAM:
+     - Horizontal offset table 1 & table 2 (`$0EC200`, `$0EC400` / `$0ECA00`, `$0ECC00`).
+     - Priority/bank configuration byte into `800(A6)` (`subram0[$320]`).
+3. **Double-Buffer Hardware Flip**:
+   - After waiting for math completion (`TST.W $7C00(A6)` at `$000452`), Sub CPU
+     sets the road ready flag `BSET #1, 214(A6)` (`subram0[$D6]` bit 1).
+   - Reads the road control register at `$000EE001` (`TST.B (A1)` at `$000464`),
+     which **flips the hardware road RAM double-buffer** so the newly generated
+     scanline tables are drawn during next scanout.
+   - Writes `subram0[$320]` to `$000EE001` to latch active road priority.
 
 ## The two per-VBLANK subsystem calls (`$014A86` and `$013F92`)
 
@@ -314,31 +401,65 @@ danger lamps, section 5, almost certainly have matching on-screen color
 cues driven by exactly this kind of system) — not yet confirmed which
 palette destination corresponds to which visual element.
 
+## VBLANK Subsystem Hooks (`$016C8A` and `$018444`)
+
+The two fixed function calls in Main CPU VBLANK were mapped out:
+
+### `$016C8A` — Missile Reload / Weapon Replenishment Sequencer
+- Gated by flag `$9102` / `$90FF`.
+- Compares player missile count at `$8D66` against the stage maximum from ROM table (`$0003218A`/`$0003218C`).
+- When reloading: decrements pending ammo delta `$9100`, increments `$8D66`, queues audio command `$9B` (missile reload beep) into the sound queue at `$890C` via `$00B84C`, and calls `$00CFC4` to update the HUD missile icons.
+
+### `$018444` — Stage Event & Background Scenery Scroll Engine
+- Checks current stage from `subram0[$9C]`:
+  - Special stages 5, 13, 20 (`$05`, `$0D`, `$14`): Refueling / landing sequence state machine (`$9040`/`$9044`).
+  - Standard combat stages 1, 7, 9, 15, 16 (`$01`, `$07`, `$09`, `$0F`, `$10`): branches to `$018798`.
+- Scenery tile & scroll generator (`$018798`):
+  - Streams scenery background tiles from `$00031252` into Tile RAM page at `$0C216C`.
+  - Calculates camera roll-compensated horizontal scroll value from roll angle `subram0[$8E]` (`$0187E4`–`$0187F6`).
+  - Latches result into the ALT-FG x-scroll register at `$000D0E9C` (`0x74E` word offset in text RAM, `docs/HARDWARE.md` section 3.3).
+
+## Object / Task System (`$9FC0`)
+
+The object table spans `$9FC0` to `$DF40` in `backup1` mirror RAM, comprising **254 slots of 64 bytes each** (`$00FE` loaded from `$0001C176` into `$8806` at `$014594`).
+
+### 64-Byte Object Entry Layout
+- `+0`: Bit 7: `0` = Active, `1` = Free/Inactive. Bit 5: Horizontal flip. Bits 0-9: Screen Y position.
+- `+2`: Palette / bank / priority attribute.
+- `+3`: Current sprite frame index.
+- `+4`: Longword: current screen X, Y coordinates.
+- `+8`: Longword: previous screen X, Y coordinates (used for interpolation / deltas).
+- `+12`: Longword: animation script / state sequence pointer.
+- `+16`: Longword: **Per-object tick / update function pointer** (called by dispatch loop via `MOVEA.L 16(A5),A0; JSR (A0)`).
+- `+20`: Extra sprite attribute byte (patched into hardware sprite descriptor at `append_sprite`).
+- `+36`: Object Z-distance / depth (used by Sub CPU counting sort) or bank angle.
+- `+38`, `+40`: Velocity vectors (X, Y).
+- `+42`: World 3D X coordinate.
+- `+54`: Trajectory table / motion script pointer.
+- `+60`, `+62`: Attachment offsets for multi-part objects.
+
+### Core Object Types Mapped
+
+1. **Player Aircraft (F-14 Tomcat) — Multi-Part Compound Object (Slots 0..3)**:
+   - Initialized at `$016892` and activated together at `$0169B2` via `BCLR #7,(A0)`:
+     - **Slot 0 (`$A000`)**: Airframe / fuselage (`update = $01653A`). Computes roll and flight stick banking at `$01678E` using the hardware multiplier (`$0E4000`), selects frame from `$00016B8A`, and calls `append_sprite(A5)`.
+     - **Slot 1 (`$A040`)**: Left afterburner exhaust flame (`update = $01656A`, anim script `$01D780`).
+     - **Slot 2 (`$A080`)**: Right afterburner exhaust flame (`update = $016572`, anim script `$01D780`, `BSET #5` horizontal flip).
+     - **Slot 3 (`$A0C0`)**: Vulcan cannon / missile pod (`update = $01657A`).
+2. **Player Weapons (Missiles & Vulcan Cannons)**:
+   - Routines at `$0154B8`, `$01552C`, `$015582`, `$015638`.
+   - Spawns forward projectiles from jet origin, tracks velocity, checks target lock, decrements ammo `$8D66`.
+3. **Enemy Aircraft & 3D Objects**:
+   - Update routines at `$0088C2`, `$008AF2`, `$0091C0`, `$009626`.
+   - Reads 3D world coordinates `(X, Y, Z)` from fields `+42` and `+36`, transforms coordinates using camera roll/pitch matrix at `subram0[$90]/[$92]` through SEGA 315-5248 multiplier at `$0E0000`, selects banking sprite frame from lookup table `$00033ED8`, and calls `append_sprite` (`$00B628`).
+
 ## Open threads to pick up next
 
-- Examine the object/task dispatch table at `$9FC0` in detail — pick one
-  active entry, follow its function pointer, and see if it matches a
-  recognizable per-object update pattern (position, velocity, sprite RAM
-  write) — this is the highest-value next target since it's the likely
-  entry point for individual game object logic. **Still open** — the
-  actual road/ground-scroll and sprite-object update subsystems haven't
-  been located yet either, now that `$014A86`/`$013F92` turned out to be
-  palette animation instead.
+- **Engine C++ Implementation**: We now have complete specifications for the object dispatch loop, 64-byte object structure, player jet composite parts, sprite pipeline, and road scanlines. Ready to scaffold `src/main/engine/` (`oentry.hpp`, `oplayer.cpp`, `osprites.cpp`).
 - Find what sets `$0CDD07`'s trigger bit (the palette fade effect's
   activation) and what reads/sets `$8C2A`/`$8D30` (the palette-animation
-  frame counter and palette-set selector) — would confirm which in-game
-  visual events these two subsystems are actually tied to.
-- Confirm or refute the "4x double-buffer swap = tilemap scroll registers"
-  hypothesis in step 3 above by tracing where `$2A3C04/0C/14/1C` are
-  written from and read into.
-- Confirm the main↔sub NVRAM-signature handshake: search the main CPU's
-  code for a write of `$55555555` (the value the sub CPU's reset routine
-  spin-waits for at `subram0` offset `$70`).
-- Pin down whether main CPU's `$29C0D6` (bit 0) and the sub CPU's own
-  `subram0` offset-0 bit 0 (which its VBLANK handler spins on) are really
-  the same shared flag — they're at different real offsets (`$D6` vs `$00`)
-  within the same chip, so this needs tracing rather than assuming.
-- Follow the sub CPU's VBLANK counting-sort routine (`$640`) further —
-  figure out what the 16-byte-stride source table and the "sorted index
-  drives the multiplier chip" step actually operate on (road segments?
-  sprite depth order? both?).
+  frame counter and palette-set selector).
+- **RESOLVED**: Confirm VBLANK subsystem hooks: `$016C8A` is missile reload / HUD sequencer; `$018444` is stage event / background scenery scroll engine.
+- **RESOLVED**: Map object dispatch table and structure: 254 entries × 64 bytes (`$9FC0`–`$DF40`), active player jet compound slots 0..3, 3D enemy world-to-screen pipeline mapped.
+- **RESOLVED**: Sprite pipeline & Road / Ground-scroll generation mapped end-to-end.
+- **RESOLVED**: Main ↔ Sub boot handshake and mutex mechanisms.

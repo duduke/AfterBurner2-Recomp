@@ -176,7 +176,7 @@ void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int heig
 
         for (int tx = 0; tx < TEXT_COLS; tx++)
         {
-            const int px0 = tx * 8;
+            const int px0 = tx * 8 - 192;
             if (px0 >= width)
                 break;
 
@@ -198,7 +198,7 @@ void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int heig
                 for (int x = 0; x < 8; x++)
                 {
                     const int px = px0 + x;
-                    if (px >= width)
+                    if (px < 0 || px >= width)
                         continue;
                     const uint8_t pix = tile_pixel(code, x, y);
                     if (pix == 0)

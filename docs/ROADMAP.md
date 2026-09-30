@@ -43,9 +43,8 @@ captures where possible:
       sprite/palette/I-O access at all), pointing at a dedicated
       road/perspective math coprocessor role, confirmed in Phase 3 below
 
-Audio is deliberately deprioritized until the visual side and game logic
-are further along (see "Deferred: audio" at the end of this document) —
-picking it back up later doesn't block anything above.
+The original Z80 sound program now drives YM2151/SegaPCM and SDL audio.
+See the Stage 1 fidelity notes for the verified command and memory maps.
 
 ## Phase 3 — Game logic (`engine`)
 
@@ -74,17 +73,52 @@ disassembled and read directly.
       access to tilemap/sprite/palette/I-O hardware at all), with a
       counting-sort-then-drive-the-multiplier-chip routine that's the
       strongest evidence yet for that role
-- [x] Mapped the two per-VBLANK subsystem calls (`$014A86`, `$013F92`) —
-      turned out to both be palette animation systems (a fade/flash
-      effect and a multi-rate color-cycling player), not road/sprite
-      update as originally guessed
-- [ ] **Still not found**: the actual road/ground-scroll and
-      sprite-object update logic — now the top priority alongside the
-      object table below
-- [ ] Confirm the object/task table hypothesis (`$9FC0`) and start mapping
-      individual object types (see `docs/ENGINE_NOTES.md`'s "Open threads")
-- [ ] Once enough is understood: start the actual port, file-per-subsystem,
-      into `src/main/engine/`
+- [x] Main ↔ Sub handshake traced: Main CPU writes `$55555555` to
+      `subram0[$70]` at `$0138F4` in `$01381E`, releasing Sub CPU from its
+      reset spin-loop at `$000420`
+- [x] Main ↔ Sub mutex mechanisms mapped:
+      - `subram0[$D6]` bit 0: frame-update mutex (Main CPU VBLANK sets at
+        `$014674`, clears at `$014798`; Sub CPU math engine `$000640` stalls
+        during frame update)
+      - `subram0[$00]` bit 0: pause mutex (Main CPU sets at `$0145DA` upon
+        Pause switch input; Sub CPU VBLANK `$00055E` stalls while paused)
+- [x] Sprite pipeline mapped end-to-end:
+      - Main CPU objects emit 16-byte descriptors to unsorted buffer via
+        `append_sprite` (`$00B628`)
+      - Main CPU VBLANK swaps 4 double-buffer pointer pairs (`$2A3C04/0C/14/1C`)
+      - Sub CPU counting sort (`$000640`) sorts by Z-distance into bucket lists,
+        computes perspective with 315-5248 multiplier, and outputs sorted buffer
+      - Main CPU blits sorted buffer to hardware Sprite RAM (`$00100000`) and
+        triggers hardware scaler (`$00110001`)
+- [x] Road / ground-scroll pipeline mapped end-to-end:
+      - Main CPU sets stage (`subram0[$9C]`) and flight attitude (`subram0[$CE]/[$AE]-[$B6]`)
+      - Sub CPU computes horizon scanline offset (`$000F70`), generates 224-line
+        per-scanline raster curves (`$0EC200`/`$0EC400` at `$000F4C`), and
+        flips hardware road RAM double-buffer at `$000EE001` (`$000464`)
+- [x] Mapped VBLANK subsystem hooks:
+      - `$016C8A`: missile reload / audio queue / HUD icon sequencer
+      - `$018444`: stage events (refueling stages 5/13/20) and background
+        scenery streaming to Tile RAM + roll-adjusted horizontal scroll register
+- [x] Object/task system mapped (`$9FC0`–`$DF40`):
+      - 254 entries × 64 bytes
+      - Compound player jet (slots 0..3: fuselage, twin exhaust flames, weapon pod)
+      - Player missile/vulcan projectiles
+      - 3D enemy world-to-screen pipeline using SEGA 315-5248 hardware multiplier
+- [x] Initial C++ engine subsystems scaffolded in `src/main/engine/`:
+      - `oentry.hpp`: 64-byte object descriptor matching arcade layout
+      - `osprites`: depth sorting and hardware sprite RAM blit
+      - `oroad`: 224-line scanline horizon and roll curvature synthesizer
+      - `opalette`: fade/flash and color cycling player
+      - `olevelobjs`: 254-slot object manager, player jet compound flight model
+      - `oengine`: frame tick coordinator connected to SDL2 keyboard inputs
+- [ ] Continue porting individual game subsystems into `src/main/engine/`:
+      - Enemy AI & formation spawning
+      - Collision detection & hitboxes
+      - Stage sequencing and terrain elevation profiles
+      - Original stage timing and behavior beyond the Stage 1 reconstruction
+- [x] Stage 1 reference experience: banked terrain/sea, ROM-backed HUD, native
+      fighter formations, weapons, collisions, clear state and restart
+      (see `STAGE1_FIDELITY.md` for remaining differences)
 
 See `docs/ENGINE_NOTES.md` for the detailed, evolving write-up — treat it
 as "current best understanding," not verified fact, until a real port
@@ -96,18 +130,13 @@ Frontend/config, input remapping, save states, and any of the quality-of-life
 features Cannonball/Cannonball-SE/Cannonball DX added for OutRun, re-evaluated
 for what actually make sense for After Burner II specifically.
 
-## Deferred: audio
+## Audio
 
-Picked back up once the visual side and game logic are further along —
-none of this blocks Phase 3/4 above, since the engine can drive `hwvideo`
-and stub sound calls in the meantime.
-
-- [ ] Wiring the YM2151/SegaPCM chips (already implemented, see Phase 2)
+- [x] Wiring the YM2151/SegaPCM chips (already implemented, see Phase 2)
       into an actual SDL audio output stream
-- [ ] Z80 sound program interpretation (or reuse an existing clean-room Z80
-      core, since the sound program itself is comparatively simple compared
-      to the main 68000 game logic) — needs the compare/timer chip's
-      command protocol (`segaic16_m.cpp`, not yet read) figured out first
+- [x] Z80 sound ROM execution using the licensed floooh/chips core, original
+      NMI latch and YM IRQ protocol, with music/engine/weapon/effect commands
+- [ ] Exact command cadence and waveform comparison against the arcade
 - [ ] **Option: substitute Sega Ages After Burner II (Saturn, 1996) music
       tracks for the arcade FM/PCM soundtrack.** That release's music is
       redbook/CD-quality audio per stage, rippable to WAV/MP3 — a much

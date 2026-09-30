@@ -20,8 +20,9 @@ Cannonball's proven approach:
 - The original arcade ROM's **graphics tiles, sprites, background/road data,
   and audio (Z80 program + YM2151/SegaPCM samples) are reused as-is** as
   data, read straight out of the ROM images.
-- The **68000 game logic is manually read out of a disassembly/MAME's driver
-  and re-authored as readable, modern C++**, driving faithful reimplementations
+- The **68000 game logic is being studied from disassembly and re-authored
+  as readable, modern C++**; the current Stage 1 behavior also contains native
+  reconstructions. It drives reimplementations
   of the X-Board hardware (sprite scaler, background generator, tilemap,
   palette) instead of an emulated CPU core.
 - The result runs natively (no CPU emulation for the game logic itself),
@@ -62,8 +63,16 @@ docs/                        — hardware & porting reference notes
 
 ## Status
 
-Early scaffold: builds and opens a window. No game logic ported yet. See
-[docs/ROADMAP.md](docs/ROADMAP.md) for the phased plan.
+Playable Stage 1 reference experience: banked horizon, animated sea, original
+canopy/shore rocks and player attitude frames, an upright live HUD, fighter
+combat, targeting, hits, and original sound-ROM playback. Stage 1 clears after
+60 seconds; Enter restarts it.
+
+The native terrain layout, formations, flight/collision rules, and stage duration
+are reconstructed. They are not a bit-exact port of the arcade's stage scripts.
+The full 25-stage game, carrier introduction, attract mode, and refueling are
+future work. See [docs/STAGE1_FIDELITY.md](docs/STAGE1_FIDELITY.md),
+[docs/ROADMAP.md](docs/ROADMAP.md), and [docs/PR_REVIEW.md](docs/PR_REVIEW.md).
 
 ## Building
 
@@ -74,3 +83,16 @@ cmake -S . -B build
 cmake --build build
 ./build/afterburner2
 ```
+
+Controls: arrow keys move/bank/pitch, Z fires the cannon, X launches missiles,
+Space increases throttle, Enter restarts Stage 1, and Escape exits. Simulation runs at 60 Hz.
+
+The Makefile is an alternative when CMake is unavailable: `make -j4`.
+Run ROM-free engine checks with `make test` (or CTest with a CMake build).
+For reproducible ROM-backed screenshots, run `make render-scene`, then
+`./build/render_scene build/level.ppm`. Append `left` or `right` to capture
+banking, or `combat` for weapon fire; an optional final argument selects the
+tick count (for example, `./build/render_scene build/right.ppm right 480`).
+`make verify-stage1` runs the optional ROM-backed integration suite; CMake users
+can enable it with `-DSTAGE1_ROM_TESTS=ON`. `./afterburner2 --frames 180`
+performs a bounded application run for launch checks. Run these commands from the repository root; ROMs are not included.
