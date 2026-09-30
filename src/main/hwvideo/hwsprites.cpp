@@ -41,7 +41,7 @@ void HWSprites::swap()
     std::memcpy(ram_buffer, ram, sizeof(ram));
 }
 
-void HWSprites::render(uint16_t* pixels, int width, int height) const
+void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, int origin_y, unsigned priority_mask) const
 {
     for (const uint16_t* data = ram_buffer; data < ram_buffer + SPRITE_WORDS; data += 8)
     {
@@ -51,7 +51,7 @@ void HWSprites::render(uint16_t* pixels, int width, int height) const
 
         const int hide = data[0] & 0x5000;
         int bank = (data[0] >> 9) & 7;
-        const int top = (data[0] & 0x1ff) - 0x100;
+        const int top = (data[0] & 0x1ff) - 0x100 + origin_y;
         uint16_t addr = data[1]; // 16-bit register: wraps within the current bank, matching hardware
         const int pitch = static_cast<int16_t>((data[2] >> 1) | ((data[4] & 0x1000) << 3)) >> 8;
         int xpos = data[2] & 0x1ff;
@@ -66,13 +66,15 @@ void HWSprites::render(uint16_t* pixels, int width, int height) const
         const int height_rows = (data[5] & 0xfff) + 1;
         const int colpri = ((data[6] & 0xff) << 4) | (((data[3] >> 12) & 7) << 12);
 
+        if (!(priority_mask & (1u << ((data[3] >> 12) & 3))))
+            continue;
         if (hide)
             continue;
 
         // adjust X coordinate (guards against wraparound; matches MAME)
         if (xpos < 0x80 && xdelta < 0)
             xpos += 0x200;
-        xpos -= 0xBE;
+        xpos += origin_x - 0xBE;
 
         if (numbanks)
             bank = static_cast<int>(bank % numbanks);

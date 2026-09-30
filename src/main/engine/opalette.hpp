@@ -9,6 +9,7 @@ class OPalette
 {
 public:
     OPalette();
+    void init(const uint8_t* rom, uint32_t length) { program = rom; program_length = length; frame_counter = 0; }
 
     // Trigger a palette flash/fade down over `duration` frames
     void trigger_flash(uint8_t duration);
@@ -17,8 +18,9 @@ public:
     void update(HWPalette& hw_palette);
 
 private:
+    const uint8_t* program{};
+    uint32_t program_length{};
     uint16_t frame_counter{0};
     uint8_t fade_duration{0};
-    uint8_t fade_channels{0x07};
     bool fade_active{false};
 };

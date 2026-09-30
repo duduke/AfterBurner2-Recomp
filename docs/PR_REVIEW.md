@@ -32,39 +32,34 @@ an appearance target; it does not contain project instructions.
 - Missile ammunition/cooldown now changes only when a free slot actually
   receives a projectile.
 
-## Remaining fidelity work
+## Stage 1 follow-up
 
-These are substantive gaps in the prototype, so PR #1 should not be described
-as complete or arcade-accurate:
+The follow-up completes the user-selected **Stage 1 reference experience**:
+rotating terrain/horizon, animated ROM-backed sea, correct bank-3 canopy/rocks,
+player frame tables and F2 palette animation, score/hits/speed/stage/ammo HUD,
+fighter combat, targeting, enemy missiles, a clear/restart flow, and original
+Z80 sound program playback through YM2151/SegaPCM and SDL. Text rendering now
+uses the hardware's -192-pixel X origin. Sprite destination height rounds up
+to preserve the last sampled source row.
 
-- Banking changes road horizontal offsets and grove frames, but does not
-  rotate the sky/sea horizon as in the reference video. This needs a camera
-  attitude projection, consistent across terrain and world objects.
-- The sea renders mostly as a flat color rather than the reference's moving
-  texture. Road scanline selection, placement, and colors need tracing
-  against the original program.
-- Score, hits, speed, stage, and missile inventory HUD elements are absent.
-- Scenery positions, enemy waves, weapon trajectories, collisions, and the
-  periodic tanker are synthesized demo behavior, not verified arcade scripts.
-- No audio output is integrated into the application loop.
-- ROM sprite offsets and palette choices are retained from the PR. Reading
-  and rendering those assets does not independently verify every claimed
-  aircraft identity or its original animation timing.
+Native Stage 1 formation, terrain and collision rules remain reconstructed,
+with a 60-second clear condition. Original stage scripts, exact enemy behavior,
+carrier/attract/refueling sequences, all 25 stages, and tilemap fine-scroll
+are outside this narrowed scope. See `STAGE1_FIDELITY.md` for evidence and limits.
 
 ## Validation
 
-`make -j4` builds on this macOS checkout with SDL2. Existing audio scaffold
-warnings remain (unused values, signed comparison, and `M_PI` redefinition);
-the original PR's zero-warning claim does not hold here. CMake is unavailable
-on this machine, so the CMake/CTest configuration was not executed.
+- Clean `make -j4` with SDL2 on macOS, without compiler warnings.
+- `make test`: ROM-free descriptor scaling, palette and neutral-stick checks.
+- `make verify-stage1`: CRC-verified user ROMs; a complete 3,600-tick combat
+  session, scoring/ammo, stable HUD during bank, projected terrain, clear and
+  restart; sound ROM produces 800 stereo frames per tick and non-silent output.
+- The ROM-backed suite also passes AddressSanitizer and UndefinedBehaviorSanitizer.
+- SDL video/audio application startup and normal shutdown using dummy drivers.
+- Level and left/right-bank captures compared with the supplied movie and
+  original MAME Stage 1 captures. These establish visual progress, not bit-exact
+  arcade equivalence. Audio output is checked programmatically; exact waveform
+  equivalence has not been established.
 
-`make test` runs without ROMs. Synthetic sprite rows followed by poison rows
-check source bounds and destination heights at zooms `0x100`, `0x200`,
-`0x300`, `0x400`, and `0x580`. Other checks cover blue sky colors and returning
-the stick to neutral. The original branch failed the scaling check before
-fixing it.
-
-`make render-scene` builds a headless capture tool. With the user's existing,
-CRC-verified ROMs, capture level flight and left/right banks after exactly
-240 simulation ticks. These are visual checks, not proof of complete arcade
-fidelity. No ROM data or generated game screenshots are committed.
+CMake is unavailable on this machine; its configuration was updated but not
+executed. No ROM data, extracted memory dumps or game screenshots are committed.

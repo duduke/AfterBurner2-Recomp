@@ -43,9 +43,8 @@ captures where possible:
       sprite/palette/I-O access at all), pointing at a dedicated
       road/perspective math coprocessor role, confirmed in Phase 3 below
 
-Audio is deliberately deprioritized until the visual side and game logic
-are further along (see "Deferred: audio" at the end of this document) —
-picking it back up later doesn't block anything above.
+The original Z80 sound program now drives YM2151/SegaPCM and SDL audio.
+See the Stage 1 fidelity notes for the verified command and memory maps.
 
 ## Phase 3 — Game logic (`engine`)
 
@@ -116,7 +115,10 @@ disassembled and read directly.
       - Enemy AI & formation spawning
       - Collision detection & hitboxes
       - Stage sequencing and terrain elevation profiles
-      - HUD overlay rendering (missile counts, speed, score)
+      - Original stage timing and behavior beyond the Stage 1 reconstruction
+- [x] Stage 1 reference experience: banked terrain/sea, ROM-backed HUD, native
+      fighter formations, weapons, collisions, clear state and restart
+      (see `STAGE1_FIDELITY.md` for remaining differences)
 
 See `docs/ENGINE_NOTES.md` for the detailed, evolving write-up — treat it
 as "current best understanding," not verified fact, until a real port
@@ -128,18 +130,13 @@ Frontend/config, input remapping, save states, and any of the quality-of-life
 features Cannonball/Cannonball-SE/Cannonball DX added for OutRun, re-evaluated
 for what actually make sense for After Burner II specifically.
 
-## Deferred: audio
+## Audio
 
-Picked back up once the visual side and game logic are further along —
-none of this blocks Phase 3/4 above, since the engine can drive `hwvideo`
-and stub sound calls in the meantime.
-
-- [ ] Wiring the YM2151/SegaPCM chips (already implemented, see Phase 2)
+- [x] Wiring the YM2151/SegaPCM chips (already implemented, see Phase 2)
       into an actual SDL audio output stream
-- [ ] Z80 sound program interpretation (or reuse an existing clean-room Z80
-      core, since the sound program itself is comparatively simple compared
-      to the main 68000 game logic) — needs the compare/timer chip's
-      command protocol (`segaic16_m.cpp`, not yet read) figured out first
+- [x] Z80 sound ROM execution using the licensed floooh/chips core, original
+      NMI latch and YM IRQ protocol, with music/engine/weapon/effect commands
+- [ ] Exact command cadence and waveform comparison against the arcade
 - [ ] **Option: substitute Sega Ages After Burner II (Saturn, 1996) music
       tracks for the arcade FM/PCM soundtrack.** That release's music is
       redbook/CD-quality audio per stage, rippable to WAV/MP3 — a much

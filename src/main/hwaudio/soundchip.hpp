@@ -9,6 +9,7 @@
 ***************************************************************************/
 
 #pragma once
+#include <cstdint>
 
 class SoundChip
 {
@@ -54,6 +55,6 @@ protected:
 
 private:
     // Sound buffer stream
-    int16_t* buffer;
+    int16_t* buffer{nullptr};
 
 };

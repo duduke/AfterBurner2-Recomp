@@ -18,7 +18,8 @@ public:
     OEngine();
 
     void init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles& tiles,
-              const uint8_t* maincpu_rom, uint32_t maincpu_len);
+              const uint8_t* maincpu_rom, uint32_t maincpu_len,
+              const uint8_t* subcpu_rom = nullptr, uint32_t subcpu_len = 0);
 
     // Platform input feed (keyboard / gamepad)
     void handle_input(int stick_x, int stick_y, bool fire_vulcan, bool fire_missile, int throttle);
@@ -34,5 +35,6 @@ private:
     OSprites sprite_engine;
     ORoad road_engine;
     OPalette palette_engine;
+    OHud hud_engine;
     uint32_t frame_count{0};
 };

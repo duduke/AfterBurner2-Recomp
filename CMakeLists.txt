@@ -20,9 +20,11 @@ add_executable(afterburner2
     src/main/hwvideo/hwtiles.cpp
     src/main/hwvideo/hwpalette.cpp
     src/main/hwvideo/screen.cpp
+    src/main/hwaudio/arcade_audio.cpp
     src/main/hwaudio/soundchip.cpp
     src/main/hwaudio/segapcm.cpp
     src/main/hwaudio/ym2151.cpp
+    src/main/engine/ohud.cpp
     src/main/engine/osprites.cpp
     src/main/engine/oroad.cpp
     src/main/engine/opalette.cpp
@@ -41,6 +43,7 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(engine_regression
         tests/engine_regression.cpp
+        src/main/engine/ohud.cpp
         src/main/engine/osprites.cpp
         src/main/engine/oroad.cpp
         src/main/engine/opalette.cpp
@@ -54,4 +57,14 @@ if(BUILD_TESTING)
     )
     target_include_directories(engine_regression PRIVATE src/main)
     add_test(NAME engine_regression COMMAND engine_regression)
+endif()
+
+option(STAGE1_ROM_TESTS "Enable tests requiring the user's Stage 1 ROM set" OFF)
+if(BUILD_TESTING AND STAGE1_ROM_TESTS)
+    get_target_property(STAGE1_SOURCES afterburner2 SOURCES)
+    list(REMOVE_ITEM STAGE1_SOURCES src/main/main.cpp)
+    add_executable(stage1_integration tests/stage1_integration.cpp ${STAGE1_SOURCES})
+    target_include_directories(stage1_integration PRIVATE src/main)
+    add_test(NAME stage1_integration COMMAND stage1_integration)
+    set_tests_properties(stage1_integration PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()

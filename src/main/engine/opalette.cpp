@@ -1,56 +1,27 @@
 #include "engine/opalette.hpp"
 
-namespace
-{
-    // Palette cycling color tables (derived from arcade ROM tables at $1413A, $14196, $141F2)
-    // 4 phases for the jet exhaust flame flickering effect
-    constexpr uint16_t FLAME_COLORS[4][7] = {
-        { 0x00FF, 0x00DF, 0x00BF, 0x009F, 0x007F, 0x005F, 0x003F },
-        { 0x01FF, 0x01EF, 0x01CF, 0x01AF, 0x018F, 0x016F, 0x014F },
-        { 0x03FF, 0x03EF, 0x03DF, 0x03CF, 0x03BF, 0x03AF, 0x039F },
-        { 0x02FF, 0x02DF, 0x02BF, 0x029F, 0x027F, 0x025F, 0x023F },
-    };
-}
-
-OPalette::OPalette()
-{
-}
-
+OPalette::OPalette() = default;
 void OPalette::trigger_flash(uint8_t duration)
 {
     fade_duration = duration;
     fade_active = true;
-    fade_channels = 0x07;
 }
-
-void OPalette::update(HWPalette& hw_palette)
+void OPalette::update(HWPalette& palette)
 {
-    frame_counter++;
-
-    // 1. Color cycling player ($013F92):
-    // Advances every 4 frames ((frame >> 2) & 3)
-    if (!fade_active)
-    {
-        uint32_t phase = (frame_counter >> 2) & 3;
-        for (int i = 0; i < 7; ++i)
-        {
-            // Stream into fixed palette slots for afterburner flame and HUD lights
-            hw_palette.write(0x1D22 / 2 + i, FLAME_COLORS[phase][i]);
-            hw_palette.write(0x1EA2 / 2 + i, FLAME_COLORS[(phase + 1) & 3][i]);
-            hw_palette.write(0x1E42 / 2 + i, FLAME_COLORS[(phase + 2) & 3][i]);
-        }
-    }
-
-    // 2. Palette fade effect ($014A86):
+    ++frame_counter;
+    // $013FF2 streams fourteen colors to player palette F2 from the ROM table
+    // selected by the pointer list at $141F2. Keep airframe colors intact.
+    const uint32_t source = 0x2bf5e + ((frame_counter / 4) & 7) * 32;
+    if (program && source + 32 <= program_length)
+        for (int i = 1; i < 15; ++i)
+            palette.write(0xf20 + i, (program[source + i * 2] << 8) | program[source + i * 2 + 1]);
+    const unsigned phase = (frame_counter / 4) & 3;
+    palette.write(0xf21, 0x006f + phase * 0x10);
+    palette.write(0xf22, 0x009f + phase * 0x10);
+    palette.write(0xf24, 0x07cf + phase * 0x110);
     if (fade_active)
     {
-        if (fade_duration > 0)
-        {
-            fade_duration--;
-        }
-        else
-        {
-            fade_active = false;
-        }
+        if (fade_duration > 0) --fade_duration;
+        else fade_active = false;
     }
 }

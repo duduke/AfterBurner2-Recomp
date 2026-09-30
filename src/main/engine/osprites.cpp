@@ -47,7 +47,7 @@ void OSprites::append_sprite(const OEntry& obj, uint16_t rom_bank, uint16_t rom_
     // Word 5 stores destination scanlines, while callers supply source rows.
     // Match the scaler's minimum zoom so downscaling never reads past the frame.
     const uint32_t effective_zoom = std::max<uint32_t>(0x40, zoom_y & 0x7FF);
-    const uint32_t screen_height = std::max<uint32_t>(1, height * 0x200u / effective_zoom);
+    const uint32_t screen_height = std::max<uint32_t>(1, (height * 0x200u + effective_zoom - 1) / effective_zoom);
     desc.words[5] = static_cast<uint16_t>(std::min<uint32_t>(0x1000, screen_height) - 1);
 
     // Word 6: Palette index

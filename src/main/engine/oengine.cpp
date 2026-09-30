@@ -16,7 +16,8 @@ OEngine::OEngine()
 }
 
 void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles& tiles,
-                  const uint8_t* maincpu_rom, uint32_t maincpu_len)
+                  const uint8_t* maincpu_rom, uint32_t maincpu_len,
+                  const uint8_t* subcpu_rom, uint32_t subcpu_len)
 {
     // 1. Load Master Palette table from ROM ($0002EDF4, 3712 words / 7424 bytes)
     // Matches arcade reset init at $013B1C: LEA ($00120000),A1; LEA ($0002EDF4),A0; MOVE.W #$E7,D0...
@@ -30,22 +31,19 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
         }
     }
 
-    // 2. Set up Stage 1 Sky and Sea palette entries (offsets 0x1700 - 0x17FF)
-    // Color offset 1 = 0x1700 (road strip 1), Color offset 2 = 0x1720 (road strip 2), Color offset 3 = 0x1780 (background sky)
+    // Stage 1 sky and sea, observed in original gameplay RAM. Haze blends
+    // toward white over the thirty lines immediately above the sea.
     for (int i = 0; i < 32; ++i)
     {
-        // Blue sea gradient
-        uint16_t sea_blue = static_cast<uint16_t>(std::clamp(8 + i / 2, 0, 31));
-        uint16_t sea_green = static_cast<uint16_t>(std::clamp(4 + i / 3, 0, 31));
-        palette.write(0x1700 + i, pack_rgb(0, sea_green, sea_blue));
-        palette.write(0x1720 + i, pack_rgb(0, sea_green + 2, sea_blue));
-
-        // Sky gradient
-        uint16_t sky_blue = static_cast<uint16_t>(std::clamp(14 + i / 3, 0, 31));
-        uint16_t sky_green = static_cast<uint16_t>(std::clamp(10 + i / 4, 0, 31));
-        uint16_t sky_red = static_cast<uint16_t>(std::clamp(4 + i / 6, 0, 31));
-        palette.write(0x1780 + i, pack_rgb(sky_red, sky_green, sky_blue));
+        palette.write(0x1700 + i, pack_rgb(0, 0, 28));
+        palette.write(0x1720 + i, pack_rgb(0, 21, 31));
+        palette.write(0x1780 + i, pack_rgb(i * 29 / 31, 21 + i * 10 / 31, 31));
     }
+    if (maincpu_rom && maincpu_len >= 0x2ea34)
+        for (int i = 0; i < 16; ++i)
+            palette.write(0xf10 + i, (maincpu_rom[0x2ea14 + i * 2] << 8) | maincpu_rom[0x2ea15 + i * 2]);
+    palette_engine.init(maincpu_rom, maincpu_len);
+    palette_engine.update(palette);
 
     // 3. Clear all tile pages in Tile RAM to transparent (tile 0)
     for (uint32_t addr = 0; addr < 0x8000; ++addr)
@@ -61,7 +59,11 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
     tiles.latch_frame_registers();
 
     // 4. Initialize game objects and road synthesizer
+    level_objs.set_rom(subcpu_rom, subcpu_len);
     level_objs.init();
+    hud_engine.init(palette, tiles, maincpu_rom, maincpu_len);
+    hud_engine.update(tiles, level_objs.hud());
+    frame_count = 0;
     road_engine.set_stage(1);
     road_engine.update(road);
     sprite_engine.begin_frame();
@@ -92,5 +94,6 @@ void OEngine::tick(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
     // 5. Update palette cycling (exhaust flames and lights)
     palette_engine.update(palette);
 
-    (void)tiles;
+    hud_engine.update(tiles, level_objs.hud());
+    tiles.latch_frame_registers();
 }

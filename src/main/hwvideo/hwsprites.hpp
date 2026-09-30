@@ -44,7 +44,8 @@ public:
     // pixel words (0 = transparent). Pixel format: bits 0-3 = 4-bit pixel
     // index (1-14 opaque, 0/15 transparent), bits 4-11 = 8-bit color
     // field, bits 12-14 = 3-bit priority.
-    void render(uint16_t* pixels, int width, int height) const;
+    void render(uint16_t* pixels, int width, int height, int origin_x = 0, int origin_y = 0,
+                unsigned priority_mask = 0xf) const;
 
 private:
     static constexpr int SPRITE_ENTRIES = 256;

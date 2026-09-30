@@ -30,7 +30,7 @@ void sprite_scaling()
         int rows = 0;
         for (int y = 0; y < 32; ++y)
             if (pixels[y * 32 + 8] != 0xffff) ++rows;
-        check(rows == std::max(1, 8 * 512 / zoom), "Sprite must occupy its scaled destination height");
+        check(rows == std::max(1, (8 * 512 + zoom - 1) / zoom), "Sprite must occupy its scaled destination height");
         for (const auto pixel : pixels)
             check(pixel == 0xffff || (pixel & 15) == 1, "Zoom must preserve all 11 bits and stay within source rows");
     }
@@ -44,7 +44,7 @@ void palette_colors()
     for (int i = 0; i < 32; ++i)
     {
         const auto sky = p.pen(0x1780 + i);
-        check(sky.b > sky.g && sky.g > sky.r, "Every sky color must remain blue");
+        check(sky.b >= sky.g && sky.g >= sky.r, "Horizon haze must remain blue/white");
     }
 }
 

@@ -8,13 +8,13 @@
 
 int main(int argc, char** argv)
 {
-    if (argc != 2 && argc != 3)
+    if (argc < 2 || argc > 4)
     {
-        std::cerr << "Usage: render_scene output.ppm [right|left]\n";
+        std::cerr << "Usage: render_scene output.ppm [right|left|level|combat] [ticks]\n";
         return 1;
     }
-    const std::string direction = argc == 3 ? argv[2] : "";
-    if (!direction.empty() && direction != "right" && direction != "left")
+    const std::string direction = argc >= 3 ? argv[2] : "";
+    if (!direction.empty() && direction != "right" && direction != "left" && direction != "level" && direction != "combat")
         return 1;
     if (!roms.load_aburner2()) return 1;
 
@@ -26,15 +26,18 @@ int main(int argc, char** argv)
     HWTiles tiles;
     tiles.init_gfx(roms.tiles.rom, roms.tiles.length);
     OEngine engine;
-    engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length);
+    engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length, roms.subcpu.rom, roms.subcpu.length);
     Screen screen(320, 224, palette, road, sprites, tiles);
-    for (int i = 0; i < 240; ++i)
+    screen.init_stage1(roms.sprites.rom, roms.sprites.length);
+    const int ticks = argc == 4 ? std::stoi(argv[3]) : 240;
+    for (int i = 0; i < ticks; ++i)
     {
         const int stick = direction == "right" ? 1 : direction == "left" ? -1 : 0;
-        engine.handle_input(stick, 0, false, false, 1);
+        engine.handle_input(stick, 0, direction == "combat", direction == "combat", 1);
         engine.tick(palette, road, sprites, tiles);
     }
     std::vector<RGB888> frame(320 * 224);
+    screen.set_camera(engine.get_objects().get_roll(), engine.get_objects().get_pitch(), engine.get_objects().distance());
     screen.render_frame(frame.data());
     std::ofstream output(argv[1], std::ios::binary);
     output << "P6\n320 224\n255\n";
