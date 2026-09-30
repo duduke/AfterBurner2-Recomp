@@ -14,7 +14,7 @@ from having a working hardware layer to render into while porting).
       `ROM_START( aburner2 )`, verified end-to-end against the real ROM zip)
 - [x] `docs/HARDWARE.md` hardware reference distilled from `segaxbd.cpp`
 
-## Phase 2 — Hardware layer (`hwvideo` / `hwaudio`)
+## Phase 2 — Video hardware layer (`hwvideo`)
 
 Faithful, from-scratch reimplementations of the custom chips, validated
 against MAME's behavior (not its code) and against real hardware video
@@ -34,17 +34,10 @@ captures where possible:
       hand-built test scene rendering real decoded ROM tile graphics
       through the full pipeline (roms → hwtiles → hwpalette → screen →
       SDL) to a window
-- [x] YM2151 FM synth, SegaPCM sample playback (`hwaudio/`) — carried over
-      near-verbatim from Cannonball, since these are the literal same
-      generic Yamaha/Sega chips, not OutRun-specific code (attribution
-      preserved in each file's header)
 - [x] Sub CPU memory map (`segaxbd_state::sub_map`) transcribed into
       `docs/HARDWARE.md` — notably narrower than main's (no tilemap/
       sprite/palette/I-O access at all), pointing at a dedicated
       road/perspective math coprocessor role, confirmed in Phase 3 below
-
-The original Z80 sound program now drives YM2151/SegaPCM and SDL audio.
-See the Stage 1 fidelity notes for the verified command and memory maps.
 
 ## Phase 3 — Game logic (`engine`)
 
@@ -56,6 +49,9 @@ module-by-module once the main CPU's code is mapped out (Cannonball's
 Phase 2, there's no MAME driver to read for this part — it has to be
 disassembled and read directly.
 
+- [ ] Achieve nearly identical gameplay to the original arcade game across
+      all 25 stages, including flight response, enemy formations and timing,
+      weapons, collisions, scoring, stage transitions, and refueling.
 - [x] Disassembly tooling (`tools/build_rom_image.py`,
       `tools/m68k_disasm.py`) — a small from-scratch M68000 disassembler,
       since installing one wasn't available in this environment
@@ -124,19 +120,35 @@ See `docs/ENGINE_NOTES.md` for the detailed, evolving write-up — treat it
 as "current best understanding," not verified fact, until a real port
 exercises it.
 
-## Phase 4 — Polish
+## Phase 4 — Audio
 
-Frontend/config, input remapping, save states, and any of the quality-of-life
-features Cannonball/Cannonball-SE/Cannonball DX added for OutRun, re-evaluated
-for what actually make sense for After Burner II specifically.
+The original Z80 sound program now drives YM2151/SegaPCM and SDL audio.
+See the Stage 1 fidelity notes for the verified command and memory maps.
 
-## Audio
-
-- [x] Wiring the YM2151/SegaPCM chips (already implemented, see Phase 2)
+- [x] YM2151 FM synth, SegaPCM sample playback (`hwaudio/`) — carried over
+      near-verbatim from Cannonball, since these are the literal same
+      generic Yamaha/Sega chips, not OutRun-specific code (attribution
+      preserved in each file's header)
+- [x] Wiring the YM2151/SegaPCM chips (implemented in this phase)
       into an actual SDL audio output stream
 - [x] Z80 sound ROM execution using the licensed floooh/chips core, original
       NMI latch and YM IRQ protocol, with music/engine/weapon/effect commands
 - [ ] Exact command cadence and waveform comparison against the arcade
+
+## Phase 5 — Enhancements Phase
+
+Optional features and quality-of-life improvements for After Burner II:
+
+- [ ] Frontend and configuration menus
+- [ ] Input remapping
+- [ ] Save states
+- [ ] Evaluate and adapt relevant quality-of-life features from Cannonball,
+      Cannonball-SE, and Cannonball DX
+- [ ] Random gameplay mode
+- [ ] Wide-screen support
+- [ ] 4K resolution support
+- [ ] Upscaled sprites
+- [ ] Complete sprite replacement option
 - [ ] **Option: substitute Sega Ages After Burner II (Saturn, 1996) music
       tracks for the arcade FM/PCM soundtrack.** That release's music is
       redbook/CD-quality audio per stage, rippable to WAV/MP3 — a much
