@@ -36,3 +36,20 @@ clean:
 	rm -f $(OBJS) $(TARGET)
 
 .PHONY: all clean
+
+# ROM-free checks exercise the real descriptor/scaler and engine code.
+TEST_SRCS = tests/engine_regression.cpp $(filter src/main/engine/% src/main/hwvideo/%,$(SRCS))
+
+test:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEST_SRCS) -o build/engine_regression
+	./build/engine_regression
+
+.PHONY: test
+
+# Optional visual check; requires the user's ROMs in roms/.
+render-scene:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tools/render_scene.cpp src/main/romloader.cpp src/main/roms.cpp $(filter src/main/engine/% src/main/hwvideo/%,$(SRCS)) -o build/render_scene
+
+.PHONY: render-scene

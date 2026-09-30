@@ -22,7 +22,8 @@ public:
     // Clear the active preparation list for a new frame tick.
     void begin_frame();
 
-    // Emits a sprite into the frame queue.
+    // Emits a sprite into the frame queue. Height is in source ROM rows;
+    // append_raw instead accepts a hardware descriptor with destination height.
     void append_sprite(const OEntry& obj, uint16_t rom_bank, uint16_t rom_offset,
                       uint16_t pitch, uint16_t zoom_x, uint16_t zoom_y,
                       uint16_t height, uint8_t palette, uint8_t priority);

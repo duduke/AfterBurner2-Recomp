@@ -1,13 +1,10 @@
 // AfterBurner2-Recomp
 //
-// Application entry point. Currently: loads ROMs, brings up the X-Board
-// video hardware layer (hwvideo/*, see docs/HARDWARE.md), and pokes a
-// hand-built test scene into tile/palette RAM so the render pipeline is
-// visibly exercised end-to-end. There is no ported game logic yet — that's
-// the next phase (see docs/ROADMAP.md) — so nothing here is driven by the
-// real 68000 program.
+// Application entry point for the ROM-backed flight/combat prototype.
+// Simulation advances at 60 Hz independently of the display refresh rate.
 
 #include <SDL.h>
+#include <algorithm>
 #include <iostream>
 #include <vector>
 #include "roms.hpp"
@@ -95,6 +92,10 @@ int main(int, char**)
         return 1;
     }
 
+    const double tick_seconds = 1.0 / 60.0;
+    const double counter_frequency = static_cast<double>(SDL_GetPerformanceFrequency());
+    uint64_t previous_counter = SDL_GetPerformanceCounter();
+    double accumulated_seconds = tick_seconds;
     bool running = true;
     while (running)
     {
@@ -119,8 +120,21 @@ int main(int, char**)
         bool fire_missile = keys[SDL_SCANCODE_X];
         int throttle = keys[SDL_SCANCODE_SPACE] ? 2 : 1;
 
-        engine.handle_input(stick_x, stick_y, fire_vulcan, fire_missile, throttle);
-        engine.tick(palette, road, sprites, tiles);
+        const uint64_t counter = SDL_GetPerformanceCounter();
+        // Bound catch-up after a suspended window or debugger pause.
+        accumulated_seconds += std::min(0.25, (counter - previous_counter) / counter_frequency);
+        previous_counter = counter;
+        if (accumulated_seconds < tick_seconds)
+        {
+            SDL_Delay(1);
+            continue;
+        }
+        while (accumulated_seconds >= tick_seconds)
+        {
+            engine.handle_input(stick_x, stick_y, fire_vulcan, fire_missile, throttle);
+            engine.tick(palette, road, sprites, tiles);
+            accumulated_seconds -= tick_seconds;
+        }
 
         screen.render_frame(frame.data());
         for (size_t i = 0; i < frame.size(); i++)

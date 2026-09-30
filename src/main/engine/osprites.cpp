@@ -15,7 +15,7 @@ void OSprites::append_sprite(const OEntry& obj, uint16_t rom_bank, uint16_t rom_
                             uint16_t pitch, uint16_t zoom_x, uint16_t zoom_y,
                             uint16_t height, uint8_t palette, uint8_t priority)
 {
-    if (sprite_queue.size() >= MAX_SPRITES)
+    if (sprite_queue.size() >= MAX_SPRITES || height == 0)
         return;
 
     SpriteDesc desc;
@@ -37,15 +37,18 @@ void OSprites::append_sprite(const OEntry& obj, uint16_t rom_bank, uint16_t rom_
     uint16_t x_pos = static_cast<uint16_t>((obj.x + 0xBE) & 0x1FF);
     desc.words[2] = static_cast<uint16_t>(((pitch & 0x7F) << 9) | x_pos);
 
-    // Word 3: [14] Shadow, [13-12] Priority, [9-0] Vertical Zoom
-    desc.words[3] = static_cast<uint16_t>(((priority & 3) << 12) | (zoom_y & 0x3FF));
+    // Word 3: [14] Shadow, [13-12] Priority, [10-0] Vertical Zoom
+    desc.words[3] = static_cast<uint16_t>(((priority & 3) << 12) | (zoom_y & 0x7FF));
 
     // Word 4: [15] Top-to-bottom (1 = down), [14] H-flip (~bit 14: 1 = normal, 0 = flipped), [13] Left-to-right (1 = right), [10-0] Horizontal Zoom
     uint16_t flip_bit = is_flipped ? 0x0000 : 0x4000;
     desc.words[4] = static_cast<uint16_t>(0xA000 | flip_bit | (zoom_x & 0x7FF));
 
-    // Word 5: Height in scanlines - 1
-    desc.words[5] = static_cast<uint16_t>(height > 0 ? height - 1 : 0);
+    // Word 5 stores destination scanlines, while callers supply source rows.
+    // Match the scaler's minimum zoom so downscaling never reads past the frame.
+    const uint32_t effective_zoom = std::max<uint32_t>(0x40, zoom_y & 0x7FF);
+    const uint32_t screen_height = std::max<uint32_t>(1, height * 0x200u / effective_zoom);
+    desc.words[5] = static_cast<uint16_t>(std::min<uint32_t>(0x1000, screen_height) - 1);
 
     // Word 6: Palette index
     desc.words[6] = palette;

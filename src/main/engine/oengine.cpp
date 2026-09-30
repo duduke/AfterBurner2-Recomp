@@ -1,4 +1,15 @@
 #include "engine/oengine.hpp"
+#include <algorithm>
+
+namespace
+{
+    // X-Board: low four bits per channel in RGB nibbles, fifth bits at 12..14.
+    constexpr uint16_t pack_rgb(int r, int g, int b)
+    {
+        return static_cast<uint16_t>((r >> 1) | ((g >> 1) << 4) | ((b >> 1) << 8) |
+                                    ((r & 1) << 12) | ((g & 1) << 13) | ((b & 1) << 14));
+    }
+}
 
 OEngine::OEngine()
 {
@@ -26,14 +37,14 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
         // Blue sea gradient
         uint16_t sea_blue = static_cast<uint16_t>(std::clamp(8 + i / 2, 0, 31));
         uint16_t sea_green = static_cast<uint16_t>(std::clamp(4 + i / 3, 0, 31));
-        palette.write(0x1700 + i, (sea_blue << 10) | (sea_green << 5));
-        palette.write(0x1720 + i, (sea_blue << 10) | ((sea_green + 2) << 5));
+        palette.write(0x1700 + i, pack_rgb(0, sea_green, sea_blue));
+        palette.write(0x1720 + i, pack_rgb(0, sea_green + 2, sea_blue));
 
         // Sky gradient
         uint16_t sky_blue = static_cast<uint16_t>(std::clamp(14 + i / 3, 0, 31));
         uint16_t sky_green = static_cast<uint16_t>(std::clamp(10 + i / 4, 0, 31));
         uint16_t sky_red = static_cast<uint16_t>(std::clamp(4 + i / 6, 0, 31));
-        palette.write(0x1780 + i, (sky_blue << 10) | (sky_green << 5) | sky_red);
+        palette.write(0x1780 + i, pack_rgb(sky_red, sky_green, sky_blue));
     }
 
     // 3. Clear all tile pages in Tile RAM to transparent (tile 0)

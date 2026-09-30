@@ -97,13 +97,13 @@ void OLevelObjs::handle_input(int stick_x, int stick_y, bool fire_vulcan, bool f
 
     if (fire_missile && missile_ammo > 0 && missile_cooldown == 0)
     {
-        missile_ammo--;
-        missile_cooldown = 16;
         for (size_t i = 12; i <= 15; ++i)
         {
             if (!objects[i].is_active())
             {
                 objects[i].set_active(true);
+                missile_ammo--;
+                missile_cooldown = 16;
                 objects[i].x = player_x + ((missile_fire_side++) & 1 ? -24 : 24);
                 objects[i].y = player_y + 10;
                 objects[i].z = -100;
@@ -119,8 +119,12 @@ void OLevelObjs::handle_input(int stick_x, int stick_y, bool fire_vulcan, bool f
 void OLevelObjs::update_player(OSprites& sprites)
 {
     // Damped flight model interpolation (matching arcade ASR filtering at $016792)
-    player_roll += (target_roll - player_roll) / 4;
-    player_pitch += (target_pitch - player_pitch) / 4;
+    const auto approach = [](int16_t current, int16_t target) {
+        const int delta = target - current;
+        return static_cast<int16_t>(current + (std::abs(delta) < 4 ? delta : delta / 4));
+    };
+    player_roll = approach(player_roll, target_roll);
+    player_pitch = approach(player_pitch, target_pitch);
 
     // Move player position based on stick input
     player_x += player_roll / 16;
@@ -545,9 +549,8 @@ void OLevelObjs::update_scenery(OSprites& sprites, const ORoad& road)
             spr.control &= ~0x2000;
 
         // Palette:
-        // Left side: Palette 0 (lush green Stage 1 tropical palm fronds)
-        // Right side: Palette 4 (authentic Stage 25 desert sand/tan palms)
-        uint8_t pal = (tree.world_x < 0) ? 0 : 4;
+        // Stage 1 tropical foliage uses the same green palette on both sides.
+        uint8_t pal = 0;
 
         // Priority 1: In front of road/horizon, behind player and combat targets
         sprites.append_sprite(spr, 2, grove.offset, grove.pitch, zoom, zoom, grove.height, pal, 1);

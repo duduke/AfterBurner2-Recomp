@@ -62,8 +62,11 @@ docs/                        — hardware & porting reference notes
 
 ## Status
 
-Early scaffold: builds and opens a window. No game logic ported yet. See
-[docs/ROADMAP.md](docs/ROADMAP.md) for the phased plan.
+ROM-backed flight/combat prototype with player pitch/bank frames, weapons,
+enemy aircraft, scenery, and targeting sprites. Game behavior and the scene
+layout are still approximations; the rotating arcade horizon, complete HUD,
+stage scripts, and audio integration remain unfinished. See
+[docs/ROADMAP.md](docs/ROADMAP.md) and [docs/PR_REVIEW.md](docs/PR_REVIEW.md).
 
 ## Building
 
@@ -74,3 +77,12 @@ cmake -S . -B build
 cmake --build build
 ./build/afterburner2
 ```
+
+Controls: arrow keys move/bank/pitch, Z fires the cannon, X launches missiles,
+Space increases throttle, and Escape exits. Simulation runs at 60 Hz.
+
+The Makefile is an alternative when CMake is unavailable: `make -j4`.
+Run ROM-free engine checks with `make test` (or CTest with a CMake build).
+For reproducible ROM-backed screenshots, run `make render-scene`, then
+`./build/render_scene build/level.ppm`. Append `left` or `right` to capture
+banking. Run these commands from the repository root; ROMs are not included.
