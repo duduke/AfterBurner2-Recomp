@@ -41,9 +41,14 @@ private:
     int16_t target_pitch{0};
 
     uint16_t missile_ammo{50};
+    uint8_t missile_cooldown{0};
+    uint8_t missile_fire_side{0};
     uint8_t vulcan_timer{0};
+    uint8_t vulcan_fire_side{0};
+    uint32_t frame_counter{0};
 
     void update_player(OSprites& sprites);
     void update_weapons(OSprites& sprites);
     void update_enemies(OSprites& sprites);
+    void spawn_explosion(int16_t x, int16_t y, int16_t z);
 };

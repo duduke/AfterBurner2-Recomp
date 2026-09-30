@@ -72,6 +72,7 @@ void HWSprites::render(uint16_t* pixels, int width, int height) const
         // adjust X coordinate (guards against wraparound; matches MAME)
         if (xpos < 0x80 && xdelta < 0)
             xpos += 0x200;
+        xpos -= 0xBE;
 
         if (numbanks)
             bank = static_cast<int>(bank % numbanks);
