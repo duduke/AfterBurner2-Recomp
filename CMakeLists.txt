@@ -26,6 +26,8 @@ add_executable(afterburner2
     src/main/hwaudio/ym2151.cpp
     src/main/engine/ohud.cpp
     src/main/engine/osprites.cpp
+    src/main/engine/omainobjects.cpp
+    src/main/engine/omainsound.cpp
     src/main/engine/omainpalette.cpp
     src/main/engine/omainframe.cpp
     src/main/engine/omainsprites.cpp
@@ -57,6 +59,8 @@ if(BUILD_TESTING)
         tests/engine_regression.cpp
         src/main/engine/ohud.cpp
         src/main/engine/osprites.cpp
+        src/main/engine/omainobjects.cpp
+        src/main/engine/omainsound.cpp
         src/main/engine/omainpalette.cpp
     src/main/engine/omainframe.cpp
     src/main/engine/omainsprites.cpp
@@ -80,6 +84,14 @@ endif()
 
 option(ORACLE_TESTS "Enable tests against MAME captures in build/oracle (see make oracle-capture)" OFF)
 if(BUILD_TESTING AND ORACLE_TESTS)
+    add_executable(oracle_objects tests/oracle_objects.cpp
+        src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp
+        src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
+    target_include_directories(oracle_objects PRIVATE src/main)
+    foreach(CAPTURE objects objects_gameplay objects_directed object_leaves object_leaves_directed object_calls_directed)
+        add_test(NAME oracle_${CAPTURE} COMMAND oracle_objects build/oracle/${CAPTURE}.bin)
+        set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
     foreach(PORT palette mainsprites mainframe)
         set(PORT_SOURCE src/main/engine/omain${PORT}.cpp)
         if(PORT STREQUAL "mainframe")

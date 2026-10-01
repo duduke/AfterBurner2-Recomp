@@ -91,8 +91,10 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-**Picking the next task**: Phase 3c is complete; start the 3d dispatcher/initializer
-capture in [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
+**Picking the next task**: Phase 3c is complete; 3d foundations are verified,
+but 3d is not complete. Continue the input/live-player capture in
+[PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md), following
+[PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
 main CPU oracle capture).
@@ -327,8 +329,15 @@ Full boundaries/coverage are in `ENGINE_NOTES.md`. Next: [PHASE3D_PLAN.md](PHASE
 **3d. Objects and flight (retires `olevelobjs`)**
 
 Implementation plan: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
+Continuation: [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
+Only the foundations below are complete. Sequence compound setup/hiding and
+the sound ring have independent routine checks; live flight and the native
+object/sound replacement are still unchecked.
 
-- [ ] Object dispatch loop over the 254 × 64-byte table (`$9FC0`-`$DF40`)
+- [x] Object initializer and dispatch loop: 254 × 64-byte records from
+      `$A000` to `$DF40` (preceded by the `$9FC0` sentinel), runtime templates,
+      live active/handler reads and register contracts. Oracle-verified;
+      not wired into the game while handlers remain unported.
 - [ ] Input read: stick X/Y and throttle through the ADC, buttons, and
       their mapping to the arcade's input bytes
 - [ ] Player jet: flight model and compound parts (`$016892`,
@@ -339,8 +348,9 @@ Implementation plan: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 - [ ] Enemies: world-to-screen pipeline and the known handlers
       (`$0088C2`, `$008AF2`, `$0091C0`, `$009626`); map the rest of the
       handler table
-- [ ] The game's random number generator, ported exactly, since enemy
-      behaviour depends on it
+- [x] The game's random number generator `$00C5A8`, including zero-seed
+      fallback and exact D0/D1 word/long returns. Natural and directed
+      oracle checks pass; enemy callers remain unported.
 - [ ] Collisions and damage (the per-object scaled sizes at `$7800` are
       a likely input), explosions, and losing a life
 - [ ] Main → sound commands from the ported code instead of the

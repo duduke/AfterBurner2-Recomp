@@ -417,17 +417,22 @@ The two fixed function calls in Main CPU VBLANK were mapped out:
 
 ## Object / Task System (`$9FC0`)
 
-The object table spans `$9FC0` to `$DF40` in `backup1` mirror RAM, comprising **254 slots of 64 bytes each** (`$00FE` loaded from `$0001C176` into `$8806` at `$014594`).
+The dispatcher starts A5 at the `$9FC0` sentinel, increments it **before**
+testing the first record at `$A000`, and visits 254 records through the last
+record starting at `$DF40` (last byte `$DF7F`). These are sign-extended
+absolute.W work-RAM addresses. The runtime count at `$0001C176` is loaded
+into `$8806` at `$014594`. Phase 3d's dispatcher oracle verifies this layout.
 
 ### 64-Byte Object Entry Layout
-- `+0`: Bit 7: `0` = Active, `1` = Free/Inactive. Bit 5: Horizontal flip. Bits 0-9: Screen Y position.
-- `+2`: Palette / bank / priority attribute.
-- `+3`: Current sprite frame index.
+- `+0`: Bit 7: `1` = Active, `0` = Inactive. Bit 5: Horizontal flip.
+  The low ten bits of the first **word** are request zoom/flags, not screen Y.
+- `+2`: Request depth byte (used by the sub CPU bucket sort).
+- `+3`: Request palette byte.
 - `+4`: Longword: current screen X, Y coordinates.
 - `+8`: Longword: previous screen X, Y coordinates (used for interpolation / deltas).
-- `+12`: Longword: animation script / state sequence pointer.
+- `+12`: Longword: request frame-record pointer (copied by `append_sprite`).
 - `+16`: Longword: **Per-object tick / update function pointer** (called by dispatch loop via `MOVEA.L 16(A5),A0; JSR (A0)`).
-- `+20`: Extra sprite attribute byte (patched into hardware sprite descriptor at `append_sprite`).
+- `+20`: Size-table slot byte (replaces request byte +12 in `append_sprite`).
 - `+36`: Object Z-distance / depth (used by Sub CPU counting sort) or bank angle.
 - `+38`, `+40`: Velocity vectors (X, Y).
 - `+42`: World 3D X coordinate.
@@ -436,12 +441,19 @@ The object table spans `$9FC0` to `$DF40` in `backup1` mirror RAM, comprising **
 
 ### Core Object Types Mapped
 
-1. **Player Aircraft (F-14 Tomcat) — Multi-Part Compound Object (Slots 0..3)**:
-   - Initialized at `$016892` and activated together at `$0169B2` via `BCLR #7,(A0)`:
-     - **Slot 0 (`$A000`)**: Airframe / fuselage (`update = $01653A`). Computes roll and flight stick banking at `$01678E` using the hardware multiplier (`$0E4000`), selects frame from `$00016B8A`, and calls `append_sprite(A5)`.
-     - **Slot 1 (`$A040`)**: Left afterburner exhaust flame (`update = $01656A`, anim script `$01D780`).
-     - **Slot 2 (`$A080`)**: Right afterburner exhaust flame (`update = $016572`, anim script `$01D780`, `BSET #5` horizontal flip).
-     - **Slot 3 (`$A0C0`)**: Vulcan cannon / missile pod (`update = $01657A`).
+1. **Sequence Player Compound**:
+   - `$016976` reads the object base from ROM `$01C5C8` and adds `$300`.
+     For this ROM that selects `$C400` (slot 144), followed by three parts;
+     the earlier claim of slots 0..3 was incorrect.
+   - `$016892` initializes fuselage, two exhaust parts and a weapon pod,
+     assigning `$01653A`, `$01656A`, `$016572`, `$01657A` respectively.
+     `$0169B2` **hides** four parts by clearing their active bit; it does
+     not activate them. Setup, initialization and hiding now have independent
+     directed write-set/register checks (see Phase 3d below).
+   - `$01653A` invokes `$01678E` for sequence projection and emits requests.
+     This alone is not the ordinary player's live flight model. The live
+     player path `$009810/$0098C0` and its input/projection callees still
+     require their own capture and port.
 2. **Player Weapons (Missiles & Vulcan Cannons)**:
    - Routines at `$0154B8`, `$01552C`, `$015582`, `$015638`.
    - Spawns forward projectiles from jet origin, tracks velocity, checks target lock, decrements ammo `$8D66`.
@@ -973,3 +985,114 @@ Make build, engine/bus checks, Stage 1 combat/restart/audio integration, the
 full oracle suite, rendered-scene generation and headless launch pass.
 CMake targets are updated but CMake remains unavailable on this host.
 No ROM data or captures are committed. Next: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
+
+
+## Phase 3d — verified foundations; phase remains incomplete
+
+`OMainObjects` ports `$01488E` initialization, `$014594..$0145B8`
+dispatch, `$00C5A8` RNG, and sequence compound setup/initialization/hiding
+(`$016976`, `$016892`, `$0169B2`). `OMainSound` ports the command-ring
+producer entries `$00B840/$00B84C` and timer-interrupt consumer `$00B7F8`.
+They are built and independently verified, but **not wired into OEngine**:
+untranslated live handlers still prevent replacement of `OLevelObjs` and
+its sprite adapter. No new gameplay/flight or sound-cadence equivalence is
+claimed. See [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
+
+The initializer reads the count and template pointers from `$01C176` at
+runtime, copies 32 words per record, then overwrites byte +20 with its slot
+index. The dispatcher reads bit 7 and each +16 handler pointer live; callee
+changes to A5 and the RAM loop counter are preserved. Its termination uses
+signed BGT after a word subtraction, including overflow semantics. The
+oracle compares all D0..D7/A0..A6 registers at each callback boundary and at
+completion, plus the dispatcher's own RAM writes. A7, SR/condition-code
+outputs, instruction cycles and interrupt-stack preservation are outside
+this port's contract.
+
+RNG `$00C5A8` reads `$8802`, substitutes its ROM immediate when zero, uses
+shift/add pairs, then folds the product halves with word ADD and SWAP.
+Preserving the upper halves of D0/D1 matters; a native random API or a
+simplified integer recurrence would not establish the same caller outputs.
+Directed seeds include zero, one, sign-bit-only, all-ones and halfword
+boundaries, with independently compared D0/D1 returns and RAM writes.
+
+The sound ring at `$890C` is 64 bytes. `$8908/$890A` are producer/consumer
+indices; byte `$8906` is the count; `$8902` enables it. The consumer advances
+word `$8900`, emits only on an odd phase with a nonzero count, and writes the
+actual main-side 315-5250 sound latch at `$0E8017`. Disabled entries clear
+only their own pointer and the count. `$00B84C` suppresses enqueue when
+shared selector `$9C` equals 1; `$00B840` does not. No capacity/drop rule is
+invented: byte count overflow is retained. These are routine checks, not
+proof of host ADC/timer cadence or replacement of native sound events.
+
+### Oracle boundaries and coverage
+
+`make oracle-capture-objects` regenerates the six ignored captures;
+`make oracle-test` includes them. Captures compare CPU-owned write sets,
+ordered I/O writes, and register contracts, detecting sub CPU writes to
+actual port inputs. Dispatcher callback write/register transcripts are
+external inputs only: passing that test does **not** verify any unported
+handler, ADC sampler interrupt, HUD, stage or coin code inside the callback.
+Interrupt writes during a callback are included in that external boundary;
+interrupts between callbacks discard the window. Initializer copies and
+isolated sequence initialization mask IRQs temporarily; their original mask
+is restored with the routine's current condition flags preserved. These
+captures do not claim original instruction interleaving or a full credit.
+
+| Capture | Identical / captured | Skipped |
+| --- | ---: | ---: |
+| Attract dispatcher/initializer | 120 / 120 | 0 |
+| Gameplay dispatcher/initializer | 240 / 240 | 0 |
+| Directed dispatcher/initializer | 120 / 120 | 0 |
+| Natural boot/attract RNG/sound leaves | 600 / 600 | 0 |
+| Directed RNG/sound leaves | 600 / 600 | 0 |
+| Isolated compound/RNG/sound calls | 168 / 168 | 0 |
+
+Total: **1,848 of 1,848 identical, 0 skipped**. The dispatcher rows include
+seven initializer executions and 473 completed dispatch loops. The isolated
+row contains 24 executions each of initialization, setup, hiding, both sound
+producer entries, RNG and sound consumer. Natural leaf capture ends before
+the scripted coin/start pulses, so it is boot/attract coverage. Separately,
+53 attract and 87 gameplay windows were dropped for interrupts between
+callbacks; each natural/directed leaf capture dropped one interrupted window.
+Directed dispatcher and isolated-call captures dropped none.
+
+The directed dispatcher uses real RTS-only `$0148B6` targets to exercise an
+active sentinel that must be skipped, empty tables, last-slot-only activity,
+all-active tables and first-slot-only activity. Isolated leaf calls save
+interrupted registers, push a real RTS return on the active stack and execute
+the original ROM routine. Compound cases vary initial flag bytes, preserve
+slot indices, verify attachment offsets/function-pointer changes and restore
+A5. The original templates and handler pointer inventory are read at runtime;
+no ROM tables or captures are committed.
+
+The reset inventory has 254 templates (229 with a zero handler), with eleven
+nonzero handler targets. The test prints their counts and every observed
+runtime handler target. This is a reset/observed inventory, **not** a complete
+map of every self-transitioning enemy handler. Per-handler complete RAM,
+math-register and I/O input capture is still required before those ports.
+
+Uncovered foundation paths: malformed/out-of-ROM templates, zero/negative
+ROM counts, arbitrary handler changes to loop count/A5, every possible RNG
+seed/period, malformed sound indices/counts and arbitrary compound bases.
+The four directed dispatcher cases do not exercise every handler transition.
+SR output flags and full interrupt timing remain outside this oracle.
+
+Remaining 3d work: ADC conversion scheduling and input mapping, live player
+flight and sequence projection/update handlers, weapons/reload/HUD producer,
+enemy handlers and transitions, collisions/explosions/life-loss requests,
+ported sound callers, removal of the native objects/adapter and a paired
+30/60 Hz player/weapon RAM/draw/video comparison. Phase 3e has not started.
+
+
+Eight new source mutations are rejected: dispatcher active mask (88 failed
+records), initializer size-index address (1), RNG shift (221), compound
+initial palette (24), compound base offset (24), compound hide count (24),
+sound enqueue count increment (39) and sound consumer ring mask (69).
+The original four 3c mutations continue to fail. The consumer mask mutation
+initially survived the endpoint-only fixtures; adding index 31 alongside
+index 63 exposed it. All unmodified captures pass after regeneration.
+
+`make -j4`, `make test`, `make verify-stage1`, the complete `make oracle-test`
+suite and `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180`
+pass. Existing oracle mismatches/skips did not increase. CMake targets are
+updated; this host still lacks CMake, so those targets were not executed.
