@@ -96,3 +96,9 @@ tick count (for example, `./build/render_scene build/right.ppm right 480`).
 `make verify-stage1` runs the optional ROM-backed integration suite; CMake users
 can enable it with `-DSTAGE1_ROM_TESTS=ON`. `./afterburner2 --frames 180`
 performs a bounded application run for launch checks. Run these commands from the repository root; ROMs are not included.
+
+Ported arcade routines are verified against the original code running in
+MAME: `make oracle-capture` records reference snapshots from your ROMs into
+`build/oracle/` (needs a MAME binary; set `MAME=` and `ROMPATH=`), and
+`make oracle-test` checks the ports against them byte-for-byte. See
+"Oracle testing" in [docs/ENGINE_NOTES.md](docs/ENGINE_NOTES.md).
