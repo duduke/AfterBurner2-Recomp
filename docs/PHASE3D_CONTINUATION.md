@@ -4,28 +4,46 @@ Phase 3d is **not complete**. In addition to the foundations, input mapping,
 live flight/recovery and compound parts, player weapon controller/projectiles,
 reload/HUD, world projection/explosion/ground effects, scaled player collision,
 the pre-lives damage controller graph, and the `$153E0..$156CE` enemy missile
-graph with shadows/trails now have independent MAME execution checks. Observable ADC timing is checked separately.
+graph with shadows/trails now have independent MAME execution checks.
+Observable ADC timing is checked separately.
 Counts, coverage and limits are in `ENGINE_NOTES.md`. These ports remain
 unwired. Keep `OLevelObjs` and its adapter until all replacement handlers and
 the host boundary pass; the new routine ports do not establish host gameplay
 equality.
 
-The user authorized merging checkpoint [PR #7](https://github.com/duduke/AfterBurner2-Recomp/pull/7)
-before phase completion to continue in a new session. Start from current
-`main`, create a new `codex/` branch, and resume the remaining work below.
-Do not mark Phase 3d complete or start Phase 3e based on this checkpoint.
+The user authorized merging checkpoint [PR #9](https://github.com/duduke/AfterBurner2-Recomp/pull/9)
+before phase completion. It extends the earlier checkpoints with pre-lives
+damage controllers and fuselage animation, plus bounded ordinary gameplay
+coverage. Start from current `main`, create a new `codex/` branch, and resume
+the remaining work below. Do not mark Phase 3d complete or start Phase 3e
+based on this checkpoint.
 
 ## 1. Finish the input/player caller contract
 
+- **Next task:** finish the damage companion graph assigned by `$E662`.
+  `$E7DA` is an identified NOP/NOP/RTS leaf, still awaiting an independent
+  check. Trace `$FB08` and its `$FFBE` initializer, then `$FB16/$FB9C` and
+  the emitted `$FBDA` handler with their reachable callees. Follow runtime
+  transitions and allocation/removal paths; do not infer their purpose from
+  the companion slot. Preserve the independent register/chip/ordered-write
+  contract below and add directed fixtures plus ordinary gameplay coverage.
+  Trace the `$FBC4` transition and `$10310` callee before deciding its scope.
+  Stop at named lives/HUD/credit boundaries rather than synthesizing flow.
 - `OMainDamage` now independently checks `$E662`, intact/breakup
   `$E8D0/$E94E` states 0..6, fuselage `$F640`, and their projection/frame,
   trajectory, debris and attitude callees: 1,792/1,792 directed calls and
   120/120 ordinary gameplay calls identical, 0 skipped. Gameplay includes
   one intact initialization and 119 intact-controller calls, not a complete
   death/recovery sequence. Continue the damage companion graph `$FB08` and
-  later sequence/controller states. `$E7DA` is an identified NOP/NOP/RTS leaf. `$EC78/$CF46` lives/HUD and later credit flow
-  remain named 3e boundaries; reaching state 7 throws at that caller.
+  later sequence/controller states. `$EC78/$CF46` lives/HUD and later credit
+  flow remain named 3e boundaries; reaching state 7 throws at that caller.
   Use `make oracle-capture-damage` to regenerate both captures.
+- Keep the coverage limits visible: natural gameplay currently covers one
+  intact initialization and controller entry states 0..4, ending with a
+  state-5 request. Natural breakup and complete death/recovery remain
+  unchecked. The damage text string clears spaces, so `$137E2`'s glyph
+  branch is unverified. States 7..11, carrier/refuel controllers and host
+  cadence are not established by the directed state-0..6 checks.
 - Live `$9810/$98C0`, shadow/exhaust, recovery `$9626/$964C`, and sequence
   `$1653A..$1657A/$1678E` are translated and independently checked. The live
   fuselage is slot 131 at `$C0C0`; the sequence compound is a different base.
