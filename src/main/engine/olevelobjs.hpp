@@ -6,7 +6,6 @@
 #include "engine/sprite_frame.hpp"
 #include "engine/oentry.hpp"
 #include "engine/osprites.hpp"
-#include "engine/oroad.hpp"
 
 // Replaces the arcade object/task dispatch system ($014594 - $0145B6).
 // Manages the 254 active game object slots ($9FC0 - $DF40),
@@ -26,7 +25,7 @@ public:
     void handle_input(int stick_x, int stick_y, bool fire_vulcan, bool fire_missile, int throttle);
 
     // Per-frame game logic tick
-    void update(OSprites& sprites, ORoad& road);
+    void update(OSprites& sprites);
 
     [[nodiscard]] const OEntry& get_player() const { return objects[0]; }
     [[nodiscard]] int16_t get_roll() const { return player_roll; }
@@ -67,7 +66,6 @@ private:
     void update_player(OSprites& sprites);
     void update_weapons(OSprites& sprites);
     void update_enemies(OSprites& sprites);
-    void update_scenery(OSprites& sprites, const ORoad& road);
     void update_hud(OSprites& sprites);
     void update_threats(OSprites& sprites);
     void spawn_explosion(int16_t x, int16_t y, int16_t z);

@@ -28,7 +28,10 @@ int main(int argc, char** argv)
     OEngine engine;
     engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length, roms.subcpu.rom, roms.subcpu.length);
     Screen screen(320, 224, palette, road, sprites, tiles);
-    screen.init_stage1(roms.sprites.rom, roms.sprites.length);
+    // This visual fixture supplies a real arcade bank target independently
+    // of the still-native player controls. The input bridge is Phase 3d.
+    if (direction=="right") engine.arcade_bus().write16(0x29c0ce,0x00b0);
+    if (direction=="left") engine.arcade_bus().write16(0x29c0ce,0xff50);
     const int ticks = argc == 4 ? std::stoi(argv[3]) : 240;
     for (int i = 0; i < ticks; ++i)
     {
@@ -37,7 +40,6 @@ int main(int argc, char** argv)
         engine.tick(palette, road, sprites, tiles);
     }
     std::vector<RGB888> frame(320 * 224);
-    screen.set_camera(engine.get_objects().get_roll(), engine.get_objects().get_pitch(), engine.get_objects().distance());
     screen.render_frame(frame.data());
     std::ofstream output(argv[1], std::ios::binary);
     output << "P6\n320 224\n255\n";

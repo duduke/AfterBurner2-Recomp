@@ -73,7 +73,7 @@ bool OSubRoad::frame(SubBus& bus)
 
     // $0004EC
     if (bus.read8(A6 + SEQUENCE) == 1)
-        return false;   // $0016D4 — not ported
+        { special(bus); return true; } // $0016D4
 
     bus.write8(A6 + SEQUENCE, static_cast<uint8_t>(bus.read8(A6 + SEQUENCE) + 1));   // $0004FC
     if (bus.read8(A6 + SEQUENCE) >= 5)                       // BCC $00052C
@@ -350,4 +350,184 @@ void OSubRoad::raster(SubBus& bus)
     }
     else
         do { step_down(); bus.write16(a1, static_cast<uint16_t>(down >> 16)); a1 += 2; } while (d6-- != 0);
+}
+
+// $0016D4-$00174E: moving special road, including the signed comparator wrap.
+void OSubRoad::special(SubBus& bus)
+{
+    if (!bus.read8(A6 + 0x321)) return;
+    special_raster(bus); // $001758
+    bus.write16(MUL, bus.read16(A6 + 0xaa));
+    const uint32_t table = 0x1750 + ((bus.read8(A6 + 0x320) & 8) ? 4 : 0);
+    if (bus.read8(A6 + 0x320) & 0x40)
+    {
+        bus.write16(MUL + 2, bus.read16(table));
+        bus.write32(A6 + 0x322, bus.read32(A6 + 0x322) - asr32(bus.read32(MUL_RESULT), 8));
+    }
+    bus.write16(MUL + 2, bus.read16(table + 2));
+    bus.write16(A6 + 0x338, bus.read16(A6 + 0x338) + asr32(bus.read32(MUL_RESULT), 8));
+    if (static_cast<int8_t>(bus.read8(A6 + 0x320)) >= 0) return;
+    uint16_t d0 = bus.read16(A6 + 0x33a);
+    d0 = asr16(static_cast<uint16_t>(d0 * 3), 1);
+    bus.write16(A6 + 0x326, bus.read16(A6 + 0x326) - d0);
+    bus.write32(DIV + 0x4000, 0x1000f000);
+    bus.write16(DIV + 0x4004, bus.read16(A6 + 0x326));
+    const uint16_t flags = bus.read16(DIV + 0x4006);
+    if (flags) bus.write16(A6 + 0x326, bus.read16(A6 + 0x326) - (s(flags) < 0 ? 0xe000 : 0x2000));
+}
+
+// $001758-$0019E6: perspective and texture raster for the special road.
+void OSubRoad::special_raster(SubBus& bus)
+{
+    for (uint32_t n = 0; n < 0x200; n += 4) // $00175E-$00177E
+    {
+        bus.write32(0xec200 + n, 0x08000800);
+        bus.write32(0xec838 + n, 0);
+    }
+    const auto quotient = [&](uint32_t dividend, uint16_t divisor) {
+        bus.write32(DIV, dividend);
+        bus.write16(DIV + 20, divisor);
+        return bus.read16(DIV + 8);
+    };
+    const auto product = [&](uint16_t left) {
+        bus.write16(MUL, left);
+        return bus.read32(MUL_RESULT);
+    };
+    uint16_t d0 = quotient(0x7fe0, static_cast<uint16_t>(asr16(bus.read16(A6 + 0xc2), 5) + 0x20));
+    uint16_t d1 = asr16(d0, 1);
+    bus.write16(A6 + 0x334, d0);
+    bus.write16(DIV + 20, 0x20);
+    uint16_t d4 = bus.read16(DIV + 8), d5 = d4;
+    bus.write16(A6 + 0x336, d5);
+    d5 = asr16(d5, 1);
+    uint16_t d2 = static_cast<uint16_t>(0xf0 - bus.read16(A6 + 0x96) * 2);
+    bus.write16(MUL, d0);
+    bus.write16(MUL + 2, d2);
+    d2 = static_cast<uint16_t>((bus.read32(MUL_RESULT) << 6) >> 16);
+    d2 = static_cast<uint16_t>(d2 + 0x77 - bus.read16(A6 + 0x8c));
+    bus.write16(A6 + 0x330, d2);
+    uint16_t d6 = static_cast<uint16_t>((product(d4) << 6) >> 16);
+    d6 = static_cast<uint16_t>(d6 + 0x77 - bus.read16(A6 + 0x8c));
+    bus.write16(A6 + 0x332, d6);
+    d6 = static_cast<uint16_t>(d6 - d2);
+    bus.write16(DIV + 4, d6);
+    d5 = static_cast<uint16_t>(d5 - d1);
+    bus.write32(DIV + 16, sext(d5) << 8);
+    d5 = bus.read16(DIV + 8);
+    uint32_t a1 = 0xec200 + sext(static_cast<uint16_t>(d2 * 2));
+    uint16_t d3 = bus.read16(A6 + 0x332);
+    if (s(d3) > 0xe0) d6 = static_cast<uint16_t>(d6 - static_cast<uint16_t>(d3 - 0xe0));
+    d6 = static_cast<uint16_t>(d6 - 1);
+    if (s(d6) >= 0) // $00182A-$00183A
+    {
+        uint32_t ramp = static_cast<uint32_t>(d1) << 16;
+        const uint32_t step = sext(d5) << 8;
+        do { bus.write16(a1, ramp >> 16); a1 += 2; ramp += step; } while (d6-- != 0);
+    }
+    bus.write32(DIV, 0x7fe0); // $00183E
+    uint32_t distance = bus.read32(A6 + 0x322), far = distance;
+    bool edge = false;
+    if (static_cast<int32_t>(distance) < 0) // $00184E
+    {
+        d2 = bus.read16(A6 + 0x336);
+        d4 = bus.read16(A6 + 0x332);
+        d3 = asr16(d2, 1);
+    }
+    else if (distance >= bus.read16(A6 + 0xc2)) edge = true; // $001862
+    else
+    {
+        bus.write8(A6 + 0x320, bus.read8(A6 + 0x320) | 0x80); // TAS $001868
+        d2 = quotient(0x7fe0, static_cast<uint16_t>(asr16(static_cast<uint16_t>(distance), 5) + 0x20));
+        d3 = asr16(d2, 1);
+        d4 = static_cast<uint16_t>(((product(d2) << 6) >> 16) + 0x70 - bus.read16(A6 + 0x8c));
+    }
+    if (!edge)
+    {
+        far += 0x4fec0; // $00189A
+        if (static_cast<int32_t>(far) < 0)
+        {
+            bus.write8(A6 + 0x320, bus.read8(A6 + 0x320) | 0x10);
+            edge = true;
+        }
+        else
+        {
+            if (static_cast<int32_t>(far) > static_cast<int32_t>(bus.read16(A6 + 0xc2)))
+            {
+                d0 = bus.read16(A6 + 0x334);
+                d5 = bus.read16(A6 + 0x330);
+                d1 = asr16(d0, 1);
+            }
+            else // $0018C4; BSET tests the previous bit.
+            {
+                const uint8_t old = bus.read8(A6 + 0x320);
+                bus.write8(A6 + 0x320, old | 0x20);
+                if (!(old & 0x20)) bus.write8(A6 + 0x320, bus.read8(A6 + 0x320) & 0xbf);
+                bus.write16(DIV + 20, static_cast<uint16_t>(asr16(static_cast<uint16_t>(far), 5) + 0x20));
+                d0 = bus.read16(DIV + 8);
+                d1 = asr16(d0, 1);
+                d5 = static_cast<uint16_t>(((product(d0) << 6) >> 16) + 0x70 - bus.read16(A6 + 0x8c));
+            }
+            // $0018F8: projected lateral endpoints and their fixed-point slope.
+            bus.write16(MUL, d2);
+            bus.write16(MUL + 2, bus.read16(A6 + 0x326));
+            d6 = static_cast<uint16_t>(((bus.read32(MUL_RESULT) << 6) >> 16) + bus.read16(A6 + 0x8e));
+            uint16_t d7 = static_cast<uint16_t>(((product(d0) << 6) >> 16) + bus.read16(A6 + 0x8e));
+            d3 = static_cast<uint16_t>(d3 - d1);
+            d6 = static_cast<uint16_t>(d6 - d7);
+            d6 = quotient(sext(d6) << 8, d3);
+            const uint32_t step = sext(d6) << 8;
+            a1 = 0xec800 + sext(static_cast<uint16_t>(d1 * 2));
+            d7 = static_cast<uint16_t>(-d7 + 0x5b0);
+            bus.write16(a1, d7);
+            d3 = static_cast<uint16_t>(d3 - 1);
+            if (s(d3) < 0) edge = false; // BMI $00197E skips the edge strip.
+            else
+            {
+                uint32_t ramp = static_cast<uint32_t>(d7) << 16;
+                do { bus.write16(a1, ramp >> 16); a1 += 2; ramp -= step; } while (d3-- != 0);
+                edge = true; // falls through $00195A
+            }
+        }
+    }
+    if (edge) // $00195A-$00197A
+    {
+        a1 = 0xec200 + sext(static_cast<uint16_t>(bus.read16(A6 + 0x330) * 2));
+        uint32_t stripe = 0x080d080d;
+        for (int n = 0; n < 14; ++n) { a1 -= 4; bus.write32(a1, stripe); stripe -= 0x00010001; }
+    }
+    // $00197E-$0019E2: ROM texture transition bits select four shared colors.
+    a1 = 0xecc38;
+    d0 = bus.read16(A6 + 0x338);
+    d3 = static_cast<uint16_t>((0xc00 - (d0 & 0xc00)) & 0xc00);
+    d3 = static_cast<uint16_t>((d3 << 7) | (d3 >> 9));
+    uint32_t a0 = 0x19e8 + (d0 & 0x3e0);
+    for (int row = 0; row < 16; ++row)
+    {
+        d0 = bus.read16(a0); a0 += 2;
+        for (int bit = 0; bit < 16; ++bit)
+        {
+            bus.write16(a1, bus.read16(A6 + 0x328 + sext(d3))); a1 += 2;
+            const bool carry = d0 & 0x8000;
+            d0 = static_cast<uint16_t>(d0 * 2);
+            if (carry) d3 = static_cast<uint16_t>((d3 + 2) & 6);
+        }
+    }
+}
+
+// $000436-$00044A: consume the main CPU's shift-register road requests.
+void OSubRoad::service_requests(SubBus& bus)
+{
+    const uint16_t blank=bus.read16(A6+0x300);
+    bus.write16(A6+0x300,blank>>1);
+    if (blank&1) initialize(bus,0x5c4);
+    const uint16_t texture=bus.read16(A6+0x302);
+    bus.write16(A6+0x302,texture>>1);
+    if (texture&1) initialize(bus,0x5ee);
+}
+void OSubRoad::initialize(SubBus& bus,uint32_t entry)
+{
+    if (entry==0x5c4) // $0005C4-$0005DA: blank both road line tables.
+        for (uint32_t a=0xec000;a<0xec400;a+=4) bus.write32(a,0x08000800);
+    else if (entry==0x5ee) // $0005EE-$000602: road 0's texture line selector.
+        for (uint32_t a=0xec000;a<0xec1c0;a+=2) bus.write16(a,0x0100);
 }

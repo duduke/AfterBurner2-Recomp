@@ -26,7 +26,6 @@ add_executable(afterburner2
     src/main/hwaudio/ym2151.cpp
     src/main/engine/ohud.cpp
     src/main/engine/osprites.cpp
-    src/main/engine/oroad.cpp
     src/main/engine/opalette.cpp
     src/main/engine/olevelobjs.cpp
     src/main/engine/oengine.cpp
@@ -34,6 +33,8 @@ add_executable(afterburner2
     src/main/engine/mainbus.cpp
     src/main/engine/omainadc.cpp
     src/main/engine/oscenery.cpp
+    src/main/engine/ostagesetup.cpp
+    src/main/engine/osubroad.cpp
 )
 
 target_include_directories(afterburner2 PRIVATE src/main ${SDL2_INCLUDE_DIRS})
@@ -53,10 +54,14 @@ if(BUILD_TESTING)
         tests/engine_regression.cpp
         src/main/engine/ohud.cpp
         src/main/engine/osprites.cpp
-        src/main/engine/oroad.cpp
         src/main/engine/opalette.cpp
         src/main/engine/olevelobjs.cpp
         src/main/engine/oengine.cpp
+        src/main/engine/subbus.cpp
+        src/main/engine/mainbus.cpp
+        src/main/engine/oscenery.cpp
+        src/main/engine/ostagesetup.cpp
+        src/main/engine/osubroad.cpp
         src/main/hwvideo/hwroad.cpp
         src/main/hwvideo/hwsprites.cpp
         src/main/hwvideo/hwtiles.cpp
@@ -69,6 +74,13 @@ endif()
 
 option(ORACLE_TESTS "Enable tests against MAME captures in build/oracle (see make oracle-capture)" OFF)
 if(BUILD_TESTING AND ORACLE_TESTS)
+    add_executable(oracle_stagesetup tests/oracle_stagesetup.cpp src/main/romloader.cpp src/main/roms.cpp
+        src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/ostagesetup.cpp)
+    target_include_directories(oracle_stagesetup PRIVATE src/main)
+    add_test(NAME oracle_stagesetup COMMAND oracle_stagesetup build/oracle/stagesetup.bin)
+    add_test(NAME oracle_stagesetup_control COMMAND oracle_stagesetup build/oracle/stagesetup_control.bin)
+    add_test(NAME oracle_stagesetup_alternate COMMAND oracle_stagesetup build/oracle/stagesetup_alternate.bin)
+    set_tests_properties(oracle_stagesetup oracle_stagesetup_alternate oracle_stagesetup_control PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_scenery tests/oracle_scenery.cpp src/main/romloader.cpp src/main/roms.cpp
         src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/oscenery.cpp)
     target_include_directories(oracle_scenery PRIVATE src/main)
@@ -99,8 +111,11 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         src/main/engine/subbus.cpp src/main/engine/osubroad.cpp)
     target_include_directories(oracle_subroad PRIVATE src/main)
     add_test(NAME oracle_subroad COMMAND oracle_subroad)
+    add_test(NAME oracle_roadrequests COMMAND oracle_subroad build/oracle/roadrequests.bin)
+    add_test(NAME oracle_roadinit COMMAND oracle_subroad build/oracle/roadinit.bin)
+    add_test(NAME oracle_subroad_special COMMAND oracle_subroad build/oracle/subroad_special.bin)
     add_test(NAME oracle_subroad_gameplay COMMAND oracle_subroad build/oracle/subroad_gameplay.bin)
-    set_tests_properties(oracle_subroad oracle_subroad_gameplay PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(oracle_subroad oracle_subroad_gameplay oracle_roadrequests oracle_roadinit oracle_subroad_special PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_video tests/oracle_video.cpp
         src/main/romloader.cpp src/main/roms.cpp
         src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwtiles.cpp

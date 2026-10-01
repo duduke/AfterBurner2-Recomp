@@ -19,14 +19,12 @@ SRCS = \
 	src/main/hwaudio/ym2151.cpp \
 	src/main/engine/ohud.cpp \
 	src/main/engine/osprites.cpp \
-	src/main/engine/oroad.cpp \
 	src/main/engine/opalette.cpp \
 	src/main/engine/olevelobjs.cpp \
 	src/main/engine/oengine.cpp
 
-# The verified bus/ADC foundation is built but is not called by the
-# reconstruction's frame loop until later milestones port its handlers.
-SRCS += src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp
+# Verified road/scenery and shared bus; ADC awaits the flight/input port.
+SRCS += src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
@@ -83,12 +81,22 @@ oracle-capture:
 	AB2_ORACLE_NO_SPRITES=1 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_nosprites.bin 100 60
 	$(MAKE) oracle-capture-main
 	$(MAKE) oracle-capture-scenery
+	$(MAKE) oracle-capture-road-setup
 
 oracle-capture-scenery:
 	@mkdir -p build/oracle
 	tools/oracle/capture.sh tools/oracle/capture_scenery.lua build/oracle/scenery.bin 2000 90
 	AB2_ORACLE_STRIDE=8 tools/oracle/capture.sh tools/oracle/capture_scenery.lua build/oracle/scenery_extended.bin 1200 240
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=420 tools/oracle/capture.sh tools/oracle/capture_scenery.lua build/oracle/scenery_gameplay.bin 1200 60
+
+oracle-capture-road-setup:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_stagesetup.lua build/oracle/stagesetup.bin 0 50
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SETUP_CONTROL=1 tools/oracle/capture.sh tools/oracle/capture_stagesetup.lua build/oracle/stagesetup_control.bin 0 50
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SETUP_ALT=1 tools/oracle/capture.sh tools/oracle/capture_stagesetup.lua build/oracle/stagesetup_alternate.bin 0 50
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_roadinit.lua build/oracle/roadinit.bin 0 30
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_roadrequests.lua build/oracle/roadrequests.bin 0 30
+	AB2_ORACLE_SPECIAL=1 AB2_ORACLE_SKIP=500 tools/oracle/capture.sh tools/oracle/capture_subroad.lua build/oracle/subroad_special.bin 600 45
 
 oracle-capture-main:
 	@mkdir -p build/oracle
@@ -114,6 +122,13 @@ oracle-test:
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_main.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp $(ORACLE_SRCS) -o build/oracle_main
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_compare.cpp -o build/oracle_compare
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_scenery.cpp src/main/engine/oscenery.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_scenery
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_stagesetup.cpp src/main/engine/ostagesetup.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_stagesetup
+	./build/oracle_stagesetup build/oracle/stagesetup.bin
+	./build/oracle_stagesetup build/oracle/stagesetup_alternate.bin
+	./build/oracle_stagesetup build/oracle/stagesetup_control.bin
+	./build/oracle_subroad build/oracle/roadrequests.bin
+	./build/oracle_subroad build/oracle/roadinit.bin
+	./build/oracle_subroad build/oracle/subroad_special.bin
 	./build/oracle_subsprites
 	./build/oracle_subroad
 	./build/oracle_video build/oracle/frames.bin
@@ -128,4 +143,4 @@ oracle-test:
 	./build/oracle_scenery build/oracle/scenery_extended.bin
 	./build/oracle_scenery build/oracle/scenery_gameplay.bin
 
-.PHONY: oracle-capture oracle-capture-main oracle-capture-gameplay oracle-capture-scenery oracle-test
+.PHONY: oracle-capture-road-setup oracle-capture oracle-capture-main oracle-capture-gameplay oracle-capture-scenery oracle-test

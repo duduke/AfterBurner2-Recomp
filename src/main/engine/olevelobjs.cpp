@@ -184,44 +184,6 @@ void OLevelObjs::update_enemies(OSprites& sprites)
     }
 }
 
-void OLevelObjs::update_scenery(OSprites& sprites, const ORoad&)
-{
-    // Bank 3 canopy/rock LODs verified from Stage 1 sprite RAM and Sub CPU tables.
-    // A moving water channel exposes the shore as rows approach the camera.
-    if (frame_counter < 120) return;
-    const double phase = (travel % 640) / 640.0;
-    for (int row = 0; row < 8; ++row)
-    {
-        const double depth = (row + phase + 1) / 8.0;
-        const int ground = static_cast<int>(124 + depth * depth * 175);
-        const int lod = row < 3 ? 1 : 0;
-        const auto canopy = frame(0x165f0 + lod * 16);
-        const uint16_t zoom = static_cast<uint16_t>(std::clamp<int>(static_cast<int>((lod ? 950 : 1450) - depth * 1000), 0x160, 0x500));
-        const int sw = canopy.width * 512 / zoom, sh = canopy.height * 512 / zoom;
-        const int spacing = std::max(22, sw * 2 / 3);
-        const double channel = std::sin(travel / 1700.0 + row * 0.25) * 140;
-        for (int x = -150; x < 380; x += spacing)
-        {
-            const int center = x + sw / 2;
-            if (std::abs(center - (160 + channel)) < 38 + row * 3) continue;
-            OEntry patch; patch.control = ((x + row) & 1) ? 0x2000 : 0;
-            patch.z = static_cast<int16_t>(2000 - row * 180 - phase * 180);
-            patch.x = static_cast<int16_t>(x);
-            patch.y = static_cast<int16_t>(ground - sh + std::sin(x * 0.05 + row) * 9);
-            if (patch.x > 320 || patch.y > 250) continue;
-            sprites.append_sprite(patch, canopy.bank, canopy.offset, canopy.pitch, zoom, zoom, canopy.height,
-                                  ((x / spacing + row) & 3) == 0 ? 0x41 : 0, 1);
-            if (std::abs(center - (160 + channel)) < sw + 55 && row > 2)
-            {
-                const auto rock = frame(0x16af0 + lod * 16);
-                patch.y = static_cast<int16_t>(ground - rock.height * 512 / zoom + 6);
-                patch.z += 1; // The canopy covers the top edge of the shore rock.
-                sprites.append_sprite(patch, rock.bank, rock.offset, rock.pitch, zoom, zoom, rock.height, 0x10, 1);
-            }
-        }
-    }
-}
-
 void OLevelObjs::update_hud(OSprites& sprites)
 {
     const int aim_x = 160 + (player_x - 160) / 2;
@@ -297,7 +259,7 @@ void OLevelObjs::update_threats(OSprites& sprites)
     }
 }
 
-void OLevelObjs::update(OSprites& sprites, ORoad& road)
+void OLevelObjs::update(OSprites& sprites)
 {
     ++frame_counter;
     if (!completed)
@@ -312,8 +274,6 @@ void OLevelObjs::update(OSprites& sprites, ORoad& road)
         if (frame_counter % 30 == 0) { audio_commands.push_back(0xf1); audio_commands.push_back(0x20 + player_throttle * 6); }
     }
     update_player(sprites);
-    road.set_roll(player_roll); road.set_horizon(static_cast<int16_t>(124 + player_pitch));
-    update_scenery(sprites, road);
     update_enemies(sprites);
     update_weapons(sprites);
     update_threats(sprites);

@@ -50,14 +50,14 @@ void palette_colors()
 
 void release_stick()
 {
-    OLevelObjs objects; OSprites sprites; ORoad road;
+    OLevelObjs objects; OSprites sprites;
     for (int i = 0; i < 40; ++i) {
         objects.handle_input(1, 1, false, false, 1);
-        sprites.begin_frame(); objects.update(sprites, road);
+        sprites.begin_frame(); objects.update(sprites);
     }
     for (int i = 0; i < 40; ++i) {
         objects.handle_input(0, 0, false, false, 1);
-        sprites.begin_frame(); objects.update(sprites, road);
+        sprites.begin_frame(); objects.update(sprites);
     }
     check(objects.get_roll() == 0 && objects.get_pitch() == 0,
           "Releasing the stick must restore neutral roll and pitch");

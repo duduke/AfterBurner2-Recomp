@@ -31,19 +31,24 @@ here; copyrighted ROM bytes and captures are not included in the repository.
 
 ## Reconstructed behavior and limits
 
-The terrain renderer projects and rotates a native terrain plane and samples
-an animated original sea sprite. It does not reproduce the original Sub CPU
-raster routines. The speed gauge uses a native colored fill behind ROM glyphs.
-Formation cadence/trajectories, aiming, projectile motion, hitboxes, scoring,
-terrain spacing and the 60-second duration are native rules. Original fighter
-art is reused, but exact attitude selection/animation timing is still future
-work. This is not a cycle-accurate or frame-identical arcade port.
+Phase 3b replaced the native terrain projection, sea-sprite sampling,
+canopy/shore patches and speed-gauge fill with verified road/scenery ports.
+Road scanlines, tile uploads and ground palettes now reach the hardware
+compositor through `MainBus`. The host selects ordinary flight (`$10`);
+the full credit/stage dispatcher is still pending 3e. Until the exact player
+port in 3d supplies shared attitude targets, the native stick does not bank
+or pitch this road. The integration test sets arcade targets directly.
+
+Formation cadence/trajectories, aiming, projectile motion, hitboxes, scoring
+and the 60-second duration remain native rules. Original fighter art is
+reused, but exact attitude selection/animation timing is still future work.
+This is not yet a frame-identical whole-game arcade port.
 
 The stage has fighter waves, target tracking, cannon/homing missiles, enemy
 missiles, hits and temporary invulnerability. Surviving reaches a clear screen;
 there is no lives/game-over loop or later-stage progression yet. Carrier
 introduction, refueling, attract mode and all remaining stages are excluded.
-Tilemap row/column fine-scroll remains unimplemented. Sound output is exercised
+Tilemap row/column fine-scroll is implemented and video-oracle verified. Sound output is exercised
 with real ROMs, but exact original command timing, balance and waveform have
 not been verified against arcade audio.
 
@@ -61,6 +66,9 @@ make render-scene
 ./build/render_scene build/left.ppm left 480
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
 ```
+
+The right/left visual fixtures set an arcade bank target directly, separately
+from native controls, to exercise the hardware road path.
 
 For memory checks, compile the integration suite with
 `-fsanitize=address,undefined -fno-omit-frame-pointer` and run from the root.

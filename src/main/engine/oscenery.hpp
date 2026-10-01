@@ -1,8 +1,7 @@
 #pragma once
 #include "engine/mainbus.hpp"
 
-// Literal main-ROM scenery routines. Kept off the reconstruction's frame
-// loop until stage setup and road inputs are ported and verified too.
+// Literal main-ROM scenery routines, wired through MainBus video endpoints.
 class OScenery
 {
 public:

@@ -45,21 +45,11 @@ class Screen
 public:
     Screen(int width, int height, HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles& tiles);
 
-    // Stage 1 native camera: rotate the terrain plane while keeping HUD/player crisp.
-    void init_stage1(const uint8_t* sprite_rom, uint32_t length);
-    void set_camera(int roll, int pitch, uint32_t distance);
-
     // Renders one full frame into `output` (width*height RGB888 pixels,
     // row-major, matching the dimensions passed to the constructor).
     void render_frame(RGB888* output);
 
 private:
-    bool stage1_view{false};
-    int camera_roll{}, camera_pitch{};
-    uint32_t travel{};
-    std::vector<uint16_t> sea_texture;
-    std::vector<uint16_t> terrain_pixels, terrain_sprites;
-    void draw_stage1();
     int width, height;
     HWPalette& palette;
     HWRoad& road;

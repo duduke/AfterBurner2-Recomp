@@ -17,9 +17,8 @@
     Translated instruction-by-instruction with the arcade's memory layout,
     verified against MAME captures by tests/oracle_subroad.cpp.
 
-    Not ported yet: the special sequence routine $0016D4/$001758 (state
-    byte subram0[$321] == 1, likely the carrier take-off), which also needs
-    the 315-5250 comparator.
+    $0016D4/$001758 special perspective raster and $0005C4/$0005EE road
+    initialization are also ported and covered by separate MAME captures.
 ***************************************************************************/
 
 #pragma once
@@ -30,11 +29,14 @@
 class OSubRoad
 {
 public:
-    // One frame's road work. Returns false if it reached the unported
-    // special-sequence routine ($0016D4); the frame is then incomplete.
+    // One frame of ordinary or special road work.
     bool frame(SubBus& bus);
+    void initialize(SubBus& bus, uint32_t entry); // $0005C4 / $0005EE
+    void service_requests(SubBus& bus); // $000436-$00044A
 
 private:
+    void special(SubBus& bus);        // $0016D4
+    void special_raster(SubBus& bus); // $001758
     void slew_bank(SubBus& bus);     // $000C0A, falls into bank_history()
     void bank_history(SubBus& bus);  // $000CEA
     void slew_pitch(SubBus& bus);    // $000D0E

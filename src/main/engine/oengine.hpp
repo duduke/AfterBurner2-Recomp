@@ -6,12 +6,16 @@
 #include "hwvideo/hwtiles.hpp"
 #include "engine/olevelobjs.hpp"
 #include "engine/osprites.hpp"
-#include "engine/oroad.hpp"
+#include <memory>
+#include "engine/mainbus.hpp"
+#include "engine/osubroad.hpp"
+#include "engine/oscenery.hpp"
+#include "engine/ostagesetup.hpp"
 #include "engine/opalette.hpp"
 
 // Master Engine Coordinator.
-// Connects the high-level ported game logic (objects, player, road, sprites, palette)
-// to the underlying X-Board hardware layer (hwvideo/*) each frame tick.
+// Verified road/scenery ports share MainBus with video endpoints. Objects,
+// sprites and their palettes remain native until milestones 3c/3d.
 class OEngine
 {
 public:
@@ -28,12 +32,16 @@ public:
     void tick(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles& tiles);
 
     [[nodiscard]] OLevelObjs& get_objects() { return level_objs; }
-    [[nodiscard]] ORoad& get_road() { return road_engine; }
+    [[nodiscard]] MainBus& arcade_bus() { return *bus; }
 
 private:
     OLevelObjs level_objs;
     OSprites sprite_engine;
-    ORoad road_engine;
+    MainBus::Memory memory;
+    std::unique_ptr<MainBus> bus;
+    OSubRoad road_engine;
+    OScenery scenery_engine;
+    OStageSetup stage_setup;
     OPalette palette_engine;
     OHud hud_engine;
     uint32_t frame_count{0};

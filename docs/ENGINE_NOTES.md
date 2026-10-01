@@ -546,10 +546,10 @@ double buffer (`$000464`) and writing the road control register from
    horizon line it writes road 0's scroll table (`$0EC4E0` is line 112)
    outward in both directions: the slope for the ramp's length, then flat.
 
-Unverified paths: the special-sequence state machine (`subram0[$321]`, which
-also leads to the unported `$0016D4`/`$001758` road setup — likely the
-carrier take-off — and needs the 315-5250 comparator), the `$201` override,
-the recentering kick, and the quadrant flag for banks past 90 degrees.
+At this initial milestone, the special sequence was unported. Phase 3b
+below adds `$0016D4`/`$001758`, the comparator and directed sequence coverage.
+Remaining normal-road coverage gaps include the `$201` override, recentering
+kick and banks past 90 degrees; full carrier game flow remains Phase 3e.
 
 Oracle notes from this port: the capture compares **write sets** rather
 than whole snapshots, so the main CPU's concurrent writes can't cause false
@@ -739,14 +739,101 @@ possible timer/repeat transition, corrupted out-of-range table/count
 inputs, and byte/word tile-list paths not separately counted by the
 coverage report. The capture verifies calls, not full frames or rendered
 integration. Race-skipped calls are not evidence of correctness. The
-full stage initializer (shared road words and palettes), special sub-road
-sequence, game frame scheduling, and replacement of `draw_stage1`/`oroad`
-remain. No guessed initialization or flight-coordinate bridge was added.
+stage/road setup slices, special sub-road sequence and hardware-renderer
+integration are now completed below. Full game frame scheduling is 3c;
+credit/stage dispatch is 3e. No flight-coordinate bridge was invented.
 
 `make oracle-capture-scenery` regenerates these three local captures;
 `make oracle-test` runs their comparisons alongside the phase 3a baselines.
-The class is compiled but not called by the reconstruction's game loop.
+The class is now called by the game loop through shared `MainBus` endpoints.
 Phase 3a is committed and merged via PR #4, merge commit `559a2b7`.
+
+## Phase 3b completion: road/scenery setup and hardware integration
+
+`OStageSetup::run` implements these literal main-ROM slices:
+
+| Entry | Effect | Natural capture calls |
+| --- | --- | ---: |
+| `$13972` | Reset speed/distance, DIP-selected limits and pitch clamps | 5 |
+| `$18918` | Copy the ordered stage selector list from runtime ROM | 5 |
+| `$DDFE` | Clear bank/pitch state and eight history words | 3 |
+| `$13CEE` | Resolve the stage's road/scenery descriptor | 6 |
+| `$13D10` | Write normal or alternate ground/sky palettes | 6 |
+| `$183DE` | Reset scenery/tile scroll state, tail-call road palette expansion | 1 |
+| `$13C3E` | Expand 120 runtime byte selectors into 16-byte road color groups | 6 |
+| `$13B1C` | Copy the master palette, 232 iterations of eight longs | 4 |
+
+**36 of 36 natural setup calls identical, 0 skipped**. Four windows with
+writes outside the selected routine (including interruptions) were discarded
+by capture, not reported as matches. A separate directed run forces the
+alternate ground-palette branch: **36 of 36 identical, 0 skipped**. A third
+run invokes ROM commands `$E062`/`$E074` with MAME's debugger PC import and a
+return address on the active stack: 30 calls to each command plus setup,
+**96 of 96 identical, 0 skipped**. This is directed routine coverage, not
+whole-credit playback; it can restart a partially executed host instruction.
+Total across those three captures: **168 of 168 identical, 0 skipped**.
+Changing the expansion loop from 120 to 119 makes seven natural setup
+records differ; reverted before final checks.
+
+The MAME core exposes user A7 as `USP`, supervisor A7 as `SP`, and no named
+`A7` debugger register. Select with SR bit `$2000`. The scenery captures were
+regenerated using this selection and retain **4,137/4,400 identical, 263
+input-race skips**. Start CLR routines on the first data read: CLR.L writes
+its low word before its high word, so starting on a high-word write misses
+part of the transaction. Scenery and setup end on the outer RTS stack read,
+not prefetch beyond a loop. RAM, write sets and I/O events are compared.
+
+Sub-road additions:
+
+- `$5C4` blanks both line-selector tables; `$5EE` initializes 224 road-0
+  texture selectors. **34 of 34 real calls identical, 0 skipped**.
+- `$436..$44A` shifts the two request words and calls those helpers on carry.
+  **866 of 868 request windows identical, 2 skipped for main CPU writes to
+  inputs**. Explicit other-CPU write sets catch even writes restored before
+  the window ends. Reset-interrupted windows are excluded by the capture.
+- `$16D4/$1758` initialize the second road, compute perspective/lateral
+  fixed-point ramps, select texture transitions from ROM `$19E8`, update
+  mode bits and advance distance/texture phase. `$1868` is TAS (the decoder
+  now excludes TAS from TST); `$1736` drives the signed comparator, wrapping
+  lateral position on out-of-range flags.
+- **600 of 600 special-road frames identical, 0 skipped**. Directed cases
+  cover sequence initialization, mode bits 3/6/7, signed distance around zero
+  and the far endpoint `$4FEC0`, altitude boundaries, yaw and comparator
+  limits. Inputs are explicitly injected before the actual MAME routine;
+  no ROM tables or captured state are embedded in the C++ port. A changed
+  special-road fill word makes all 600 records fail, then is reverted.
+
+`OEngine` owns `MainBus::Memory` and its shared sub bus. Tile/text/palette
+transactions go through video endpoints. A road swap copies the newly
+latched MainBus buffer into HWRoad's CPU half and triggers HWRoad's swap;
+the following generator writes prepare the next frame. Each host frame
+processes road requests, latches/control-writes, runs one road frame and
+calls the scenery engine. `Screen` always uses hardware road/tile/text/sprite
+compositing. Deleted: `ORoad`, `draw_stage1`, native gradients, canopy/rock
+terrain sprites, camera projection and speed-gauge overlay.
+
+The host bootstraps the retained native Stage 1 experience at ordinary raw
+selector `$10`, using the verified setup slices and ROM-derived gameplay
+flags/player altitude. This is a host-selected subsystem start, not a port
+of the complete reset/credit/stage dispatcher. Flight controls remain native;
+no conversion of native degrees into arcade attitude RAM is guessed. The
+integration test sets `$29C0CE` directly and verifies road changes while text
+stays stable. Palette/object/HUD/sound scheduling and full sprites remain
+3c–3e work. The special road can be driven by its real bus state, but a full
+carrier sequence still requires those object/game-flow ports.
+
+Unverified: stage descriptor entries beyond captured stages, every combination
+of special-road yaw/distance/altitude, complete reset/credit paths, whole-frame
+CPU scheduling and rendered gameplay equality. The existing normal-road,
+sprite, ADC, compare/timer and video oracle baselines remain passing. Make
+build, engine/bus regression checks and Stage 1 combat/restart/audio integration
+pass. CMake targets are updated, but CMake is unavailable on this host.
+Captures/ROMs remain local and ignored. `make oracle-capture-road-setup`
+regenerates the new captures; `make oracle-test` includes them.
+
+Phase 3c proceeds according to [PHASE3C_PLAN.md](PHASE3C_PLAN.md): capture the
+frame boundary, port main sprite emission/blits, connect the sub sort/transform,
+port palette scheduling, then wire and verify the 30/60 Hz cadence.
 
 ## Open threads to pick up next
 

@@ -55,7 +55,7 @@ local skip = tonumber(os.getenv("AB2_ORACLE_SKIP") or "0")
 local stride = tonumber(os.getenv("AB2_ORACLE_STRIDE") or "1")
 scene_start = space:install_read_tap(0x3f9044,0x3f9045,"scene_start",function(a,data,mask)
   if guard or pc.value ~= 0x18444 or frame < skip or frame % stride ~= 0 then return end
-  before, entry_sp = snapshot(), main.state.SP.value & 0x3fffff
+  before, entry_sp = snapshot(), ((main.state.SR.value & 0x2000 ~= 0) and main.state.SP.value or main.state.USP.value) & 0x3fffff
   written, other, events = {}, {}, {}
 end)
 scene_writes = space:install_write_tap(0,0x3fffff,"scene_writes",function(a,data,mask)

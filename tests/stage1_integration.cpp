@@ -23,7 +23,7 @@ int main()
     engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length,
                 roms.subcpu.rom, roms.subcpu.length);
     Screen screen(320, 224, palette, road, sprites, tiles);
-    screen.init_stage1(roms.sprites.rom, roms.sprites.length);
+    std::vector<uint16_t> hud_before(4*64),hud_after(hud_before.size());
     std::vector<RGB888> level(320 * 224), banked(level.size());
     const auto jet = read_sprite_frame(roms.subcpu.rom, roms.subcpu.length, 0x100f0);
     require(jet.bank == 0 && jet.offset == 0xab2 && jet.height == 47, "Native player frame table mismatch");
@@ -31,11 +31,16 @@ int main()
     {
         const int stick = tick > 600 && tick < 720 ? 1 : tick > 900 && tick < 1020 ? -1 : 0;
         engine.handle_input(stick, 0, true, true, 1);
+        // Road attitude comes from the arcade bus, pending the player port
+        // in 3d. Exercise that boundary directly with the ROM's $B0 bank
+        // threshold rather than converting the native camera's degrees.
+        if (tick==601) engine.arcade_bus().write16(0x29c0ce,0x00b0);
         engine.tick(palette, road, sprites, tiles);
         if (tick == 360 || tick == 700)
         {
-            screen.set_camera(engine.get_objects().get_roll(), engine.get_objects().get_pitch(), engine.get_objects().distance());
             screen.render_frame(tick == 360 ? level.data() : banked.data());
+            auto& text=tick==360?hud_before:hud_after;
+            for (unsigned i=0;i<text.size();++i) text[i]=tiles.read_text(i);
         }
         // Headless checks consume the same event queue as the app.
         engine.get_objects().take_audio_commands();
@@ -47,12 +52,15 @@ int main()
     engine.handle_input(0, 0, true, true, 1); engine.tick(palette, road, sprites, tiles);
     require(engine.get_objects().distance() == old_distance, "Cleared stage must stop advancing terrain");
     const auto same = [](RGB888 a, RGB888 b) { return a.r == b.r && a.g == b.g && a.b == b.b; };
-    for (int y = 8; y < 32; ++y)
-        for (int x = 16; x < 192; ++x)
-            if (x < 72 || x >= 160) require(same(level[y * 320 + x], banked[y * 320 + x]), "Banking must leave score/hits HUD upright and stable");
+    // Compare the text layer itself: transparent HUD pixels legitimately
+    // reveal a different road when banked, so their RGB need not be equal.
+    for (int y=1;y<4;++y)
+        for (int x=2;x<24;++x)
+            if (x<9 || x>=20) require(hud_before[y*64+x]==hud_after[y*64+x],
+                                    "Arcade road banking must leave HUD text stable");
     unsigned changed = 0;
     for (size_t i = 0; i < level.size(); ++i) changed += !same(level[i], banked[i]);
-    require(changed > 10000, "Banking must change the projected terrain across the viewport");
+    require(changed > 10000, "Arcade bank target must change the hardware road across the viewport");
     engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length,
                 roms.subcpu.rom, roms.subcpu.length);
     require(engine.get_objects().hud().score == 0 && engine.get_objects().hud().missiles == 50 &&
