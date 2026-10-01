@@ -11,13 +11,12 @@ unwired. Keep `OLevelObjs` and its adapter until all replacement handlers and
 the host boundary pass; the new routine ports do not establish host gameplay
 equality.
 
-The user authorized merging checkpoint [PR #9](https://github.com/duduke/AfterBurner2-Recomp/pull/9)
-before phase completion. It extends the earlier checkpoints with pre-lives
-damage controllers and fuselage animation, plus bounded ordinary gameplay
-coverage. The companion continuation is now on
-`codex/phase-3d-damage-companion`. For a new continuation, start from current
-`main`, create a new `codex/` branch, and resume the remaining work below. Do not mark Phase 3d complete or start Phase 3e
-based on this checkpoint.
+The user authorized merging checkpoint [PR #10](https://github.com/duduke/AfterBurner2-Recomp/pull/10)
+before phase completion. It extends PR #9's pre-lives damage controller and
+fuselage checks with the companion emission/animation/pool-reset graph.
+For the next continuation, start from current `main`, create a new `codex/`
+branch, and resume the remaining work below. Do not mark Phase 3d complete
+or start Phase 3e based on this checkpoint.
 
 ## 1. Finish the input/player caller contract
 
