@@ -59,6 +59,16 @@ if(BUILD_TESTING)
     add_test(NAME engine_regression COMMAND engine_regression)
 endif()
 
+option(ORACLE_TESTS "Enable tests against MAME captures in build/oracle (see make oracle-capture)" OFF)
+if(BUILD_TESTING AND ORACLE_TESTS)
+    add_executable(oracle_subsprites tests/oracle_subsprites.cpp
+        src/main/romloader.cpp src/main/roms.cpp
+        src/main/engine/subbus.cpp src/main/engine/osubsprites.cpp)
+    target_include_directories(oracle_subsprites PRIVATE src/main)
+    add_test(NAME oracle_subsprites COMMAND oracle_subsprites)
+    set_tests_properties(oracle_subsprites PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endif()
+
 option(STAGE1_ROM_TESTS "Enable tests requiring the user's Stage 1 ROM set" OFF)
 if(BUILD_TESTING AND STAGE1_ROM_TESTS)
     get_target_property(STAGE1_SOURCES afterburner2 SOURCES)

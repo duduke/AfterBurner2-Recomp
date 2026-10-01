@@ -213,6 +213,9 @@ def disasm_one(data, base, addr):
         ea = ea_str(r, mode, m_reg, 1)
         return r.addr, f'CHK {ea},D{reg}'
 
+    if (op & 0xFFB8) == 0x4880:  # EXT.W/EXT.L Dn (MOVEM's encoding with a Dn operand)
+        return r.addr, f'EXT.{"L" if op & 0x40 else "W"} D{op & 7}'
+
     if (op & 0xFFC0) in (0x4880, 0x48C0, 0x4C80, 0x4CC0):  # MOVEM reg->mem / mem->reg
         direction = (op >> 10) & 1
         size = 2 if (op & 0x40) else 1
@@ -264,6 +267,23 @@ def disasm_one(data, base, addr):
             ea = ea_str(r, mode, m_reg, size)
             base_name = {0x8: 'OR', 0x9: 'SUB', 0xB: 'CMP', 0xC: 'AND', 0xD: 'ADD'}[fam]
             return r.addr, f'{base_name}.{SIZE_CODES[size]} {ea},D{reg}'
+        if opmode in (4, 5, 6) and mode in (0, 1) and not (fam == 0xB and mode == 0):
+            # The "Dn,<ea>" slot with a register <ea> isn't a legal ALU destination,
+            # so the encoding is reused: ABCD/SBCD, EXG, ADDX/SUBX, CMPM.
+            size = opmode - 4
+            src = f'-(A{m_reg})' if mode else f'D{m_reg}'
+            dst = f'-(A{reg})' if mode else f'D{reg}'
+            if fam in (0x8, 0xC) and opmode == 4:
+                return r.addr, f'{"SBCD" if fam == 0x8 else "ABCD"} {src},{dst}'
+            if fam == 0xC and opmode == 5:
+                return r.addr, f'EXG {"A" if mode else "D"}{reg},{"A" if mode else "D"}{m_reg}'
+            if fam == 0xC and opmode == 6 and mode == 1:
+                return r.addr, f'EXG D{reg},A{m_reg}'
+            if fam in (0x9, 0xD):
+                return r.addr, f'{"SUBX" if fam == 0x9 else "ADDX"}.{SIZE_CODES[size]} {src},{dst}'
+            if fam == 0xB:
+                return r.addr, f'CMPM.{SIZE_CODES[size]} (A{m_reg})+,(A{reg})+'
+            raise ValueError(f'illegal ALU register form {op:04X}')
         if opmode in (4, 5, 6):
             size = opmode - 4
             ea = ea_str(r, mode, m_reg, size)

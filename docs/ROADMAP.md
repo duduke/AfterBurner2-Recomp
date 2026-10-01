@@ -100,21 +100,36 @@ disassembled and read directly.
       - Compound player jet (slots 0..3: fuselage, twin exhaust flames, weapon pod)
       - Player missile/vulcan projectiles
       - 3D enemy world-to-screen pipeline using SEGA 315-5248 hardware multiplier
-- [x] Initial C++ engine subsystems scaffolded in `src/main/engine/`:
-      - `oentry.hpp`: 64-byte object descriptor matching arcade layout
-      - `osprites`: depth sorting and hardware sprite RAM blit
-      - `oroad`: 224-line scanline horizon and roll curvature synthesizer
-      - `opalette`: fade/flash and color cycling player
-      - `olevelobjs`: 254-slot object manager, player jet compound flight model
-      - `oengine`: frame tick coordinator connected to SDL2 keyboard inputs
-- [ ] Continue porting individual game subsystems into `src/main/engine/`:
-      - Enemy AI & formation spawning
-      - Collision detection & hitboxes
-      - Stage sequencing and terrain elevation profiles
-      - Original stage timing and behavior beyond the Stage 1 reconstruction
-- [x] Stage 1 reference experience: banked terrain/sea, ROM-backed HUD, native
-      fighter formations, weapons, collisions, clear state and restart
-      (see `STAGE1_FIDELITY.md` for remaining differences)
+- [x] Oracle harness: MAME runs the real code headless with Lua memory taps,
+      and differential tests diff ported routines against its snapshots
+      byte-for-byte (`tools/oracle/`, `make oracle-capture` /
+      `make oracle-test`; see `docs/ENGINE_NOTES.md`, "Oracle testing")
+- [x] Sub CPU sprite pass ported (`engine/osubsprites`, sub ROM
+      `$000648`-`$0009E2`): byte-identical to the arcade on 1,199 of 1,200
+      attract-mode passes. Three rare paths are not yet exercised by a
+      capture. Not wired into the game yet — it needs real requests from
+      ported main CPU object code.
+- [ ] Run object logic at 30 Hz with the sub CPU's halfway-interpolated
+      sprite list on alternate frames, as the arcade does (the current
+      reconstruction runs at 60 Hz)
+- [x] Stage 1 reference experience (`olevelobjs`, `oroad`, `osprites`,
+      `ohud`, `oengine`, and `Screen::draw_stage1`): real ROM art,
+      palettes, HUD tiles and sound, but **native reconstructions, not
+      ports** — invented spawns, trajectories, hitboxes, scoring and stage
+      length; about 72 object slots used and a single-object player; `oroad`
+      output is never displayed because the Stage 1 view replaces the road
+      hardware path. Each piece is to be replaced by a verified port (see
+      `STAGE1_FIDELITY.md`).
+- [ ] Port the sub CPU road generator (`$000C0A`, `$000F4C`, `$000F70`) and
+      drive `hwroad` from it; fix `hwtiles` layer scroll (`(0xC0 - scroll) &
+      0x3FF`, MAME `segaic16.cpp`) and add the row/column fine-scroll + ALT
+      tilemap support Stage 1's banked scenery uses; then retire
+      `draw_stage1` and `oroad`
+- [ ] Port main CPU object code, replacing `olevelobjs`: the dispatch loop,
+      player jet (`$016892`, `$01653A`-`$01657A`), weapons (`$0154B8`-
+      `$015638`), enemies (`$0088C2`, `$008AF2`, `$0091C0`, `$009626`)
+- [ ] Stage scripts, formations and spawn tables for all 25 stages, plus
+      collisions, scoring and stage transitions — the long pole
 
 See `docs/ENGINE_NOTES.md` for the detailed, evolving write-up — treat it
 as "current best understanding," not verified fact, until a real port

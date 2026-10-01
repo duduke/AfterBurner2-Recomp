@@ -66,3 +66,18 @@ verify-stage1:
 	./build/stage1_integration
 
 .PHONY: verify-stage1
+
+# Oracle tests: ported arcade routines vs the real code running in MAME.
+# Captures come from your own ROM set and stay local in build/oracle/.
+oracle-capture:
+	@mkdir -p build/oracle
+	tools/oracle/capture.sh tools/oracle/capture_subsprites.lua build/oracle/subsprites.bin 1200 120
+
+ORACLE_SRCS = src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp src/main/engine/osubsprites.cpp
+
+oracle-test:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subsprites.cpp $(ORACLE_SRCS) -o build/oracle_subsprites
+	./build/oracle_subsprites
+
+.PHONY: oracle-capture oracle-test

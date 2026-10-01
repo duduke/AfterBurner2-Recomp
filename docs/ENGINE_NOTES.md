@@ -453,6 +453,72 @@ The object table spans `$9FC0` to `$DF40` in `backup1` mirror RAM, comprising **
    - Update routines at `$0088C2`, `$008AF2`, `$0091C0`, `$009626`.
    - Reads 3D world coordinates `(X, Y, Z)` from fields `+42` and `+36`, transforms coordinates using camera roll/pitch matrix at `subram0[$90]/[$92]` through SEGA 315-5248 multiplier at `$0E0000`, selects banking sprite frame from lookup table `$00033ED8`, and calls `append_sprite` (`$00B628`).
 
+## Oracle testing: verifying ports against the real code
+
+The goal is gameplay identical to the arcade, so ported routines are checked
+byte-for-byte against the original code running in MAME, not by eye:
+
+- `tools/oracle/capture.sh <script.lua> <out>` runs MAME headless with a Lua
+  autoboot script that installs memory taps at chosen synchronization points
+  and dumps RAM snapshots. Fresh NVRAM/config per run keeps boot
+  deterministic. Captures derive from your own ROMs: they stay in
+  `build/oracle/` (gitignored) and are regenerated, never committed.
+- A test per ported routine replays each captured "before" state through the
+  C++ port and diffs every region the routine writes against the captured
+  "after" state. `make oracle-capture` then `make oracle-test`.
+- Ported routines keep the arcade's memory layout (`engine/subbus.hpp` for
+  sub CPU code) and are translated instruction-by-instruction. A readable
+  rewrite can follow once the oracle test pins the behavior.
+- Check coverage, not just pass counts: the capture only proves the paths it
+  exercises (see "unverified paths" below). Prove the test can fail, too — a
+  one-pixel change to the X origin makes 910 of 1,200 passes fail.
+
+## Sub CPU sprite pass (`$000648`-`$0009E2`) — ported, verified
+
+`src/main/engine/osubsprites.cpp`. On 1,200 passes captured from 30 seconds
+of attract mode, 1,199 are byte-identical to the arcade in every region the
+pass writes; the remaining one is skipped because the main CPU changed the
+pass's inputs while it ran.
+
+What it does each pass:
+
+1. Bucket-sorts the main CPU's requests by their depth byte (256 buckets of
+   at most 30; a full bucket spills deeper; past the last one the request is
+   dropped), then drains buckets shallow-to-deep into an index list at
+   `$7D00`.
+2. Turns each request into a final 8-word hardware sprite descriptor
+   (`$0007B8`): scaled size `= size * zoom / $7F` and hardware zoom
+   `= $FE00 / zoom` via the 315-5248/5249 chips (zoom below `$40` uses a
+   table at `$0009E4` that also picks a lower-detail frame record),
+   centering, the hardware's `+$100`/`+$160` origins, and clipping —
+   off-screen sprites get only the hide bit, partly off-screen ones get
+   their ROM offset and draw direction adjusted. Scaled sizes go to a
+   per-object table at `$7800` (likely read back for collisions).
+3. Writes the count and end marker, then (`$000726`) a second copy of the
+   list `$C00` bytes later with each sprite moved halfway back toward its
+   previous-frame position.
+
+**The game logic runs at 30 Hz.** Main CPU VBLANK shows the `+$C00`
+(halfway) list on the frame it swaps buffers (`$00B7D2`) and the exact list
+on the next (`$00B7C2`), so objects move smoothly at 60 Hz while only
+updating every other frame. A port that runs object logic at 60 Hz cannot
+match the arcade.
+
+Formats (offsets within each 16-byte record):
+
+- Request (main CPU `append_sprite`, `$00B628`, max `$C0` per frame): +0
+  flags/zoom (bits 0-9 zoom, 0 = hidden; 10/11 opt out of X/Y
+  interpolation; 12/13 vertical/horizontal flip; 14: Y is the bottom edge
+  instead of the middle), +2 depth, +3 palette, +4/+6 X/Y, +8/+10 previous X/Y, +12
+  byte: size-table slot, +12 long (low 24 bits): frame record pointer.
+- Frame record (sub ROM): +0 width, +2 height, +4 descriptor word 0 (bank),
+  +6 ROM offset, +8 pitch, +10 offset adjustment for vertical flip.
+
+Unverified paths (translated but never exercised by the attract capture):
+the skip-sort flag (`subram0[$3A]` bit 0), the bucket overflow spill, and a
+sprite taller than the screen clipped at both top and bottom (`$000942`).
+Gameplay captures should cover them.
+
 ## Open threads to pick up next
 
 - **Engine C++ Implementation**: We now have complete specifications for the object dispatch loop, 64-byte object structure, player jet composite parts, sprite pipeline, and road scanlines. Ready to scaffold `src/main/engine/` (`oentry.hpp`, `oplayer.cpp`, `osprites.cpp`).
