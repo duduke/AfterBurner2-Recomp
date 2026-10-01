@@ -9,6 +9,7 @@ public:
     struct Result { bool logic; bool service_redirect; };
     Result interrupt(MainBus&, const Call&);
     bool resume_logic(MainBus&); // $014856, wait exposed to host
+    void bookkeeping(MainBus&); // $0148B8
     void timers(MainBus&);       // $0148BE
     void buttons(MainBus&);      // $01495C
     void service_edge(MainBus&); // $0147E8

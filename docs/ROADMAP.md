@@ -289,6 +289,7 @@ coverage and mutation checks. `make test`, `make verify-stage1` and
 **3c. Frame loop and sprite pipeline (complete)**
 
 Implementation order and acceptance checks: [PHASE3C_PLAN.md](PHASE3C_PLAN.md).
+Changes: [PR #6](https://github.com/duduke/AfterBurner2-Recomp/pull/6).
 
 - [x] Port the main CPU VBLANK handler (`$014674`): the 30/60 Hz split,
       the double-buffer pointer swaps (`$2A3C04`-`$2A3C1C`), the

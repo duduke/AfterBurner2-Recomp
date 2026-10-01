@@ -89,7 +89,7 @@ void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
         case 0xb7d2: main_sprites.blit(*bus,true);break;
         case 0x148be: frame_engine.timers(*bus);break;
         case 0x1495c: frame_engine.buttons(*bus);break;
-        case 0x148b8: bus->write32(0x3f8812,bus->read32(0x3f8812)+1);break;
+        case 0x148b8: frame_engine.bookkeeping(*bus);break;
         case 0x147e8: frame_engine.service_edge(*bus);break;
         case 0x14990: case 0xe2da: break; // ROM RTS-only callees
         case 0x16c8a: break; // 3d missile/audio/HUD sequencer boundary

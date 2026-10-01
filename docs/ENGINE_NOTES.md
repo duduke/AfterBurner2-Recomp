@@ -855,7 +855,7 @@ word counter with the signed-overflow-aware BGE phase, exact four pointer-pair
 swap order, one-shot palette flags, callee order, lamp write, normal/interpolated
 blit selection and service redirect. It returns an explicit redirect to the
 future `$01A130` service dispatcher; it does not synthesize CPU stack/register
-execution. The small callees `$0148BE` timers, `$01495C` buttons,
+execution. The small callees `$0148B8` bookkeeping, `$0148BE` timers, `$01495C` buttons,
 `$0147E8` service edge and `$014856` main-loop wait/re-arm are separate ports.
 Waiting is exposed to the host instead of spinning a C++ thread.
 
@@ -919,11 +919,11 @@ Directed palettes cover all eight fade-channel masks, trigger, capture banks,
 active/terminal/idle fade, animation suppression, blend initialization and
 terminal continuation, both upload destinations, both palette-cycle tables
 and its no-op selector. The wait/re-arm capture includes ordinary `$FFFF`
-and a missed-phase `$FFFE` input. The service-edge routine matches natural
+and a missed-phase `$FFFE` input; bookkeeping includes a 32-bit wrap input. The service-edge routine matches natural
 calls, but its switch-release transition is not exercised; whole service UI
 and arbitrary negative/out-of-table animation selectors are unverified.
-No palette windows and 38 natural / 16 directed main sprite windows were
-dropped by the capture's PC filter, separately from the listed input-race
+Two interrupted directed palette windows and 38 natural / 16 directed main
+sprite windows were dropped by the capture's PC filter, separately from the listed input-race
 skips and accepted records.
 
 The paired capture keeps the sub before-state associated with its output

@@ -5,6 +5,10 @@ bool OMainFrame::resume_logic(MainBus& b) {
     if(b.read16(0x2a3c00)!=0xffff) b.write16(0x3f8ba4,b.read16(0x3f8ba4)+1);
     b.write16(0x2a3c00,1);return true;
 }
+void OMainFrame::bookkeeping(MainBus& b) {
+    // $0148B8-$0148BC.
+    b.write32(0x3f8812,b.read32(0x3f8812)+1);
+}
 void OMainFrame::timers(MainBus& b) {
     // $0148BE-$0148FA: display-rate second counters, unsigned comparison.
     auto step=[&](uint32_t a) {

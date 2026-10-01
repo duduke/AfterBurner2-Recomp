@@ -59,7 +59,7 @@ local entries = {
  {0x3f9142,0x13bbc,0x13bb6,false}, {0x3f9114,0x13be4,0x13bcc,false},
  {0x29c060,0x13bfa,0x13bfa,false}, {0x29c09c,0x1329e,0x1329e,false},
  {0x3f8174,0x148c6,0x148be,false}, {0x29c074,0x1495c,0x1495c,false},
- {0x3f8050,0x147e8,0x147e8,false}, {0x2a3c00,0x14856,0x14856,false}
+ {0x3f8812,0x148b8,0x148b8,false}, {0x3f8050,0x147e8,0x147e8,false}, {0x2a3c00,0x14856,0x14856,false}
 }
 local entry
 local entry_counts={}
@@ -96,6 +96,8 @@ for _,e in ipairs(entries) do
    elseif e[3]==0x1329e then
     space:write_u16(0x29c09c,n%3==0 and 0x11 or n%3==1 and 0x12 or 0x10)
     space:write_u8(0xcdd05,n&1)
+   elseif e[3]==0x148b8 then
+    space:write_u32(0x3f8812,n&1==0 and 0xffffffff or 0)
    elseif e[3]==0x14856 then
     space:write_u16(0x2a3c00,n&1==0 and 0xffff or 0xfffe)
    elseif e[3]==0x148be then
@@ -120,7 +122,7 @@ scene_writes = space:install_write_tap(0,0x3fffff,"scene_writes",function(a,data
   local o = offset(a)
   if o and o >= 0x7e00 and o < 0x8000 then return end
   local p=pc.value
-  if not ((p>=0x14a86 and p<=0x14c34) or (p>=0x13f92 and p<=0x140d8) or (p>=0x142dc and p<=0x1449c) or (p>=0x13e5c and p<0x13eb0) or (p>=0x13bb6 and p<=0x13c3c) or (p>=0x1329e and p<=0x1331e) or (p>=0x148be and p<=0x148fa) or (p>=0x1495c and p<=0x14974) or (p>=0x147e8 and p<=0x14816) or (p>=0x14856 and p<=0x14878)) then
+  if not ((p>=0x14a86 and p<=0x14c34) or (p>=0x13f92 and p<=0x140d8) or (p>=0x142dc and p<=0x1449c) or (p>=0x13e5c and p<0x13eb0) or (p>=0x13bb6 and p<=0x13c3c) or (p>=0x1329e and p<=0x1331e) or (p>=0x148b8 and p<=0x148fa) or (p>=0x1495c and p<=0x14974) or (p>=0x147e8 and p<=0x14816) or (p>=0x14856 and p<=0x14878)) then
     before=nil; dropped=dropped+1; return
   end
   if o then mark(written,o,mask) else events[#events+1]=u32(a)..u32(data)..u32(mask) end
@@ -128,7 +130,7 @@ end)
 scene_end = space:install_read_tap(0x3ffe00,0x3fffff,"scene_end",function(a,data,mask)
   if guard or before == nil or a~=entry_sp then return end
   local p=pc.value
-  if p~=0x14b28 and p~=0x14c34 and p~=0x140d8 and p~=0x143a6 and p~=0x14422 and p~=0x14486 and p~=0x1449c and p~=0x13e8c and p~=0x13eac and p~=0x13bca and p~=0x13bf8 and p~=0x13c3c and p~=0x132e8 and p~=0x1331e and p~=0x148fa and p~=0x14974 and p~=0x14816 and p~=0x14878 then return end
+  if p~=0x14b28 and p~=0x14c34 and p~=0x140d8 and p~=0x143a6 and p~=0x14422 and p~=0x14486 and p~=0x1449c and p~=0x13e8c and p~=0x13eac and p~=0x13bca and p~=0x13bf8 and p~=0x13c3c and p~=0x132e8 and p~=0x1331e and p~=0x148bc and p~=0x148fa and p~=0x14974 and p~=0x14816 and p~=0x14878 then return end
   out:write(u32(records),u32(frame),u32(entry),u32(input),before,snapshot(),
             offsets(written),offsets(other),u32(#events),table.concat(events))
   entry_counts[entry]=(entry_counts[entry] or 0)+1

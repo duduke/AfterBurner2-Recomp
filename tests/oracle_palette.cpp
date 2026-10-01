@@ -70,6 +70,7 @@ int main(int argc, char** argv) try
         bus.io[1].input=[&](unsigned){return uint8_t(be32(h+12));};
         OMainFrame frame;
         if(entry==0x14856) frame.resume_logic(bus);
+        else if(entry==0x148b8) frame.bookkeeping(bus);
         else if(entry==0x148be) frame.timers(bus);
         else if(entry==0x1495c) frame.buttons(bus);
         else if(entry==0x147e8) frame.service_edge(bus);
