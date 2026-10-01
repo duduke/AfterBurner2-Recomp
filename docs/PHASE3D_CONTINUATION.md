@@ -1,18 +1,26 @@
-# Phase 3d continuation — input and live player next
+# Phase 3d continuation — remaining handlers and host acceptance
 
-Phase 3d is **not complete**. Verified foundations are the dispatcher and
-initializer, RNG, sequence compound setup/initialization/hiding, and sound
-ring producer/consumer. These ports remain unwired. Keep `OLevelObjs` and its
-adapter until actual replacement handlers pass independent MAME checks.
+Phase 3d is **not complete**. In addition to the foundations, input mapping,
+live flight/recovery and compound parts, player weapon controller/projectiles,
+reload/HUD, world projection/explosion/ground effects, scaled player collision,
+and the `$153E0..$156CE` enemy missile graph with shadows/trails now have
+independent MAME execution checks. Observable ADC timing is checked separately.
+Counts, coverage and limits are in `ENGINE_NOTES.md`. These ports remain
+unwired. Keep `OLevelObjs` and its adapter until all replacement handlers and
+the host boundary pass; the new routine ports do not establish host gameplay
+equality.
 
-## 1. Capture the live input/player contract
+## 1. Finish the input/player caller contract
 
-- Walk `$009810/$0098C0` and every reachable input, flight, projection,
-  animation and request-emission callee. Record actual object slots from
-  MAME rather than assuming the sequence compound is the live player.
-- Extend the capture to isolate selected handlers, with complete object and
+- Live `$9810/$98C0`, shadow/exhaust, recovery `$9626/$964C`, and sequence
+  `$1653A..$1657A/$1678E` are translated and independently checked. The live
+  fuselage is slot 131 at `$C0C0`; the sequence compound is a different base.
+  Finish live damage `$E662` and its death/debris transitions, and separate
+  actual score/lives/stage-flow callees as named 3e boundaries.
+- The independent handler capture now includes complete object and
   shared RAM at entry, D0..D7/A0..A6, main/sub multiplier and divider state,
-  input ports/ADC result, and their own ordered RAM/I/O writes. The existing
+  IO1 input and ordered RAM/I/O writes; ADC hardware timing is captured
+  separately. Preserve that contract for the remaining graph. The existing
   dispatcher transcripts are external boundaries and cannot substitute for
   these handler oracles. Record changes made by the other CPU to actual
   read inputs; exclude active stacks and reject unrelated main writes.
@@ -24,14 +32,14 @@ adapter until actual replacement handlers pass independent MAME checks.
   and simultaneous-button fixtures plus ordinary gameplay records. Compare
   the six sample-ring bytes and the mapped arcade input bytes separately.
 
-## 2. Port flight and projection
+## 2. Connect verified flight and projection
 
 - Translate the identified live handler graph instruction by instruction;
   keep all calculations at their original word/long widths and use the bus
   math chips. Use the verified `$00C5A8` register contract where called.
-- Independently port sequence updates `$01653A..$01657A` and projection
-  `$01678E` if they are required at the chosen host boundary. Their setup
-  checks alone do not prove projection, animation or the live flight model.
+- Use the independently checked sequence updates `$1653A..$1657A` and
+  projection `$1678E` when connecting sequence parts. Their caller/controller
+  graph still needs translation; setup or part checks do not prove that flow.
 - Verify shared bank/pitch/altitude, every compound object record, emitted
   requests, previous positions and the sub CPU's `$7800` size table.
 - Prove deliberate mutations fail before wiring a real player through the
@@ -39,10 +47,15 @@ adapter until actual replacement handlers pass independent MAME checks.
 
 ## 3. Complete the rest of 3d
 
-- Weapons `$0154B8..$015638` and `$016C8A` reload/HUD/audio: held/released
-  fire, launch side, cooldown/reload, exhaustion, target changes, removal,
+- Extend beyond the verified player weapon graph and `$153E0..$156CE` enemy
+  missile graph to the other enemy families (`$1586C`, `$15968` and later
+  runtime jump-table targets). `$16C8A/$CFC4` reload/HUD is verified. Check
+  held/released fire, launch side, cooldown/reload, exhaustion, target changes, removal,
   attachments and exact command/request/HUD write order.
-- Enemy graph: start with `$0088C2`, `$008AF2`, `$0091C0`, `$009626`; map
+- Enemy graph: `$88C2/$8AF2/$91C0` and ground effects are verified; `$9626`
+  is player recovery. Continue formation/plane `$10E6A` and its transitions,
+  other world variants (`$8946` onward), explosion initialization `$90AC`,
+  projectile collision `$8C1C` and their reachable callees. Map
   runtime transitions beyond the reset template inventory. Use directed
   fixtures for handlers awaiting 3e stage/spawn dispatch, clearly labelled
   as routine coverage.
