@@ -60,8 +60,10 @@ Phase 3d now has independent checks for input mapping/buttons, live flight,
 recovery and compound parts, player projectiles, reload/HUD, world projection,
 ground effects, scaled player collision and a paired enemy missile/shadow/trail
 graph, alongside the earlier dispatcher/RNG/sound ring. Observable ADC result
-and timer/mux timelines also match MAME. These ports remain unwired until the
-remaining enemy/damage handlers and actual host ADC/IRQ caller are verified.
+and timer/mux timelines also match MAME. Nineteen damage/debris callees match
+1,216/1,216 directed MAME calls, with no skips. The damage controllers and a
+natural death sequence remain unverified. These ports remain unwired until
+the remaining enemy/damage handlers and actual host ADC/IRQ caller are verified.
 `OLevelObjs`, its request adapter and native sound cues therefore remain.
 This foundation does not change the native flight or combat experience.
 

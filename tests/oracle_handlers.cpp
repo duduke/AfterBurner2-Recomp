@@ -14,6 +14,7 @@
 #include "engine/omainobjects.hpp"
 #include "engine/omaininput.hpp"
 #include "engine/omainplayer.hpp"
+#include "engine/omaindamage.hpp"
 #include "engine/omainweapons.hpp"
 #include "engine/omainworld.hpp"
 
@@ -51,6 +52,7 @@ int main(int argc, char** argv) try
     unsigned total=0, identical=0, failed=0, skipped=0, reported=0, active=0;
     std::vector<std::pair<uint32_t,unsigned>> entries;
     std::map<uint32_t,std::array<unsigned,3>> outcomes;
+    std::map<std::string,unsigned> damage_paths;
 
     while (in.peek() != std::char_traits<char>::eof())
     {
@@ -94,9 +96,24 @@ int main(int argc, char** argv) try
         MainBus::Trace trace{reads.data(),writes.data(),[&](bool w,uint32_t a,uint16_t d,uint16_t m) {
             if(w) events.emplace_back(a,d&m,m);
         }};
+        // Inspect fixture inputs before enabling trace: coverage inspection
+        // must not add reads to the routine's input-race footprint.
+        if(entry==0xe744) {
+            ++damage_paths[bus.read8(0xffff8e7f)<4 ? "pool-under-four" : "pool-allocate"];
+        }
+        if(entry==0xf766 || entry==0xebd2 || entry==0xebf6 || entry==0xec1a || entry==0xec3e) {
+            if(entry!=0xf766 && int16_t(bus.read16(0xffff91b4))<4) ++damage_paths["debris-wait"];
+            else if(!(bus.read8(0x29c200)&4)) ++damage_paths["debris-disabled"];
+            else if(bus.read8(0xffff91d0)&4) ++damage_paths["debris-draw-only"];
+            else {
+                auto marker=bus.read16(bus.read32(r.a[5]+26));
+                ++damage_paths[marker==0xeeee ? "debris-delay" : marker==0xffff ? "debris-end" : "debris-animation"];
+            }
+        }
         bus.trace=&trace;
         if(entry==0xb0ac) OMainInput::update(bus,r);
         else if(entry==0x14976) OMainInput::buttons(bus,r);
+        else if((entry>=0xe744 && entry<=0xecac) || (entry>=0xf58e && entry<=0xfaa0)) OMainDamage::run(bus,r,entry);
         else if(entry==0x9810) OMainPlayer::initialize(bus,r);
         else if(entry==0x98c0) OMainPlayer::update(bus,r);
         else if(entry==0x9c34) OMainPlayer::shadow_initialize(bus,r);
@@ -134,6 +151,8 @@ int main(int argc, char** argv) try
         else if(entry==0xae32) OMainWeapons::remove(bus,r,true,false,false);
         else if(entry>=0x14dc4 && entry<=0x1586a) OMainWeapons::enemy(bus,r,entry);
         else throw std::runtime_error("unknown handler entry");
+        if(entry==0xe744 && uint16_t(r.d[5])>=4)
+            ++damage_paths[uint16_t(r.d[7]) ? "pool-orientation-one" : "pool-orientation-zero"];
         bool contract=r.d==expected_r.d && r.a==expected_r.a;
         bool chips=true;
         // Sub chip snapshots are inputs; their concurrent outputs belong to
@@ -183,6 +202,11 @@ int main(int argc, char** argv) try
     std::cout << '\n' << "Per-entry identical/different/skipped:";
     for(auto& [entry,n]:outcomes) std::cout << ' ' << std::hex << entry << std::dec << '=' << n[0] << '/' << n[1] << '/' << n[2];
     std::cout << '\n';
+    if(!damage_paths.empty()) {
+        std::cout << "Damage path coverage (captured, including any races):";
+        for(const auto& [name,n]:damage_paths) std::cout << ' ' << name << '=' << n;
+        std::cout << '\n';
+    }
     return total && identical && !failed ? 0 : 1;
 }
 catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

@@ -17,10 +17,18 @@ Do not mark Phase 3d complete or start Phase 3e based on this checkpoint.
 
 ## 1. Finish the input/player caller contract
 
+- `OMainDamage` now independently checks debris allocation `$E744`, initial
+  damage projection `$E7E0`, four waiting handlers `$EBD2..$EC3E`, debris
+  animation/removal `$F766/$F85A`, projection/attitude helpers and the
+  `$EC62/$ECAC` transitions: 1,216/1,216 directed calls identical, 0 skipped.
+  These are callees, not the `$E662` controller or a natural damage sequence.
+  Continue with `$E662`, intact/breakup `$E8D0/$E94E` and fuselage `$F640`.
+  `$EC78/$CF46` lives/HUD and later credit flow remain named 3e boundaries.
+  Use `make oracle-capture-damage` to regenerate this routine capture.
 - Live `$9810/$98C0`, shadow/exhaust, recovery `$9626/$964C`, and sequence
   `$1653A..$1657A/$1678E` are translated and independently checked. The live
   fuselage is slot 131 at `$C0C0`; the sequence compound is a different base.
-  Finish live damage `$E662` and its death/debris transitions, and separate
+  Finish live damage `$E662` and its death-controller transitions, and separate
   actual score/lives/stage-flow callees as named 3e boundaries.
 - The independent handler capture now includes complete object and
   shared RAM at entry, D0..D7/A0..A6, main/sub multiplier and divider state,
