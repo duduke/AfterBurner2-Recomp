@@ -125,10 +125,27 @@ int main(int argc, char** argv) try
                 ++damage_paths[marker==0xeeee ? "debris-delay" : marker==0xffff ? "debris-end" : "debris-animation"];
             }
         }
+        if(entry>=0xfb08 && entry<=0x10310) {
+            if(entry==0xfb08 || entry==0xfb9c || entry==0xffbe)
+                ++damage_paths[bus.read8(0xffff8e7f) ? "companion-pool-available" : "companion-pool-empty"];
+            if(entry==0xfb16)
+                ++damage_paths["companion-emitter-state-"+std::to_string(bus.read16(0xffff9124))];
+            if(entry==0xfdfa || entry==0x1003e || entry==0x10148 || entry==0x10252) {
+                auto timer=bus.read16(r.a[5]+32);
+                ++damage_paths[timer==0x8000 ? "companion-frame-subq-overflow" : int16_t(timer)<=1 ? "companion-frame-advance-input" : "companion-frame-wait-input"];
+            }
+            if(entry==0x100dc || entry==0x101e6)
+                ++damage_paths[int16_t(bus.read16(0xffff9124))<(entry==0x100dc ? 2 : 4) ? "companion-state-wait" : "companion-state-ready"];
+            if(entry==0xfcb4 || entry==0xfdfa || entry==0x1003e || entry==0x10148 || entry==0x10252) {
+                if(!(bus.read8(0x29c200)&4)) ++damage_paths["companion-disabled"];
+                else if(bus.read8(0xffff91d0)&4) ++damage_paths["companion-draw-only"];
+                else ++damage_paths["companion-active"];
+            }
+        }
         bus.trace=&trace;
         if(entry==0xb0ac) OMainInput::update(bus,r);
         else if(entry==0x14976) OMainInput::buttons(bus,r);
-        else if((entry>=0xe662 && entry<=0xecac) || (entry>=0xf3e2 && entry<=0xfaa0)) OMainDamage::run(bus,r,entry);
+        else if((entry>=0xe662 && entry<=0xecac) || (entry>=0xf3e2 && entry<=0x10346)) OMainDamage::run(bus,r,entry);
         else if(entry==0x9810) OMainPlayer::initialize(bus,r);
         else if(entry==0x98c0) OMainPlayer::update(bus,r);
         else if(entry==0x9c34) OMainPlayer::shadow_initialize(bus,r);
@@ -172,6 +189,11 @@ int main(int argc, char** argv) try
             ++damage_paths["controller-result-"+std::to_string(bus.read16(0xffff9124))];
         if(entry==0xe744 && uint16_t(r.d[5])>=4)
             ++damage_paths[uint16_t(r.d[7]) ? "pool-orientation-one" : "pool-orientation-zero"];
+        if(entry>=0xfb08 && entry<=0x10310) {
+            if(bus.read32(r.a[5]+16)!=entry)
+                ++damage_paths["companion-result-handler-"+std::to_string(bus.read32(r.a[5]+16))];
+            if(!(bus.read8(r.a[5])&0x80)) ++damage_paths["companion-inactive-result"];
+        }
         bool contract=r.d==expected_r.d && r.a==expected_r.a;
         bool chips=true;
         // Sub chip snapshots are inputs; their concurrent outputs belong to

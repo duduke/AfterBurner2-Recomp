@@ -138,9 +138,9 @@ oracle-capture-gameplay:
 
 # Independent handler execution, including chip state and ordered RAM writes.
 HANDLER_SRCS = src/main/engine/omainobjects.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS)
-HANDLER_CAPTURES = input input_gameplay input_directed player_init player player_directed player_parts player_parts_gameplay player_parts_directed reload reload_directed weapon_control weapon_control_directed world world_directed buttons buttons_directed projectiles projectiles_directed missiles missiles_directed effects_directed collision_directed enemy_weapons_directed enemy_parts_directed enemy_effects enemy_effects_gameplay damage_directed damage_gameplay
+HANDLER_CAPTURES = input input_gameplay input_directed player_init player player_directed player_parts player_parts_gameplay player_parts_directed reload reload_directed weapon_control weapon_control_directed world world_directed buttons buttons_directed projectiles projectiles_directed missiles missiles_directed effects_directed collision_directed enemy_weapons_directed enemy_parts_directed enemy_effects enemy_effects_gameplay damage_directed damage_gameplay companion_directed companion_gameplay
 
-oracle-capture-handlers: oracle-capture-damage
+oracle-capture-handlers: oracle-capture-damage oracle-capture-companion
 	@mkdir -p build/oracle
 	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/input.bin 240 45
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=540 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/input_gameplay.bin 360 45
@@ -177,6 +177,11 @@ oracle-capture-damage:
 	@mkdir -p build/oracle
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_HANDLER_DELAY=0.002 AB2_ORACLE_HANDLERS=e662,e8d0,e94e,f3e2,f43c,f4ba,f528,f5c0,e744,e7e0,ebd2,ebf6,ec1a,ec3e,ec62,ecac,f58e,f640,f766,f85a,f878,f93e,f95e,f966,f99e,f9ce,f9e2,faa0 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/damage_directed.bin 1792 90
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLERS=e662,e8d0,e94e tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/damage_gameplay.bin 120 120
+
+oracle-capture-companion:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_HANDLER_DELAY=0.002 AB2_ORACLE_HANDLERS=e7da,fb08,fb16,fb9c,fbc4,fbd4,fbda,fcb4,fda6,fdfa,ff08,ffbe,ffe6,1003e,100dc,100f4,10148,101e6,101fe,10252,102f2,10310 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/companion_directed.bin 1408 90
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLERS=e7da,fb08,fb16,fb9c,fbc4,fbd4,fbda,fcb4,fda6,fdfa,ff08,ffbe,ffe6,1003e,100dc,100f4,10148,101e6,101fe,10252,102f2,10310 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/companion_gameplay.bin 2400 120
 
 oracle-handlers:
 	@mkdir -p build
@@ -241,4 +246,4 @@ oracle-test: oracle-handlers
 
 .PHONY: oracle-capture-objects
 
-.PHONY: oracle-capture-handlers oracle-capture-damage oracle-handlers
+.PHONY: oracle-capture-handlers oracle-capture-damage oracle-capture-companion oracle-handlers
