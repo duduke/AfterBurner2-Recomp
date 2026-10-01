@@ -10,6 +10,11 @@ unwired. Keep `OLevelObjs` and its adapter until all replacement handlers and
 the host boundary pass; the new routine ports do not establish host gameplay
 equality.
 
+The user authorized merging checkpoint [PR #7](https://github.com/duduke/AfterBurner2-Recomp/pull/7)
+before phase completion to continue in a new session. Start from current
+`main`, create a new `codex/` branch, and resume the remaining work below.
+Do not mark Phase 3d complete or start Phase 3e based on this checkpoint.
+
 ## 1. Finish the input/player caller contract
 
 - Live `$9810/$98C0`, shadow/exhaust, recovery `$9626/$964C`, and sequence
@@ -77,6 +82,6 @@ and uncovered paths per routine. Whole-credit equality stays in 3f.
 
 Run `make test`, `make verify-stage1`, `make oracle-test` and a headless
 launch. Update the roadmap, engine notes and fidelity boundaries. Complete
-and merge the Phase 3d PR only after every 3d acceptance item is satisfied;
-then draft the Phase 3e stage/game-flow plan. ROMs, disassembly output and
-captures remain ignored.
+the remaining Phase 3d work in a new PR. Mark the phase complete only after
+every 3d acceptance item is satisfied; then draft the Phase 3e stage/game-flow
+plan. ROMs, disassembly output and captures remain ignored.

@@ -334,7 +334,9 @@ Continuation: [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
 Independent input, live-flight, compound-part, projectile, reload/HUD, world
 effect and enemy-missile routine checks now pass. Host wiring, remaining
 enemy/damage handlers, sound cadence and paired player/weapon video acceptance
-remain incomplete; do not merge the Phase 3d PR yet. See the per-capture results
+remain incomplete. PR #7 delivers the verified checkpoint, with the user
+authorizing its merge before phase completion. Resume the remaining work in
+a new PR using the continuation plan. See the per-capture results
 and uncovered paths in `ENGINE_NOTES.md`.
 
 - [x] Object initializer and dispatch loop: 254 × 64-byte records from

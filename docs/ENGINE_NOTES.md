@@ -1101,7 +1101,10 @@ updated; this host still lacks CMake, so those targets were not executed.
 `OMainInput`, `OMainPlayer`, `OMainWeapons` and `OMainWorld` now execute the
 following original routines through `MainBus`. They are compiled into the
 project and regression targets, but the game still uses `OLevelObjs` and the
-native sprite producer. Phase 3d is not complete and its PR remains a draft.
+native sprite producer. Phase 3d is not complete. PR #7 delivers this verified
+checkpoint; the user authorized merging it and resuming the continuation plan
+in a different session. This checkpoint merge does not satisfy the remaining
+Phase 3d acceptance items.
 
 - Input `$B0AC..$B4E0`: raw stick deadbands/clamps, chip divisions, throttle,
   forced bank/pitch, production attract stream and dormant debug recording.
