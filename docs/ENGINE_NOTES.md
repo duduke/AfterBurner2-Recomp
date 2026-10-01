@@ -1508,6 +1508,14 @@ disassembly, captures and mutation variants remain ignored.
 
 ## Phase 3d continuation: remaining independent handler graphs
 
+Delivery checkpoint: [PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11),
+implementation commit `799884a`. The user explicitly authorized pushing and
+merging this checkpoint before Phase 3d host acceptance is complete. Combined
+new-graph results are 7,409/7,424 identical, zero differences, 15 sub-input
+races skipped; all ten new mutations are rejected. Resume with the input/IRQ
+caller, host integration, sound cadence and paired player/weapon acceptance
+in `PHASE3D_CONTINUATION.md`. These ports remain unwired.
+
 `OMainSequence` translates carrier `$10348..$10E68`: pool initialization,
 selector wait, all sixteen runtime controller states, speed/pitch goals,
 hull and paired aircraft/exhaust allocation, attachment IDs, projection,

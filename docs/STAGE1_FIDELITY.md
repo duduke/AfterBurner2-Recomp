@@ -117,3 +117,8 @@ checks match MAME for 4,539 of 4,544 calls; five sub-input races are skipped. Pr
 before scoring `$E542`; the refuel controller's first call `$E224` remains
 Phase 3e. Carrier and refuel routine coverage does not establish stage flow.
 Native flight, objects, sound cues and their host adapter remain in use.
+
+[PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11) is the authorized
+handler-graph checkpoint. Its independent routine checks leave the native
+Stage 1 experience unchanged. Phase 3d remains incomplete until the host
+input/IRQ, sound cadence and paired player/weapon acceptance checks pass.

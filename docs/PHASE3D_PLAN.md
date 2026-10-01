@@ -74,3 +74,8 @@ pending. Phase 3d remains incomplete; resume at
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md). The dispatcher establishes
 traversal/callback contracts only. Each actual handler still needs its complete
 entry RAM, math-chip/I/O inputs and independent execution oracle before wiring.
+
+The user authorized merging the remaining handler-graph checkpoint,
+[PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11), before host
+acceptance. Continue that acceptance in a separate PR; do not retire the
+native object adapter or mark Phase 3d complete based on this checkpoint.

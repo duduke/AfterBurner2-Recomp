@@ -334,10 +334,10 @@ Continuation: [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
 Independent input, live-flight, compound-part, projectile, reload/HUD, world
 effect and enemy-missile routine checks now pass. Host wiring, remaining
 stage/credit caller boundaries, sound cadence and paired player/weapon video acceptance
-remain incomplete. PR #10 delivers the latest verified checkpoint, adding
-the damage companion graph; the user authorized its merge before phase
-completion. Resume the remaining work in
-a new PR using the continuation plan. See the per-capture results
+remain incomplete. [PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11)
+delivers the remaining independent handler graphs after PR #10's damage
+companion checkpoint; the user authorized its merge before phase completion.
+Resume host acceptance in a new PR using the continuation plan. See the per-capture results
 and uncovered paths in `ENGINE_NOTES.md`.
 
 - [x] Object initializer and dispatch loop: 254 × 64-byte records from
