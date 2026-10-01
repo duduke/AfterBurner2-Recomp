@@ -28,7 +28,11 @@ public:
         }
     }
 
-    void write(uint32_t offset, uint16_t data) { regs[offset & 1] = data; }
+    void write(uint32_t offset, uint16_t data, uint16_t mask = 0xffff)
+    {
+        auto& r = regs[offset & 1];
+        r = static_cast<uint16_t>((r & ~mask) | (data & mask));
+    }
 
     // Restore captured state (both registers are readable on hardware).
     void load(uint16_t a, uint16_t b) { regs[0] = a; regs[1] = b; }
@@ -57,15 +61,10 @@ public:
 
     // Every write with address line A4 set (word offset bit 3) triggers a
     // divide; A3 (word offset bit 2) selects the mode.
-    void write(uint32_t offset, uint16_t data)
+    void write(uint32_t offset, uint16_t data, uint16_t mask = 0xffff)
     {
-        switch (offset & 3)
-        {
-            case 0: regs[0] = data; break;
-            case 1: regs[1] = data; break;
-            case 2: regs[2] = data; break;
-            default: break;
-        }
+        const unsigned r = offset & 3;
+        if (r < 3) regs[r] = static_cast<uint16_t>((regs[r] & ~mask) | (data & mask));
         if (offset & 8)
             execute((offset & 4) != 0);
     }

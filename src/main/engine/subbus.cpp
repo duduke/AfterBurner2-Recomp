@@ -11,7 +11,9 @@ namespace
 
     inline bool is_mul(uint32_t a) { return a >= 0xe0000 && a < 0xe4000; }
     inline bool is_div(uint32_t a) { return a >= 0xe4000 && a < 0xe8000; }
+    inline bool is_compare(uint32_t a) { return a >= 0xe8000 && a < 0xec000; }
     inline bool is_road(uint32_t a) { return a >= 0xec000 && a < 0xee000; }
+    inline bool is_control(uint32_t a) { return a >= 0xee000 && a < 0xf0000; }
 }
 
 SubBus::SubBus(const uint8_t* rom_data, uint32_t length, uint8_t* shared_ram, uint8_t* road_ram)
@@ -31,7 +33,7 @@ uint8_t SubBus::read8(uint32_t addr) const
     }
     if (is_road(a) && road)
         return road[a & 0xfff];
-    if (is_mul(a) || is_div(a))
+    if (is_mul(a) || is_div(a) || is_compare(a) || is_control(a))
     {
         const uint16_t word = read16(a & ~1u);
         return static_cast<uint8_t>((a & 1) ? word : word >> 8);
@@ -46,6 +48,13 @@ uint16_t SubBus::read16(uint32_t addr) const
         return mul.read(a >> 1);
     if (is_div(a))
         return div.read(a >> 1);
+    if (is_compare(a))
+        return compare_timer.read((a >> 1) & 7);
+    if (is_control(a))
+    {
+        if (road_swap) road_swap();
+        return 0xffff;
+    }
     if (a < 0x80000 || is_ram(a) || (is_road(a) && road))
         return static_cast<uint16_t>((read8(a) << 8) | read8(a + 1));
     return 0xffff;
@@ -59,7 +68,16 @@ uint32_t SubBus::read32(uint32_t addr) const
 void SubBus::write8(uint32_t addr, uint8_t data)
 {
     const uint32_t a = addr & BUS_MASK;
-    if (is_ram(a))
+    const uint16_t mask = a & 1 ? 0xff : 0xff00;
+    const uint16_t word = a & 1 ? data : static_cast<uint16_t>(data << 8);
+    if (is_mul(a)) mul.write(a >> 1, word, mask);
+    else if (is_div(a)) div.write(a >> 1, word, mask);
+    else if (is_compare(a)) compare_timer.write((a >> 1) & 7, word, mask);
+    else if (is_control(a))
+    {
+        if ((a & 1) && road_control) road_control(data & 7);
+    }
+    else if (is_ram(a))
     {
         shared[ram_offset(a)] = data;
         if (trace && trace->shared_written) trace->shared_written[ram_offset(a)] = 1;
@@ -78,6 +96,12 @@ void SubBus::write16(uint32_t addr, uint16_t data)
         mul.write(a >> 1, data);
     else if (is_div(a))
         div.write(a >> 1, data);
+    else if (is_compare(a))
+        compare_timer.write((a >> 1) & 7, data);
+    else if (is_control(a))
+    {
+        if (road_control) road_control(data & 7);
+    }
     else
     {
         write8(a, static_cast<uint8_t>(data >> 8));

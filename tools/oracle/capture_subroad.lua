@@ -19,6 +19,10 @@
 
 local out_path = os.getenv("AB2_ORACLE_OUT") or "subroad.bin"
 local max_records = tonumber(os.getenv("AB2_ORACLE_PASSES") or "600")
+local skip = tonumber(os.getenv("AB2_ORACLE_SKIP") or "0")
+if os.getenv("AB2_ORACLE_GAMEPLAY") == "1" then
+  dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")) .. "/gameplay.lua")
+end
 
 local main = manager.machine.devices[":mainpcb:maincpu"]
 local sub = manager.machine.devices[":mainpcb:subcpu"]
@@ -80,7 +84,7 @@ end
 frame_sub = emu.add_machine_frame_notifier(function() frame = frame + 1 end)
 
 window_start = sub_space:install_write_tap(0xEE000, 0xEFFFF, "ab2_road_start", function(offset, data, mask)
-  if start == nil and sub_pc.value == 0x000466 then
+  if frame >= skip and start == nil and sub_pc.value == 0x000466 then
     start = shared() .. road() .. chips()
     shared_written, road_written = {}, {}
   end

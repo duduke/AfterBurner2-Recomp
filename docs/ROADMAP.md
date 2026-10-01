@@ -230,17 +230,28 @@ milestone ends with something visibly closer to the arcade in
 
 **3a. Main CPU foundation**
 
-- [ ] `MainBus`, the main CPU's equivalent of `SubBus`: 22-bit map with
+- [x] `MainBus`, the main CPU's equivalent of `SubBus`: 22-bit map with
       work RAM, the shared sub RAM window, tile/text RAM, sprite RAM,
-      palette, road control, I/O and the 315-5248/5249/5250 chips
-- [ ] 315-5250 compare/timer model: comparator, timer IRQ, and the
-      main → sound command latch (offsets `$B`/`$F`)
-- [ ] Main CPU write-set oracle capture (the `capture_subroad.lua`
+      palette, road control, I/O and the 315-5248/5249/5250 chips.
+      Shared RAM and sub-side chips use the same `SubBus` instance;
+      byte lanes, mirrors and buffer swaps have ROM-free checks.
+      Video and timed ADC conversion are host endpoints, pending 3b/3d.
+- [x] 315-5250 compare/timer model: comparator, timer IRQ, and the
+      main → sound command latch (offsets `$B`/`$F`); 2,438 of 2,438 MAME
+      events identical, 0 skipped (see verified coverage in `ENGINE_NOTES.md`)
+- [x] Main CPU write-set oracle capture (the `capture_subroad.lua`
       pattern, keyed on main CPU PCs), with races and stack writes
-      handled the same way
-- [ ] Gameplay captures: drive MAME's inputs from Lua (coin, start,
+      handled the same way; ADC sampler `$014626`-`$01465A` matches 600 of
+      600 attract records and 1,800 of 1,800 gameplay records, 0 skipped
+- [x] Gameplay captures: drive MAME's inputs from Lua (coin, start,
       stick, throttle, buttons) on a fixed script so captures cover real
-      play, not just attract mode
+      play, not just attract mode. Main ADC, sub sprite/road, and video
+      captures use `tools/oracle/gameplay.lua`; `make oracle-capture-main`
+      regenerates the new captures, and `make oracle-test` checks them.
+
+The foundation and ADC slice are compiled but not called by the Stage 1
+reconstruction. The complete timer handler, ADC conversion scheduling and
+arcade frame loop remain for later milestones; next is 3b's stage setup.
 
 **3b. Real road and scenery in the game (retires `draw_stage1` and `oroad`)**
 

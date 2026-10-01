@@ -13,6 +13,10 @@
 
 local out_path = os.getenv("AB2_ORACLE_OUT") or "subsprites.bin"
 local max_passes = tonumber(os.getenv("AB2_ORACLE_PASSES") or "600")
+local skip = tonumber(os.getenv("AB2_ORACLE_SKIP") or "0")
+if os.getenv("AB2_ORACLE_GAMEPLAY") == "1" then
+  dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")) .. "/gameplay.lua")
+end
 
 local main = manager.machine.devices[":mainpcb:maincpu"]
 local sub = manager.machine.devices[":mainpcb:subcpu"]
@@ -38,7 +42,7 @@ local before = nil
 frame_sub = emu.add_machine_frame_notifier(function() frame = frame + 1 end)
 
 pass_start = sub_space:install_read_tap(0x9C0D6, 0x9C0D7, "ab2_pass_start", function(offset, data, mask)
-  if before == nil and sub_pc.value == 0x000640 and ((data >> 8) & 1) == 0 then
+  if frame >= skip and before == nil and sub_pc.value == 0x000640 and ((data >> 8) & 1) == 0 then
     before = snapshot()
   end
 end)
