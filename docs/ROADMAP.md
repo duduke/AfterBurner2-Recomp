@@ -20,12 +20,11 @@ Faithful, from-scratch reimplementations of the custom chips, validated
 against MAME's behavior (not its code) and against real hardware video
 captures where possible:
 
-- [x] Tilemap/text layer renderer (`hwtiles`) + palette (`hwpalette`) —
-      global per-layer scroll only; the per-column/per-row fine-scroll
-      raster tables and ALT-tilemap-per-row override are **not yet
-      implemented** (see `hwtiles.hpp`'s header comment and
-      `docs/HARDWARE.md` section 3.3) since there's no ported game logic
-      yet to exercise/verify them against
+- [x] Tilemap/text layer renderer (`hwtiles`) + palette (`hwpalette`),
+      including per-column/per-row fine scroll and the ALT tilemap set
+      (`docs/HARDWARE.md` section 3.3)
+- [x] Whole video layer pixel-identical to MAME's rendered frames (see
+      Phase 3, "Video hardware layer verified")
 - [x] Background/ground generator (`hwroad`, X-Board's equivalent of
       OutRun's "road")
 - [x] Sprite scaler (`hwsprites`; position/scale/priority per entry)
@@ -50,7 +49,7 @@ Phase 2, there's no MAME driver to read for this part — it has to be
 disassembled and read directly.
 
 - [ ] Achieve nearly identical gameplay to the original arcade game across
-      all 25 stages, including flight response, enemy formations and timing,
+      every stage, including flight response, enemy formations and timing,
       weapons, collisions, scoring, stage transitions, and refueling.
 - [x] Disassembly tooling (`tools/build_rom_image.py`,
       `tools/m68k_disasm.py`) — a small from-scratch M68000 disassembler,
@@ -109,9 +108,6 @@ disassembled and read directly.
       attract-mode passes. Three rare paths are not yet exercised by a
       capture. Not wired into the game yet — it needs real requests from
       ported main CPU object code.
-- [ ] Run object logic at 30 Hz with the sub CPU's halfway-interpolated
-      sprite list on alternate frames, as the arcade does (the current
-      reconstruction runs at 60 Hz)
 - [x] Stage 1 reference experience (`olevelobjs`, `oroad`, `osprites`,
       `ohud`, `oengine`, and `Screen::draw_stage1`): real ROM art,
       palettes, HUD tiles and sound, but **native reconstructions, not
@@ -132,15 +128,99 @@ disassembled and read directly.
       `hwtiles` layer scroll (`(0xC0 - scroll) & 0x3FF`), row/column
       fine-scroll and the ALT tilemap set, the road chip's `$5F8` origin,
       and the sprite buffer swap.
-- [ ] Drive `hwroad` from the ported road generator, then retire
-      `draw_stage1` and `oroad`. Blocked on the main CPU's stage setup
-      (road control words, road palettes, scenery tiles via `$018798`), so
-      it lands with the main CPU port below.
-- [ ] Port main CPU object code, replacing `olevelobjs`: the dispatch loop,
-      player jet (`$016892`, `$01653A`-`$01657A`), weapons (`$0154B8`-
-      `$015638`), enemies (`$0088C2`, `$008AF2`, `$0091C0`, `$009626`)
-- [ ] Stage scripts, formations and spawn tables for all 25 stages, plus
-      collisions, scoring and stage transitions — the long pole
+
+### Remaining Phase 3 work, in order
+
+Every port follows the same rule: translate the routine
+instruction-by-instruction against the arcade memory layout, add an oracle
+test that diffs it against MAME, and only then wire it into the game. Each
+milestone ends with something visibly closer to the arcade in
+`./afterburner2`.
+
+**3a. Main CPU foundation**
+
+- [ ] `MainBus`, the main CPU's equivalent of `SubBus`: 22-bit map with
+      work RAM, the shared sub RAM window, tile/text RAM, sprite RAM,
+      palette, road control, I/O and the 315-5248/5249/5250 chips
+- [ ] 315-5250 compare/timer model: comparator, timer IRQ, and the
+      main → sound command latch (offsets `$B`/`$F`)
+- [ ] Main CPU write-set oracle capture (the `capture_subroad.lua`
+      pattern, keyed on main CPU PCs), with races and stack writes
+      handled the same way
+- [ ] Gameplay captures: drive MAME's inputs from Lua (coin, start,
+      stick, throttle, buttons) on a fixed script so captures cover real
+      play, not just attract mode
+
+**3b. Real road and scenery in the game (retires `draw_stage1` and `oroad`)**
+
+- [ ] Port stage setup: stage number and road control words into sub RAM,
+      road palettes, scenery tile upload (`$018798`)
+- [ ] Port the stage event / scenery scroll engine (`$018444`): tile RAM
+      streaming and the roll-adjusted horizontal scroll
+- [ ] Run `OSubRoad::frame` once per frame in the game and render through
+      `hwroad` instead of `draw_stage1`
+- [ ] Port the special road sequence (`$0016D4`/`$001758`, likely the
+      carrier take-off); needs the 315-5250 comparator
+- [ ] Delete `draw_stage1`, `oroad` and the Stage 1 terrain sprites
+
+**3c. Frame loop and sprite pipeline (retires `osprites`' reconstruction)**
+
+- [ ] Port the main CPU VBLANK handler (`$014674`): the 30/60 Hz split,
+      the double-buffer pointer swaps (`$2A3C04`-`$2A3C1C`), the
+      frame-update mutex, and lamps
+- [ ] Port `append_sprite` (`$00B628`) and the sorted-list blit to sprite
+      RAM (`$00B7C2`/`$00B7D2`), showing the interpolated `+$C00` list on
+      alternate frames
+- [ ] Run `OSubSprites` in the game between the two, so every sprite on
+      screen goes through the arcade's own sort and transform
+- [ ] Port the palette fade/flash (`$014A86`) and palette animation
+      (`$013F92`) subsystems
+- [ ] Run object logic at 30 Hz, as the arcade does (the reconstruction
+      runs at 60 Hz)
+
+**3d. Objects and flight (retires `olevelobjs`)**
+
+- [ ] Object dispatch loop over the 254 × 64-byte table (`$9FC0`-`$DF40`)
+- [ ] Input read: stick X/Y and throttle through the ADC, buttons, and
+      their mapping to the arcade's input bytes
+- [ ] Player jet: flight model and compound parts (`$016892`,
+      `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
+      road generator reads
+- [ ] Weapons: vulcan and missiles (`$0154B8`-`$015638`), missile reload
+      and the HUD sequencer (`$016C8A`)
+- [ ] Enemies: world-to-screen pipeline and the known handlers
+      (`$0088C2`, `$008AF2`, `$0091C0`, `$009626`); map the rest of the
+      handler table
+- [ ] The game's random number generator, ported exactly, since enemy
+      behaviour depends on it
+- [ ] Collisions and damage (the per-object scaled sizes at `$7800` are
+      a likely input), explosions, and losing a life
+- [ ] Main → sound commands from the ported code instead of the
+      reconstruction's hand-picked cues
+
+**3e. Stages and game flow**
+
+- [ ] Stage table: confirm the stage count and per-stage settings from
+      the ROM (the roadmap's earlier "25 stages" is unverified)
+- [ ] Stage scripts, formations and spawn tables for every stage
+- [ ] Stage transitions, refuelling stages (5, 13, 20 per
+      `ENGINE_NOTES.md`), the carrier take-off and landing sequences,
+      and bonus stages
+- [ ] Scoring, lives, continue, game over and the ending
+- [ ] Attract mode, title, high-score table and entry, NVRAM
+- [ ] Coins and credits, DIP switches and the service menu
+- [ ] Cover the paths attract mode never reaches, with gameplay
+      captures: the sprite pass's skip-sort flag, bucket spill and
+      top-and-bottom clip; the road's `$201` override, recentering
+      kick and the past-90-degree quadrant flag
+
+**3f. Proving it: identical gameplay**
+
+- [ ] Whole-game oracle: run the port and MAME from the same inputs and
+      compare work RAM every frame, then the rendered frames, for a full
+      credit through every stage
+- [ ] Once a subsystem matches, refactor it into readable C++ with the
+      oracle test kept as the safety net (Cannonball's approach)
 
 See `docs/ENGINE_NOTES.md` for the detailed, evolving write-up — treat it
 as "current best understanding," not verified fact, until a real port
