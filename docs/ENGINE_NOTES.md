@@ -1226,17 +1226,17 @@ Uncovered paths are kept explicit:
 - Input: dormant ROM debug-switch recording branches are translated but not
   exercised by the production ROM; arbitrary attract/debug stream exhaustion
   and every possible accumulator overflow are not exhaustively covered.
-- Player: damage/death `$E662` and its debris handlers, complete carrier/refuel
-  sequence controllers and their 3e flow/HUD callees remain unported. Recovery,
-  projection and attachment fixtures do not prove those controllers.
+- Player: damage/debris, companion and carrier controllers now have separate
+  checks below. Refuel controller `$16236/$E224`, later credit/lives callers
+  and host death/recovery remain unchecked; part fixtures do not prove them.
 - Player weapons: the six guided and ten free-flight targets reachable from
   the production jump tables are translated. Arbitrary malformed indices,
   every target trajectory/velocity combination, pool corruption and repeated
   exhaustion over a full credit are not covered.
-- Enemy/world: plane/formation `$10E6A` transitions, other world variants from
-  `$8946`, explosion setup `$90AC`, projectile collision `$8C1C` with its score
-  caller and other enemy missile families from `$1586C/$15968` onward remain
-  unported. Enemy collision flags are compared; lives/score flow stays 3e.
+- Enemy/world: the remaining horizon/world/tracking/burst/debris graphs now
+  have independent checks (see the latest handler continuation below).
+  `$10E6A` is a horizon strip, not a plane/formation. Stage formation/spawn
+  dispatch and the projectile-hit score caller `$E542` remain Phase 3e.
 - ADC/sound: no host conversion/IRQ wiring or command cadence equality is
   claimed. The native sound cues still run.
 - Host acceptance: native objects/flight/weapons and the history/coordinate
@@ -1504,3 +1504,114 @@ headless launch pass; Stage 1 audio RMS remains 903.949. The full oracle suite
 reports no differences, retaining its documented input-race skips. CMake is
 unavailable on this host, so its updated definitions remain unexecuted. ROMs,
 disassembly, captures and mutation variants remain ignored.
+
+
+## Phase 3d continuation: remaining independent handler graphs
+
+`OMainSequence` translates carrier `$10348..$10E68`: pool initialization,
+selector wait, all sixteen runtime controller states, speed/pitch goals,
+hull and paired aircraft/exhaust allocation, attachment IDs, projection,
+frame changes, previous positions and removal. State dispatch reads branch
+entries from ROM; sprite/text/palette/trajectory tables remain ROM reads.
+Its terminal state preserves the exact selector increment, missile HUD
+request and carrier text clear. This local caller check does not implement
+general stage/credit progression.
+
+The reset template `$10E6A` creates fifteen horizon segments, rather than an
+enemy formation as earlier notes proposed. `$10EB0/$10ED8/$10FBC` implement
+initial projection, shared rotation/strip step, optional drawing, frame
+selection and palette. The special player `$11116/$1112C` is gated by a
+sequence flag and selector sixteen; its caller, palette/road mode switches
+and later states remain in the stage/game-flow inventory for Phase 3e.
+
+`OMainWeapons::enemy` now also translates tracking/retarget
+`$1586C/$158A8/$1592A`, all sixteen launch-direction branch entries under
+`$15968`, their `$15A6A/$15AB6/$15B0A/$15B6E/$15BFE` handlers, burst
+allocation `$15C62..$15CB0`, flight `$15D26/$15D36/$15D9E`, impact `$15E6C`
+and `$15F48/$15F74/$16038` rotation/ground-debris paths through `$160A6`.
+Existing verified gate, shadow, trail, collision, RNG and removal routines
+are reused at their original calls. Byte SUBQ overflow and full-register
+MOVEQ results are retained.
+
+`OMainWorld::run` adds `$8946`'s world variant, projectile-hit `$8C1C`, hit
+marking `$9046`, explosion setup `$90AC` and gate-explosion
+`$9366/$93A0/$94B8`. A successful projectile hit calls score/game-flow
+`$E542`. That callee remains explicit: absent a supplied boundary callback,
+the port throws. The oracle stops before the ROM's BSR at `$8C9E`, compares
+ordered writes, registers and chips through `$9046`, and checks the terminal
+request. It does not replay score writes or claim a completed score call.
+The new depth fixtures exposed an existing `$8CC8` collision bug: `$8CE2`
+uses BLE after SUB.W, including signed overflow. The port now uses Z and
+N xor V. A deliberate reversion fails one directed record.
+
+Refuel setup `$161B8`, mechanics `$163C2/$163EC/$1641C/$164DA` and projection
+`$169D8..$16B88` are translated and checked independently, including bank
+sample-ring writes, comparator-limited alternating movement, signed DIVS,
+pitch profile/sentinel selection, frame and palette tables, position history
+and sprite requests. Controller `$16236` begins with `$E224` before any
+local write, so it throws at that named Phase 3e stage caller. Its later
+controller states, bonus/score/input/text/return-to-flight sequence remain
+unported. Later damage `$ED90/$EE6A/$EFA6/$F04E` belong to credit/continue
+flow, not independent flight mechanics; existing 3e boundaries remain.
+
+| Capture | Identical / captured | Skipped | Scope |
+| --- | ---: | ---: | --- |
+| `sequence_directed` | 2,235 / 2,240 | 5 | 35 entries × 64 isolated fixtures; carrier states 0..15 via `$103EA` |
+| `sequence_gameplay` | 2,400 / 2,400 | 0 | Early carrier setup, controller and paired parts; complete departure unverified |
+| `enemy_tracking_directed` | 1,472 / 1,472 | 0 | 23 entries × 64 isolated fixtures; all sixteen launch directions |
+| `enemy_tracking_gameplay` | 470 / 480 | 10 | Fresh-NVRAM scripted credit/attract run; bounded launch/tracking/debris calls |
+| `world_graph_directed` | 448 / 448 | 0 | Seven entries × 64; four `$E542` boundary prefixes |
+| `refuel_parts_directed` | 384 / 384 | 0 | Six entries × 64 isolated fixtures |
+
+The new directed calls inject only at the ROM's `$1408A/$1408C` idle compare
+loop, outside object-local stacks. Returning to an arbitrary CURPC could
+repeat an RTS and corrupt the suspended caller. After recording, the harness
+restores fixture inputs and its own RAM outputs, preserving bytes changed
+by the other CPU. Captures remain independent MAME execution; no port output
+is used to construct expected writes. Optional `AB2HND03` adds the terminal
+caller field; existing `AB2HND01/02` captures remain supported.
+
+Directed coverage includes carrier selector wait/ready and empty/available
+pools; horizon enabled/disabled; tracking timer expiry/wait and `$80` SUBQ
+overflow; insufficient/available burst pools; all sixteen launch selectors;
+eight explosion types; hit pool empty/available and score request; alternating
+refuel movement and fixed/scanned pitch profiles. The refuel fixtures split
+32 movement updates/32 waits and 21 fixed/43 scanned pitch selections.
+
+Coverage limits: no natural refuel helper or world-variant calls were reached
+in the bounded fresh-NVRAM captures (120 seconds); stage/spawn coverage awaits
+3e. Directed checks do not establish their live caller cadence. Carrier
+natural coverage is early sequence only, not a complete landing/departure.
+Every possible overflow, malformed table index, pool corruption, all
+explosion types/animation ends, full stage trajectories, death/credit and
+refuel sequences remain outside these fixtures. Host ADC/IRQ wiring,
+30/60 Hz player/weapon RAM/road/draw/latch/RGB equality and sound command
+cadence are still required. Phase 3d remains incomplete and `OLevelObjs`
+is retained.
+
+Reproduce directed/natural checks with `make oracle-capture-sequence`,
+`make oracle-capture-enemy-tracking`, `make oracle-capture-world-graph` and
+`make oracle-capture-refuel-parts`, then `make oracle-handlers`. Mutations use
+`tools/oracle/mutation_check.py` and temporary source copies under ignored
+`build/oracle/mutations`; production sources are never changed.
+
+Ten new mutations are rejected: carrier speed clamp, attachment ID, horizon
+step; tracking byte timer, burst velocity, ground-debris table; projectile-hit
+width and collision overflow; refuel speed and attitude slew. Directed races
+are five horizon calls; natural enemy races are one `$15BFE` and nine
+`$15D9E` calls. These records are skipped only when the sub CPU changed an
+actual input read by the port. All other compared records have zero differences.
+Natural enemy entries: `$1586C` 5, `$1592A` 100, `$15968` 1, `$15A6A` 1,
+`$15AB6` 16, `$15BFE` 19, `$15D9E` 338. This includes only launch selector
+4; natural `$158A8/$15E6C` and the other launch directions remain uncovered.
+
+Natural carrier controller entry states are 0..8 (114/20/20/22/23/13/16/6/10
+calls); states 9..15 are covered only by directed fixtures. The capture drops
+37 interrupted windows before recording its 2,400 completed calls. Natural
+enemy capture drops 46 interrupted windows before recording 480 calls; the
+replay separately skips ten sub-input races. The directed captures drop no
+interrupted windows.
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make oracle-test` and a 180-frame headless launch pass. Stage 1 audio RMS remains 903.949. CMake is unavailable
+on this host; its source/test definitions are updated but not executed.

@@ -5,7 +5,9 @@ foundations, input mapping, live flight/recovery and compound parts, player
 weapons/projectiles, reload/HUD, world projection/explosion/ground effects,
 scaled player collision, pre-lives damage controllers, the damage companion
 emission/animation/pool-reset graph, and the `$153E0..$156CE` enemy missile
-graph with shadows/trails. Observable ADC timing is checked separately.
+graph with shadows/trails. The remaining carrier/horizon, tracking/burst/debris,
+world/hit and refuel mechanic graphs now have separate checks below. Observable
+ADC timing is checked separately.
 Counts, coverage and limits are in `ENGINE_NOTES.md`. These ports remain
 unwired. Keep `OLevelObjs` and its adapter until all replacement handlers and
 the host boundary pass; the new routine ports do not establish host gameplay
@@ -27,15 +29,18 @@ or start Phase 3e based on this checkpoint.
   HUD or credit callee. Companion results: 1,408/1,408 directed and
   2,400/2,400 ordinary gameplay calls identical, 0 skipped; six mutations fail.
   These routine ports remain unwired.
-- **Next task:** trace the remaining sequence/carrier/refuel player caller
-  graph, starting with `$10348/$103C6/$103EA` and the reachable
-  `$10B82/$10BA8/$106F6/$1071C` callees. Identify its Phase 3d scope at actual
-  lives/HUD/credit/stage boundaries. These targets are traced next, not verified.
-  `$EC78/$CF46` and later credit flow remain Phase 3e. Inspect the existing
-  named later damage state targets before choosing more routine ports; do
-  not synthesize their flow or remove those boundaries. Then continue the
-  input/IRQ and host contract, remaining enemy families and paired acceptance
-  below. Companion checks do not establish host cadence or phase completion.
+- The remaining carrier graph `$10348..$10E68`, horizon strip
+  `$10E6A..$10FFE`, enemy tracking/burst/debris `$1586C..$160A6`, world
+  `$8946/$8C1C/$90AC/$9366/$93A0/$94B8`, and independent refuel mechanics
+  now have instruction-level ports and directed MAME checks. Results and
+  natural-call limits are in the latest `ENGINE_NOTES.md` section.
+- **Next task:** finish the input/IRQ and host contract, sound cadence and
+  paired acceptance below. Preserve the actual 3e caller boundaries:
+  `$8C1C` reaches scoring `$E542`; refuel controller `$16236` starts with
+  `$E224`; later damage `$EC78/$CF46` and credit/continue states remain 3e.
+  The carrier's exact selector increment/HUD request is checked locally;
+  it does not implement general stage progression. Refuel setup/part checks
+  do not verify controller states after `$E224`.
 - `OMainDamage` now independently checks `$E662`, intact/breakup
   `$E8D0/$E94E` states 0..6, fuselage `$F640`, and their projection/frame,
   trajectory, debris and attitude callees: 1,792/1,792 directed calls and
@@ -50,18 +55,18 @@ or start Phase 3e based on this checkpoint.
   intact initialization and controller entry states 0..4, ending with a
   state-5 request. Natural breakup and complete death/recovery remain
   unchecked. The damage text string clears spaces, so `$137E2`'s glyph
-  branch is unverified. States 7..11, carrier/refuel controllers and host
-  cadence are not established by the directed state-0..6 checks.
+  branch is unverified. States 7..11, refuel stage-flow and host cadence are not established by
+  the directed state-0..6 checks. Carrier results have separate coverage.
 - Live `$9810/$98C0`, shadow/exhaust, recovery `$9626/$964C`, and sequence
   `$1653A..$1657A/$1678E` are translated and independently checked. The live
   fuselage is slot 131 at `$C0C0`; the sequence compound is a different base.
   Pre-lives damage controllers and their companion graph are checked but
-  remain unwired. Finish the sequence caller graph, retaining actual
+  remain unwired. Preserve the verified carrier caller and refuel boundary, retaining actual
   score/lives/stage-flow callees as named 3e boundaries.
 - The independent handler capture now includes complete object and
   shared RAM at entry, D0..D7/A0..A6, main/sub multiplier and divider state,
   IO1 input and ordered RAM/I/O writes; ADC hardware timing is captured
-  separately. Preserve that contract for the remaining graph. The existing
+  separately. Preserve that contract when wiring the verified graphs. The existing
   dispatcher transcripts are external boundaries and cannot substitute for
   these handler oracles. Record changes made by the other CPU to actual
   read inputs; exclude active stacks and reject unrelated main writes.
@@ -79,8 +84,8 @@ or start Phase 3e based on this checkpoint.
   keep all calculations at their original word/long widths and use the bus
   math chips. Use the verified `$00C5A8` register contract where called.
 - Use the independently checked sequence updates `$1653A..$1657A` and
-  projection `$1678E` when connecting sequence parts. Their caller/controller
-  graph still needs translation; setup or part checks do not prove that flow.
+  projection `$1678E` when connecting sequence parts. The carrier controller now has separate checks; refuel controller
+  flow after `$16236/$E224` remains Phase 3e.
 - Verify shared bank/pitch/altitude, every compound object record, emitted
   requests, previous positions and the sub CPU's `$7800` size table.
 - Prove deliberate mutations fail before wiring a real player through the
@@ -88,18 +93,18 @@ or start Phase 3e based on this checkpoint.
 
 ## 3. Complete the rest of 3d
 
-- Extend beyond the verified player weapon graph and `$153E0..$156CE` enemy
-  missile graph to the other enemy families (`$1586C`, `$15968` and later
-  runtime jump-table targets). `$16C8A/$CFC4` reload/HUD is verified. Check
-  held/released fire, launch side, cooldown/reload, exhaustion, target changes, removal,
-  attachments and exact command/request/HUD write order.
-- Enemy graph: `$88C2/$8AF2/$91C0` and ground effects are verified; `$9626`
-  is player recovery. Continue formation/plane `$10E6A` and its transitions,
-  other world variants (`$8946` onward), explosion initialization `$90AC`,
-  projectile collision `$8C1C` and their reachable callees. Map
-  runtime transitions beyond the reset template inventory. Use directed
-  fixtures for handlers awaiting 3e stage/spawn dispatch, clearly labelled
-  as routine coverage.
+- Tracking/retarget `$1586C/$158A8/$1592A`, all sixteen `$15968` runtime
+  launch directions, bursts `$15C62..$15D36` and impact/debris through
+  `$160A6` now have directed checks. Natural coverage remains bounded and
+  does not establish all stage/spawn combinations or a whole credit.
+- `$10E6A` is the fifteen-segment horizon strip, not an enemy formation.
+  Its setup/projection/frame graph is now checked. World `$8946`, explosion
+  initialization `$90AC`, gate explosion `$9366/$93A0/$94B8`, projectile-hit
+  `$8C1C` and its marking helper `$9046` are checked. Four scoring paths
+  stop before `$E542`; the prefix oracle does not verify score flow.
+  Stage scripts, formations and spawn dispatch belong to 3e. The special
+  player `$11116/$1112C` is gated by the stage selector/sequence flag and
+  remains outside ordinary live flight, pending that caller's 3e contract.
 - Trace collision callers and scaled-size inputs, then translate damage,
   explosion and deletion paths. Keep score/lives/stage-flow requests as
   named unported 3e boundaries; introduce no native replacements.

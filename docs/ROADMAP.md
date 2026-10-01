@@ -93,7 +93,7 @@ the decoder needs extending; in a data table it's expected.
 
 **Picking the next task**: Phase 3c is complete; 3d foundations are verified,
 but 3d is not complete. Input, live-player, projectile and selected enemy
-handlers now have independent checks. Continue the remaining handler graph in
+handlers now have independent checks. Continue host acceptance in
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md), following
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
@@ -333,7 +333,7 @@ Implementation plan: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 Continuation: [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
 Independent input, live-flight, compound-part, projectile, reload/HUD, world
 effect and enemy-missile routine checks now pass. Host wiring, remaining
-enemy/damage handlers, sound cadence and paired player/weapon video acceptance
+stage/credit caller boundaries, sound cadence and paired player/weapon video acceptance
 remain incomplete. PR #10 delivers the latest verified checkpoint, adding
 the damage companion graph; the user authorized its merge before phase
 completion. Resume the remaining work in
@@ -354,17 +354,27 @@ and uncovered paths in `ENGINE_NOTES.md`.
       controllers through state 6, fuselage and debris match 1,792/1,792
       directed and 120/120 gameplay calls, 0 skipped. The companion emission,
       animation and pool-reset graph matches 1,408/1,408 directed and 2,400/2,400
-      gameplay calls, 0 skipped; six mutations fail. Later
-      sequence controllers and host replacement remain.
+      gameplay calls, 0 skipped; six mutations fail. Carrier/horizon graphs and
+      refuel mechanics now have separate checks; refuel stage-flow and host
+      replacement remain.
 - [ ] Weapons: vulcan and missiles (`$0154B8`-`$015638`), missile reload
       and the HUD sequencer (`$016C8A`). Player projectile/controller/pool,
-      reload/HUD and `$153E0..$156CE` enemy missile graph checks pass; other
-      enemy weapon families and host replacement remain.
+      reload/HUD, `$153E0..$156CE` and `$1586C..$160A6` enemy graphs pass
+      routine checks. Stage spawn dispatch and host replacement remain.
 - [ ] Enemies: world-to-screen pipeline and the known handlers
       (`$0088C2`, `$008AF2`, `$0091C0`); map the rest of the
       handler table. `$9626` is player recovery, not an enemy. Ground effects
       `$8D44/$8D58/$8E18/$8ECE` and player collision `$8CC8` are verified;
-      formations, other enemy transitions and projectile-hit dispatch remain.
+      world variants, explosion initialization, gate explosions and projectile
+      hits now pass directed checks through the `$E542` score boundary.
+      `$10E6A` is the horizon strip and is checked separately. Stage formation
+      dispatch and host replacement remain.
+- [x] Remaining independent handler graphs: carrier/horizon 2,235/2,240 directed (five sub-input races skipped),
+      tracking/burst/debris 1,472 directed, world/hits 448 directed (four score
+      prefixes), refuel mechanics 384 directed records identical, 0 skipped
+      for those three groups.
+      Ten deliberate mutations fail. Natural coverage and 3e boundaries are
+      listed in `ENGINE_NOTES.md`; these routine ports remain unwired.
 - [x] The game's random number generator `$00C5A8`, including zero-seed
       fallback and exact D0/D1 word/long returns. Natural and directed
       oracle checks pass, including the translated enemy missile caller.

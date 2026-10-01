@@ -15,6 +15,7 @@
 #include "engine/omaininput.hpp"
 #include "engine/omainplayer.hpp"
 #include "engine/omaindamage.hpp"
+#include "engine/omainsequence.hpp"
 #include "engine/omainweapons.hpp"
 #include "engine/omainworld.hpp"
 
@@ -43,7 +44,8 @@ int main(int argc, char** argv) try
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error(std::string("No object capture: ") + path);
     char magic[8]; read(in,magic,8);
-    const bool io_capture=!std::memcmp(magic,"AB2HND02",8);
+    const bool prefix_capture=!std::memcmp(magic,"AB2HND03",8);
+    const bool io_capture=prefix_capture || !std::memcmp(magic,"AB2HND02",8);
     if (!io_capture && std::memcmp(magic,"AB2HND01",8)) throw std::runtime_error("not a handler capture");
     if (!roms.load_aburner2()) return 1;
     MainBus::Memory memory;
@@ -63,6 +65,7 @@ int main(int argc, char** argv) try
             for(auto& v:r.a) v=u32(in);
             return r;
         };
+        const uint32_t terminal=prefix_capture ? u32(in) : 0;
         auto r=registers(), expected_r=registers();
         const uint8_t io_input=io_capture ? u32(in) : 0xff;
         uint16_t math_before[32], math_after[32];
@@ -142,10 +145,38 @@ int main(int argc, char** argv) try
                 else ++damage_paths["companion-active"];
             }
         }
+        if(entry==0x103ea)
+            ++damage_paths["carrier-state-"+std::to_string(bus.read16(0xffff90b0)&15)];
+        if(entry==0x103c6)
+            ++damage_paths[bus.read16(0x29c09c)==15 ? "carrier-selector-ready" : "carrier-selector-wait"];
+        if(entry==0x10b82 || entry==0x10ba8)
+            ++damage_paths[bus.read8(0xffff8e7f) ? "carrier-pool-available" : "carrier-pool-empty"];
+        if(entry==0x10ed8)
+            ++damage_paths[bus.read8(0x29c200)&0x20 ? "horizon-enabled" : "horizon-disabled"];
+        if(entry==0x1586c || entry==0x158a8) {
+            auto timer=bus.read8(r.a[5]+58);
+            ++damage_paths[timer==0x80 ? "tracking-subq-overflow" : int8_t(timer)<=1 ? "tracking-expire-input" : "tracking-wait-input"];
+        }
+        if(entry==0x15968)
+            ++damage_paths["launch-direction-"+std::to_string(bus.read16(r.a[5]+52))];
+        if(entry==0x15c62 || entry==0x15c7a || entry==0x15c94 || entry==0x15c9a || entry==0x15ca2 || entry==0x15caa || entry==0x15cb0)
+            ++damage_paths[bus.read8(0xffff8e7f)<6 ? "burst-pool-insufficient" : "burst-pool-available"];
+        if(entry==0x8c1c)
+            ++damage_paths[bus.read8(0xffff8d80) ? "world-hit-pool-available" : "world-hit-pool-empty"];
+        if(entry==0x90ac)
+            ++damage_paths["explosion-type-"+std::to_string(bus.read8(r.a[5]+24))];
+        if(entry==0x169d8) {
+            ++damage_paths[bus.read8(r.a[5]+52) ? "refuel-position-wait" : "refuel-position-update"];
+            ++damage_paths[bus.read16(0xffff90fc)==2 ? "refuel-pitch-fixed" : "refuel-pitch-scan"];
+        }
+        struct Boundary { uint32_t target; };
+        uint32_t observed_terminal=0;
         bus.trace=&trace;
+        try {
         if(entry==0xb0ac) OMainInput::update(bus,r);
         else if(entry==0x14976) OMainInput::buttons(bus,r);
         else if((entry>=0xe662 && entry<=0xecac) || (entry>=0xf3e2 && entry<=0x10346)) OMainDamage::run(bus,r,entry);
+        else if((entry>=0x10348 && entry<=0x10ffe) || entry==0x161b8 || entry==0x163c2 || entry==0x163ec || entry==0x1641c || entry==0x164da || entry==0x169d8) OMainSequence::run(bus,r,entry);
         else if(entry==0x9810) OMainPlayer::initialize(bus,r);
         else if(entry==0x98c0) OMainPlayer::update(bus,r);
         else if(entry==0x9c34) OMainPlayer::shadow_initialize(bus,r);
@@ -166,6 +197,8 @@ int main(int argc, char** argv) try
         else if(entry==0x9f08 || entry==0x9f22 || entry==0x9f44 || entry==0x9f5e)
             OMainWeapons::pool(bus,r,entry==0x9f44 || entry==0x9f5e,entry==0x9f08 || entry==0x9f44);
         else if(entry==0x9626 || entry==0x964c) OMainPlayer::recover(bus,r,entry);
+        else if(entry==0x8946 || entry==0x8c1c || entry==0x9046 || entry==0x90ac || entry==0x9366 || entry==0x93a0 || entry==0x94b8)
+            OMainWorld::run(bus,r,entry,[](uint32_t target,OMainObjects::Registers&) { throw Boundary{target}; });
         else if(entry==0x88c2) OMainWorld::initialize(bus,r);
         else if(entry==0x8af2) OMainWorld::update(bus,r);
         else if(entry==0x91c0) OMainWorld::explosion(bus,r);
@@ -181,9 +214,11 @@ int main(int argc, char** argv) try
         else if(entry==0xa9f2) OMainWeapons::trail_allocate(bus,r);
         else if(entry==0xaa32 || entry==0xaaee) OMainWeapons::trail(bus,r,entry==0xaa32);
         else if(entry==0xae32) OMainWeapons::remove(bus,r,true,false,false);
-        else if(entry>=0x14dc4 && entry<=0x1586a) OMainWeapons::enemy(bus,r,entry);
+        else if(entry>=0x14dc4 && entry<=0x160a6) OMainWeapons::enemy(bus,r,entry);
         else throw std::runtime_error("unknown handler entry");
+        } catch(const Boundary& stop) { observed_terminal=stop.target; }
         bus.trace=nullptr;
+        if(terminal) ++damage_paths[terminal==0xe542 ? "score-boundary-prefix" : "unknown-boundary-prefix"];
         if(entry==0xe662) ++damage_paths[bus.read32(r.a[5]+16)==0xe8d0 ? "initialize-intact" : "initialize-breakup"];
         if(entry==0xe8d0 || entry==0xe94e)
             ++damage_paths["controller-result-"+std::to_string(bus.read16(0xffff9124))];
@@ -194,7 +229,7 @@ int main(int argc, char** argv) try
                 ++damage_paths["companion-result-handler-"+std::to_string(bus.read32(r.a[5]+16))];
             if(!(bus.read8(r.a[5])&0x80)) ++damage_paths["companion-inactive-result"];
         }
-        bool contract=r.d==expected_r.d && r.a==expected_r.a;
+        bool contract=r.d==expected_r.d && r.a==expected_r.a && terminal==observed_terminal;
         bool chips=true;
         // Sub chip snapshots are inputs; their concurrent outputs belong to
         // the other CPU. Only compare chips this handler actually owns.
@@ -244,7 +279,7 @@ int main(int argc, char** argv) try
     for(auto& [entry,n]:outcomes) std::cout << ' ' << std::hex << entry << std::dec << '=' << n[0] << '/' << n[1] << '/' << n[2];
     std::cout << '\n';
     if(!damage_paths.empty()) {
-        std::cout << "Damage path coverage (captured, including any races):";
+        std::cout << "Handler path coverage (captured, including any races):";
         for(const auto& [name,n]:damage_paths) std::cout << ' ' << name << '=' << n;
         std::cout << '\n';
     }
