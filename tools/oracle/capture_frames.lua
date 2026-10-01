@@ -25,6 +25,9 @@ local out_path = os.getenv("AB2_ORACLE_OUT") or "frames.bin"
 local max_records = tonumber(os.getenv("AB2_ORACLE_PASSES") or "300")
 local stride = tonumber(os.getenv("AB2_ORACLE_STRIDE") or "5")
 local skip = tonumber(os.getenv("AB2_ORACLE_SKIP") or "120")
+if os.getenv("AB2_ORACLE_GAMEPLAY") == "1" then
+  dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")) .. "/gameplay.lua")
+end
 
 local main = manager.machine.devices[":mainpcb:maincpu"]
 local sub = manager.machine.devices[":mainpcb:subcpu"]

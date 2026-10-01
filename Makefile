@@ -24,6 +24,10 @@ SRCS = \
 	src/main/engine/olevelobjs.cpp \
 	src/main/engine/oengine.cpp
 
+# The verified bus/ADC foundation is built but is not called by the
+# reconstruction's frame loop until later milestones port its handlers.
+SRCS += src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp
+
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
 -include $(DEPS)
@@ -49,6 +53,8 @@ test:
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEST_SRCS) -o build/engine_regression
 	./build/engine_regression
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/mainbus_regression.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o build/mainbus_regression
+	./build/mainbus_regression
 
 .PHONY: test
 
@@ -75,6 +81,20 @@ oracle-capture:
 	tools/oracle/capture.sh tools/oracle/capture_subroad.lua build/oracle/subroad.bin 1800 120
 	tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames.bin 300 120
 	AB2_ORACLE_NO_SPRITES=1 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_nosprites.bin 100 60
+	$(MAKE) oracle-capture-main
+
+oracle-capture-main:
+	@mkdir -p build/oracle
+	tools/oracle/capture.sh tools/oracle/capture_compare.lua build/oracle/compare.bin 300 30
+	tools/oracle/capture.sh tools/oracle/capture_main.lua build/oracle/main.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_main.lua build/oracle/main_gameplay.bin 1800 60
+	$(MAKE) oracle-capture-gameplay
+
+oracle-capture-gameplay:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=420 tools/oracle/capture.sh tools/oracle/capture_subsprites.lua build/oracle/subsprites_gameplay.bin 1200 90
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=420 tools/oracle/capture.sh tools/oracle/capture_subroad.lua build/oracle/subroad_gameplay.bin 1800 90
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=540 AB2_ORACLE_STRIDE=3 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_gameplay.bin 300 60
 
 ORACLE_SRCS = src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp
 VIDEO_SRCS = src/main/romloader.cpp src/main/roms.cpp $(filter src/main/hwvideo/%,$(SRCS)) src/main/engine/osprites.cpp
@@ -84,9 +104,17 @@ oracle-test:
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subsprites.cpp src/main/engine/osubsprites.cpp $(ORACLE_SRCS) -o build/oracle_subsprites
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subroad.cpp src/main/engine/osubroad.cpp $(ORACLE_SRCS) -o build/oracle_subroad
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_video.cpp $(VIDEO_SRCS) -o build/oracle_video
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_main.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp $(ORACLE_SRCS) -o build/oracle_main
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_compare.cpp -o build/oracle_compare
 	./build/oracle_subsprites
 	./build/oracle_subroad
 	./build/oracle_video build/oracle/frames.bin
 	./build/oracle_video build/oracle/frames_nosprites.bin
+	./build/oracle_compare
+	./build/oracle_main
+	./build/oracle_main build/oracle/main_gameplay.bin
+	./build/oracle_subsprites build/oracle/subsprites_gameplay.bin
+	./build/oracle_subroad build/oracle/subroad_gameplay.bin
+	./build/oracle_video build/oracle/frames_gameplay.bin
 
-.PHONY: oracle-capture oracle-test
+.PHONY: oracle-capture oracle-capture-main oracle-capture-gameplay oracle-test

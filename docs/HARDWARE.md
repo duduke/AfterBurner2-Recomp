@@ -42,10 +42,10 @@ other X-Board games only.
   dividers (one pair per CPU) exist for the scaling/perspective math the
   sprite scaler leans on heavily — real hardware offloaded this; a native
   port can just do the math in software.
-- Sound "command" delivery to the Z80 rides on the compare/timer chip's
-  Z80-side port (`sound_portmap` `0x40`), not a discrete soundlatch device
-  — the exact command-byte protocol lives in `segaic16_m.cpp`
-  (`sega_315_5250_compare_timer_device`), not read yet.
+- Sound command delivery rides on the main compare/timer chip: writes at
+  word offsets `$B`/`$F` latch `data & $FF` and assert Z80 NMI; Z80 port
+  `$40` reads the latch and clears NMI. Main offset `$9`/`$D` reads/writes
+  separately acknowledge timer IRQ2 (`hwmath/compare_timer.hpp`).
 
 ## 2. Main CPU memory map (`segaxbd_state::main_map`)
 
@@ -442,12 +442,12 @@ Shared verbatim with the original `aburner` set.
 
 ## Open questions to resolve before/while porting the relevant subsystem
 
-- Exact sound "command" protocol between main CPU and Z80 rides through
-  the `sega_315_5250_compare_timer_device` (`segaic16_m.h`/`.cpp`, not
-  yet read) — needed before porting sound-trigger logic.
+- The 315-5250 register/IRQ/sound-latch protocol is modeled and checked
+  against MAME (Phase 3a, `ENGINE_NOTES.md`); command cadence from the
+  complete main CPU sound sequencer is still unported.
 - ADC0804 conversion timing (`machine/adc0804.*`, not yet read) — only
   matters if analog stick/throttle timing needs to be cycle-accurate.
-- CXD1095 I/O chip semantics (`machine/cxd1095.*`, not yet read) — needed
-  for exact input-port bit mapping beyond what's summarized in §5.
+- CXD1095 register semantics are modeled (`hwmath/io_expander.hpp`);
+  the main CPU input mapping and ADC conversion scheduling remain for 3d.
 - Sub CPU memory map (`segaxbd_state::sub_map`) hasn't been fully
   transcribed here yet — read it before starting the sub-CPU logic port.

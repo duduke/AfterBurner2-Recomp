@@ -38,7 +38,7 @@ python3 tools/m68k_disasm.py /tmp/maincpu.bin 144A2 14820
 | 42 (TRAP #10) | `$00014818` | Not yet examined |
 | 44 (TRAP #12) | `$0001483C` | Called once during reset right after the hardware-init sequence; not yet examined |
 
-## RAM layout (deduced, not yet cross-checked against `sub_map`)
+## RAM layout (cross-checked against the hardware maps in Phase 3a)
 
 **There is no separate general-purpose work RAM region on the main CPU** —
 only the two documented NVRAM regions (`backup1`/`backup2`,
@@ -64,16 +64,12 @@ only the two documented NVRAM regions (`backup1`/`backup2`,
   it explains why persistent-looking state (e.g. the NVRAM signature check
   in the reset routine, see below) and everyday game-state flags all show
   up in the same address neighborhood.
-- The larger structures referenced with **full 32-bit absolute** addresses
-  (`$0029C0xx`, `$002A3Cxx`) are further into the *un-mirrored* backup1/2
-  ranges themselves (`$080000-$083FFF` / `$0A0000-$0A3FFF`, both only
-  16KB) — e.g. `$29C0D6` is `backup1`'s real address (not its high mirror),
-  `$2A3C00`-ish is `backup2`'s. Not yet clear why the code mixes short
-  (mirrored, `$8000+`) and full 32-bit (unmirrored, `$0029xxxx`/`$002Axxxx`)
-  forms for what appears to be the same underlying 16KB regions — possibly
-  just compiler/assembler register-relative-vs-absolute choices, possibly
-  a real distinction (e.g. different halves of each chip). Worth resolving
-  before relying on address arithmetic between the two forms.
+- Full addresses `$0029C0xx` and `$002A3Cxx` refer to **shared sub RAM**,
+  not backup1/backup2. `$29C0D6` aliases subram0 `$2800D6` (sub CPU
+  `$09C0D6`); `$2A3C00` is subram1 (sub CPU `$0A3C00`). These are two
+  separate 16KB banks, independent of the main's battery-backed work RAM.
+  `MainBus` preserves that distinction and shares the same bytes with
+  its `SubBus` instance.
 
 ## Reset routine (`$000144A2`)
 
@@ -600,6 +596,100 @@ Bugs this found: `hwroad` was missing the chip's `$5F8` horizontal origin
 (the ground rendered as a solid fill), `hwtiles` had no row/column scroll
 or ALT tilemap set (the attract mode's rocks are drawn through it), and the
 sprite buffer swap is an exchange of the two halves, not a copy.
+
+## Main CPU foundation (Phase 3a) — implemented and tested
+
+`engine/mainbus.*` implements the 22-bit main map, big-endian byte/word/long
+accesses, all documented RAM mirrors, main/sub ROM views, low-byte ADC and
+I/O ports, math-chip byte masks, sprite draw swaps, and road control swaps.
+The main's work RAM is independent of shared RAM. The sub-side math chips,
+shared RAM and CPU-visible road RAM are the same instances used by `SubBus`.
+`hwmath/io_expander.hpp` models the CXD1095's nibble directions on A-D,
+individual directions on E, write-only control registers, and latched
+outputs. I/O callbacks expose inputs, ADC selection, lamps and sound reset;
+video writes/swap/control and timed ADC conversion are host endpoints.
+This is a bus for literal ports, not a 68000 interpreter. Only aligned
+word/long accesses are supported; CPU address-error exceptions are outside
+its scope. The reconstruction does not call the new bus or routine yet.
+
+**315-5250.** `hwmath/compare_timer.hpp` models signed bounds (in either
+order), clamp/result flags, the 16-bit comparison history, the no-history
+value alias, timer reload/enable aliases, read/write IRQ acknowledgements,
+and the main-to-Z80 command latch with NMI acknowledgement on sound reads.
+EXCK advances only on rising edges. The terminal value `$FFF` interrupts
+on the following rising edge, even if counting is disabled, and reloads
+from register 8's low 12 bits. The X-Board clocks only the main chip from
+scanline parity; the sub comparator has no timer clock connection.
+Sound writes are delivered at the host call boundary; a future CPU host
+must schedule that boundary as MAME's synchronized delivery does.
+
+`tools/oracle/capture_compare.lua` captures the real boot's bus traffic,
+Z80 latch reads and board timer IRQ flag, plus directed sub-chip comparator
+probes through a mirrored window. `tests/oracle_compare.cpp` replays these
+operations and raster edges independently through the model:
+**2,438 of 2,438 events identical, 0 skipped**, including 1,100 asserted
+IRQ acknowledgements, 581 sound reads and 62 comparator writes. The initial
+screen phase matters: MAME begins at line 224. The capture queries
+`screen:time_until_pos(1)` for the first EXCK rising edge rather than
+assuming the first edge is 64 us after reset. Frame checkpoints verify the
+IRQ flag even while the CPU is not touching the chip.
+
+Hardware-oracle coverage: below/inside/above signed bounds, reversed and
+extreme bounds, all readable comparator registers and aliases, high/low
+byte merges, clearing history, 18 history updates (only 16 visible bits),
+no-history updates, mirrored sub accesses, the boot's `$FE0` timer reload
+and enable, real write acknowledgements, and real sound-latch data.
+Disabled-terminal IRQs, read acknowledgements, alternate reload/enable
+aliases and `$F`/high-byte sound writes have ROM-free regression checks,
+not directed MAME probes. History wrap after 256 updates, arbitrary timer
+reloads, ADC conversion timing, whole-map rendered integration and complete
+main IRQ handlers remain unverified. No claims of whole-game fidelity.
+
+**Main CPU oracle.** `engine/omainadc.cpp` translates ROM
+`$014626`–`$01465A` instruction by instruction: read the completed ADC
+sample, store it in the six-byte ring at `$8892`, advance/wrap the index
+at `$8890`, update `$8B6F`'s channel bits, write port C and start the next
+conversion. It deliberately ends before `$014660`'s unported `$00B7F8`
+call; IRQ entry/exit and acknowledgement belong to the complete handler.
+The completed ADC byte is captured as an external input, not a fabricated
+conversion. `capture_main.lua` snapshots all MainBus RAM before/after,
+logs main-only write sets keyed on these PCs, and separately logs sub CPU
+writes. A replay is a race only if the sub CPU wrote a byte the port read
+(including writes restored to their original value). Main stack bytes
+`$FE00`–`$FFFF` are excluded; writes from another main routine drop the
+window. I/O write addresses, active byte masks/data and actual port-C
+output are compared as well as written RAM bytes.
+
+Results: **600 of 600 attract records identical, 0 skipped**; **1,800 of
+1,800 gameplay records identical, 0 skipped**; no abnormal windows dropped.
+All six ring slots and the wrap branch execute: 100 samples per slot/100
+wraps in attract, 300 per slot/300 wraps in gameplay. Captures contain three
+and eight distinct ADC byte values respectively. Negative/out-of-range
+corrupt ring indices are not exercised. Input mapping/flight response and
+the full timer/sound sequencer are still later ports.
+
+**Scripted play.** `tools/oracle/gameplay.lua` inserts a coin at frame
+360, presses Start at 420, then moves the stick through four fixed positions,
+alternates throttle and holds Vulcan with periodic Missile presses from
+frame 480. The real game supplies all behavior; no RAM cheats. A local MAME
+snapshot at frame 900 confirms live Stage 1 play. `AB2_ORACLE_GAMEPLAY=1`
+uses this same script for the main, sub sprite/road and video captures;
+`AB2_ORACLE_SKIP` selects the capture window for the latter three.
+
+Additional gameplay results: sprite pass **1,198 of 1,200 identical, two
+skipped for input races**; road **1,800 of 1,800 identical, 0 skipped,
+0 unported special sequences**; video **300 of 300 pixel-identical**.
+These captures do not yet prove every rare sprite/road path or every stage.
+The prior attract captures retain their documented results.
+
+**Sensitivity checks.** Changing the ADC wrap constant from 6 to 5 makes
+100 of 600 records differ. Changing the comparator's below-bound flag from
+`$8000` to `$4000` makes 8 of 2,438 events differ. Both mutations were reverted
+and the original oracles rerun. `make test` includes ROM-free MainBus/chip
+checks; `make oracle-capture-main` regenerates all new hardware/main/gameplay
+captures. `make oracle-test` includes them. Capture failures, Lua errors and
+runs that expire without completion now return failure from `capture.sh`.
+Captures and snapshots remain local and gitignored.
 
 ## Open threads to pick up next
 

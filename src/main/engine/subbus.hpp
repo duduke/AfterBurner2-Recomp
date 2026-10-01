@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include "hwmath/sega_math.hpp"
+#include "hwmath/compare_timer.hpp"
 
 class SubBus
 {
@@ -41,6 +42,12 @@ public:
 
     Mul5248 mul;
     Div5249 div;
+    mutable CompareTimer5250 compare_timer; // acknowledge-on-read register
+    // Both bus views operate on the same road buffer and control endpoint.
+    std::function<void()> road_swap;
+    std::function<void(uint8_t)> road_control;
+    uint8_t* shared_data() const { return shared; }
+    uint8_t* road_data() const { return road; }
 
     // Test instrumentation: when set, every byte of shared/road RAM a
     // routine reads or writes is marked (1) in these byte-per-byte arrays.
