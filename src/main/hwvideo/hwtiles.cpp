@@ -74,95 +74,67 @@ void HWTiles::latch_frame_registers()
     }
 }
 
-void HWTiles::draw_page(uint16_t* pixels, uint8_t* priority, int width, int height,
-                         int page, int ox, int oy, int category, uint8_t priority_mark) const
-{
-    // Cheap reject: this page's 512x256px block doesn't touch the screen at all.
-    if (ox + 512 <= 0 || ox >= width || oy + 256 <= 0 || oy >= height)
-        return;
-
-    const uint16_t* page_ram = tile_ram + static_cast<uint32_t>(page) * PAGE_WORDS;
-
-    for (int ty = 0; ty < PAGE_ROWS; ty++)
-    {
-        const int py0 = oy + ty * 8;
-        if (py0 + 8 <= 0 || py0 >= height)
-            continue;
-
-        for (int tx = 0; tx < PAGE_COLS; tx++)
-        {
-            const int px0 = ox + tx * 8;
-            if (px0 + 8 <= 0 || px0 >= width)
-                continue;
-
-            const uint16_t entry = page_ram[ty * PAGE_COLS + tx];
-            if (static_cast<int>((entry >> 15) & 1) != category)
-                continue;
-
-            const int color = (entry >> 6) & 0x7f;
-            const uint32_t code = entry & 0x1fff;
-
-            for (int y = 0; y < 8; y++)
-            {
-                const int py = py0 + y;
-                if (py < 0 || py >= height)
-                    continue;
-                uint16_t* prow = pixels + py * width;
-                uint8_t* prirow = priority + py * width;
-
-                for (int x = 0; x < 8; x++)
-                {
-                    const int px = px0 + x;
-                    if (px < 0 || px >= width)
-                        continue;
-                    const uint8_t pix = tile_pixel(code, x, y);
-                    if (pix == 0)
-                        continue; // transparent
-                    prow[px] = static_cast<uint16_t>(COLOR_BASE + color * 8 + pix);
-                    prirow[px] |= priority_mark;
-                }
-            }
-        }
-    }
-}
-
-void HWTiles::draw_virtual(uint16_t* pixels, uint8_t* priority, int width, int height,
-                            uint16_t pageselect, int xscroll, int yscroll,
-                            int category, uint8_t priority_mark) const
-{
-    // The virtual surface is 1024x512px: 2x2 quadrants of one 512x256px page
-    // each, so scrolling wraps seamlessly across page boundaries. xscroll is
-    // 10 bits (0-1023), yscroll 9 bits (0-511).
-    const int leftcol = (xscroll >> 9) & 1;
-    const int topcol = (yscroll >> 8) & 1;
-    const int sx0 = -(xscroll & 511);
-    const int sx1 = sx0 + 512;
-    const int sy0 = -(yscroll & 255);
-    const int sy1 = sy0 + 256;
-
-    for (int qcy = 0; qcy < 2; qcy++)
-    {
-        const int oy = (qcy == topcol) ? sy0 : sy1;
-        for (int qcx = 0; qcx < 2; qcx++)
-        {
-            const int nibble = qcy * 2 + qcx;
-            const int page = (pageselect >> (nibble * 4)) & 0xf;
-            const int ox = (qcx == leftcol) ? sx0 : sx1;
-            draw_page(pixels, priority, width, height, page, ox, oy, category, priority_mark);
-        }
-    }
-}
-
+// One tile layer, as tilemap_16b_draw_layer + draw_virtual_tilemap in
+// segaic16.cpp. The layer is a 1024x512 virtual surface of four 512x256
+// pages (one nibble of the page-select word per quadrant); each screen pixel
+// samples it at (x + xscroll, y + yscroll), wrapping.
+//
+// Per 8-pixel row, the table at text RAM $F80 (FG) / $FC0 (BG) can override
+// the X scroll (when the X scroll register's bit 15 is set) and, with its own
+// bit 15, switch that row to the alternate register set (ALT-FG/ALT-BG:
+// another page-select word and scroll pair). Per 16-pixel column (offset by
+// 8), the table at $F16 / $F56 overrides the Y scroll when the Y scroll
+// register's bit 15 is set. Both tables are read live. The X scroll is
+// mirrored about the hardware's $C0 origin.
 void HWTiles::draw_layer(uint16_t* pixels, uint8_t* priority, int width, int height,
                           int which, int category, uint8_t priority_mark) const
 {
-    // NOTE: uses only the flat global x/y scroll (ignores the column-scroll and
-    // row-scroll fine tables and the ALT-tilemap-per-row override — see the
-    // "known simplification" note in hwtiles.hpp).
-    const uint16_t pageselect = latched_pageselect[which];
-    const int yscroll = latched_yscroll[which] & 0x1ff;
-    const int xscroll = latched_xscroll[which] & 0x3ff;
-    draw_virtual(pixels, priority, width, height, pageselect, xscroll, yscroll, category, priority_mark);
+    const uint16_t xscroll = latched_xscroll[which];
+    const uint16_t yscroll = latched_yscroll[which];
+    const uint16_t pages = latched_pageselect[which];
+    const bool column_scroll = (yscroll & 0x8000) != 0;
+    const uint32_t row_table = 0xf80 / 2 + 0x20 * static_cast<uint32_t>(which);
+    const uint32_t column_table = 0xf16 / 2 + 0x20 * static_cast<uint32_t>(which);
+
+    for (int y = 0; y < height; y++)
+    {
+        const uint16_t rowscroll = text_ram[row_table + static_cast<uint32_t>(y / 8)];
+        const bool alternate = (rowscroll & 0x8000) != 0;
+        uint16_t* prow = pixels + y * width;
+        uint8_t* prirow = priority + y * width;
+
+        for (int x = 0; x < width; x++)
+        {
+            uint16_t ex, ey, ep;
+            if (alternate)
+            {
+                ex = latched_xscroll[which + 2];
+                ey = latched_yscroll[which + 2];
+                ep = latched_pageselect[which + 2];
+            }
+            else
+            {
+                ex = (xscroll & 0x8000) ? rowscroll : xscroll;
+                ey = column_scroll ? text_ram[column_table + static_cast<uint32_t>((x + 8) / 16)] : yscroll;
+                ep = pages;
+            }
+            ex = static_cast<uint16_t>((0xc0 - ex) & 0x3ff);
+            ey = static_cast<uint16_t>(ey & 0x1ff);
+
+            const uint32_t vx = (static_cast<uint32_t>(x) + ex) & 0x3ff;
+            const uint32_t vy = (static_cast<uint32_t>(y) + ey) & 0x1ff;
+            const uint32_t page = (ep >> ((((vy >> 8) * 2) + (vx >> 9)) * 4)) & 0xf;
+            const uint16_t entry = tile_ram[page * PAGE_WORDS + ((vy & 255) >> 3) * PAGE_COLS + ((vx & 511) >> 3)];
+            if (static_cast<int>((entry >> 15) & 1) != category)
+                continue;
+
+            const uint8_t pix = tile_pixel(entry & 0x1fff, static_cast<int>(vx & 7), static_cast<int>(vy & 7));
+            if (pix == 0)
+                continue; // transparent
+            prow[x] = static_cast<uint16_t>(COLOR_BASE + ((entry >> 6) & 0x7f) * 8 + pix);
+            prirow[x] |= priority_mark;
+        }
+    }
 }
 
 void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int height,

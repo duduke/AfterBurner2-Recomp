@@ -36,8 +36,8 @@ public:
     // sprite RAM window, per docs/HARDWARE.md section 2).
     void write16(uint32_t byte_addr, uint16_t data);
 
-    // A CPU write to the draw-trigger address (110000-11FFFF) latches the
-    // current sprite list for rendering — call this from that handler.
+    // A CPU write to the draw-trigger address (110000-11FFFF) swaps the CPU's
+    // sprite list in for rendering — call this from that handler.
     void swap();
 
     // Render all active sprites into a `width`x`height` buffer of raw

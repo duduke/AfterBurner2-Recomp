@@ -170,6 +170,10 @@ reverse-engineered from scratch.
 - Shared `roadram` holds, per scanline: two control/position words
   (offsets `0x000+y`, `0x100+y`), per-line horizontal-position tables
   (`0x200`, `0x400`), and a color-select table (`0x600`).
+- The horizontal-position words are relative to a fixed chip origin of
+  `0x5F8`: the strip's starting column is `(hpos - (0x5F8 + xoffset)) &
+  0xFFF`. Leaving the origin out puts every line off the road texture, so
+  the ground renders as a solid fill.
 - Reading the road control register swaps "live" vs. "buffered" halves of
   road RAM — this double-buffering is the actual vblank-sync mechanism
   for the road layer (CPU builds next frame's table while current one
@@ -233,10 +237,12 @@ bit 15 is a column-scroll/row-scroll *enable* flag; when set, per-16px-
 column (`0xF16-0xF3F` FG, `0xF56-0xF7F` BG) or per-8px-row (`0xF80-0xFB7`
 FG, `0xFC0-0xFF7` BG, whose top bit also selects the ALT-FG/ALT-BG tilemap
 for that 8px-tall band instead) fine-scroll tables apply instead of the
-flat register value — used for raster effects. **Not yet implemented in
-our port** (see `src/main/hwvideo/hwtiles.hpp`) since there's no ported
-game logic yet to exercise/verify it against; only the flat per-layer
-scroll is implemented so far.
+flat register value — used for raster effects. After Burner II's attract
+mode uses the row-scroll/ALT path (the rock formations are drawn through
+it), so it is not optional. Implemented in `src/main/hwvideo/hwtiles.cpp`
+and verified pixel-for-pixel against MAME's rendered frames (see
+`docs/ENGINE_NOTES.md`, "Video oracle"). The effective x-scroll is
+`(0xC0 - xscroll) & 0x3FF` — the 0xC0 origin is fixed by the hardware.
 
 The 6 registers at `0xE80-0xE9E` (page-select + flat scroll, for all 4 of
 FG/BG/ALT-FG/ALT-BG) are **latched once per frame** (real hardware: at

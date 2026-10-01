@@ -30,6 +30,9 @@ public:
 
     void write(uint32_t offset, uint16_t data) { regs[offset & 1] = data; }
 
+    // Restore captured state (both registers are readable on hardware).
+    void load(uint16_t a, uint16_t b) { regs[0] = a; regs[1] = b; }
+
 private:
     uint16_t regs[2] = {};
 };
@@ -65,6 +68,14 @@ public:
         }
         if (offset & 8)
             execute((offset & 4) != 0);
+    }
+
+    // Restore captured state: registers 0-2 and 4-6 (register 3 is never
+    // read or used by a divide).
+    void load(const uint16_t r[6])
+    {
+        regs[0] = r[0]; regs[1] = r[1]; regs[2] = r[2];
+        regs[4] = r[3]; regs[5] = r[4]; regs[6] = r[5];
     }
 
 private:

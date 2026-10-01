@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include "hwvideo/hwsprites.hpp"
 
@@ -36,9 +37,11 @@ void HWSprites::write16(uint32_t byte_addr, uint16_t data)
     ram[(byte_addr >> 1) & (SPRITE_WORDS - 1)] = data;
 }
 
+// The two halves are exchanged, as on hardware (MAME draw_write): the CPU
+// then sees the list that was being displayed.
 void HWSprites::swap()
 {
-    std::memcpy(ram_buffer, ram, sizeof(ram));
+    std::swap_ranges(ram, ram + SPRITE_WORDS, ram_buffer);
 }
 
 void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, int origin_y, unsigned priority_mask) const

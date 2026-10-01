@@ -120,11 +120,22 @@ disassembled and read directly.
       output is never displayed because the Stage 1 view replaces the road
       hardware path. Each piece is to be replaced by a verified port (see
       `STAGE1_FIDELITY.md`).
-- [ ] Port the sub CPU road generator (`$000C0A`, `$000F4C`, `$000F70`) and
-      drive `hwroad` from it; fix `hwtiles` layer scroll (`(0xC0 - scroll) &
-      0x3FF`, MAME `segaic16.cpp`) and add the row/column fine-scroll + ALT
-      tilemap support Stage 1's banked scenery uses; then retire
-      `draw_stage1` and `oroad`
+- [x] Sub CPU road generator ported (`engine/osubroad`, sub ROM
+      `$00046A`-`$00052C`: bank/pitch easing, rotation, horizon, and the
+      per-scanline raster that banks the ground): writes exactly the
+      arcade's bytes on 1,798 of 1,800 attract-mode frames. The special
+      sequence (`$0016D4`/`$001758`, likely the carrier take-off) isn't
+      ported yet.
+- [x] Video hardware layer verified against MAME's rendered frames
+      (`tests/oracle_video.cpp`): 300 of 300 attract-mode frames, and 100 of
+      100 with sprites removed, are pixel-identical. Fixed on the way:
+      `hwtiles` layer scroll (`(0xC0 - scroll) & 0x3FF`), row/column
+      fine-scroll and the ALT tilemap set, the road chip's `$5F8` origin,
+      and the sprite buffer swap.
+- [ ] Drive `hwroad` from the ported road generator, then retire
+      `draw_stage1` and `oroad`. Blocked on the main CPU's stage setup
+      (road control words, road palettes, scenery tiles via `$018798`), so
+      it lands with the main CPU port below.
 - [ ] Port main CPU object code, replacing `olevelobjs`: the dispatch loop,
       player jet (`$016892`, `$01653A`-`$01657A`), weapons (`$0154B8`-
       `$015638`), enemies (`$0088C2`, `$008AF2`, `$0091C0`, `$009626`)
