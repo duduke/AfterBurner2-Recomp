@@ -66,5 +66,8 @@ Update `ROADMAP.md`, `ENGINE_NOTES.md` and the fidelity notes, remove replaced
 native code, then commit and deliver a separate PR. Whole-credit RAM/video and
 waveform equality remain 3f/audio acceptance work.
 
-Start with the dispatcher/initializer capture and handler inventory; that
-establishes the record and entry-register contract for all later 3d ports.
+Dispatcher/initializer, RNG, sequence compound setup/hiding and sound-ring
+foundations now have oracle checks. Phase 3d remains incomplete; resume at
+[PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md). The dispatcher establishes
+traversal/callback contracts only. Each actual handler still needs its complete
+entry RAM, math-chip/I/O inputs and independent execution oracle before wiring.

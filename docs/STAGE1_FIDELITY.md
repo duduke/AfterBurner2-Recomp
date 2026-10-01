@@ -56,6 +56,15 @@ favor of the arcade global priority. This is not verified object behavior.
 Host boot still chooses ordinary flight and a terminal airframe palette phase;
 credits, compound player setup and service/attract dispatch remain 3d/3e.
 
+Phase 3d now has independent checks for input mapping/buttons, live flight,
+recovery and compound parts, player projectiles, reload/HUD, world projection,
+ground effects, scaled player collision and a paired enemy missile/shadow/trail
+graph, alongside the earlier dispatcher/RNG/sound ring. Observable ADC result
+and timer/mux timelines also match MAME. These ports remain unwired until the
+remaining enemy/damage handlers and actual host ADC/IRQ caller are verified.
+`OLevelObjs`, its request adapter and native sound cues therefore remain.
+This foundation does not change the native flight or combat experience.
+
 Formation cadence/trajectories, aiming, projectile motion, hitboxes, scoring
 and the 3,600-logic-tick duration remain native rules. Original fighter art is
 reused, but exact attitude selection/animation timing is still future work.

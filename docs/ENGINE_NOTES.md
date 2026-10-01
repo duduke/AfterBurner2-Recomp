@@ -417,17 +417,22 @@ The two fixed function calls in Main CPU VBLANK were mapped out:
 
 ## Object / Task System (`$9FC0`)
 
-The object table spans `$9FC0` to `$DF40` in `backup1` mirror RAM, comprising **254 slots of 64 bytes each** (`$00FE` loaded from `$0001C176` into `$8806` at `$014594`).
+The dispatcher starts A5 at the `$9FC0` sentinel, increments it **before**
+testing the first record at `$A000`, and visits 254 records through the last
+record starting at `$DF40` (last byte `$DF7F`). These are sign-extended
+absolute.W work-RAM addresses. The runtime count at `$0001C176` is loaded
+into `$8806` at `$014594`. Phase 3d's dispatcher oracle verifies this layout.
 
 ### 64-Byte Object Entry Layout
-- `+0`: Bit 7: `0` = Active, `1` = Free/Inactive. Bit 5: Horizontal flip. Bits 0-9: Screen Y position.
-- `+2`: Palette / bank / priority attribute.
-- `+3`: Current sprite frame index.
+- `+0`: Bit 7: `1` = Active, `0` = Inactive. Bit 5: Horizontal flip.
+  The low ten bits of the first **word** are request zoom/flags, not screen Y.
+- `+2`: Request depth byte (used by the sub CPU bucket sort).
+- `+3`: Request palette byte.
 - `+4`: Longword: current screen X, Y coordinates.
 - `+8`: Longword: previous screen X, Y coordinates (used for interpolation / deltas).
-- `+12`: Longword: animation script / state sequence pointer.
+- `+12`: Longword: request frame-record pointer (copied by `append_sprite`).
 - `+16`: Longword: **Per-object tick / update function pointer** (called by dispatch loop via `MOVEA.L 16(A5),A0; JSR (A0)`).
-- `+20`: Extra sprite attribute byte (patched into hardware sprite descriptor at `append_sprite`).
+- `+20`: Size-table slot byte (replaces request byte +12 in `append_sprite`).
 - `+36`: Object Z-distance / depth (used by Sub CPU counting sort) or bank angle.
 - `+38`, `+40`: Velocity vectors (X, Y).
 - `+42`: World 3D X coordinate.
@@ -436,12 +441,19 @@ The object table spans `$9FC0` to `$DF40` in `backup1` mirror RAM, comprising **
 
 ### Core Object Types Mapped
 
-1. **Player Aircraft (F-14 Tomcat) — Multi-Part Compound Object (Slots 0..3)**:
-   - Initialized at `$016892` and activated together at `$0169B2` via `BCLR #7,(A0)`:
-     - **Slot 0 (`$A000`)**: Airframe / fuselage (`update = $01653A`). Computes roll and flight stick banking at `$01678E` using the hardware multiplier (`$0E4000`), selects frame from `$00016B8A`, and calls `append_sprite(A5)`.
-     - **Slot 1 (`$A040`)**: Left afterburner exhaust flame (`update = $01656A`, anim script `$01D780`).
-     - **Slot 2 (`$A080`)**: Right afterburner exhaust flame (`update = $016572`, anim script `$01D780`, `BSET #5` horizontal flip).
-     - **Slot 3 (`$A0C0`)**: Vulcan cannon / missile pod (`update = $01657A`).
+1. **Sequence Player Compound**:
+   - `$016976` reads the object base from ROM `$01C5C8` and adds `$300`.
+     For this ROM that selects `$C400` (slot 144), followed by three parts;
+     the earlier claim of slots 0..3 was incorrect.
+   - `$016892` initializes fuselage, two exhaust parts and a weapon pod,
+     assigning `$01653A`, `$01656A`, `$016572`, `$01657A` respectively.
+     `$0169B2` **hides** four parts by clearing their active bit; it does
+     not activate them. Setup, initialization and hiding now have independent
+     directed write-set/register checks (see Phase 3d below).
+   - `$01653A` invokes `$01678E` for sequence projection and emits requests.
+     This alone is not the ordinary player's live flight model. The live
+     player path `$009810/$0098C0` and its input/projection callees still
+     require their own capture and port.
 2. **Player Weapons (Missiles & Vulcan Cannons)**:
    - Routines at `$0154B8`, `$01552C`, `$015582`, `$015638`.
    - Spawns forward projectiles from jet origin, tracks velocity, checks target lock, decrements ammo `$8D66`.
@@ -973,3 +985,283 @@ Make build, engine/bus checks, Stage 1 combat/restart/audio integration, the
 full oracle suite, rendered-scene generation and headless launch pass.
 CMake targets are updated but CMake remains unavailable on this host.
 No ROM data or captures are committed. Next: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
+
+
+## Phase 3d — verified foundations; phase remains incomplete
+
+`OMainObjects` ports `$01488E` initialization, `$014594..$0145B8`
+dispatch, `$00C5A8` RNG, and sequence compound setup/initialization/hiding
+(`$016976`, `$016892`, `$0169B2`). `OMainSound` ports the command-ring
+producer entries `$00B840/$00B84C` and timer-interrupt consumer `$00B7F8`.
+They are built and independently verified, but **not wired into OEngine**:
+untranslated live handlers still prevent replacement of `OLevelObjs` and
+its sprite adapter. No new gameplay/flight or sound-cadence equivalence is
+claimed. See [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
+
+The initializer reads the count and template pointers from `$01C176` at
+runtime, copies 32 words per record, then overwrites byte +20 with its slot
+index. The dispatcher reads bit 7 and each +16 handler pointer live; callee
+changes to A5 and the RAM loop counter are preserved. Its termination uses
+signed BGT after a word subtraction, including overflow semantics. The
+oracle compares all D0..D7/A0..A6 registers at each callback boundary and at
+completion, plus the dispatcher's own RAM writes. A7, SR/condition-code
+outputs, instruction cycles and interrupt-stack preservation are outside
+this port's contract.
+
+RNG `$00C5A8` reads `$8802`, substitutes its ROM immediate when zero, uses
+shift/add pairs, then folds the product halves with word ADD and SWAP.
+Preserving the upper halves of D0/D1 matters; a native random API or a
+simplified integer recurrence would not establish the same caller outputs.
+Directed seeds include zero, one, sign-bit-only, all-ones and halfword
+boundaries, with independently compared D0/D1 returns and RAM writes.
+
+The sound ring at `$890C` is 64 bytes. `$8908/$890A` are producer/consumer
+indices; byte `$8906` is the count; `$8902` enables it. The consumer advances
+word `$8900`, emits only on an odd phase with a nonzero count, and writes the
+actual main-side 315-5250 sound latch at `$0E8017`. Disabled entries clear
+only their own pointer and the count. `$00B84C` suppresses enqueue when
+shared selector `$9C` equals 1; `$00B840` does not. No capacity/drop rule is
+invented: byte count overflow is retained. These are routine checks, not
+proof of host ADC/timer cadence or replacement of native sound events.
+
+### Oracle boundaries and coverage
+
+`make oracle-capture-objects` regenerates the six ignored captures;
+`make oracle-test` includes them. Captures compare CPU-owned write sets,
+ordered I/O writes, and register contracts, detecting sub CPU writes to
+actual port inputs. Dispatcher callback write/register transcripts are
+external inputs only: passing that test does **not** verify any unported
+handler, ADC sampler interrupt, HUD, stage or coin code inside the callback.
+Interrupt writes during a callback are included in that external boundary;
+interrupts between callbacks discard the window. Initializer copies and
+isolated sequence initialization mask IRQs temporarily; their original mask
+is restored with the routine's current condition flags preserved. These
+captures do not claim original instruction interleaving or a full credit.
+
+| Capture | Identical / captured | Skipped |
+| --- | ---: | ---: |
+| Attract dispatcher/initializer | 120 / 120 | 0 |
+| Gameplay dispatcher/initializer | 240 / 240 | 0 |
+| Directed dispatcher/initializer | 120 / 120 | 0 |
+| Natural boot/attract RNG/sound leaves | 600 / 600 | 0 |
+| Directed RNG/sound leaves | 600 / 600 | 0 |
+| Isolated compound/RNG/sound calls | 168 / 168 | 0 |
+
+Total: **1,848 of 1,848 identical, 0 skipped**. The dispatcher rows include
+seven initializer executions and 473 completed dispatch loops. The isolated
+row contains 24 executions each of initialization, setup, hiding, both sound
+producer entries, RNG and sound consumer. Natural leaf capture ends before
+the scripted coin/start pulses, so it is boot/attract coverage. Separately,
+53 attract and 87 gameplay windows were dropped for interrupts between
+callbacks; each natural/directed leaf capture dropped one interrupted window.
+Directed dispatcher and isolated-call captures dropped none.
+
+The directed dispatcher uses real RTS-only `$0148B6` targets to exercise an
+active sentinel that must be skipped, empty tables, last-slot-only activity,
+all-active tables and first-slot-only activity. Isolated leaf calls save
+interrupted registers, push a real RTS return on the active stack and execute
+the original ROM routine. Compound cases vary initial flag bytes, preserve
+slot indices, verify attachment offsets/function-pointer changes and restore
+A5. The original templates and handler pointer inventory are read at runtime;
+no ROM tables or captures are committed.
+
+The reset inventory has 254 templates (229 with a zero handler), with eleven
+nonzero handler targets. The test prints their counts and every observed
+runtime handler target. This is a reset/observed inventory, **not** a complete
+map of every self-transitioning enemy handler. Per-handler complete RAM,
+math-register and I/O input capture is still required before those ports.
+
+Uncovered foundation paths: malformed/out-of-ROM templates, zero/negative
+ROM counts, arbitrary handler changes to loop count/A5, every possible RNG
+seed/period, malformed sound indices/counts and arbitrary compound bases.
+The four directed dispatcher cases do not exercise every handler transition.
+SR output flags and full interrupt timing remain outside this oracle.
+
+This foundation checkpoint predates the independent handler ports described
+below. The remaining 3d work is tracked in `PHASE3D_CONTINUATION.md`; Phase 3e
+has not started.
+
+
+Eight new source mutations are rejected: dispatcher active mask (88 failed
+records), initializer size-index address (1), RNG shift (221), compound
+initial palette (24), compound base offset (24), compound hide count (24),
+sound enqueue count increment (39) and sound consumer ring mask (69).
+The original four 3c mutations continue to fail. The consumer mask mutation
+initially survived the endpoint-only fixtures; adding index 31 alongside
+index 63 exposed it. All unmodified captures pass after regeneration.
+
+`make -j4`, `make test`, `make verify-stage1`, the complete `make oracle-test`
+suite and `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180`
+pass. Existing oracle mismatches/skips did not increase. CMake targets are
+updated; this host still lacks CMake, so those targets were not executed.
+
+
+## Phase 3d independent handler ports (host replacement pending)
+
+`OMainInput`, `OMainPlayer`, `OMainWeapons` and `OMainWorld` now execute the
+following original routines through `MainBus`. They are compiled into the
+project and regression targets, but the game still uses `OLevelObjs` and the
+native sprite producer. Phase 3d is not complete. PR #7 delivers this verified
+checkpoint; the user authorized merging it and resuming the continuation plan
+in a different session. This checkpoint merge does not satisfy the remaining
+Phase 3d acceptance items.
+
+- Input `$B0AC..$B4E0`: raw stick deadbands/clamps, chip divisions, throttle,
+  forced bank/pitch, production attract stream and dormant debug recording.
+  `$14976` samples gameplay button edges at its 30 Hz caller; it is distinct
+  from the existing `$1495C` display-frame button sampler.
+- Live player `$9810/$98C0`, projection `$9AE2`, request append `$B628`,
+  shadow `$9C34/$9C9E`, exhaust `$AE8C/$AEE4/$AF08/$AF3C/$AFCC/$B05C`, recovery
+  `$9626/$964C`, sequence updates `$1653A/$1656A/$16572/$1657A` and projection
+  `$1678E`. The live fuselage is slot 131 at `$C0C0`; sequence setup uses a
+  separate compound base. `$9626` was previously misclassified as an enemy.
+- Weapon controller `$9D2C/$9D56`, button/cadence gates `$9DF8/$9E50`,
+  allocations `$9E82/$9ED8`, pools `$9F08/$9F22/$9F44/$9F5E`, missile launch
+  `$9F7C`, guided/free missile `$A234/$A382/$A53A`, trail allocation/init/update
+  `$A9F2/$AA32/$AAEE`, vulcan `$A030/$AC4C`, removals `$AE1C/$AE2E/$AE32/$AE50`,
+  refill `$16C8A`, missile HUD `$CFC4` and decimal helper `$D062`.
+- World `$88C2/$8AF2`, explosion `$91C0`, free-list removal `$9556`, effects
+  `$8D44/$8D58/$8E18/$8ECE`, and scaled player collision `$8CC8`.
+- Enemy missile `$153E0/$154B8/$1552C/$15582/$15638/$156CE` and its translated
+  target, movement, scale, projection, frame, sweep-collision, trail-ring and
+  removal helpers `$14DC4/$14DF0/$14E14/$14E1E/$14FF2/$14FF4/$150C0/$1518A/
+  $151B8/$15200/$1528A/$152A8/$15750/$1578C/$157BA/$157E8/$157F2/$1581A/
+  $1583E/$15842`. Paired shadows `$1500C/$15026` and trails `$14EC8/$14EE2`
+  are included. Other enemy missile families remain unported.
+
+All frame/animation/trajectory tables are read from the user's ROM at runtime.
+Guided and free missile jump-table displacements select explicit translated
+C++ branches; no opcode interpreter runs inside these ports.
+
+### Handler oracle contract
+
+`capture_handlers.lua` records complete mapped RAM before/after, D0..D7 and
+A0..A6, both CPUs' multiplier/divider inputs, the observed IO1 button port,
+CPU-owned byte write sets and ordered RAM/chip/I/O writes. `AB2HND02` adds the
+IO1 byte to the older capture format. `oracle_handlers.cpp` executes the C++
+handler independently; it does not apply captured callback writes. Main math
+outputs, register returns, own write sets, final written bytes and ordered
+writes must match. Results include per-entry identical/different/skipped counts,
+so a fully raced handler cannot disappear into an aggregate pass. Sub math state is an input, not a concurrent-output claim.
+
+Only actual input races are skipped: the sub CPU must have written a byte the
+C++ handler read. Main IRQ writes reject the window; active work-RAM stacks
+are excluded using the actual active SP in delayed fixtures. A7, SR/condition-code outputs, instruction cycles and instruction
+interleaving remain outside the routine contract. Isolated calls save and
+restore fixture RAM/registers and temporarily mask main IRQs. They establish
+routine coverage, not a natural stage/spawn caller or full-credit equality.
+
+`$15750` deliberately discards its caller's return address on early exits.
+Injecting that helper directly bypassed the artificial return and captured
+unrelated execution; that invalid fixture was removed. Its exit paths are
+checked inside the actual translated missile callers. Nested RTS instructions
+finish an isolated capture only at the injected stack depth.
+
+Ordered-write tests found that `CLR.L` and memory `ADD.L` write the low word
+first on the 68000, while `MOVE.L` writes the high word first. Final-RAM-only
+comparison missed this distinction. Expanded signed depth fixtures also
+exposed an incorrect BLE interpretation after an overflowing word subtraction
+in missile tracking; the port now preserves that signed branch behavior.
+
+| Local capture | Identical / captured | Input-race skips |
+| --- | ---: | ---: |
+| `input` | 240 / 240 | 0 |
+| `input_gameplay` | 360 / 360 | 0 |
+| `input_directed` | 128 / 128 | 0 |
+| `player_init` | 1 / 1 | 0 |
+| `player` | 360 / 360 | 0 |
+| `player_directed` | 128 / 128 | 0 |
+| `player_parts` | 720 / 720 | 0 |
+| `player_parts_gameplay` | 720 / 720 | 0 |
+| `player_parts_directed` | 260 / 260 | 0 |
+| `reload` | 240 / 240 | 0 |
+| `reload_directed` | 210 / 210 | 0 |
+| `weapon_control` | 480 / 480 | 0 |
+| `weapon_control_directed` | 376 / 384 | 8 |
+| `world` | 468 / 480 | 12 |
+| `world_directed` | 248 / 256 | 8 |
+| `buttons` | 240 / 240 | 0 |
+| `buttons_directed` | 64 / 64 | 0 |
+| `projectiles` | 480 / 480 | 0 |
+| `projectiles_directed` | 384 / 384 | 0 |
+| `missiles` | 720 / 720 | 0 |
+| `missiles_directed` | 375 / 448 | 73 |
+| `effects_directed` | 308 / 320 | 12 |
+| `collision_directed` | 64 / 64 | 0 |
+| `enemy_weapons_directed` | 1452 / 1600 | 148 |
+| `enemy_parts_directed` | 246 / 256 | 10 |
+| `enemy_effects` | 480 / 480 | 0 |
+| `enemy_effects_gameplay` | 480 / 480 | 0 |
+
+Total: **10,232 of 10,503 identical, 271 skipped, 0 different**. Boot/attract
+`enemy_effects` has 480 calls covering enemy shadows/trails. Its gameplay
+counterpart has 480 calls including the real `$153E0..$156CE` missile graph
+and ground splash `$8D58/$8ECE`. Directed enemy fixtures cover 64 calls per
+selected entry. They are labelled routine fixtures because stage/spawn flow
+is not ported. The collision fixture includes strict width/height edges and
+depth intervals; generic world fixtures alone did not prove hit coverage.
+
+### ADC conversion timeline
+
+The standalone ADC0804 model uses MAME's configured 1.25 MHz clock and 74
+conversion clocks (59,200 ns). Conversion completion samples the selected
+analog lane. Reads acknowledge INTR; busy writes clear INTR without restarting
+conversion. The oracle advances the ADC alongside the already verified
+315-5250 timer and compares observed reads, mux selection and timer IRQ.
+
+`adc_timing`: **15,530 / 15,530 identical, 0 skipped**, including 3,529
+completed conversions/reads. `adc_timing_directed`: **10,099 / 10,099
+identical, 0 skipped**, including 2,322 conversions and 2,334 reads. Probes
+exercise all six sampled channels, reads before/after completion, busy writes
+and mux changes during conversion. MAME exposes no saved internal ADC state
+in this build; internal result/INTR snapshots are not independently compared.
+The evidence establishes observable conversion/read behavior, not the game's
+host IRQ/ADC caller or input-to-render cadence. Host ADC integration remains
+pending, as does live sound-consumer scheduling at `$1461C/$14626`.
+
+### Remaining coverage and acceptance
+
+Uncovered paths are kept explicit:
+
+- Input: dormant ROM debug-switch recording branches are translated but not
+  exercised by the production ROM; arbitrary attract/debug stream exhaustion
+  and every possible accumulator overflow are not exhaustively covered.
+- Player: damage/death `$E662` and its debris handlers, complete carrier/refuel
+  sequence controllers and their 3e flow/HUD callees remain unported. Recovery,
+  projection and attachment fixtures do not prove those controllers.
+- Player weapons: the six guided and ten free-flight targets reachable from
+  the production jump tables are translated. Arbitrary malformed indices,
+  every target trajectory/velocity combination, pool corruption and repeated
+  exhaustion over a full credit are not covered.
+- Enemy/world: plane/formation `$10E6A` transitions, other world variants from
+  `$8946`, explosion setup `$90AC`, projectile collision `$8C1C` with its score
+  caller and other enemy missile families from `$1586C/$15968` onward remain
+  unported. Enemy collision flags are compared; lives/score flow stays 3e.
+- ADC/sound: no host conversion/IRQ wiring or command cadence equality is
+  claimed. The native sound cues still run.
+- Host acceptance: native objects/flight/weapons and the history/coordinate
+  adapter remain. A paired 30/60 Hz player/weapon RAM, road-target, draw/latch
+  and rendered-RGB test is still required before replacement or merging 3d.
+
+`make test`, `make verify-stage1` and the complete `make oracle-test` pass.
+The existing Stage 1 audio RMS is 903.949. CMake definitions are updated;
+CMake is unavailable on this host, so those definitions are not executed.
+
+The initial isolated vulcan initializer fixtures all raced the sub CPU; the
+natural initializer calls passed, but aggregate directed totals concealed the
+coverage gap. Per-entry counts exposed it. Scheduling that artificial fixture
+2 ms after the frame notifier avoids the race while leaving the sub CPU live:
+all 64 calls for each of the six projectile entries now match with no skips.
+This is a routine fixture phase, not a claim about original caller cadence.
+The delayed calls also exercise stack pointers below the usual `$FE00` window;
+stack exclusion follows MAME's active SP rather than treating return-address
+pushes as object writes.
+
+All **33 deliberate source mutations** are rejected (four previous 3c,
+eight foundations, and 21 input/player/weapon/world/ADC mutations). New cases
+cover deadband, live/sequence projection, exhaust selection, recovery, reload
+sound, missile reserve/launch/guidance/hit, vulcan aim, trail width, enemy zoom,
+sway/shadow, ground noise, collision damage and ADC duration. The vulcan
+mutation now fails all 64 directed initializer records. Collision mutation
+fails four hit records. Mutation logs and temporary variants remain ignored.
+The build and 180-frame dummy-video/audio headless launch also pass.
