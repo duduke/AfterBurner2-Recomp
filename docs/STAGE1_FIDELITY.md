@@ -102,3 +102,10 @@ from native controls, to exercise the hardware road path.
 For memory checks, compile the integration suite with
 `-fsanitize=address,undefined -fno-omit-frame-pointer` and run from the root.
 All generated captures and supplied ROMs remain ignored.
+
+The Phase 3d damage companion continuation adds independent routine ports for
+`$FB08/$FB16`, both allocated emission/animation graphs, removal and the
+`$FBC4/$10310` emission-pool reset. These remain unwired, alongside the checked
+pre-lives damage controller and debris routines. Their MAME checks do not
+establish the host death/recovery sequence, sound cadence or player/weapon
+30/60 Hz equality. Native `OLevelObjs` and its request adapter remain required.

@@ -212,11 +212,10 @@ local function inject_call()
  interrupted_registers=registers();interrupted_sr=main.state.SR.value
  local stack=(interrupted_sr&0x2000~=0) and main.state.SP or main.state.USP
  -- A task may be using an object-local stack. Do not inject damage
- -- fixtures on top of their scratch compound or allocated debris records.
- if (selected>=0xe662 and selected<=0xecac) or (selected>=0xf3e2 and selected<=0xfaa0) then
+ -- fixtures on top of their scratch compound or the complete emission pool.
+ if (selected>=0xe662 and selected<=0xecac) or (selected>=0xf3e2 and selected<=0x10310) then
   local stack_offset=offset(stack.value&0x3fffff)
-  if stack_offset and ((stack_offset>=0x4400 and stack_offset<=0x4520)
-    or (stack_offset>=0x5200 and stack_offset<=0x5420)) then return end
+  if stack_offset and (stack_offset>=0x4400 and stack_offset<=0x5900) then return end
  end
  local sp=(stack.value-4)&0xffffffff
  guard=true;space:write_u32(sp&0x3fffff,main.state.CURPC.value);guard=false;stack.value=sp;injected_sp=sp
@@ -449,6 +448,38 @@ local function inject_call()
     set(0x3f8d4d,({0,127,128,255})[(n//4)%4+1],1)
    end
   end
+  main.state.D7.value=({0,0x20,0x7fff,0xffe0})[n%4+1]
+ end
+ if selected>=0xfb08 and selected<=0x10310 then
+  -- Complete companion graph fixtures; runtime ROM tables remain read-only.
+  set(0x3fc410,selected,4);set(0x3fc414,200,1)
+  local pool=space:read_u32(0x1c5d0)&0x3fffff
+  local count=space:read_u16(0x1c5d6)
+  for i=0,count-1 do set(pool+i*64,({0x80,0xb0,0xff,0x01})[(n+i)%4+1],1) end
+  set(0x3f8e7f,({0,1,4,8})[n%4+1],1)
+  for i=1,count do set(0x3f8e7f+i,199+(i%8)+1,1) end
+  set(0x3f8d4a,n*17,2)
+  set(0x29c200,n%16==0 and 0 or 4,1);set(0x3f91d0,n%16==1 and 4 or 0,1)
+  set(0x3f9124,n%8,2)
+  set(0x29c0aa,({0,0x180,0x220,0x7fff,0x8000,0xffff,0x300,0x100})[(n//8)%8+1],2)
+  set(0x29c0ae,n%2,2);set(0x3fc434,({0,0x5ff,0x600,0xffff})[(n//2)%4+1],2)
+  set(0x29c092,({0x7f,0,0xff81,0x60})[(n//4)%4+1],2)
+  set(0x29c090,({0,0x7f,0x40,0xff81})[(n//4)%4+1],2)
+  set(0x29c080,0x10,2);set(0x29c088,0x20,2);set(0x29c08a,0,2)
+  set(0x29c0c6,({0,0x10,0xfff0,0x7fff})[(n//16)%4+1],2)
+  set(0x3f8d14,({0,40,0xffd8,400})[n%4+1],2);set(0x3fc42a,({0,40,0xffd8,400})[n%4+1],2)
+  set(0x3f8d16,({0x70,0,0x168,0xff90})[(n//4)%4+1],2);set(0x3fc42c,({0x70,0,0x168,0xff90})[(n//4)%4+1],2)
+  set(0x3f8d18,({0x400,0xc60,0,0xffff})[(n//16)%4+1],2)
+  set(0x3fc424,({0x400,0xc60,0,0xffff})[(n//16)%4+1],2)
+  set(0x3f8d1a,({0,0x20,0xffe0,0x7fff})[n%4+1],2)
+  set(0x3f8d1c,({0x70,0,0x168,0x8000})[(n//4)%4+1],2)
+  set(0x3fc432,({0,7,8,15,16,0x7fff,0x8000,1})[(n//4)%8+1],2)
+  set(0x3fc41e,n%3,2);set(0x3fc420,({0,1,2,0x8000})[(n//8)%4+1],2)
+  set(0x3fc422,({0,0x40,0x80,0xff})[n%4+1],2)
+  set(0x3fc41a,selected==0xfdfa and 0x2bc34 or selected==0x10148 and 0x2bbea or selected==0x10252 and 0x2bb5e or 0x2bba8,4)
+  set(0x3f9118,n%4,1)
+  local parent=space:read_u32(0x1c5c0)&0x3fffff
+  set(parent+2,({0,1,0xfe,0xff})[(n//16)%4+1],1)
   main.state.D7.value=({0,0x20,0x7fff,0xffe0})[n%4+1]
  end
  guard=false

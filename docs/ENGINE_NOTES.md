@@ -1422,3 +1422,85 @@ routine capture. `make test`, `make verify-stage1`, `make oracle-test`, the game
 build and the 180-frame headless launch pass; Stage 1 audio RMS remains 903.949.
 CMake is unavailable on this host, so its updated test list is unexecuted.
 ROMs, disassembly, captures and mutation variants remain ignored.
+
+## Phase 3d continuation: damage companion emission graph
+
+`OMainDamage` now translates the complete companion graph assigned by `$E662`,
+including both allocation branches and their runtime transitions. These routines
+remain unwired; native gameplay and the request adapter are still present.
+
+- `$E7DA` and `$FBD4` are independently checked NOP/NOP/RTS leaves.
+- `$FB08/$FFBE` pop one emission-pool slot and assign `$FFE6`; `$FB08` then
+  assigns `$FB16` to the companion controller. `$FB16` preserves enabled and
+  draw-only gates, damage-state thresholds and the speed/roll-dependent word
+  doubling sequence. Unsigned division by `$600` keeps the remainder in the
+  companion and uses the quotient to request a `$FBDA` allocation via `$FB9C`.
+  Empty pools return without allocating. State six stops emission; state seven
+  enters `$FBC4`.
+- `$FBDA` seeds published damage world coordinates, projects both axes with
+  the main multiplier/divider and enters `$FCB4`. That handler moves depth,
+  ramps scale during its first eight ticks, uses the runtime lateral table,
+  projects/clips and emits requests. State five switches to the runtime
+  `$2BC34` animation through `$FDA6/$FDFA`, preserving alternating sound order.
+- `$FFE6/$1003E` seed and animate at published screen coordinates, then wait
+  at `$100DC` for damage state two. `$100F4/$10148` start the next animation
+  and wait at `$101E6` for state four. `$101FE/$10252` follow published screen
+  coordinates until state five removes the record. Initializers use runtime
+  ROM frame/palette/duration/scale records and the checked `$B84C` producer;
+  updates use the actual parent object depth and main multiplier.
+- `$FF08` can call `$102F2` from horizontal clipping and return to its caller;
+  the caller still executes its subsequent vertical/animation logic, as the
+  ROM does. `$102F2` clears depth/zoom/active and returns the slot to the pool.
+  Animation duration SUBQ/BGT preserves signed overflow rather than testing
+  only the wrapped result's sign.
+- `$FBC4/$10310` clear active bits and rebuild the pool using the ROM-defined
+  start/count, clear `$8D4A`, and assign `$FBD4`. The callee has no lives/HUD
+  or credit call; it belongs to the companion graph. Actual `$EC78/$CF46`
+  and later credit boundaries remain unported Phase 3e flow.
+
+`make oracle-capture-companion` regenerates two independent execution captures:
+
+- `companion_directed.bin`: **1,408 of 1,408 identical, 0 different, 0 skipped**,
+  **64/64 per entry** for `$E7DA`, `$FB08`, `$FB16`, `$FB9C`, `$FBC4`, `$FBD4`,
+  `$FBDA`, `$FCB4`, `$FDA6`, `$FDFA`, `$FF08`, `$FFBE`, `$FFE6`, `$1003E`,
+  `$100DC`, `$100F4`, `$10148`, `$101E6`, `$101FE`, `$10252`, `$102F2`, `$10310`.
+  No interrupted windows were dropped. Fixtures cover enabled/draw-only gates,
+  emitter states 0..7, empty/available pools, depth and position endpoints,
+  animation wait/advance including signed SUBQ overflow, time thresholds,
+  horizontal/vertical clipping, sound parity and ROM-defined pool cleanup.
+- `companion_gameplay.bin`: **2,400 of 2,400 identical, 0 different, 0 skipped**,
+  ordinary coin/start/stick/fire input with no RAM fixtures. Per-entry counts:
+  `$FB08` 2, `$FB16` 228, `$FBDA` 125, `$FCB4` 1,464, `$FDFA` 430, `$FFE6` 2,
+  `$1003E` 18, `$100DC` 60, `$10148` 17, `$101E6` 37, `$10252` 17. It exercises
+  emitter entry states 0..7, animation transitions, removals, one pool-reset/idle
+  transition inside `$FB16`, and the next initialization. Seventy interrupted
+  windows were dropped before recording, separately from input-race skips.
+  This verifies companion routine calls during a natural damage sequence, not
+  independent execution of the parent lives/death/recovery graph or host cadence.
+
+The captures retain complete RAM, D0..D7/A0..A6, both CPUs' math-chip inputs,
+IO1 input, CPU-owned write sets and ordered RAM/chip/I/O writes. Captured writes
+are not replayed. Directed calls defer if the interrupted stack overlaps the
+scratch compound or any part of the complete emission pool; all ROM data and
+captures stay ignored. Coverage inspection runs before tracing is enabled.
+
+Six deliberate mutations fail: emission divisor (25 differing calls), allocated
+handler (96), first animation duration (8), pool start index (136), projection
+scale (215), and signed animation-duration branch (42). The unchanged source
+passes; with the previous checkpoints, 50 meaningful mutations are rejected.
+
+Uncovered: arbitrary animation-table exhaustion, corrupted/overflowing free
+lists, all arithmetic/zoom saturation combinations, natural breakup's `$E7DA`
+leaf, arbitrary parent depth/frame combinations, and host command/IRQ cadence.
+Natural gameplay does not independently enter every initializer/helper: those
+are directed entries or reachable callees of recorded handlers. The parent
+controller states 7..11, lives/HUD/credit flow, carrier/refuel graphs, remaining
+enemy families and paired 30/60 Hz player/weapon/RGB acceptance remain required.
+Phase 3d is incomplete; this graph does not authorize retiring `OLevelObjs`.
+
+Make and CMake register both companion captures. `make test`,
+`make verify-stage1`, `make oracle-test`, the game build and the 180-frame
+headless launch pass; Stage 1 audio RMS remains 903.949. The full oracle suite
+reports no differences, retaining its documented input-race skips. CMake is
+unavailable on this host, so its updated definitions remain unexecuted. ROMs,
+disassembly, captures and mutation variants remain ignored.
