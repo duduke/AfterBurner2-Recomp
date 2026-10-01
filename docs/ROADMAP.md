@@ -251,14 +251,21 @@ milestone ends with something visibly closer to the arcade in
 
 The foundation and ADC slice are compiled but not called by the Stage 1
 reconstruction. The complete timer handler, ADC conversion scheduling and
-arcade frame loop remain for later milestones; next is 3b's stage setup.
+arcade frame loop remain for later milestones. Phase 3a was merged in PR #4
+(`559a2b7`); current work is 3b's remaining stage setup and road integration.
 
 **3b. Real road and scenery in the game (retires `draw_stage1` and `oroad`)**
 
 - [ ] Port stage setup: stage number and road control words into sub RAM,
-      road palettes, scenery tile upload (`$018798`)
-- [ ] Port the stage event / scenery scroll engine (`$018444`): tile RAM
-      streaming and the roll-adjusted horizontal scroll
+      road palettes, scenery tile upload (`$018798`). The scenery tile
+      upload and its `$01871A`/`$018902` helpers are ported in `OScenery`;
+      stage/road initialization and palette setup remain.
+- [x] Port the stage event / scenery scroll engine (`$018444`): tile RAM
+      streaming and the roll-adjusted horizontal scroll (`engine/oscenery`).
+      4,137 of 4,400 calls identical; 263 skipped for sub CPU input races.
+      Includes palette animation and raw selectors 15/16. Not wired into
+      the game until stage initialization and road integration are ready;
+      see `ENGINE_NOTES.md` for coverage and unverified paths.
 - [ ] Run `OSubRoad::frame` once per frame in the game and render through
       `hwroad` instead of `draw_stage1`
 - [ ] Port the special road sequence (`$0016D4`/`$001758`, likely the

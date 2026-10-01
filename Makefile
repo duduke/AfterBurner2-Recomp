@@ -26,7 +26,7 @@ SRCS = \
 
 # The verified bus/ADC foundation is built but is not called by the
 # reconstruction's frame loop until later milestones port its handlers.
-SRCS += src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp
+SRCS += src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
@@ -82,6 +82,13 @@ oracle-capture:
 	tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames.bin 300 120
 	AB2_ORACLE_NO_SPRITES=1 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_nosprites.bin 100 60
 	$(MAKE) oracle-capture-main
+	$(MAKE) oracle-capture-scenery
+
+oracle-capture-scenery:
+	@mkdir -p build/oracle
+	tools/oracle/capture.sh tools/oracle/capture_scenery.lua build/oracle/scenery.bin 2000 90
+	AB2_ORACLE_STRIDE=8 tools/oracle/capture.sh tools/oracle/capture_scenery.lua build/oracle/scenery_extended.bin 1200 240
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=420 tools/oracle/capture.sh tools/oracle/capture_scenery.lua build/oracle/scenery_gameplay.bin 1200 60
 
 oracle-capture-main:
 	@mkdir -p build/oracle
@@ -106,6 +113,7 @@ oracle-test:
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_video.cpp $(VIDEO_SRCS) -o build/oracle_video
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_main.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp $(ORACLE_SRCS) -o build/oracle_main
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_compare.cpp -o build/oracle_compare
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_scenery.cpp src/main/engine/oscenery.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_scenery
 	./build/oracle_subsprites
 	./build/oracle_subroad
 	./build/oracle_video build/oracle/frames.bin
@@ -116,5 +124,8 @@ oracle-test:
 	./build/oracle_subsprites build/oracle/subsprites_gameplay.bin
 	./build/oracle_subroad build/oracle/subroad_gameplay.bin
 	./build/oracle_video build/oracle/frames_gameplay.bin
+	./build/oracle_scenery
+	./build/oracle_scenery build/oracle/scenery_extended.bin
+	./build/oracle_scenery build/oracle/scenery_gameplay.bin
 
-.PHONY: oracle-capture oracle-capture-main oracle-capture-gameplay oracle-test
+.PHONY: oracle-capture oracle-capture-main oracle-capture-gameplay oracle-capture-scenery oracle-test

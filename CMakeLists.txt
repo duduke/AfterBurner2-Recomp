@@ -33,6 +33,7 @@ add_executable(afterburner2
     src/main/engine/subbus.cpp
     src/main/engine/mainbus.cpp
     src/main/engine/omainadc.cpp
+    src/main/engine/oscenery.cpp
 )
 
 target_include_directories(afterburner2 PRIVATE src/main ${SDL2_INCLUDE_DIRS})
@@ -68,6 +69,14 @@ endif()
 
 option(ORACLE_TESTS "Enable tests against MAME captures in build/oracle (see make oracle-capture)" OFF)
 if(BUILD_TESTING AND ORACLE_TESTS)
+    add_executable(oracle_scenery tests/oracle_scenery.cpp src/main/romloader.cpp src/main/roms.cpp
+        src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/oscenery.cpp)
+    target_include_directories(oracle_scenery PRIVATE src/main)
+    add_test(NAME oracle_scenery COMMAND oracle_scenery build/oracle/scenery.bin)
+    add_test(NAME oracle_scenery_extended COMMAND oracle_scenery build/oracle/scenery_extended.bin)
+    add_test(NAME oracle_scenery_gameplay COMMAND oracle_scenery build/oracle/scenery_gameplay.bin)
+    set_tests_properties(oracle_scenery oracle_scenery_extended oracle_scenery_gameplay
+        PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_main tests/oracle_main.cpp src/main/romloader.cpp src/main/roms.cpp
         src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/omainadc.cpp)
     target_include_directories(oracle_main PRIVATE src/main)

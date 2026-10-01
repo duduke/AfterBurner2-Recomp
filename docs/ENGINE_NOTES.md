@@ -691,6 +691,63 @@ captures. `make oracle-test` includes them. Capture failures, Lua errors and
 runs that expire without completion now return failure from `capture.sh`.
 Captures and snapshots remain local and gitignored.
 
+## Main scenery engine (Phase 3b, first port) — verified, not integrated
+
+`engine/oscenery.*` translates the main CPU's `$018444` stage-event entry
+and its helpers: `$01854C` scroll/palette state machine, `$01866C` tile-list
+decoder, `$01871A` scenery initialization, `$018798` banked scenery and
+segmented display, and `$018902` byte-tile uploader. It also translates the
+`$013A74` blank-tile tail call. Each table/header stays in ROM and is read
+through MainBus at runtime. Word overflow, signed ASR, byte-high attributes,
+SUBQ carry/underflow, high-byte flag bits and inclusive DBF/DBEQ loops are
+preserved. The segmented-display path uses the original `$0188C8` table;
+its data is not pasted into source.
+
+`tools/oracle/capture_scenery.lua` uses the main write-set format with magic
+`AB2SCN01`. It starts on `$018444`'s `$9044` read, captures the outer stack
+pointer, and ends on the matching RTS stack read. **Do not use opcode
+prefetch as the return boundary**: the CPU can fetch past a DBF before the
+loop finishes. Stack bytes are excluded; nested returns have a different
+SP. Main writes from outside the routine/helpers drop the window. Sub CPU
+writes are tracked separately, and a record is skipped only if they touch
+a byte the replay read, even if the sub restored its previous value.
+`tests/oracle_scenery.cpp` runs the port from each before snapshot and
+compares exact write sets and values across all seven MainBus RAM regions.
+
+Results (zero abnormal windows dropped):
+
+- Attract, 2,000 consecutive calls: **2,000 of 2,000 identical, 0 skipped**;
+  1,682 calls with writes, 895 tile uploads; raw selectors 0/1/2/3.
+- Extended attract, 1,200 calls sampled every eight frames through frame
+  9,600: **1,200 of 1,200 identical, 0 skipped**; 573 calls with writes,
+  441 tile uploads and four palette updates; raw selectors 0/1/3/4/5/6/11,
+  state-machine modes 0/4/8/12. The palette loop at `$0185DA` returns to
+  `$0185CE`: source A2 resets for each iteration, while A3 advances.
+- Scripted gameplay, 1,200 calls from frame 420: **937 of 1,200 identical,
+  263 skipped for sub CPU input races**; 925 matched calls upload tile
+  data. Raw selectors 13/14/15/16 include the segmented-display branch.
+  These raw selector values must not be equated with displayed stage
+  numbers or used to infer the game's stage count.
+
+Total: **4,137 of 4,400 identical, 263 races skipped, zero different**.
+Changing the `$0187F2` scroll adjustment from -4 to -3 makes 841 of the
+2,000 consecutive attract records differ. The mutation was reverted and
+the original routines rerun against all captures.
+
+Unverified paths: selectors/event-table entries not listed above, every
+possible timer/repeat transition, corrupted out-of-range table/count
+inputs, and byte/word tile-list paths not separately counted by the
+coverage report. The capture verifies calls, not full frames or rendered
+integration. Race-skipped calls are not evidence of correctness. The
+full stage initializer (shared road words and palettes), special sub-road
+sequence, game frame scheduling, and replacement of `draw_stage1`/`oroad`
+remain. No guessed initialization or flight-coordinate bridge was added.
+
+`make oracle-capture-scenery` regenerates these three local captures;
+`make oracle-test` runs their comparisons alongside the phase 3a baselines.
+The class is compiled but not called by the reconstruction's game loop.
+Phase 3a is committed and merged via PR #4, merge commit `559a2b7`.
+
 ## Open threads to pick up next
 
 - **Engine C++ Implementation**: We now have complete specifications for the object dispatch loop, 64-byte object structure, player jet composite parts, sprite pipeline, and road scanlines. Ready to scaffold `src/main/engine/` (`oentry.hpp`, `oplayer.cpp`, `osprites.cpp`).
