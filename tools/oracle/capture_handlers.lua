@@ -213,7 +213,7 @@ local function inject_call()
  local stack=(interrupted_sr&0x2000~=0) and main.state.SP or main.state.USP
  -- A task may be using an object-local stack. Do not inject damage
  -- fixtures on top of their scratch compound or allocated debris records.
- if (selected>=0xe744 and selected<=0xecac) or (selected>=0xf58e and selected<=0xfaa0) then
+ if (selected>=0xe662 and selected<=0xecac) or (selected>=0xf3e2 and selected<=0xfaa0) then
   local stack_offset=offset(stack.value&0x3fffff)
   if stack_offset and ((stack_offset>=0x4400 and stack_offset<=0x4520)
     or (stack_offset>=0x5200 and stack_offset<=0x5420)) then return end
@@ -368,8 +368,8 @@ local function inject_call()
    f[name]:set_value((n>>(i-1))&1)
   end
  end
- if (selected>=0xe744 and selected<=0xecac) or (selected>=0xf58e and selected<=0xfaa0) then
-  -- Damage callees are isolated routine coverage, awaiting the $E662 caller.
+ if (selected>=0xe662 and selected<=0xecac) or (selected>=0xf3e2 and selected<=0xfaa0) then
+  -- Directed damage routines do not establish natural caller cadence.
   set(0x3f8802,({0,1,0x80000000,0xffffffff})[(n//4)%4+1],4)
   set(0x3f8e7f,({0,3,4,8})[n%4+1],1)
   for i=1,8 do set(0x3f8e7f+i,199+i,1) end
@@ -415,6 +415,40 @@ local function inject_call()
   elseif n%8==3 and #ends>0 then trajectory=ends[1]
   elseif n%8>=4 and #animations>0 then trajectory=animations[n%#animations+1] end
   set(0x3fc41a,trajectory,4)
+  if selected==0xf640 then
+   -- The fuselage uses eight-byte records; debris uses sixteen-byte records.
+   local start=space:read_u32(table)
+   local count=0
+   while count<256 and space:read_u16(start+count*8)~=0xffff do count=count+1 end
+   assert(count<256, "unterminated fuselage trajectory")
+   set(0x3fc41a,start,4)
+   local ticks={0,3,4,5,4+count,0x8000,0x7fff,4+(n%math.max(count,1))}
+   set(0x3fc432,ticks[n%8+1],2)
+   -- Extreme ticks bypass trajectory access via the original completion bit.
+   set(0x3fc426,(n%8==6 or n%8==5 or n%16==4) and 1 or 0,1)
+   set(0x3f9118,({0,1,2,127,128,255,3,4})[(n//8)%8+1],1)
+  end
+  if selected==0xe662 or selected==0xe8d0 or selected==0xe94e or selected==0xf3e2 or selected==0xf43c or selected==0xf4ba or selected==0xf528 or selected==0xf5c0 then
+   set(0x3f9124,n%7,2)
+   set(0x3fc432,({0,7,8,15,16,23,24,29,30,44,45,59,60,74,75,0x7fff})[(n//4)%16+1],2)
+   set(0x3fc422,n%2,1);set(0x3fc426,0,1)
+   set(0x3fc424,({0x400,0xc60,0,0xffff})[n%4+1],2)
+   set(0x3fc42c,({0x70,319,320,321})[(n//4)%4+1],2)
+   set(0x3fc430,({0,0x40,0xffc0,0x7fff})[n%4+1],2)
+   set(0x29c096,({89,0,0xffa8,40})[(n//4)%4+1],2)
+   set(0x29c098,0,2)
+   set(0x29c200,n%16==0 and 0 or 4,1)
+   set(0x3f91d0,n%16==1 and 4 or 0,1)
+   set(0x29c0ae,({0,96,97,0xffa0,0xff9f,0x7fff,0x8000,0})[n%8+1],2)
+   set(0x3fc41a,space:read_u32(table),4)
+   set(0x3f9118,({0,1,2,128})[n%4+1],1)
+   if selected==0xe662 then
+    set(0x29c060,({0,0,5,1})[n%4+1],2)
+    set(0x3f9116,({0,1,0xffff,2})[(n//4)%4+1],2)
+    set(0x29c202,n%8==7 and 1 or 0,1)
+    set(0x3f8d4d,({0,127,128,255})[(n//4)%4+1],1)
+   end
+  end
   main.state.D7.value=({0,0x20,0x7fff,0xffe0})[n%4+1]
  end
  guard=false

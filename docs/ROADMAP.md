@@ -349,9 +349,10 @@ and uncovered paths in `ENGINE_NOTES.md`.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,
-      shadow/exhaust and sequence update/projection checks pass. Nineteen
-      damage/debris callees match 1,216/1,216 directed calls, 0 skipped;
-      damage controllers and host replacement remain.
+      shadow/exhaust and sequence update/projection checks pass. Damage
+      controllers through state 6, fuselage and debris match 1,792/1,792
+      directed and 120/120 gameplay calls, 0 skipped; damage companion handlers,
+      later sequence controllers and host replacement remain.
 - [ ] Weapons: vulcan and missiles (`$0154B8`-`$015638`), missile reload
       and the HUD sequencer (`$016C8A`). Player projectile/controller/pool,
       reload/HUD and `$153E0..$156CE` enemy missile graph checks pass; other
@@ -367,7 +368,8 @@ and uncovered paths in `ENGINE_NOTES.md`.
 - [ ] Collisions and damage (the per-object scaled sizes at `$7800` are
       a likely input), explosions, and losing a life. Debris allocation,
       waiting/animation/removal, projection and attitude callees are verified;
-      `$E662/$E8D0/$E94E` controllers and lives/HUD flow remain unported.
+      `$E662/$E8D0/$E94E` states 0..6 now pass directed and bounded gameplay
+      checks; damage companion handlers and lives/HUD flow remain unported.
 - [ ] Main → sound commands from the ported code instead of the
       reconstruction's hand-picked cues
 

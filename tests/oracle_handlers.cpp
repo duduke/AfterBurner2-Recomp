@@ -101,6 +101,21 @@ int main(int argc, char** argv) try
         if(entry==0xe744) {
             ++damage_paths[bus.read8(0xffff8e7f)<4 ? "pool-under-four" : "pool-allocate"];
         }
+        if(entry==0xe662) ++damage_paths["damage-initialize"];
+        if(entry==0xe8d0 || entry==0xe94e) {
+            if(!(bus.read8(0x29c200)&4)) ++damage_paths["controller-disabled"];
+            else if(bus.read8(0xffff91d0)&4) ++damage_paths["controller-draw-only"];
+            else ++damage_paths[std::string(entry==0xe8d0 ? "intact-state-" : "breakup-state-")+std::to_string(bus.read16(0xffff9124))];
+        }
+        if(entry==0xf640) {
+            if(bus.read8(r.a[5]+38)&1) ++damage_paths["fuselage-complete"];
+            else if(int16_t(bus.read16(r.a[5]+50))<4) ++damage_paths["fuselage-wait"];
+            else {
+                auto index=uint16_t((bus.read16(r.a[5]+50)-4)*8);
+                ++damage_paths[bus.read16(bus.read32(r.a[5]+26)+int16_t(index))==0xffff ? "fuselage-end" : "fuselage-animation"];
+            }
+            ++damage_paths[int8_t(bus.read8(0xffff9118))>1 ? "fuselage-sound-wait" : "fuselage-sound-select"];
+        }
         if(entry==0xf766 || entry==0xebd2 || entry==0xebf6 || entry==0xec1a || entry==0xec3e) {
             if(entry!=0xf766 && int16_t(bus.read16(0xffff91b4))<4) ++damage_paths["debris-wait"];
             else if(!(bus.read8(0x29c200)&4)) ++damage_paths["debris-disabled"];
@@ -113,7 +128,7 @@ int main(int argc, char** argv) try
         bus.trace=&trace;
         if(entry==0xb0ac) OMainInput::update(bus,r);
         else if(entry==0x14976) OMainInput::buttons(bus,r);
-        else if((entry>=0xe744 && entry<=0xecac) || (entry>=0xf58e && entry<=0xfaa0)) OMainDamage::run(bus,r,entry);
+        else if((entry>=0xe662 && entry<=0xecac) || (entry>=0xf3e2 && entry<=0xfaa0)) OMainDamage::run(bus,r,entry);
         else if(entry==0x9810) OMainPlayer::initialize(bus,r);
         else if(entry==0x98c0) OMainPlayer::update(bus,r);
         else if(entry==0x9c34) OMainPlayer::shadow_initialize(bus,r);
@@ -151,6 +166,10 @@ int main(int argc, char** argv) try
         else if(entry==0xae32) OMainWeapons::remove(bus,r,true,false,false);
         else if(entry>=0x14dc4 && entry<=0x1586a) OMainWeapons::enemy(bus,r,entry);
         else throw std::runtime_error("unknown handler entry");
+        bus.trace=nullptr;
+        if(entry==0xe662) ++damage_paths[bus.read32(r.a[5]+16)==0xe8d0 ? "initialize-intact" : "initialize-breakup"];
+        if(entry==0xe8d0 || entry==0xe94e)
+            ++damage_paths["controller-result-"+std::to_string(bus.read16(0xffff9124))];
         if(entry==0xe744 && uint16_t(r.d[5])>=4)
             ++damage_paths[uint16_t(r.d[7]) ? "pool-orientation-one" : "pool-orientation-zero"];
         bool contract=r.d==expected_r.d && r.a==expected_r.a;
