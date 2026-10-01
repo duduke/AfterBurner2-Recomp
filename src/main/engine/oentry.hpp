@@ -2,8 +2,8 @@
 #include <cstdint>
 #include <cstring>
 
-// Represents an entry in the 254-slot Object/Task Table ($9FC0 - $DF40).
-// Each entry is exactly 64 bytes, matching the arcade X-Board memory layout.
+// Native reconstruction's object state. Its C++ layout is NOT the arcade
+// record format; OSprites serializes requests explicitly until 3d replaces it.
 struct OEntry
 {
     // Common fields decoded from the 64-byte record:

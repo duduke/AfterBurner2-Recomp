@@ -11,11 +11,12 @@
 #include "engine/osubroad.hpp"
 #include "engine/oscenery.hpp"
 #include "engine/ostagesetup.hpp"
-#include "engine/opalette.hpp"
+#include "engine/omainpalette.hpp"
+#include "engine/omainframe.hpp"
+#include "engine/osubsprites.hpp"
 
 // Master Engine Coordinator.
-// Verified road/scenery ports share MainBus with video endpoints. Objects,
-// sprites and their palettes remain native until milestones 3c/3d.
+// Verified video/scheduling ports share MainBus. Native object producers and HUD remain native until milestone 3d.
 class OEngine
 {
 public:
@@ -42,7 +43,12 @@ private:
     OSubRoad road_engine;
     OScenery scenery_engine;
     OStageSetup stage_setup;
-    OPalette palette_engine;
+    OMainPalette palette_engine;
+    OMainFrame frame_engine;
+    OMainSprites main_sprites;
+    OSubSprites sub_sprites;
+    int stick_x{},stick_y{},throttle{1};
+    bool vulcan{},missile{};
     OHud hud_engine;
     uint32_t frame_count{0};
 };

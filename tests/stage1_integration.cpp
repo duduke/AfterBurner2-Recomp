@@ -27,7 +27,7 @@ int main()
     std::vector<RGB888> level(320 * 224), banked(level.size());
     const auto jet = read_sprite_frame(roms.subcpu.rom, roms.subcpu.length, 0x100f0);
     require(jet.bank == 0 && jet.offset == 0xab2 && jet.height == 47, "Native player frame table mismatch");
-    for (int tick = 0; tick < 3600; ++tick)
+    for (int tick = 0; tick < 7200; ++tick)
     {
         const int stick = tick > 600 && tick < 720 ? 1 : tick > 900 && tick < 1020 ? -1 : 0;
         engine.handle_input(stick, 0, true, true, 1);
@@ -47,7 +47,7 @@ int main()
     }
     require(engine.get_objects().hud().score > 0, "Stage 1 weapons must hit fighters and update score");
     require(engine.get_objects().hud().missiles < 50, "Missile inventory must update");
-    require(engine.get_objects().is_completed(), "Stage 1 must reach its clear state");
+    require(engine.get_objects().is_completed(), "Native Stage 1 must clear after 3600 logic ticks (7200 display ticks)");
     const auto old_distance = engine.get_objects().distance();
     engine.handle_input(0, 0, true, true, 1); engine.tick(palette, road, sprites, tiles);
     require(engine.get_objects().distance() == old_distance, "Cleared stage must stop advancing terrain");
@@ -65,7 +65,7 @@ int main()
                 roms.subcpu.rom, roms.subcpu.length);
     require(engine.get_objects().hud().score == 0 && engine.get_objects().hud().missiles == 50 &&
             !engine.get_objects().is_completed(), "Restart must restore Stage 1 state");
-    for (int tick = 0; tick < 600; ++tick)
+    for (int tick = 0; tick < 1200; ++tick)
     {
         engine.handle_input(0, 0, false, false, 1);
         engine.tick(palette, road, sprites, tiles);

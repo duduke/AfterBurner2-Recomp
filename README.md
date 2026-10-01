@@ -64,13 +64,14 @@ docs/                        — hardware & porting reference notes
 ## Status
 
 Playable Stage 1 reference experience with fighter combat, targeting, hits,
-original sprite art, HUD and sound-ROM playback. Stage 1 clears after 60
-seconds; Enter restarts it. Phase 3b replaced the native terrain with verified
-arcade road/scenery ports and the hardware renderer.
+original sprite art, HUD and sound-ROM playback. The native stage clears after
+3,600 logic ticks (120 seconds at the corrected 30 Hz cadence); Enter restarts it. Phase 3b replaced the native terrain with verified
+arcade road/scenery ports and the hardware renderer. Phase 3c adds verified
+frame/palette scheduling and both sprite lists through the arcade transform.
 
 Formations, flight/collision rules, HUD and stage duration remain reconstructed.
 Native controls do not feed arcade road attitude until the flight/input port
-in 3d. Sprite scheduling, complete stage progression, carrier introduction,
+in 3d. Complete stage progression, carrier introduction,
 attract mode and refueling remain future work; the full stage count has not
 yet been verified. See [docs/STAGE1_FIDELITY.md](docs/STAGE1_FIDELITY.md),
 [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/PR_REVIEW.md](docs/PR_REVIEW.md).
@@ -86,7 +87,7 @@ cmake --build build
 ```
 
 Controls: arrow keys move/bank/pitch, Z fires the cannon, X launches missiles,
-Space increases throttle, Enter restarts Stage 1, and Escape exits. Simulation runs at 60 Hz.
+Space increases throttle, Enter restarts Stage 1, and Escape exits. Display runs at 60 Hz and object logic at 30 Hz.
 
 The Makefile is an alternative when CMake is unavailable: `make -j4`.
 Run ROM-free engine checks with `make test` (or CTest with a CMake build).

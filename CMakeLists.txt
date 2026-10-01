@@ -26,7 +26,10 @@ add_executable(afterburner2
     src/main/hwaudio/ym2151.cpp
     src/main/engine/ohud.cpp
     src/main/engine/osprites.cpp
-    src/main/engine/opalette.cpp
+    src/main/engine/omainpalette.cpp
+    src/main/engine/omainframe.cpp
+    src/main/engine/omainsprites.cpp
+    src/main/engine/osubsprites.cpp
     src/main/engine/olevelobjs.cpp
     src/main/engine/oengine.cpp
     src/main/engine/subbus.cpp
@@ -54,7 +57,10 @@ if(BUILD_TESTING)
         tests/engine_regression.cpp
         src/main/engine/ohud.cpp
         src/main/engine/osprites.cpp
-        src/main/engine/opalette.cpp
+        src/main/engine/omainpalette.cpp
+    src/main/engine/omainframe.cpp
+    src/main/engine/omainsprites.cpp
+    src/main/engine/osubsprites.cpp
         src/main/engine/olevelobjs.cpp
         src/main/engine/oengine.cpp
         src/main/engine/subbus.cpp
@@ -74,6 +80,25 @@ endif()
 
 option(ORACLE_TESTS "Enable tests against MAME captures in build/oracle (see make oracle-capture)" OFF)
 if(BUILD_TESTING AND ORACLE_TESTS)
+    foreach(PORT palette mainsprites mainframe)
+        set(PORT_SOURCE src/main/engine/omain${PORT}.cpp)
+        if(PORT STREQUAL "mainframe")
+            set(PORT_SOURCE src/main/engine/omainframe.cpp)
+        elseif(PORT STREQUAL "mainsprites")
+            set(PORT_SOURCE src/main/engine/omainsprites.cpp)
+        endif()
+        add_executable(oracle_${PORT} tests/oracle_${PORT}.cpp ${PORT_SOURCE}
+            src/main/romloader.cpp src/main/roms.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp)
+        if(PORT STREQUAL "palette")
+            target_sources(oracle_${PORT} PRIVATE src/main/engine/omainframe.cpp)
+        endif()
+        target_include_directories(oracle_${PORT} PRIVATE src/main)
+        add_test(NAME oracle_${PORT} COMMAND oracle_${PORT} build/oracle/${PORT}.bin)
+        add_test(NAME oracle_${PORT}_directed COMMAND oracle_${PORT} build/oracle/${PORT}_directed.bin)
+        set_tests_properties(oracle_${PORT} oracle_${PORT}_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
+    add_test(NAME oracle_spriteinit COMMAND oracle_mainsprites build/oracle/spriteinit.bin)
+    set_tests_properties(oracle_spriteinit PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_stagesetup tests/oracle_stagesetup.cpp src/main/romloader.cpp src/main/roms.cpp
         src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/ostagesetup.cpp)
     target_include_directories(oracle_stagesetup PRIVATE src/main)
@@ -104,8 +129,9 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         src/main/engine/subbus.cpp src/main/engine/osubsprites.cpp)
     target_include_directories(oracle_subsprites PRIVATE src/main)
     add_test(NAME oracle_subsprites COMMAND oracle_subsprites)
+    add_test(NAME oracle_subsprites_directed COMMAND oracle_subsprites build/oracle/subsprites_directed.bin)
     add_test(NAME oracle_subsprites_gameplay COMMAND oracle_subsprites build/oracle/subsprites_gameplay.bin)
-    set_tests_properties(oracle_subsprites oracle_subsprites_gameplay PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(oracle_subsprites oracle_subsprites_directed oracle_subsprites_gameplay PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_subroad tests/oracle_subroad.cpp
         src/main/romloader.cpp src/main/roms.cpp
         src/main/engine/subbus.cpp src/main/engine/osubroad.cpp)
@@ -119,12 +145,13 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     add_executable(oracle_video tests/oracle_video.cpp
         src/main/romloader.cpp src/main/roms.cpp
         src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwtiles.cpp
-        src/main/hwvideo/hwpalette.cpp src/main/hwvideo/screen.cpp src/main/engine/osprites.cpp)
+        src/main/hwvideo/hwpalette.cpp src/main/hwvideo/screen.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp)
     target_include_directories(oracle_video PRIVATE src/main)
     add_test(NAME oracle_video COMMAND oracle_video build/oracle/frames.bin)
     add_test(NAME oracle_video_nosprites COMMAND oracle_video build/oracle/frames_nosprites.bin)
+    add_test(NAME oracle_pipeline COMMAND oracle_video build/oracle/pipeline.bin)
     add_test(NAME oracle_video_gameplay COMMAND oracle_video build/oracle/frames_gameplay.bin)
-    set_tests_properties(oracle_video oracle_video_nosprites oracle_video_gameplay PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(oracle_video oracle_video_nosprites oracle_video_gameplay oracle_pipeline PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()
 
 option(STAGE1_ROM_TESTS "Enable tests requiring the user's Stage 1 ROM set" OFF)

@@ -91,7 +91,8 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-**Picking the next task**: take the first unchecked item in "Remaining
+**Picking the next task**: Phase 3c is complete; start the 3d dispatcher/initializer
+capture in [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
 main CPU oracle capture).
@@ -236,7 +237,7 @@ milestone ends with something visibly closer to the arcade in
       Shared RAM and sub-side chips use the same `SubBus` instance;
       byte lanes, mirrors and buffer swaps have ROM-free checks.
       Road/scenery video endpoints are connected in 3b; sprite triggering and
-      timed ADC scheduling remain for 3c/3d.
+      timed ADC scheduling remains for 3d.
 - [x] 315-5250 compare/timer model: comparator, timer IRQ, and the
       main → sound command latch (offsets `$B`/`$F`); 2,438 of 2,438 MAME
       events identical, 0 skipped (see verified coverage in `ENGINE_NOTES.md`)
@@ -251,7 +252,8 @@ milestone ends with something visibly closer to the arcade in
       regenerates the new captures, and `make oracle-test` checks them.
 
 Phase 3a was merged in PR #4 (`559a2b7`). The main bus is now used by the
-road/scenery ports; ADC scheduling and the full frame loop remain for 3c/3d.
+road/scenery/sprite ports; the frame loop is completed in 3c below, while
+ADC scheduling awaits 3d.
 
 **3b. Real road and scenery in the game (complete)**
 
@@ -263,8 +265,9 @@ road/scenery ports; ADC scheduling and the full frame loop remain for 3c/3d.
 - [x] Stage events and scenery scroll (`$018444`, `OScenery`), including
       `$018798` tile upload: 4,137 of 4,400 calls identical, 263 skipped for
       sub CPU input races. Regenerated captures use the active CPU stack.
-- [x] `OSubRoad::frame` runs once per host frame, after request processing
-      and the preceding road RAM latch. `MainBus` video endpoints send
+- [x] 3b initially ran `OSubRoad::frame` once per host frame, after request processing
+      and the preceding road RAM latch (3c corrects the caller to the ROM
+      two-display-frame handshake). `MainBus` video endpoints send
       tiles/text/palettes and the latched road buffer to the hardware renderer.
       Request processing: 866 of 868 identical, 2 input races skipped;
       road initialization: 34 of 34 identical, 0 skipped.
@@ -278,29 +281,52 @@ road/scenery ports; ADC scheduling and the full frame loop remain for 3c/3d.
 The host still starts the native Stage 1 experience at raw selector `$10`;
 credit/stage dispatch is 3e. Native player controls do not drive arcade road
 attitude yet: that exact mapping is 3d, and the integration check exercises
-bank targets directly through shared RAM. Objects, sprites, HUD and sound
-command timing remain reconstructed. See `ENGINE_NOTES.md` for boundaries,
+bank targets directly through shared RAM. Objects, HUD and sound command timing remain reconstructed. Sprite and palette
+scheduling are replaced in 3c below. See `ENGINE_NOTES.md` for boundaries,
 coverage and mutation checks. `make test`, `make verify-stage1` and
 `make oracle-test` pass; no ROM data or captures are committed.
 
-**3c. Frame loop and sprite pipeline (retires `osprites`' reconstruction)**
+**3c. Frame loop and sprite pipeline (complete)**
 
 Implementation order and acceptance checks: [PHASE3C_PLAN.md](PHASE3C_PLAN.md).
+Changes: [PR #6](https://github.com/duduke/AfterBurner2-Recomp/pull/6).
 
-- [ ] Port the main CPU VBLANK handler (`$014674`): the 30/60 Hz split,
+- [x] Port the main CPU VBLANK handler (`$014674`): the 30/60 Hz split,
       the double-buffer pointer swaps (`$2A3C04`-`$2A3C1C`), the
-      frame-update mutex, and lamps
-- [ ] Port `append_sprite` (`$00B628`) and the sorted-list blit to sprite
+      frame-update mutex, and lamps; 180/240 scheduler records identical,
+      60 concurrent sub-input races skipped. 3d/3e callees remain explicit hooks.
+- [x] Port `append_sprite` (`$00B628`) and the sorted-list blit to sprite
       RAM (`$00B7C2`/`$00B7D2`), showing the interpolated `+$C00` list on
-      alternate frames
-- [ ] Run `OSubSprites` in the game between the two, so every sprite on
-      screen goes through the arcade's own sort and transform
-- [ ] Port the palette fade/flash (`$014A86`) and palette animation
-      (`$013F92`) subsystems
-- [ ] Run object logic at 30 Hz, as the arcade does (the reconstruction
-      runs at 60 Hz)
+      alternate frames; 1,201/1,201 main sprite/setup records identical, 0 skipped.
+- [x] Run `OSubSprites` in the game between the two, so every sprite on
+      screen goes through the arcade's own sort and transform; 240/240 directed
+      sub passes identical, covering skip-sort, spills and clipping. Paired
+      output: 60 normal + 60 interpolated frames, RAM/draw/pixels identical.
+- [x] Port the palette fade/flash (`$014A86`) and palette animation
+      (`$013F92`) subsystems and their palette/small scheduler callees;
+      2,200/2,200 records identical, 0 skipped. Native `OPalette` removed.
+- [x] Run object logic at 30 Hz, as the arcade does (the reconstruction
+      ran at 60 Hz). Native constants remain logic ticks: the temporary
+      3,600-tick stage now lasts 7,200 display frames.
+
+The sub CPU's `$000556` wait starts sprite preparation on a negative logic
+counter; `$000452` delays road latch/generation until the following display
+phase makes the counter zero. Normal gameplay captures advance by two display
+frames per road call. This corrects 3b's host once-per-display scheduling and
+the initial 3c plan. CPU instruction timing/interrupt stack emulation and the
+3d/3e callees are outside the scheduler oracle's claim. The paired pipeline
+oracle computes sub descriptors and main blits before comparing RAM and RGB;
+it does not establish whole-credit equality.
+
+All required Make checks and a headless launch pass. Four deliberate constant
+mutations fail their targeted oracle checks. `OSprites` now only adapts native
+producers to real ROM frame pointers and serialized requests; unsupported
+native art/zoom tuples are omitted rather than given fabricated descriptors.
+Full boundaries/coverage are in `ENGINE_NOTES.md`. Next: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 
 **3d. Objects and flight (retires `olevelobjs`)**
+
+Implementation plan: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 
 - [ ] Object dispatch loop over the 254 × 64-byte table (`$9FC0`-`$DF40`)
 - [ ] Input read: stick X/Y and throttle through the ADC, buttons, and
