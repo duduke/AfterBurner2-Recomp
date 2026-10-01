@@ -5,6 +5,97 @@ data/hardware layer first (since it's verifiable against MAME immediately),
 then the game logic that drives it (which takes much longer and benefits
 from having a working hardware layer to render into while porting).
 
+## Working on the remaining tasks (read this first)
+
+These instructions are for anyone picking up the next task, including AI
+assistants. The goal is gameplay **identical** to the arcade ROM, so the
+bar is "matches MAME byte-for-byte", not "looks right".
+
+**Where things are**
+
+- [`docs/HARDWARE.md`](HARDWARE.md): the X-Board hardware, from MAME's
+  `segaxbd.cpp` and the `segaic16` chips.
+- [`docs/ENGINE_NOTES.md`](ENGINE_NOTES.md): what's known about the 68000
+  game code (addresses, RAM layout, routines), and the write-up of each
+  verified port. Read "Oracle testing", "Sub CPU road generator" and
+  "Video oracle" before starting.
+- `src/main/engine/subbus.*`, `osubsprites.*`, `osubroad.*`: the
+  reference examples of a verified port. Copy their structure.
+- `tests/oracle_*.cpp` and `tools/oracle/*.lua`: the matching tests and
+  MAME capture scripts. Copy these too.
+- `docs/STAGE1_FIDELITY.md`: which parts of the current game are
+  reconstructions waiting to be replaced.
+
+**Rules**
+
+1. **Never invent behaviour.** Every number, table, timing and branch
+   comes from the ROM disassembly. If something isn't understood yet, leave
+   it unported and say so; don't fill the gap with a plausible guess. The
+   existing Stage 1 reconstruction (`olevelobjs`, `oroad`, `osprites`,
+   `draw_stage1`) is what guessing produces, and it all has to be replaced.
+2. **Translate instruction by instruction**, keeping the arcade's memory
+   layout: the ported code reads and writes the same addresses through a
+   bus object (`SubBus`, and `MainBus` once it exists). Comment each block
+   with the ROM address it came from. Refactoring into readable code comes
+   later, once a test pins the behaviour.
+3. **Every port gets an oracle test before it's wired into the game.** A
+   Lua script captures the state before and the writes after the routine
+   in MAME, and a C++ test replays the "before" state through the port and
+   compares. Report results as "N of M identical, K skipped (reason)".
+4. **Prove the test can fail.** Change one constant in the port, check the
+   test fails, then revert. Check coverage too: a path the capture never
+   exercised is unverified, and must be listed as such in `ENGINE_NOTES.md`.
+5. **Never commit ROM data or captures.** ROMs live in `roms/`, captures in
+   `build/oracle/`; both are gitignored. Don't paste ROM bytes or large
+   tables into source files either: read them from the ROM at runtime.
+6. **Keep the docs current**: tick roadmap items off with their results,
+   and add what you learned to `ENGINE_NOTES.md`.
+7. **Before committing**, run `make test`, `make verify-stage1` and
+   `make oracle-test`, and confirm nothing got worse.
+
+**Commands** (from the repository root)
+
+```bash
+make -j4                    # build the game: ./afterburner2
+make test                   # ROM-free engine checks
+make verify-stage1          # Stage 1 integration suite (needs roms/)
+make oracle-capture         # record MAME reference captures into build/oracle/
+make oracle-test            # check the ports against those captures
+
+# Disassemble: build a flat CPU image, then a linear listing of a range
+python3 tools/build_rom_image.py maincpu "$TMPDIR/main.bin"    # or subcpu
+python3 tools/m68k_disasm.py "$TMPDIR/main.bin" 144A2 14820
+```
+
+`make oracle-capture` needs a MAME binary and the `aburner2` ROM set: set
+`MAME=` and `ROMPATH=` (defaults are in `tools/oracle/capture.sh`). The
+scripts were written for MAME 0.287. The disassembler is linear and
+deliberately incomplete: "unknown opcode" on a real execution path means
+the decoder needs extending; in a data table it's expected.
+
+**Oracle lessons learned (avoid repeating them)**
+
+- Compare **write sets**, not whole RAM snapshots: log only the CPU under
+  test's own writes (filter on `CURPC`), so the other CPU's concurrent
+  writes can't cause false failures. A record is a race, and is skipped,
+  only if the other CPU changed a byte the port actually read.
+- Exclude stack areas: exception frames are pushed while the PC still
+  points at the interrupted instruction, so no PC filter catches them.
+- Keep Lua tap handles in global variables, or they get garbage-collected
+  and silently stop firing. `screen:vpos()` isn't available; derive scan
+  lines from `manager.machine.time` (64 us per line).
+- In a frame notifier, `screen:pixels()` is the image drawn from the state
+  at the *previous* notifier, converted through the *current* palette.
+- Start each MAME run with fresh NVRAM and config (`capture.sh` does), or
+  boot isn't deterministic.
+- The game logic runs at 30 Hz with an interpolated sprite list on the
+  in-between frames. Don't port anything at 60 Hz.
+
+**Picking the next task**: take the first unchecked item in "Remaining
+Phase 3 work" below. The milestones are ordered so each one builds on the
+previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
+main CPU oracle capture).
+
 ## Phase 1 — Scaffold (done)
 
 - [x] Project structure, build system, license/legal framing
