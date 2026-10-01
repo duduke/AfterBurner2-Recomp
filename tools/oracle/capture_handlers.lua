@@ -2,11 +2,13 @@
 -- AB2HND02: index/frame/entry, 15 pre/post registers, IO1 byte,
 -- 32 pre/post math words,
 -- before/after RAM, own/other sets, ordered writes (RAM and I/O).
+-- AB2HND03 inserts a terminal caller after entry for named boundary prefixes.
 local main=manager.machine.devices[":mainpcb:maincpu"]
 local sub=manager.machine.devices[":mainpcb:subcpu"]
 local space,subspace=main.spaces.program,sub.spaces.program
 local pc=main.state.CURPC
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2HND02")
+local prefix_boundaries=os.getenv("AB2_ORACLE_HANDLER_BOUNDARIES")=="1"
+local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write(prefix_boundaries and "AB2HND03" or "AB2HND02")
 local limit=tonumber(os.getenv("AB2_ORACLE_PASSES") or "120")
 local selected=tonumber(os.getenv("AB2_ORACLE_HANDLER") or "b0ac",16)
 local wanted={};for target in (os.getenv("AB2_ORACLE_HANDLERS") or os.getenv("AB2_ORACLE_HANDLER") or "b0ac"):gmatch("[^,]+") do wanted[tonumber(target,16)]=true end
@@ -16,7 +18,7 @@ local before,pre,mathpre,io_input,written,other,events,restore
 local leaf=os.getenv("AB2_ORACLE_HANDLER_LEAF")=="1"
 local leaf_sp
 local isolated=os.getenv("AB2_ORACLE_HANDLER_CALLS")=="1"
-local interrupted_registers,interrupted_sr,injected,injected_sp,restore_buttons
+local interrupted_registers,interrupted_sr,interrupted_pc,injected,injected_sp,restore_buttons
 if os.getenv("AB2_ORACLE_GAMEPLAY")=="1" then dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/gameplay.lua") end
 local function u32(v) return string.pack(">I4",v&0xffffffff) end
 local ranges = {
@@ -136,10 +138,31 @@ local function restore_fixture()
   for _,v in ipairs(restore_buttons) do v[1]:set_value(v[2]) end;restore_buttons=nil
  end
 end
-local function finish()
+local function finish(terminal)
  local after=snapshot();local mathpost=mathstate()
- out:write(u32(records),u32(frame),u32(selected),packed(pre),packed(registers()),u32(io_input),mathpre,mathpost,
+ out:write(u32(records),u32(frame),u32(selected))
+ if prefix_boundaries then out:write(u32(terminal or 0)) end
+ out:write(packed(pre),packed(registers()),u32(io_input),mathpre,mathpost,
   before,after,offsets(written),offsets(other),u32(#events),table.concat(events))
+ if injected and ((selected>=0x10348 and selected<=0x10ffe) or (selected>=0x1586c and selected<=0x160a6) or (selected>=0x8946 and selected<=0x94b8) or (selected>=0x161b8 and selected<=0x169d8)) then
+  -- Sequence fixtures allocate across live pools and may publish a selector.
+  -- Restore only this call's RAM output after recording; preserve sub writes.
+  -- Otherwise a routine fixture can corrupt the suspended gameplay caller.
+  guard=true
+  for o in pairs(written) do
+   if not other[o] then
+    local base=0
+    for _,range in ipairs(ranges) do
+     local length=range[2]-range[1]+1
+     if o>=base and o<base+length then
+      space:write_u8(range[1]+o-base,before:byte(o+1));break
+     end
+     base=base+length
+    end
+   end
+  end
+  guard=false
+ end
  before=nil;records=records+1;restore_fixture()
  if injected then
   for i=0,7 do main.state["D"..i].value=interrupted_registers[i+1] end
@@ -150,9 +173,33 @@ local function finish()
   out:close();print(string.format("captured %d handler boundaries (%d interrupted windows dropped) -> %s",records,dropped,os.getenv("AB2_ORACLE_OUT")));manager.machine:exit()
  end
 end
-handler_frames=emu.add_machine_frame_notifier(function() frame=frame+1 end)
+handler_frames=emu.add_machine_frame_notifier(function()
+ frame=frame+1
+ if os.getenv("AB2_ORACLE_DEBUG")=="1" and frame%120==0 then
+  print(string.format("handler progress frame=%d record=%d entry=%x pc=%x sp=%x",frame,records,selected,pc.value,main.state.SP.value))
+ end
+end)
+local last_handler_pc=0
 handler_reads=space:install_read_tap(0,0x3fffff,"handler_reads",function(a,data,mask)
  if guard then return end
+ if injected and before then
+  if pc.value==0x400 then
+   out:flush();manager.machine:exit()
+   error(string.format("injected handler %x record %d reached exception at PC %x (previous %x, A0=%x A1=%x D0=%x D1=%x D2=%x)",selected,records,pc.value,last_handler_pc,main.state.A0.value,main.state.A1.value,main.state.D0.value,main.state.D1.value,main.state.D2.value))
+  end
+  last_handler_pc=pc.value
+ end
+ if prefix_boundaries and before and pc.value==0x8c9e then
+  -- $E542 is a score/game-flow boundary. Capture the caller through $9046,
+  -- before executing any score code. This is a prefix, not a handler return.
+  local artificial=injected
+  finish(0xe542)
+  if artificial then
+   local stack=(interrupted_sr&0x2000~=0) and main.state.SP or main.state.USP
+   stack.value=injected_sp+4;main.state.PC.value=interrupted_pc
+  end
+  return
+ end
  if leaf and not before and pc.value==selected and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then
   local active=(main.state.SR.value&0x2000~=0) and main.state.SP or main.state.USP
   leaf_sp=active.value
@@ -209,16 +256,27 @@ local function inject_call()
  if not isolated or before or frame<540 then return end
  local targets={};for target in pairs(wanted) do targets[#targets+1]=target end;table.sort(targets)
  selected=targets[records%#targets+1]
- interrupted_registers=registers();interrupted_sr=main.state.SR.value
+ interrupted_registers=registers();interrupted_sr=main.state.SR.value;interrupted_pc=pc.value
  local stack=(interrupted_sr&0x2000~=0) and main.state.SP or main.state.USP
  -- A task may be using an object-local stack. Do not inject damage
  -- fixtures on top of their scratch compound or the complete emission pool.
- if (selected>=0xe662 and selected<=0xecac) or (selected>=0xf3e2 and selected<=0x10310) then
+ if (selected>=0xe662 and selected<=0xecac) or (selected>=0xf3e2 and selected<=0x10ffe) or (selected>=0x161b8 and selected<=0x169d8) then
   local stack_offset=offset(stack.value&0x3fffff)
   if stack_offset and (stack_offset>=0x4400 and stack_offset<=0x5900) then return end
  end
+ -- New graph fixtures allocate across the whole object table. Defer when
+ -- the suspended caller uses any object-local stack, not just the scratch jet.
+ if (selected>=0x8946 and selected<=0x94b8) or (selected>=0x10348 and selected<=0x10ffe) or (selected>=0x1586c and selected<=0x169d8) then
+  local stack_offset=offset(stack.value&0x3fffff)
+  if stack_offset and stack_offset>=0x1fc0 and stack_offset<0x6000 then return end
+ end
+ -- Resume at the ROM's idle compare loop. Re-entering an arbitrary CURPC
+ -- can repeat a just-completed RTS and pop the suspended caller twice.
+ if (selected>=0x8946 and selected<=0x94b8) or (selected>=0x10348 and selected<=0x10ffe) or (selected>=0x1586c and selected<=0x169d8) then
+  if pc.value~=0x1408a and pc.value~=0x1408c then return end
+ end
  local sp=(stack.value-4)&0xffffffff
- guard=true;space:write_u32(sp&0x3fffff,main.state.CURPC.value);guard=false;stack.value=sp;injected_sp=sp
+ guard=true;space:write_u32(sp&0x3fffff,interrupted_pc);guard=false;stack.value=sp;injected_sp=sp
  main.state.A5.value=0xffffc400
  main.state.A2.value=0xffffc440;main.state.A3.value=0xffffc480;main.state.A4.value=0xffffc4c0
  main.state.A6.value=0xe4000;main.state.A0.value=selected
@@ -302,7 +360,7 @@ local function inject_call()
   set(player+4,({0,31,32,0xffe0})[n%4+1],2);set(player+6,({0x70,0x31,0x30,0x71})[(n//16)%4+1],2)
   set(0x3f8d60,0,1)
  end
- if selected>=0x14dc4 and selected<=0x1586a then
+ if selected>=0x14dc4 and selected<=0x160a6 then
   set(0x29c09a,n%16==0 and 1 or 0,2);set(0x29c200,n%16==1 and 0 or 2,1)
   set(0x3f91d0,n%16==2 and 2 or 0,1);set(0x3f90fe,n%16==3 and 1 or 0,1)
   set(0x3fc424,({0,0x1000,0x1ff7,0x1ff8,0x2a9f,0x2aa0,0x4000,0x7fff})[n%8+1],2)
@@ -481,6 +539,112 @@ local function inject_call()
   local parent=space:read_u32(0x1c5c0)&0x3fffff
   set(parent+2,({0,1,0xfe,0xff})[(n//16)%4+1],1)
   main.state.D7.value=({0,0x20,0x7fff,0xffe0})[n%4+1]
+ end
+ if selected>=0x10348 and selected<=0x10ffe then
+  -- Sequence graph: isolated entry states, never a stage/credit replay.
+  set(0x3fc410,selected,4);set(0x3fc414,144,1);set(0x3fc43c,145,1)
+  main.state.A4.value=0xffffc440
+  set(0x3fc454,145,1);set(0x3fc410,selected,4)
+  set(0x3fc40c,0x10140,4);set(0x3fc44c,0x10140,4)
+  set(0x3fc404,({0,9,10,0xffff,0x8000,0x7fff,1,0xfffe})[n%8+1],2)
+  set(0x3fc406,({0x70,0x158,0x159,0xffff})[(n//4)%4+1],2)
+  set(0x3fc444,0,2);set(0x3fc446,0x70,2)
+  set(0x3fc424,({0,0x100,0xaf0,0x7fff,0x8000,0xffff,0x320,1})[n%8+1],2)
+  set(0x3fc42a,18,2);set(0x3fc42c,({0,0x70,0x100,0x7fff})[(n//8)%4+1],2)
+  for _,v in ipairs({{0x2e,16},{0x30,0xffff},{0x32,0},{0x34,1},{0x36,32},{0x38,16}}) do set(0x3fc400+v[1],v[2],2) end
+  set(0x3fc42e,({1,2,3,0x8000,0x7fff,0xffff,16,0})[n%8+1],2)
+  set(0x3fc436,({254,255,256,0x7fff,0x8000,0xffff,32,0})[(n//8)%8+1],2)
+  set(0x3fc432,({7,8,9,0x7fff,0x8000,0xffff,0,1})[n%8+1],2)
+  for _,a in ipairs({0x9082,0x9086,0x9088,0x9090,0x9092,0x9096,0x9098,0x909a,0x90a0,0x90a2,0x90a8}) do
+   set(0x3f0000+a,({0,1,0xffff,0x7fff,0x8000,4,0xfffc,0x40})[(n//4)%8+1],2)
+  end
+  set(0x3f9084,({0x250,0x251,0x7d0,0x7d1,0,0x7fff,0x8000,0xffff})[(n//8)%8+1],2)
+  set(0x3f908a,({0,0x70,0x7fff,0x8000})[(n//4)%4+1],2)
+  set(0x3f9094,({0,0x12b,0x12c,0x31f,0x320,0x513,0x514,0x63f,0x640,0x76b,0x76c,0x8bf,0x8c0,0x8e7,0x8e8,0xaf0})[(n//4)%16+1],2)
+  set(0x3f90aa,({0,0x90,0xff,0x7fff,0x8000,0xffff,0x320,1})[n%8+1],2)
+  set(0x3f90ac,({0,1,0xffff,0x7fff,0x8000,4,0xfffc,0x40})[(n//8)%8+1],2)
+  set(0x3f90ae,({0,5,6,14,15,19,20,24,25,29,0x7fff,0x8000,0xffff,1,2,3})[(n//4)%16+1],2)
+  set(0x3f90b0,n%16,2);set(0x29c09c,n%4==0 and 14 or n%4==1 and 15 or 16,2)
+  set(0x29c0aa,({0,1,0xffff,0x7fff,0x8000,4,0xfffc,0x40})[n%8+1],2)
+  set(0x29c096,({0,89,0xff60,0x7fff,0x8000,0xffff,6,0xfffc})[(n//8)%8+1],2)
+  set(0x29c076,n%2==0 and 0x38 or 0,1)
+  set(0x29c200,n%4==0 and 0 or 0x20,1);set(0x29c09f,n*4,1)
+  set(0x29c0c2,({0,0x1fff,0x7fff,0x8000})[(n//4)%4+1],2)
+  set(0x29c080,({0,0x70,0xffff,0x7fff})[n%4+1],2)
+  set(0x29c08c,0x10,2);set(0x29c08e,0x20,2)
+  -- Valid pools include empty/one/two/available; each attachment has a slot ID.
+  set(0x3f8ee0,({0,1,2,8})[n%4+1],1)
+  set(0x3f8e7f,({0,1,2,8})[(n//4)%4+1],1)
+  for i=1,64 do set(0x3f8e7f+i,199+(i%8)+1,1) end
+  for i=1,16 do set(0x3f8ee0+i,215+(i%8)+1,1) end
+ end
+ if selected>=0x1586c and selected<=0x160a6 then
+  main.state.A1.value=0xffffc440
+  set(0x3fc410,selected,4);set(0x3fc414,144,1)
+  set(0x3fc43a,({0,1,2,0x7f,0x80,0xff,4,8})[n%8+1],1)
+  set(0x3fc43b,({1,2,8,0x80})[(n//4)%4+1],1)
+  set(0x3fc434,selected==0x15968 and 4+(n%16)*2 or ({0,1,16,17})[n%4+1],2)
+  if selected>=0x15c62 then
+   set(0x3fc42c,(n%10)*16,1)
+   set(0x3fc41e,({0,319,320,321,0x7fff,0x8000,0xffff,0x70})[n%8+1],2)
+   set(0x3fc404,({0,0x9f,0xff61,0x7fff})[(n//8)%4+1],2)
+   set(0x3fc406,({0,0x70,0xe8,0x7fff})[n%4+1],2)
+  end
+  if selected==0x16038 then set(0x3fc41e,({0,24,320,0x7ffe,0x8000,0xfffe,0x70,0})[n%8+1],2) end
+  set(0x29c0a4,({0,4,8})[n%3+1],2);set(0x29c0a0,(n%4)*16,1)
+  set(0x29c092,0x7f,2);set(0x29c090,0,2);set(0x29c0c6,n*4,2)
+  set(0x29c09e,n*4,2);set(0x29c080,0x70,2)
+  set(0x3fc428,({0,0x180,0x7fff,0x8000})[n%4+1],2)
+  set(0x3fc43c,({0,0x100,0x7fff,0x8000})[(n//4)%4+1],2)
+  set(0x3fc41c,({0,0x100,0x7fff,0x8000})[(n//8)%4+1],2)
+  set(0x3fc422,({0,0x100,0x7fff,0x8000})[(n//16)%4+1],2)
+  set(0x3f8e7f,({0,1,2,5,6,7,8,12})[(n//4)%8+1],1)
+ end
+ if selected==0x8946 or selected==0x8c1c or selected==0x9046 or selected==0x90ac or selected==0x9366 or selected==0x93a0 or selected==0x94b8 then
+  set(0x3fc410,selected,4);set(0x3fc414,144,1)
+  set(0x3fc436,0x29c190,4);set(0x3fc43c,0x28c94,4);set(0x3fc43b,0,1)
+  set(0x3fc415,n%4,1);set(0x29c0a2,0,2);set(0x29c33e,n%4==1 and 0x10 or 0,2)
+  set(0x29c0aa,({0,1,0x100,0x7fff})[(n//4)%4+1],2);set(0x29c0c0,0x1000,2)
+  set(0x29c092,0x7f,2);set(0x29c090,0,2);set(0x29c09f,n*4,1)
+  set(0x3fc418,({0,1,9,10,0x89,0x8a,1,2})[n%8+1],1)
+  if selected==0x90ac then set(0x3fc418,({1,2,3,4,5,6,9,10})[n%8+1],1) end
+  set(0x3fc424,({0,0x1ff,0x200,0x201,0x1000,0x7fff,0x8000,0xffff})[(n//8)%8+1],2)
+  set(0x3fc404,0,2);set(0x3fc406,0x70,2);set(0x3fc42a,n*4,2);set(0x3fc42c,0x140,2)
+  set(0x3fc42e,3,1);set(0x3fc42f,n%4,1);set(0x3fc430,({0,1,0x8000,0xffff})[(n//4)%4+1],2);set(0x3fc432,0x100,2)
+  set(0x3f91d0,n%16==0 and 1 or 0,1);set(0x3f8d80,n%4==0 and 0 or 1,1);set(0x3f8d81,200,1)
+  set(0x3f8d18,0x1000,2);set(0x3f8d70,0xffff,2);set(0x3f8d72,0xffff,2)
+  set(0x2a3800+144*4,64,2);set(0x2a3802+144*4,64,2)
+  local pool=space:read_u32(0x1c5d8)&0x3fffff
+  local count=space:read_u16(0x1c5de)
+  for i=0,count-1 do set(pool+i*64,0,1) end
+  if n%8~=0 then
+   set(pool,0x80,1);set(pool+36,(space:read_u16(0x3fc424)+({0,1,0x1ff,0x200})[(n//8)%4+1])&0xffff,2)
+   set(pool+4,({0,31,32,0xffe0})[n%4+1],2);set(pool+6,({0x70,0x31,0x30,0x71})[(n//4)%4+1],2)
+   set(pool+42,0x00200070,4)
+  end
+  main.state.A0.value=pool
+  -- Gate explosion animation tables are selected from the real type inventory.
+  if selected==0x9366 or selected==0x93a0 then
+   local table=space:read_u32(0x347be+8*4)+2
+   set(0x3fc43c,table,4);set(0x3fc40c,space:read_u32(table),4)
+  end
+ end
+ if selected>=0x161b8 and selected<=0x169d8 then
+  set(0x3fc410,selected,4);set(0x3fc40c,0x10140,4);set(0x3fc414,144,1)
+  set(0x3fc438,({1,4,0x7fff,0x8000})[n%4+1],2)
+  for _,addr in ipairs({0x90e4,0x90e6,0x90e8,0x90ea,0x912e,0x9130,0x9132}) do
+   set(0x3f0000+addr,({0,1,0xffff,0x7fff,0x8000,0xfffe,0xffa0,0x180})[(n//4)%8+1],2)
+  end
+  set(0x29c0aa,({0,0x180,0x220,0x7fff,0x8000,0xffff,1,0x100})[n%8+1],2)
+  set(0x29c0ae,({0,1,5,6,7,0xffff,0xfffa,0x8000})[n%8+1],2)
+  set(0x29c0b4,({0,1,0xffff,0x7fff,0x8000,0xfffe,0xffa0,0x80})[(n//8)%8+1],2)
+  set(0x29c0b6,0,2);set(0x29c630,n*2,2)
+  set(0x29c0d0,({0,1,38,39,0xffff,0xffda,0x7fff,0x8000})[n%8+1],2)
+  set(0x29c096,({0,1,56,57,0xffa8,89,0x20,0x40})[n%8+1],2);set(0x29c098,0,2)
+  set(0x3fc434,n%2,1);set(0x3fc430,({0,1,6,7,0xffff,0xfffa,0x7fff,0x8000})[n%8+1],2)
+  set(0x3fc432,({0,1,0xffff,10})[n%4+1],2);set(0x3fc404,n*2,2);set(0x3fc406,0x70,2)
+  set(0x3f90f0,n%19,2);set(0x3f90fc,n%3,2);set(0x3f91fe,n%64*4,2)
+  set(0x3f9104,n,2)
  end
  guard=false
  injected=selected;before=snapshot();pre=registers();mathpre=mathstate();io_input=port_input();written,other,events={},{},{}

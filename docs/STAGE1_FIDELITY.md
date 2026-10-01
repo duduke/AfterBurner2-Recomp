@@ -62,9 +62,10 @@ ground effects, scaled player collision and a paired enemy missile/shadow/trail
 graph, alongside the earlier dispatcher/RNG/sound ring. Observable ADC result
 and timer/mux timelines also match MAME. Damage controllers through state 6,
 fuselage animation and debris match 1,792/1,792 directed and 120/120 ordinary gameplay
-MAME calls, with no skips. Damage companion handlers, later sequence controllers and a
-natural death sequence remain unverified. These ports remain unwired until
-the remaining enemy/damage handlers and actual host ADC/IRQ caller are verified.
+MAME calls, with no skips. Damage companion, carrier/horizon, enemy tracking/burst/debris and remaining
+world handler graphs now have separate routine checks. Refuel stage-flow and
+a natural death sequence remain unverified. These ports remain unwired until
+the actual host ADC/IRQ caller and paired player/weapon acceptance pass.
 `OLevelObjs`, its request adapter and native sound cues therefore remain.
 This foundation does not change the native flight or combat experience.
 
@@ -109,3 +110,15 @@ The Phase 3d damage companion continuation adds independent routine ports for
 pre-lives damage controller and debris routines. Their MAME checks do not
 establish the host death/recovery sequence, sound cadence or player/weapon
 30/60 Hz equality. Native `OLevelObjs` and its request adapter remain required.
+
+The remaining handler graph continuation adds `OMainSequence`, tracking and
+burst/debris enemy families, world variants and explosion setup. Directed
+checks match MAME for 4,539 of 4,544 calls; five sub-input races are skipped. Projectile-hit checks stop
+before scoring `$E542`; the refuel controller's first call `$E224` remains
+Phase 3e. Carrier and refuel routine coverage does not establish stage flow.
+Native flight, objects, sound cues and their host adapter remain in use.
+
+[PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11) is the authorized
+handler-graph checkpoint. Its independent routine checks leave the native
+Stage 1 experience unchanged. Phase 3d remains incomplete until the host
+input/IRQ, sound cadence and paired player/weapon acceptance checks pass.

@@ -42,7 +42,8 @@ hand-picked sound events as these ports replace them.
 ## 4. Enemy handlers, projection and collisions
 
 Map the remaining handler table, starting with `$0088C2`, `$008AF2`, `$0091C0`
-and `$009626`. Translate projection, formations and per-object state changes
+and their runtime transitions (`$009626` is player recovery). Translate
+projection and per-object state changes
 using runtime ROM tables and the verified RNG. Stage/spawn dispatch remains
 3e; use clearly labelled directed object fixtures to exercise handlers whose
 natural spawn conditions are not ported yet.
@@ -67,7 +68,14 @@ native code, then commit and deliver a separate PR. Whole-credit RAM/video and
 waveform equality remain 3f/audio acceptance work.
 
 Dispatcher/initializer, RNG, sequence compound setup/hiding and sound-ring
-foundations now have oracle checks. Phase 3d remains incomplete; resume at
+foundations and the remaining independent handler graphs now have oracle
+checks. Host ADC/IRQ, sound cadence and paired player/weapon acceptance remain
+pending. Phase 3d remains incomplete; resume at
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md). The dispatcher establishes
 traversal/callback contracts only. Each actual handler still needs its complete
 entry RAM, math-chip/I/O inputs and independent execution oracle before wiring.
+
+The user authorized merging the remaining handler-graph checkpoint,
+[PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11), before host
+acceptance. Continue that acceptance in a separate PR; do not retire the
+native object adapter or mark Phase 3d complete based on this checkpoint.

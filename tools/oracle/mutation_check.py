@@ -15,7 +15,8 @@ root.mkdir(parents=True, exist_ok=True)
 common = ["src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp",
           "src/main/roms.cpp", "src/main/romloader.cpp"]
 handlers = common + ["src/main/engine/omainobjects.cpp", "src/main/engine/omaininput.cpp", "src/main/engine/omainplayer.cpp",
-                     "src/main/engine/omainworld.cpp", "src/main/engine/omainweapons.cpp", "src/main/engine/omainsound.cpp"]
+                     "src/main/engine/omainworld.cpp", "src/main/engine/omainweapons.cpp", "src/main/engine/omainsound.cpp",
+                     "src/main/engine/omaindamage.cpp", "src/main/engine/omainsequence.cpp"]
 def handler_dependencies(source):
     return [p for p in handlers if p != source]
 cases = [
@@ -76,6 +77,22 @@ cases.append(('enemyshadow', 'src/main/engine/omainweapons.cpp', 'b.write32(p+12
 cases.append(('groundnoise', 'src/main/engine/omainworld.cpp', 'r.a[0]=0x345c8', 'r.a[0]=0x345cc', "tests/oracle_handlers.cpp", 'effects_directed', handler_dependencies('src/main/engine/omainworld.cpp')))
 cases.append(('collisiondamage', 'src/main/engine/omainworld.cpp', 'b.write8(0xffff8d60,b.read8(0xffff8d60)|1)', 'b.write8(0xffff8d60,b.read8(0xffff8d60)|2)', "tests/oracle_handlers.cpp", 'collision_directed', handler_dependencies('src/main/engine/omainworld.cpp')))
 cases.append(('playerrecovery', 'src/main/engine/omainplayer.cpp', 'b.write16(p+36,b.read16(p+36)+0x18)', 'b.write16(p+36,b.read16(p+36)+0x19)', "tests/oracle_handlers.cpp", 'weapon_control_directed', handler_dependencies('src/main/engine/omainplayer.cpp')))
+
+# Remaining carrier, horizon, tracking/debris, world and refuel graph checks.
+for name,source,old,new,capture in [
+    ("carrierspeed", "omainsequence", "if(s(d[0])>4) d[0]=4", "if(s(d[0])>4) d[0]=5", "sequence_directed"),
+    ("carrierattachment", "omainsequence", "b.write8(r.a[0]+60,d[1])", "b.write8(r.a[0]+60,d[1]+1)", "sequence_directed"),
+    ("horizonstep", "omainsequence", "d[4]=0x17ffd0", "d[4]=0x18ffd0", "sequence_directed"),
+    ("trackingtimer", "omainweapons", "auto old=b.read8(p+58),value=uint8_t(old-1)", "auto old=b.read8(p+58),value=uint8_t(old-2)", "enemy_tracking_directed"),
+    ("burstvelocity", "omainweapons", "b.write16(a[1]+40,0x180); w(d[3],d[3]-1)", "b.write16(a[1]+40,0x181); w(d[3],d[3]-1)", "enemy_tracking_directed"),
+    ("grounddebris", "omainweapons", "a[0]=0x160ea+s(d[0])", "a[0]=0x160ec+s(d[0])", "enemy_tracking_directed"),
+    ("worldhitwidth", "omainworld", "a[1]+=2; asr(d[2],1); w(d[0],b.read16(p+4))", "a[1]+=2; asr(d[2],2); w(d[0],b.read16(p+4))", "world_graph_directed"),
+    ("collisionoverflow", "omainworld", "((d[0]&0x8000)!=0)!=overflow || s(d[0])>=0x200", "s(d[0])<0 || s(d[0])>=0x200", "world_graph_directed"),
+    ("refuelflight", "omainsequence", "if(s(d[0])>2) d[0]=2", "if(s(d[0])>2) d[0]=3", "refuel_parts_directed"),
+    ("refuelattitude", "omainsequence", "w(d[1],6);\n        if(s(d[0])>s(d[1]))", "w(d[1],7);\n        if(s(d[0])>s(d[1]))", "refuel_parts_directed"),
+]:
+    source="src/main/engine/"+source+".cpp"
+    cases.append((name,source,old,new,"tests/oracle_handlers.cpp",capture,handler_dependencies(source)))
 
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 if len(sys.argv)>1:

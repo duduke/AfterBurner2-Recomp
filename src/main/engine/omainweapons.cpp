@@ -773,5 +773,203 @@ void OMainWeapons::enemy(MainBus& b, OMainObjects::Registers& r, uint32_t entry)
         if(uint8_t(d[6])) { call(0x152a8); return; } call(0x1581a); if(d[0]) { call(0x152a8); return; }
         call(0x151b8); call(0x14e1e); OMainPlayer::append(b,r); return;
     }
+    // $01586C-$015926: tracking missile and paired shadow initializer.
+    if(entry==0x1586c) {
+        b.write16(p,0x8000); b.write8(p+3,0xb2); a[2]=static_cast<int32_t>(s(b.read16(p+62)));
+        b.write16(a[2],0x8000); b.write32(a[2]+16,0x1500c); d[0]=b.read32(p+4); b.write32(p+8,d[0]); b.write32(a[2]+8,d[0]);
+        b.write16(p+26,0); b.write16(p+32,0); b.write32(p+16,0x158a8); b.write16(p+52,300); entry=0x158a8;
+    }
+    if(entry==0x158a8) {
+        w(d[0],b.read16(p+36)); if(s(d[0])<=s(b.read16(0xffff89d6))) b.write32(p+16,0x1592a);
+        call(0x14dc4); w(d[0],b.read16(p+36)); w(d[0],d[0]-b.read16(0xffff8d18)); ext(0); b.write32(m,d[0]);
+        w(d[1],b.read16(0x29c0aa)); w(d[1],d[1]+b.read16(p+46)); b.write16(m+20,d[1]); w(d[1],b.read16(m+8)); w(d[1],d[1]+1);
+        b.write16(m+4,d[1]); b.write16(m-0x4000,d[1]); b.write16(m-0x3ffe,b.read16(0x29c0c4)); w(d[0],b.read16(m-0x3ffa)); asr(d[0],4);
+        b.write16(p+48,b.read16(p+48)-d[0]);
+        for(auto offsets : {std::pair{48,24},std::pair{50,30}}) {
+            w(d[0],b.read16(p+offsets.first)); w(d[0],d[0]-b.read16(p+offsets.second)); ext(0); d[0]<<=8;
+            b.write32(m+16,d[0]); w(d[0],b.read16(m+8)); b.write16(p+offsets.second+4,d[0]);
+        }
+        entry=0x1592a;
+    }
+    if(entry==0x1592a) {
+        // $01592A-$015962: collision/removal uses the shared missile callees.
+        if(!gate()) return; call(0x157f2); if(b.read16(p+36)>=0x80e0) { call(0x152a8); return; }
+        call(0x1578c); call(0x15842); call(0x15200); call(0x150c0); if(uint8_t(d[6])) { call(0x152a8); return; }
+        call(0x1581a); if(d[0]) { call(0x152a8); return; } call(0x151b8); call(0x14e1e); OMainPlayer::append(b,r); return;
+    }
+    // $015968-$015A68: runtime launch-direction pair and word accelerations.
+    if(entry==0x15968) {
+        w(d[0],b.read16(p+52)); w(d[0],d[0]-4); w(d[0],d[0]+d[0]); a[0]=0x160a8+s(d[0]);
+        b.write16(p,0x8000); b.write16(p+22,0); b.write8(p+3,0xb2); a[2]=static_cast<int32_t>(s(b.read16(p+62)));
+        b.write16(a[2],0x8000); b.write32(a[2]+16,0x1500c); d[0]=b.read32(p+4); b.write32(p+8,d[0]); b.write32(a[2]+8,d[0]);
+        call(0x14dc4); b.write16(p+26,0); b.write16(p+32,0); d[2]=0; w(d[2],b.read16(p+36)); w(d[2],d[2]-b.read16(0xffff8d18)); asr(d[2],2);
+        b.write32(m,d[2]); w(d[1],b.read16(0x29c0aa)); w(d[1],d[1]+b.read16(p+46)); b.write16(m+20,d[1]); w(d[1],b.read16(m+8)); w(d[1],d[1]+1);
+        b.write16(m+4,d[1]); b.write16(p+58,d[1]); b.write8(p+58,d[1]); b.write16(m-0x4000,d[2]);
+        w(d[0],b.read16(a[0])); a[0]+=2; asr(d[0],2); b.write16(m-0x3ffe,d[0]);
+        d[0]=b.read32(m-0x3ffc); d[0]+=d[0]; swap(0); ext(0); d[0]+=d[0]; d[0]<<=8;
+        b.write32(m+16,d[0]); w(d[0],b.read16(m+8)); b.write16(p+28,d[0]); w(d[0],-d[0]); ext(0);
+        b.write32(m+16,d[0]); w(d[0],b.read16(m+8)); b.write16(p+60,d[0]);
+        b.write16(m-0x3ffe,b.read16(a[0])); a[0]+=2; d[0]=b.read32(m-0x3ffc); d[0]+=d[0]; swap(0); ext(0); d[0]+=d[0]; d[0]<<=8;
+        b.write32(m+16,d[0]); w(d[0],b.read16(m+8)); b.write16(p+34,d[0]); w(d[0],-d[0]); ext(0);
+        b.write32(m+16,d[0]); w(d[0],b.read16(m+8)); b.write16(p+40,d[0]);
+        w(d[0],b.read16(p+48)); b.write16(m-0x4000,d[1]); b.write16(m-0x3ffe,b.read16(0x29c0c4)); w(d[1],b.read16(m-0x3ffa)); asr(d[1],4);
+        w(d[0],d[0]-d[1]); w(d[2],d[0]); w(d[2],d[2]-d[1]); b.write16(p+48,d[2]); b.write32(p+16,0x15a6a); entry=0x15ab6;
+    }
+    if(entry==0x15a6a) {
+        // $015A6A-$015AB4: unsigned depth gate; D3 remains zero-extended.
+        d[3]=0; w(d[3],b.read16(p+36));
+        if(uint16_t(d[3])<b.read16(0xffff89d6)) b.write32(p+16,0x15ab6);
+        else {
+            call(0x14dc4); w(d[3],d[3]-b.read16(0xffff8d18)); b.write32(m,d[3]);
+            w(d[1],b.read16(0x29c0aa)); w(d[1],d[1]+b.read16(p+46)); b.write16(m+20,d[1]); w(d[1],b.read16(m+8)); w(d[1],d[1]+1);
+            b.write16(m-0x4000,d[1]); b.write16(m-0x3ffe,b.read16(0x29c0c4)); w(d[1],b.read16(m-0x3ffa)); asr(d[1],4); b.write16(p+48,b.read16(p+48)-d[1]);
+        }
+        entry=0x15ab6;
+    }
+    if(entry==0x15ab6) {
+        // $015AB6-$015B08: SUBQ.B/BGT uses overflow; one-shot retarget.
+        auto old=b.read8(p+58),value=uint8_t(old-1); b.write8(p+58,value);
+        const bool positive=value && ((value&0x80)!=0)==(old==0x80);
+        if(positive) entry=0x15b0a;
+        else {
+            auto flags=b.read8(p+45); b.write8(p+45,flags|4);
+            if(flags&4) entry=0x15b6e;
+            else {
+                w(d[0],b.read16(p+48)); w(d[0],d[0]-b.read16(p+24)); ext(0); d[0]<<=3; b.write32(m,d[0]);
+                d[1]=0; byte(d[1],b.read8(p+59)); b.write8(p+58,d[1]); b.write16(m+20,d[1]); b.write16(p+28,b.read16(m+8));
+                w(d[0],b.read16(p+50)); w(d[0],d[0]-b.read16(p+30)); ext(0); d[0]<<=3; b.write32(m,d[0]); b.write16(p+34,b.read16(m+8));
+                b.write16(p+60,0); b.write16(p+40,0); entry=0x15b0a;
+            }
+        }
+    }
+    if(entry==0x15b6e) {
+        // $015B6E-$015BFC: double divide then acceleration-chip products.
+        d[1]=0; w(d[1],b.read16(p+36)); w(d[1],d[1]-b.read16(0xffff8d18)); b.write32(m,d[1]);
+        w(d[1],b.read16(0x29c0aa)); w(d[1],d[1]+b.read16(p+46)); b.write16(m+20,d[1]); w(d[1],b.read16(m+8)); w(d[1],d[1]+1);
+        b.write16(m+4,d[1]); asr(d[1],1); b.write16(m-0x3ffe,d[1]);
+        for(auto offsets : {std::pair{50,30},std::pair{48,24}}) {
+            w(d[0],b.read16(p+offsets.first)); w(d[0],d[0]-b.read16(p+offsets.second)); ext(0); d[0]<<=8; b.write32(m+16,d[0]);
+            w(d[0],b.read16(m+8)); ext(0); b.write32(m+16,d[0]);
+            if(offsets.second==30) {
+                w(d[1],b.read16(m+8)); b.write16(p+40,d[1]); b.write16(m-0x4000,d[1]); w(d[1],b.read16(m-0x3ffa)); b.write16(p+34,d[1]);
+            } else {
+                w(d[0],b.read16(m+8)); b.write16(p+60,d[0]); b.write16(m-0x4000,d[0]); w(d[0],b.read16(m-0x3ffa)); b.write16(p+28,d[0]);
+            }
+        }
+        b.write32(p+16,0x15bfe); entry=0x15bfe;
+    }
+    if(entry==0x15b0a || entry==0x15bfe) {
+        // $015B0A-$015B68 / $015BFE-$015C60: retain overflowing velocities.
+        if(!gate()) return; call(0x157f2);
+        for(auto offsets : {std::pair{40,34},std::pair{60,28}}) {
+            w(d[0],b.read16(p+offsets.first)); auto old=b.read16(p+offsets.second);
+            int32_t sum=int32_t(s(old))+s(d[0]); b.write16(p+offsets.second,old+d[0]);
+            if(sum<-32768 || sum>32767) b.write16(p+offsets.second,b.read16(p+offsets.second)-d[0]);
+        }
+        w(d[0],b.read16(p+36)); const auto remove=entry==0x15bfe ? 0x1528a : 0x152a8;
+        if(uint16_t(d[0])>=0x80e0) { call(remove); return; }
+        call(0x1578c); if(!(b.read8(p+45)&0x40)) call(0x1583e); call(0x15200); call(0x150c0);
+        if(uint8_t(d[6])) { call(remove); return; } call(0x1581a); if(d[0]) { call(remove); return; }
+        call(0x151b8); call(0x14e1e); OMainPlayer::append(b,r); return;
+    }
+    // $015C62-$015D9C: debris burst; all velocity tables stay in ROM.
+    if(entry==0x15c62 || entry==0x15c7a) {
+        a[1]=static_cast<int32_t>(s(b.read16(p+62))); b.write8(p+52,entry==0x15c62 ? 0 : 16);
+        b.write16(p+46,entry==0x15c62 ? -160 : 40); b.write16(a[1]+46,entry==0x15c62 ? -140 : 60); entry=0x15d36;
+    }
+    if(entry==0x15c94 || entry==0x15c9a || entry==0x15ca2 || entry==0x15caa) {
+        b.write8(p+52,entry==0x15c94 ? 0 : entry==0x15c9a ? 1 : entry==0x15ca2 ? 16 : 17); entry=0x15cb0;
+    }
+    if(entry==0x15cb0) {
+        a[0]=0xffff8e7f; d[0]=0; byte(d[0],b.read8(a[0]));
+        if(uint8_t(d[0])) {
+            d[3]=5; const bool borrow=uint16_t(d[0])<6; w(d[0],d[0]-6);
+            if(borrow) { w(d[3],d[3]+d[0]); if(s(d[3])<0) { call(0x15d26); return; } d[0]=0; }
+            b.write8(a[0]++,d[0]); a[0]+=s(d[0]); a[2]=0x161ac;
+            do {
+                d[0]=0; byte(d[0],b.read8(a[0]++)); w(d[0],d[0]<<6); a[1]=0xffffa000+s(d[0]); b.write16(a[1],0x8000); b.write32(a[1]+16,0x15d9e);
+                b.write16(a[1]+24,b.read16(p+24)); b.write16(a[1]+30,b.read16(p+30)); b.write16(a[1]+44,0); b.write8(a[1]+52,b.read8(p+52));
+                b.write16(a[1]+36,b.read16(p+36)); b.write16(a[1]+4,0xfde0); OMainObjects::random(b,r); asr(d[0],4); b.write16(a[1]+28,d[0]);
+                b.write16(a[1]+34,0); b.write16(a[1]+46,b.read16(a[2])); a[2]+=2; b.write16(a[1]+40,0x180); w(d[3],d[3]-1);
+            } while(uint16_t(d[3])!=0xffff);
+        }
+        entry=0x15d26;
+    }
+    if(entry==0x15d26) {
+        a[1]=static_cast<int32_t>(s(b.read16(p+62))); b.write16(p+46,-160); b.write16(a[1]+46,-140); entry=0x15d36;
+    }
+    if(entry==0x15d36) {
+        b.write32(p+16,0x15d9e); byte(d[0],b.read8(p+38)); b.write8(0xffff9160,b.read8(0xffff9160)&~(1u<<(d[0]&7)));
+        b.write16(a[1],0x8000); b.write32(a[1]+16,0x15d9e); b.write16(a[1]+24,b.read16(p+24)); b.write16(a[1]+30,b.read16(p+30));
+        b.write16(a[1]+44,0); b.write8(a[1]+52,b.read8(p+52)); b.write16(a[1]+36,b.read16(p+36)); b.write16(p+4,0xfde0); b.write16(a[1]+4,0xfde0);
+        OMainObjects::random(b,r); asr(d[0],4); b.write16(p+28,d[0]); swap(0); asr(d[0],4); b.write16(a[1]+28,d[0]);
+        b.write16(p+34,0); b.write16(p+40,0x180); b.write16(a[1]+40,0x180); entry=0x15d9e;
+    }
+    if(entry==0x15d9e) {
+        // $015D9E-$015E54: falling debris, then ground-impact transition.
+        b.write32(p+8,b.read32(p+4)); if(!(b.read8(0x29c200)&2)) { call(0x14ff2); return; }
+        if(!(b.read8(0xffff91d0)&2)) {
+            w(d[0],b.read16(p+36)); w(d[1],0x140);
+            if(uint16_t(d[0])>=0x1ff8) { b.write16(m-0x4000,d[1]); b.write16(m-0x3ffe,d[0]); d[1]=b.read32(m-0x3ffc); d[1]<<=3; swap(1); }
+            if(s(d[1])<s(b.read16(p+30))) {
+                // $015E56 discards its return address: skip the falling caller.
+                b.write32(p+16,0x15e6c); b.write16(p+46,0); b.write16(p+44,0); call(0x15f74); call(0x15e6c); return;
+            }
+            call(0x157f2); w(d[0],b.read16(p+40)); w(d[0],d[0]+b.read16(p+34)); if(uint16_t(d[0])>=0x1e00) w(d[0],0x1e00); b.write16(p+34,d[0]);
+            w(d[0],b.read16(p+36)); if(uint16_t(d[0])>=0x80e0) { call(0x14ff2); return; }
+            call(0x1578c); call(0x1583e); call(0x15200); call(0x1581a); if(d[0]) { call(0x14ff2); return; }
+        }
+        // $015DF6-$015E28: falling debris palette/frame and road flips.
+        byte(d[0],b.read8(p+52)); byte(d[1],d[0]); w(d[0],d[0]&16); a[0]=0x16188+s(d[0]); w(d[1],d[1]&1);
+        b.write8(p+3,b.read8(a[0]+s(d[1]))); w(d[0],b.read16(0x29c0a4)); b.write32(p+12,b.read32(a[0]+s(d[0])+4));
+        b.write8(p,b.read8(p)&0xcf); byte(d[0],b.read8(0x29c0a0)); b.write8(p,b.read8(p)|d[0]); OMainPlayer::append(b,r); return;
+    }
+    if(entry==0x15e6c) {
+        // $015E6C-$015F46: ground debris depth, world projection and animation.
+        b.write32(p+8,b.read32(p+4)); if(!(b.read8(0x29c200)&2)) { call(0x14ff2); return; }
+        if(!(b.read8(0xffff91d0)&2)) {
+            w(d[0],b.read16(0x29c0aa)); b.write16(p+36,b.read16(p+36)-d[0]); w(d[0],b.read16(p+36));
+            if(uint16_t(d[0])>=0x80e0) { call(0x14ff2); return; }
+            w(d[0],b.read16(p+36)); d[1]=0;
+            if(uint16_t(d[0])>=0x1ff8) {
+                b.write16(m-0x4000,10); w(d[0],d[0]-0x1ff8); if(uint16_t(d[0])>=0x1ff8) w(d[0],0x1ff8);
+                b.write16(m-0x3ffe,d[0]); d[1]=b.read32(m-0x3ffc); d[1]<<=3; swap(1);
+            }
+            w(d[1],d[1]<<3); d[0]=0; byte(d[0],b.read8(p+44)); a[0]=0x160ea+s(d[0]); w(d[0],b.read16(a[0]));
+            w(d[1],d[1]-d[0]); b.write16(p+30,d[1]); call(0x157ba); call(0x15f48); call(0x16038); call(0x1581a);
+            if(d[0]) { call(0x14ff2); return; }
+        }
+        d[0]=0; byte(d[0],b.read8(p+44)); a[0]=0x160e8+s(d[0]); byte(d[0],b.read8(p+52)); w(d[0],d[0]&1);
+        b.write8(p+3,b.read8(a[0]+s(d[0]))); w(d[0],b.read16(0x29c0a4)); b.write32(p+12,b.read32(a[0]+s(d[0])+4));
+        b.write8(p,b.read8(p)&0xcf); byte(d[0],b.read8(0x29c0a0)); b.write8(p,b.read8(p)|d[0]);
+        auto flags=b.read8(p+45); b.write8(p+45,flags^1);
+        if(flags&1) { b.write8(p+44,b.read8(p+44)+16); if(b.read8(p+44)>=0xa0) b.write8(p+44,0x90); }
+        OMainPlayer::append(b,r); return;
+    }
+    if(entry==0x15f48) {
+        // $015F48-$015F72: sway keyed by packed depth byte.
+        w(d[0],0); byte(d[0],b.read8(p+2)); asr(d[0],2); a[1]=0x33ed8; byte(d[0],b.read8(a[1]+s(d[0]))); w(d[0],static_cast<int8_t>(d[0]));
+        b.write16(m-0x4000,d[0]); b.write16(m-0x3ffe,b.read16(0x29c0c6)); d[0]=b.read32(m-0x3ffc); asrl(d[0],6); b.write16(p+24,b.read16(p+24)+d[0]); return;
+    }
+    if(entry==0x15f74) {
+        // $015F74-$016036: inverse projection followed by road rotation.
+        w(d[7],b.read16(p+36)); w(d[7],uint16_t(d[7])>>5); w(d[7],d[7]+32); b.write32(m,0x7fe0); b.write16(m+20,d[7]); b.write16(m+4,b.read16(m+8));
+        d[1]=10; w(d[0],b.read16(p+4)); w(d[0],d[0]-b.read16(0x29c08e)); ext(0); d[0]<<=d[1]; b.write32(m+16,d[0]); w(d[0],b.read16(m+8)); b.write16(p+24,d[0]);
+        w(d[0],b.read16(p+6)); w(d[0],d[0]+b.read16(0x29c08c)); w(d[0],d[0]-0x70); ext(0); d[0]<<=d[1]; b.write32(m+16,d[0]); b.write16(p+30,b.read16(m+8));
+        w(d[0],b.read16(0x29c09e)); w(d[0],d[0]&0xff); a[0]=0x33e98; byte(d[1],b.read8(a[0]+s(d[0]))); byte(d[2],b.read8(a[0]+s(d[0])-64));
+        w(d[1],static_cast<int8_t>(d[1])); w(d[2],static_cast<int8_t>(d[2])); w(d[3],d[1]); w(d[4],d[2]);
+        b.write16(m-0x4000,d[2]); b.write16(m-0x3ffe,b.read16(p+24)); d[2]=b.read32(m-0x3ffc); w(d[6],b.read16(p+30));
+        b.write16(m-0x4000,d[1]); b.write16(m-0x3ffe,d[6]); d[1]=b.read32(m-0x3ffc); d[1]+=d[2]; asrl(d[1],7);
+        b.write16(m-0x4000,d[3]); b.write16(m-0x3ffe,b.read16(p+24)); d[3]=b.read32(m-0x3ffc); b.write16(m-0x4000,d[4]); b.write16(m-0x3ffe,d[6]);
+        d[4]=b.read32(m-0x3ffc); d[3]-=d[4]; asrl(d[3],7); w(d[3],d[3]+b.read16(0x29c080)); b.write16(p+24,d[1]); b.write16(p+30,d[3]); return;
+    }
+    if(entry==0x16038) {
+        // $016038-$0160A6: shared world-offset pair (not a guessed flat Y).
+        a[0]=0x29c1a8+s(b.read16(p+30)); b.write16(m-0x4000,b.read16(0x29c092)); b.write16(m-0x3ffe,b.read16(p+24));
+        d[0]=b.read32(m-0x3ffc); d[0]+=b.read32(a[0]); a[0]+=4; asrl(d[0],7); b.write16(m-0x4000,d[0]); b.write16(m-0x3ffe,d[7]);
+        d[0]=b.read32(m-0x3ffc); d[0]<<=6; swap(0); w(d[0],d[0]+b.read16(0x29c08e)); b.write16(p+4,d[0]);
+        b.write16(m-0x4000,b.read16(0x29c090)); b.write16(m-0x3ffe,b.read16(p+24)); d[0]=b.read32(m-0x3ffc); d[0]-=b.read32(a[0]); asrl(d[0],7);
+        b.write16(m-0x4000,d[0]); b.write16(m-0x3ffe,d[7]); d[0]=b.read32(m-0x3ffc); d[0]<<=6; swap(0); w(d[0],d[0]+0x70); w(d[0],d[0]-b.read16(0x29c08c)); b.write16(p+6,d[0]); return;
+    }
     throw std::runtime_error("unported enemy weapon handler");
 }
