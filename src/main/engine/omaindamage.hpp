@@ -1,8 +1,9 @@
 #pragma once
 #include "engine/omainobjects.hpp"
 
-// Independently translated damage/debris callees. The $E662 controller and
-// life/credit flow remain unported; this class is not a host damage model.
+// Independently translated damage controllers (states 0..6) and debris.
+// Life/HUD/credit flow remains an explicit Phase 3e boundary. These routines
+// are not yet connected to the host dispatcher.
 class OMainDamage {
 public:
     static void run(MainBus&, OMainObjects::Registers&, uint32_t entry);

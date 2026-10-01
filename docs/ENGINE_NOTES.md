@@ -1347,3 +1347,78 @@ Make/CMake targets include the new source and capture. `make test`,
 headless launch pass. Stage 1 audio RMS remains 903.949. CMake is unavailable
 on this host; its updated definitions have not been executed. ROMs, binary
 images, captures and mutation outputs remain ignored.
+
+## Phase 3d continuation: pre-lives damage controllers and fuselage
+
+`OMainDamage` now translates `$E662`, intact `$E8D0` and breakup `$E94E`
+through controller states 0..6, plus `$F640` fuselage animation and the
+remaining pre-lives frame/projection helpers `$F3E2/$F43C/$F4BA/$F528/$F5C0`.
+These ports remain unwired; no native gameplay rules have been removed.
+
+- `$E662` calls `$137E2` with the runtime damage text string, saves the bank,
+  initializes control requests and damage coordinates, increments the hit
+  count, and selects intact or breakup using the original selector, first-hit,
+  shared flag and RNG branches. Breakup calls the existing sound producer and
+  debris allocator, then falls directly into its first controller tick.
+- `$E8D0/$E94E` preserve history and the enabled/draw-only gates, increment
+  the original word ticks and dispatch through the runtime ROM branch tables.
+  Intact states preserve the timed flight, falling/impact and hidden decay
+  intervals. Breakup sets the death flag at tick 30, animates positive-depth
+  fuselage until tick 60, then decays until tick 75. Both ultimately request
+  state 7 through `$EC62`; the next `$EC78/$CF46` lives/HUD call throws a
+  named unported Phase 3e boundary. Later states 8..11 are also explicit
+  unported boundaries, not native substitutes.
+- `$F640` indexes eight-byte fuselage records by `(tick-4)*8`, rather than
+  advancing the sixteen-byte debris pointer. Completion sets the original
+  object flag. The routine projects/publishes the shared fuselage/debris
+  inputs and uses a signed byte sound countdown, RNG and runtime ROM pairs
+  to call `$B84C`. SUBQ signed branches preserve overflow semantics.
+- `$F528/$F5C0` select frames from runtime bank/pitch/angle tables. The latter
+  preserves the long DIVU quotient/remainder before shifting its low word.
+  `$F3E2/$F43C/$F4BA` retain the original chip accesses, shared position
+  publication and jitter call order. `$137E2` writes paired text tile rows;
+  the damage caller's string consists entirely of spaces.
+
+`make oracle-capture-damage` now regenerates two independent write-set captures:
+
+- `damage_directed.bin`: **1,792 of 1,792 identical, 0 skipped, 0 different**,
+  **64/64 per entry** across the earlier nineteen routines and nine new entries
+  (`$E662/$E8D0/$E94E/$F3E2/$F43C/$F4BA/$F528/$F5C0/$F640`). Each controller
+  has eight active calls in every state 0..6, plus disabled and draw-only
+  gates. Initializer fixtures produce 8 intact and 56 breakup calls. Five
+  controller calls request state 7 without executing its unported caller.
+  Fuselage coverage includes 16 waits, 24 animation records, 4 end markers,
+  20 already-complete calls and 32 sound-wait/32 sound-select inputs.
+- `damage_gameplay.bin`: **120 of 120 identical, 0 skipped, 0 different**,
+  from ordinary coin/start/stick/fire input with no RAM fixtures. It contains
+  **1/1 `$E662`** and **119/119 `$E8D0`**. Entry states 0..4 are exercised and
+  the final record requests state 5. Eight interrupted capture windows were
+  dropped before recording. This is a bounded intact damage sequence, not a
+  full death/recovery or a natural breakup sequence.
+
+Both retain complete object/shared RAM, entry/return D0..D7/A0..A6, math-chip
+state, IO1 input and ordered writes; captured callback writes are never replayed.
+Coverage inspection disables tracing so it cannot manufacture race dependencies.
+The directed scratch/stack exclusion now covers the new controller/helper range.
+
+Five meaningful mutations fail: fuselage start tick (28 differing calls),
+breakup lifetime (4), intact impact height (5), frame divisor (269), and paired
+text-row address (64). The unchanged source passes both captures. Two text
+palette mutations survived because the damage string only clears spaces and
+never reaches the glyph-write branch; this is an explicit coverage limit.
+Including the earlier checkpoint, 44 meaningful mutations have been rejected.
+
+Uncovered: the `$137E2` glyph branch and arbitrary strings; natural breakup,
+a complete natural death/recovery sequence; all controller arithmetic overflow
+combinations; damage companion `$FB08` and its emission/animation graph (the
+alternate `$E7DA` companion is NOP/NOP/RTS, identified but not oracle-tested);
+controller states 7..11, lives/HUD/credit flow and carrier/refuel controllers.
+Runtime frame-table reads outside the fixtures' valid trajectories and arbitrary
+zoom/sound combinations are not established. Other enemy graphs, actual host
+ADC/IRQ and sound cadence, and paired 30/60 Hz acceptance remain required.
+
+Make and CMake register the bounded gameplay capture alongside the expanded
+routine capture. `make test`, `make verify-stage1`, `make oracle-test`, the game
+build and the 180-frame headless launch pass; Stage 1 audio RMS remains 903.949.
+CMake is unavailable on this host, so its updated test list is unexecuted.
+ROMs, disassembly, captures and mutation variants remain ignored.

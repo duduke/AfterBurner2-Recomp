@@ -97,7 +97,7 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         src/main/engine/omaindamage.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp
         src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
     target_include_directories(oracle_handlers PRIVATE src/main)
-    foreach(CAPTURE input input_gameplay input_directed player_init player player_directed player_parts player_parts_gameplay player_parts_directed reload reload_directed weapon_control weapon_control_directed world world_directed buttons buttons_directed projectiles projectiles_directed missiles missiles_directed effects_directed collision_directed enemy_weapons_directed enemy_parts_directed enemy_effects enemy_effects_gameplay damage_directed)
+    foreach(CAPTURE input input_gameplay input_directed player_init player player_directed player_parts player_parts_gameplay player_parts_directed reload reload_directed weapon_control weapon_control_directed world world_directed buttons buttons_directed projectiles projectiles_directed missiles missiles_directed effects_directed collision_directed enemy_weapons_directed enemy_parts_directed enemy_effects enemy_effects_gameplay damage_directed damage_gameplay)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_handlers build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
