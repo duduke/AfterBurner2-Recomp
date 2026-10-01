@@ -519,6 +519,88 @@ the skip-sort flag (`subram0[$3A]` bit 0), the bucket overflow spill, and a
 sprite taller than the screen clipped at both top and bottom (`$000942`).
 Gameplay captures should cover them.
 
+## Sub CPU road generator (`$00046A`-`$00052C`) — ported, verified
+
+`src/main/engine/osubroad.cpp`. On 1,800 frames captured from 50 seconds of
+attract mode (which cycles through stages 1, 3, 5, 11 and others), 1,798
+write exactly the bytes the arcade writes, with the same values; the other
+two are skipped because the main CPU changed something the port read
+mid-frame.
+
+The banked ground is **not** a rotated plane: it's the road chip's
+per-scanline horizontal scroll. Each frame, after flipping the road RAM
+double buffer (`$000464`) and writing the road control register from
+`subram0[$320]`, the sub CPU:
+
+1. `$000C0A` (stages 1, 7, `$10`): eases bank values toward the target in
+   `$CE` (zeroed while `$201` bit 0 is set): `$B4` follows 3/8 of it at up
+   to 2/frame, `$B6` follows `$B4` at up to 1/frame, and `$AE`/`$B2` add a
+   recentering kick when the target swings past `+-$B0`. `$000CEA` (also
+   the entry for stages 3 and `$18`) stores `$B4 + $AE` into `$9E` and an
+   8-entry history ring at `$620`.
+2. `$000D0E`: clamps the pitch target (`-$D0`) to `[$EA, $EC]` and moves
+   `$96` toward it by at most `$EE` per frame.
+3. `$000D64`: sine/cosine of the roll byte `$9F` (signed-byte table at
+   `$15D4`, cosine 64 entries earlier) into `$90`/`$92`, quadrant flags in
+   `$A0`, a 32-step coordinate table at `$100`, and the horizon line `$82`
+   (clamped to `+-111`) from pitch and altitude (`$C2`).
+4. `$000F02`: the raster. The bank value from three frames ago picks one of
+   four mirrored variants (bits 7-8) and a ramp (low 7 bits) from tables at
+   `$11D4` (16.16 slope per line) and `$13D4` (ramp length). From the
+   horizon line it writes road 0's scroll table (`$0EC4E0` is line 112)
+   outward in both directions: the slope for the ramp's length, then flat.
+
+Unverified paths: the special-sequence state machine (`subram0[$321]`, which
+also leads to the unported `$0016D4`/`$001758` road setup — likely the
+carrier take-off — and needs the 315-5250 comparator), the `$201` override,
+the recentering kick, and the quadrant flag for banks past 90 degrees.
+
+Oracle notes from this port: the capture compares **write sets** rather
+than whole snapshots, so the main CPU's concurrent writes can't cause false
+failures, and a frame is a race only if the main CPU changed a byte the
+port actually read. The sub CPU's stacks (top 256 bytes of subram1) are
+excluded — VBLANK exception frames get pushed while the PC still points at
+the interrupted instruction, so no PC filter can catch them — and windows
+where the sub CPU writes from outside the road code (the main CPU resets it
+once during boot) are dropped by the capture.
+
+## Video oracle: the hardware layer, verified
+
+`tests/oracle_video.cpp` renders captured video state through `Screen`
+(`hwroad`, `hwtiles`, `hwsprites`, `hwpalette`) and compares RGB with the
+frame MAME displayed. 300 of 300 attract-mode frames are pixel-identical,
+and so are 100 of 100 captured with every sprite list emptied
+(`AB2_ORACLE_NO_SPRITES=1`, which isolates the road and tilemaps). On a
+mismatch the test writes up to three `build/oracle/video_diff_<frame>.ppm`
+images.
+
+Most of what the video hardware draws from isn't plain RAM, so
+`tools/oracle/capture_frames.lua` snapshots each piece at the moment the
+hardware takes it:
+
+- **Sprites**: sprite RAM at the main CPU's draw-trigger write
+  (`$110000`-`$11FFFF`), just before the swap.
+- **Road**: CPU-visible road RAM at the sub CPU's write at `$000458`
+  (just before it flips the buffer), committed at its control write at
+  `$000466` together with the control byte.
+- **Tilemap registers** (text RAM `$E80`-`$E9F`): as they were at scanline
+  261, when the hardware latches them. Lua has no `vpos` here, so the latch
+  time is the frame notifier's time plus 37 lines of 64 us.
+- **Palette**: at the notifier where the pixels are read, not the one the
+  state came from (below).
+
+Timing lesson: MAME finishes the frame, flips the screen's double buffer,
+then calls frame notifiers, so `screen:pixels()` at notifier N is the image
+drawn from the state at notifier N-1. It converts pen indices to RGB through
+the palette as it is at N, though. The INSERT COIN blink (the main CPU
+blanks the text every 32 frames) exposed the one-frame offset, and the
+exhaust glow's palette cycling exposed the palette timing.
+
+Bugs this found: `hwroad` was missing the chip's `$5F8` horizontal origin
+(the ground rendered as a solid fill), `hwtiles` had no row/column scroll
+or ALT tilemap set (the attract mode's rocks are drawn through it), and the
+sprite buffer swap is an exchange of the two halves, not a copy.
+
 ## Open threads to pick up next
 
 - **Engine C++ Implementation**: We now have complete specifications for the object dispatch loop, 64-byte object structure, player jet composite parts, sprite pipeline, and road scanlines. Ready to scaffold `src/main/engine/` (`oentry.hpp`, `oplayer.cpp`, `osprites.cpp`).

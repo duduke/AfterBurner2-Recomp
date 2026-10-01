@@ -11,10 +11,11 @@ namespace
 
     inline bool is_mul(uint32_t a) { return a >= 0xe0000 && a < 0xe4000; }
     inline bool is_div(uint32_t a) { return a >= 0xe4000 && a < 0xe8000; }
+    inline bool is_road(uint32_t a) { return a >= 0xec000 && a < 0xee000; }
 }
 
-SubBus::SubBus(const uint8_t* rom_data, uint32_t length, uint8_t* shared_ram)
-    : rom(rom_data), rom_length(length), shared(shared_ram)
+SubBus::SubBus(const uint8_t* rom_data, uint32_t length, uint8_t* shared_ram, uint8_t* road_ram)
+    : rom(rom_data), rom_length(length), shared(shared_ram), road(road_ram)
 {
 }
 
@@ -24,7 +25,12 @@ uint8_t SubBus::read8(uint32_t addr) const
     if (a < 0x80000)
         return a < rom_length ? rom[a] : 0;
     if (is_ram(a))
+    {
+        if (trace && trace->shared_read) trace->shared_read[ram_offset(a)] = 1;
         return shared[ram_offset(a)];
+    }
+    if (is_road(a) && road)
+        return road[a & 0xfff];
     if (is_mul(a) || is_div(a))
     {
         const uint16_t word = read16(a & ~1u);
@@ -36,12 +42,12 @@ uint8_t SubBus::read8(uint32_t addr) const
 uint16_t SubBus::read16(uint32_t addr) const
 {
     const uint32_t a = addr & BUS_MASK;
-    if (a < 0x80000 || is_ram(a))
-        return static_cast<uint16_t>((read8(a) << 8) | read8(a + 1));
     if (is_mul(a))
         return mul.read(a >> 1);
     if (is_div(a))
         return div.read(a >> 1);
+    if (a < 0x80000 || is_ram(a) || (is_road(a) && road))
+        return static_cast<uint16_t>((read8(a) << 8) | read8(a + 1));
     return 0xffff;
 }
 
@@ -54,21 +60,29 @@ void SubBus::write8(uint32_t addr, uint8_t data)
 {
     const uint32_t a = addr & BUS_MASK;
     if (is_ram(a))
+    {
         shared[ram_offset(a)] = data;
+        if (trace && trace->shared_written) trace->shared_written[ram_offset(a)] = 1;
+    }
+    else if (is_road(a) && road)
+    {
+        road[a & 0xfff] = data;
+        if (trace && trace->road_written) trace->road_written[a & 0xfff] = 1;
+    }
 }
 
 void SubBus::write16(uint32_t addr, uint16_t data)
 {
     const uint32_t a = addr & BUS_MASK;
-    if (is_ram(a))
-    {
-        shared[ram_offset(a)] = static_cast<uint8_t>(data >> 8);
-        shared[ram_offset(a + 1)] = static_cast<uint8_t>(data);
-    }
-    else if (is_mul(a))
+    if (is_mul(a))
         mul.write(a >> 1, data);
     else if (is_div(a))
         div.write(a >> 1, data);
+    else
+    {
+        write8(a, static_cast<uint8_t>(data >> 8));
+        write8(a + 1, static_cast<uint8_t>(data));
+    }
 }
 
 // The 68000 splits a long access into two word accesses, high word first —

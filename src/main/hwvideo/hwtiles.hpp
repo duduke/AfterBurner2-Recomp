@@ -13,14 +13,11 @@
     built by tiling up to 4 of those 16 pages in a 2x2 arrangement (so the
     game can scroll seamlessly across page boundaries); which 4 pages, and
     the scroll position within that virtual surface, come from text RAM
-    registers. A separate, non-paged 64x28 text layer sits on top.
-
-    Known simplification: only the *global* per-layer x/y scroll registers
-    (E90-E9E) are implemented. X-Board also supports per-16px-column and
-    per-8px-row fine scroll tables (with a per-row "use the alternate
-    tilemap" override) for raster effects; those are not yet implemented
-    (see docs/HARDWARE.md) since there's no ported game logic yet to
-    exercise or verify them against.
+    registers. Per-8px-row and per-16px-column scroll tables, and a per-row
+    switch to an alternate page/scroll set, allow raster effects (Stage 1's
+    banked scenery uses the alternate set). A separate, non-paged 64x28 text
+    layer sits on top. Checked against MAME's rendered frames by
+    tests/oracle_video.cpp.
 ***************************************************************************/
 
 #pragma once
@@ -92,17 +89,4 @@ private:
         if (num_tiles == 0) return 0;
         return tile_pixels[(tile_index % num_tiles) * 64 + static_cast<uint32_t>(y * 8 + x)];
     }
-
-    // Draw a single 512x256px page at screen offset (ox, oy), filtering by
-    // category and clipping to width/height. Used by draw_virtual() to
-    // composite the 2x2 quadrant arrangement.
-    void draw_page(uint16_t* pixels, uint8_t* priority, int width, int height,
-                    int page, int ox, int oy, int category, uint8_t priority_mark) const;
-
-    // The generic "virtual tilemap" compositor: given a page-select word and
-    // scroll position, draws up to 4 quadrant pages tiled 2x2 so scrolling
-    // wraps seamlessly across page boundaries.
-    void draw_virtual(uint16_t* pixels, uint8_t* priority, int width, int height,
-                       uint16_t pageselect, int xscroll, int yscroll,
-                       int category, uint8_t priority_mark) const;
 };

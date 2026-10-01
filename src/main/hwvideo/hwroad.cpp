@@ -209,8 +209,9 @@ void HWRoad::render_foreground(uint16_t* pixels, int width, int height) const
         static const uint8_t priority_map_ctrl2[8] = { 0x81, 0x81, 0x81, 0x8f, 0, 0, 0, 0x80 };
 
         uint16_t* row = pixels + y * width;
-        int32_t h0 = (static_cast<int32_t>(hpos0) - x_offset) & 0xfff;
-        int32_t h1 = (static_cast<int32_t>(hpos1) - x_offset) & 0xfff;
+        // $5F8 is the chip's fixed horizontal origin, on top of the per-game offset.
+        int32_t h0 = (static_cast<int32_t>(hpos0) - (0x5f8 + x_offset)) & 0xfff;
+        int32_t h1 = (static_cast<int32_t>(hpos1) - (0x5f8 + x_offset)) & 0xfff;
 
         for (int x = 0; x < width; x++)
         {

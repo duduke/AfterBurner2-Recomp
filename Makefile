@@ -72,12 +72,21 @@ verify-stage1:
 oracle-capture:
 	@mkdir -p build/oracle
 	tools/oracle/capture.sh tools/oracle/capture_subsprites.lua build/oracle/subsprites.bin 1200 120
+	tools/oracle/capture.sh tools/oracle/capture_subroad.lua build/oracle/subroad.bin 1800 120
+	tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames.bin 300 120
+	AB2_ORACLE_NO_SPRITES=1 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_nosprites.bin 100 60
 
-ORACLE_SRCS = src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp src/main/engine/osubsprites.cpp
+ORACLE_SRCS = src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp
+VIDEO_SRCS = src/main/romloader.cpp src/main/roms.cpp $(filter src/main/hwvideo/%,$(SRCS)) src/main/engine/osprites.cpp
 
 oracle-test:
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subsprites.cpp $(ORACLE_SRCS) -o build/oracle_subsprites
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subsprites.cpp src/main/engine/osubsprites.cpp $(ORACLE_SRCS) -o build/oracle_subsprites
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subroad.cpp src/main/engine/osubroad.cpp $(ORACLE_SRCS) -o build/oracle_subroad
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_video.cpp $(VIDEO_SRCS) -o build/oracle_video
 	./build/oracle_subsprites
+	./build/oracle_subroad
+	./build/oracle_video build/oracle/frames.bin
+	./build/oracle_video build/oracle/frames_nosprites.bin
 
 .PHONY: oracle-capture oracle-test
