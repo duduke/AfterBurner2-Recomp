@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <stdexcept>
 #include <vector>
 #include "roms.hpp"
 #include "engine/osubroad.hpp"
@@ -38,7 +39,9 @@ namespace
         uint8_t n[4];
         if (!in.read(reinterpret_cast<char*>(n), 4)) return false;
         std::fill(marks.begin(), marks.end(), 0);
-        for (uint32_t i = 0, count = r32(n, 0); i < count; ++i)
+        const uint32_t count=r32(n,0);
+        if (count>marks.size()) throw std::runtime_error("invalid write-set count");
+        for (uint32_t i = 0; i < count; ++i)
         {
             uint8_t o[2];
             if (!in.read(reinterpret_cast<char*>(o), 2)) return false;
@@ -77,7 +80,7 @@ namespace
     }
 }
 
-int main(int argc, char** argv)
+int main(int argc, char** argv) try
 {
     const std::string path = argc > 1 ? argv[1] : "build/oracle/subroad.bin";
     std::ifstream in(path, std::ios::binary);
@@ -88,7 +91,9 @@ int main(int argc, char** argv)
     }
     char magic[8];
     in.read(magic, 8);
-    if (!in || std::memcmp(magic, "AB2ORCL2", 8) != 0)
+    const bool explicit_races=std::memcmp(magic,"AB2ORCL4",8)==0;
+    const bool initializer = explicit_races || std::memcmp(magic,"AB2ORCL3",8)==0;
+    if (!in || (!initializer && std::memcmp(magic, "AB2ORCL2", 8) != 0))
     {
         std::cerr << path << " is not a road capture\n";
         return 1;
@@ -99,20 +104,24 @@ int main(int argc, char** argv)
     std::vector<uint8_t> start_shared(SHARED), start_road(ROAD), end_shared(SHARED), end_road(ROAD);
     std::vector<uint8_t> shared(SHARED), road(ROAD);
     std::vector<uint8_t> arcade_shared_w(SHARED), arcade_road_w(ROAD);
+    std::vector<uint8_t> other_written(SHARED);
     std::vector<uint8_t> port_shared_r(SHARED), port_shared_w(SHARED), port_road_w(ROAD);
-    unsigned frames = 0, matched = 0, failed = 0, raced = 0, unported = 0, reported = 0;
+    unsigned frames = 0, matched = 0, failed = 0, raced = 0, special = 0, reported = 0;
     OSubRoad road_work;
 
-    for (;;)
+    while (in.peek()!=std::char_traits<char>::eof())
     {
         uint8_t header[8], chips[16];
         in.read(reinterpret_cast<char*>(header), 8);
+        uint8_t entry[4]{};
+        if (initializer) in.read(reinterpret_cast<char*>(entry),4);
         in.read(reinterpret_cast<char*>(start_shared.data()), SHARED);
         in.read(reinterpret_cast<char*>(start_road.data()), ROAD);
         in.read(reinterpret_cast<char*>(chips), 16);
         in.read(reinterpret_cast<char*>(end_shared.data()), SHARED);
         in.read(reinterpret_cast<char*>(end_road.data()), ROAD);
-        if (!in || !read_offsets(in, arcade_shared_w) || !read_offsets(in, arcade_road_w)) break;
+        if (!in || !read_offsets(in, arcade_shared_w) || !read_offsets(in, arcade_road_w)) throw std::runtime_error("truncated road capture");
+        if (explicit_races && !read_offsets(in,other_written)) throw std::runtime_error("truncated race set");
         std::fill(arcade_shared_w.begin() + STACK_START, arcade_shared_w.end(), 0);
         const unsigned record = r32(header, 0);
         const uint32_t frame = r32(header, 4);
@@ -131,17 +140,20 @@ int main(int argc, char** argv)
                                       r16(chips, 10), r16(chips, 12), r16(chips, 14)};
         bus.div.load(div_regs);
 
-        if (!road_work.frame(bus))
-        {
-            ++unported;
-            continue;
+        if (initializer) {
+            if (r32(entry,0)==0x436) road_work.service_requests(bus);
+            else road_work.initialize(bus,r32(entry,0));
+        }
+        if (!initializer) {
+            special += start_shared[0x321]==1 || static_cast<int8_t>(start_shared[0x321])<0;
+            road_work.frame(bus);
         }
 
         // A byte that changed without the sub CPU writing it was written by
         // the main CPU mid-window; if the port read it, the replay is invalid.
         bool race = false;
         for (size_t i = 0; i < SHARED && !race; ++i)
-            race = port_shared_r[i] && !arcade_shared_w[i] && start_shared[i] != end_shared[i];
+            race = port_shared_r[i] && (explicit_races ? other_written[i] : (!arcade_shared_w[i] && start_shared[i] != end_shared[i]));
         if (race)
         {
             ++raced;
@@ -155,7 +167,9 @@ int main(int argc, char** argv)
     }
 
     std::cout << "Sub CPU road work vs arcade: " << frames << " frames, " << matched << " identical, " << failed
-              << " different, " << raced << " skipped (inputs changed mid-frame), " << unported
-              << " in the unported special sequence\n";
+              << " different, " << raced << " skipped (inputs changed mid-frame), " << special
+              << " special-sequence frames\n";
     return failed == 0 && matched > 0 ? 0 : 1;
 }
+
+catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

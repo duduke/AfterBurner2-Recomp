@@ -68,7 +68,7 @@ local function in_vblank_handler(pc) return pc >= 0x00055E and pc < 0x000594 end
 -- window didn't run normally (e.g. the main CPU reset the sub CPU during
 -- boot), so it's dropped rather than recorded.
 local function in_road_code(pc)
-  return (pc >= 0x00046A and pc < 0x000538) or (pc >= 0x000C0A and pc < 0x0011D4) or (pc >= 0x0016D4 and pc < 0x001900)
+  return (pc >= 0x00046A and pc < 0x000538) or (pc >= 0x000C0A and pc < 0x0011D4) or (pc >= 0x0016D4 and pc < 0x0019E8)
 end
 local dropped = 0
 
@@ -85,6 +85,19 @@ frame_sub = emu.add_machine_frame_notifier(function() frame = frame + 1 end)
 
 window_start = sub_space:install_write_tap(0xEE000, 0xEFFFF, "ab2_road_start", function(offset, data, mask)
   if frame >= skip and start == nil and sub_pc.value == 0x000466 then
+    if os.getenv("AB2_ORACLE_SPECIAL") == "1" then
+      -- Directed routine inputs, separate from gameplay coverage. All values
+      -- below are constants/boundaries used by the disassembled routine.
+      local case = records % 8
+      main_space:write_u8(0x29c321, case == 0 and 0xff or 1)
+      main_space:write_u8(0x29c320, ({3, 0x43, 0x4b, 0x83, 0xc3, 0xcb, 0x63, 3})[case + 1])
+      local altitude = main_space:read_u16(0x29c0c2)
+      main_space:write_u32(0x29c322, ({0xffc0, 0xffffffff, 0, altitude, 0xfffb0140, 0, altitude - 1, 0xfffb013f})[case + 1])
+      main_space:write_u16(0x29c326, ({0, 0x1000, 0xf000, 0, 0x1001, 0xefff, 0, 0})[case + 1])
+      main_space:write_u16(0x29c33a, ({0,1,0x1000,0xf000,0x1001,0xefff,0xffff,0})[case + 1])
+      main_space:write_u32(0x29c328, 0xff)
+      main_space:write_u32(0x29c32c, 0x010001ff)
+    end
     start = shared() .. road() .. chips()
     shared_written, road_written = {}, {}
   end

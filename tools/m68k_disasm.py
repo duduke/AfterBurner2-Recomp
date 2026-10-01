@@ -185,7 +185,7 @@ def disasm_one(data, base, addr):
         val = signed(op & 0xff, 8)
         return r.addr, f'MOVEQ #{val},D{reg}'
 
-    if (op & 0xFF00) == 0x4A00:  # TST
+    if (op & 0xFF00) == 0x4A00 and (op & 0x00C0) != 0x00C0:  # TST (exclude TAS)
         size = (op >> 6) & 3
         if size == 3:
             raise ValueError('not TST')

@@ -546,10 +546,10 @@ double buffer (`$000464`) and writing the road control register from
    horizon line it writes road 0's scroll table (`$0EC4E0` is line 112)
    outward in both directions: the slope for the ramp's length, then flat.
 
-Unverified paths: the special-sequence state machine (`subram0[$321]`, which
-also leads to the unported `$0016D4`/`$001758` road setup — likely the
-carrier take-off — and needs the 315-5250 comparator), the `$201` override,
-the recentering kick, and the quadrant flag for banks past 90 degrees.
+At this initial milestone, the special sequence was unported. Phase 3b
+below adds `$0016D4`/`$001758`, the comparator and directed sequence coverage.
+Remaining normal-road coverage gaps include the `$201` override, recentering
+kick and banks past 90 degrees; full carrier game flow remains Phase 3e.
 
 Oracle notes from this port: the capture compares **write sets** rather
 than whole snapshots, so the main CPU's concurrent writes can't cause false
@@ -690,6 +690,150 @@ checks; `make oracle-capture-main` regenerates all new hardware/main/gameplay
 captures. `make oracle-test` includes them. Capture failures, Lua errors and
 runs that expire without completion now return failure from `capture.sh`.
 Captures and snapshots remain local and gitignored.
+
+## Main scenery engine (Phase 3b, first port) — verified, not integrated
+
+`engine/oscenery.*` translates the main CPU's `$018444` stage-event entry
+and its helpers: `$01854C` scroll/palette state machine, `$01866C` tile-list
+decoder, `$01871A` scenery initialization, `$018798` banked scenery and
+segmented display, and `$018902` byte-tile uploader. It also translates the
+`$013A74` blank-tile tail call. Each table/header stays in ROM and is read
+through MainBus at runtime. Word overflow, signed ASR, byte-high attributes,
+SUBQ carry/underflow, high-byte flag bits and inclusive DBF/DBEQ loops are
+preserved. The segmented-display path uses the original `$0188C8` table;
+its data is not pasted into source.
+
+`tools/oracle/capture_scenery.lua` uses the main write-set format with magic
+`AB2SCN01`. It starts on `$018444`'s `$9044` read, captures the outer stack
+pointer, and ends on the matching RTS stack read. **Do not use opcode
+prefetch as the return boundary**: the CPU can fetch past a DBF before the
+loop finishes. Stack bytes are excluded; nested returns have a different
+SP. Main writes from outside the routine/helpers drop the window. Sub CPU
+writes are tracked separately, and a record is skipped only if they touch
+a byte the replay read, even if the sub restored its previous value.
+`tests/oracle_scenery.cpp` runs the port from each before snapshot and
+compares exact write sets and values across all seven MainBus RAM regions.
+
+Results (zero abnormal windows dropped):
+
+- Attract, 2,000 consecutive calls: **2,000 of 2,000 identical, 0 skipped**;
+  1,682 calls with writes, 895 tile uploads; raw selectors 0/1/2/3.
+- Extended attract, 1,200 calls sampled every eight frames through frame
+  9,600: **1,200 of 1,200 identical, 0 skipped**; 573 calls with writes,
+  441 tile uploads and four palette updates; raw selectors 0/1/3/4/5/6/11,
+  state-machine modes 0/4/8/12. The palette loop at `$0185DA` returns to
+  `$0185CE`: source A2 resets for each iteration, while A3 advances.
+- Scripted gameplay, 1,200 calls from frame 420: **937 of 1,200 identical,
+  263 skipped for sub CPU input races**; 925 matched calls upload tile
+  data. Raw selectors 13/14/15/16 include the segmented-display branch.
+  These raw selector values must not be equated with displayed stage
+  numbers or used to infer the game's stage count.
+
+Total: **4,137 of 4,400 identical, 263 races skipped, zero different**.
+Changing the `$0187F2` scroll adjustment from -4 to -3 makes 841 of the
+2,000 consecutive attract records differ. The mutation was reverted and
+the original routines rerun against all captures.
+
+Unverified paths: selectors/event-table entries not listed above, every
+possible timer/repeat transition, corrupted out-of-range table/count
+inputs, and byte/word tile-list paths not separately counted by the
+coverage report. The capture verifies calls, not full frames or rendered
+integration. Race-skipped calls are not evidence of correctness. The
+stage/road setup slices, special sub-road sequence and hardware-renderer
+integration are now completed below. Full game frame scheduling is 3c;
+credit/stage dispatch is 3e. No flight-coordinate bridge was invented.
+
+`make oracle-capture-scenery` regenerates these three local captures;
+`make oracle-test` runs their comparisons alongside the phase 3a baselines.
+The class is now called by the game loop through shared `MainBus` endpoints.
+Phase 3a is committed and merged via PR #4, merge commit `559a2b7`.
+
+## Phase 3b completion: road/scenery setup and hardware integration
+
+`OStageSetup::run` implements these literal main-ROM slices:
+
+| Entry | Effect | Natural capture calls |
+| --- | --- | ---: |
+| `$13972` | Reset speed/distance, DIP-selected limits and pitch clamps | 5 |
+| `$18918` | Copy the ordered stage selector list from runtime ROM | 5 |
+| `$DDFE` | Clear bank/pitch state and eight history words | 3 |
+| `$13CEE` | Resolve the stage's road/scenery descriptor | 6 |
+| `$13D10` | Write normal or alternate ground/sky palettes | 6 |
+| `$183DE` | Reset scenery/tile scroll state, tail-call road palette expansion | 1 |
+| `$13C3E` | Expand 120 runtime byte selectors into 16-byte road color groups | 6 |
+| `$13B1C` | Copy the master palette, 232 iterations of eight longs | 4 |
+
+**36 of 36 natural setup calls identical, 0 skipped**. Four windows with
+writes outside the selected routine (including interruptions) were discarded
+by capture, not reported as matches. A separate directed run forces the
+alternate ground-palette branch: **36 of 36 identical, 0 skipped**. A third
+run invokes ROM commands `$E062`/`$E074` with MAME's debugger PC import and a
+return address on the active stack: 30 calls to each command plus setup,
+**96 of 96 identical, 0 skipped**. This is directed routine coverage, not
+whole-credit playback; it can restart a partially executed host instruction.
+Total across those three captures: **168 of 168 identical, 0 skipped**.
+Changing the expansion loop from 120 to 119 makes seven natural setup
+records differ; reverted before final checks.
+
+The MAME core exposes user A7 as `USP`, supervisor A7 as `SP`, and no named
+`A7` debugger register. Select with SR bit `$2000`. The scenery captures were
+regenerated using this selection and retain **4,137/4,400 identical, 263
+input-race skips**. Start CLR routines on the first data read: CLR.L writes
+its low word before its high word, so starting on a high-word write misses
+part of the transaction. Scenery and setup end on the outer RTS stack read,
+not prefetch beyond a loop. RAM, write sets and I/O events are compared.
+
+Sub-road additions:
+
+- `$5C4` blanks both line-selector tables; `$5EE` initializes 224 road-0
+  texture selectors. **34 of 34 real calls identical, 0 skipped**.
+- `$436..$44A` shifts the two request words and calls those helpers on carry.
+  **866 of 868 request windows identical, 2 skipped for main CPU writes to
+  inputs**. Explicit other-CPU write sets catch even writes restored before
+  the window ends. Reset-interrupted windows are excluded by the capture.
+- `$16D4/$1758` initialize the second road, compute perspective/lateral
+  fixed-point ramps, select texture transitions from ROM `$19E8`, update
+  mode bits and advance distance/texture phase. `$1868` is TAS (the decoder
+  now excludes TAS from TST); `$1736` drives the signed comparator, wrapping
+  lateral position on out-of-range flags.
+- **600 of 600 special-road frames identical, 0 skipped**. Directed cases
+  cover sequence initialization, mode bits 3/6/7, signed distance around zero
+  and the far endpoint `$4FEC0`, altitude boundaries, yaw and comparator
+  limits. Inputs are explicitly injected before the actual MAME routine;
+  no ROM tables or captured state are embedded in the C++ port. A changed
+  special-road fill word makes all 600 records fail, then is reverted.
+
+`OEngine` owns `MainBus::Memory` and its shared sub bus. Tile/text/palette
+transactions go through video endpoints. A road swap copies the newly
+latched MainBus buffer into HWRoad's CPU half and triggers HWRoad's swap;
+the following generator writes prepare the next frame. Each host frame
+processes road requests, latches/control-writes, runs one road frame and
+calls the scenery engine. `Screen` always uses hardware road/tile/text/sprite
+compositing. Deleted: `ORoad`, `draw_stage1`, native gradients, canopy/rock
+terrain sprites, camera projection and speed-gauge overlay.
+
+The host bootstraps the retained native Stage 1 experience at ordinary raw
+selector `$10`, using the verified setup slices and ROM-derived gameplay
+flags/player altitude. This is a host-selected subsystem start, not a port
+of the complete reset/credit/stage dispatcher. Flight controls remain native;
+no conversion of native degrees into arcade attitude RAM is guessed. The
+integration test sets `$29C0CE` directly and verifies road changes while text
+stays stable. Palette/object/HUD/sound scheduling and full sprites remain
+3c–3e work. The special road can be driven by its real bus state, but a full
+carrier sequence still requires those object/game-flow ports.
+
+Unverified: stage descriptor entries beyond captured stages, every combination
+of special-road yaw/distance/altitude, complete reset/credit paths, whole-frame
+CPU scheduling and rendered gameplay equality. The existing normal-road,
+sprite, ADC, compare/timer and video oracle baselines remain passing. Make
+build, engine/bus regression checks and Stage 1 combat/restart/audio integration
+pass. CMake targets are updated, but CMake is unavailable on this host.
+Captures/ROMs remain local and ignored. `make oracle-capture-road-setup`
+regenerates the new captures; `make oracle-test` includes them.
+
+Phase 3c proceeds according to [PHASE3C_PLAN.md](PHASE3C_PLAN.md): capture the
+frame boundary, port main sprite emission/blits, connect the sub sort/transform,
+port palette scheduling, then wire and verify the 30/60 Hz cadence.
 
 ## Open threads to pick up next
 

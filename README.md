@@ -63,15 +63,16 @@ docs/                        — hardware & porting reference notes
 
 ## Status
 
-Playable Stage 1 reference experience: banked horizon, animated sea, original
-canopy/shore rocks and player attitude frames, an upright live HUD, fighter
-combat, targeting, hits, and original sound-ROM playback. Stage 1 clears after
-60 seconds; Enter restarts it.
+Playable Stage 1 reference experience with fighter combat, targeting, hits,
+original sprite art, HUD and sound-ROM playback. Stage 1 clears after 60
+seconds; Enter restarts it. Phase 3b replaced the native terrain with verified
+arcade road/scenery ports and the hardware renderer.
 
-The native terrain layout, formations, flight/collision rules, and stage duration
-are reconstructed. They are not a bit-exact port of the arcade's stage scripts.
-The full 25-stage game, carrier introduction, attract mode, and refueling are
-future work. See [docs/STAGE1_FIDELITY.md](docs/STAGE1_FIDELITY.md),
+Formations, flight/collision rules, HUD and stage duration remain reconstructed.
+Native controls do not feed arcade road attitude until the flight/input port
+in 3d. Sprite scheduling, complete stage progression, carrier introduction,
+attract mode and refueling remain future work; the full stage count has not
+yet been verified. See [docs/STAGE1_FIDELITY.md](docs/STAGE1_FIDELITY.md),
 [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/PR_REVIEW.md](docs/PR_REVIEW.md).
 
 ## Building

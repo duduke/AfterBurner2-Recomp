@@ -211,8 +211,8 @@ disassembled and read directly.
       `$00046A`-`$00052C`: bank/pitch easing, rotation, horizon, and the
       per-scanline raster that banks the ground): writes exactly the
       arcade's bytes on 1,798 of 1,800 attract-mode frames. The special
-      sequence (`$0016D4`/`$001758`, likely the carrier take-off) isn't
-      ported yet.
+      sequence (`$0016D4`/`$001758`) is now ported and separately verified
+      in 3b below.
 - [x] Video hardware layer verified against MAME's rendered frames
       (`tests/oracle_video.cpp`): 300 of 300 attract-mode frames, and 100 of
       100 with sprites removed, are pixel-identical. Fixed on the way:
@@ -235,7 +235,8 @@ milestone ends with something visibly closer to the arcade in
       palette, road control, I/O and the 315-5248/5249/5250 chips.
       Shared RAM and sub-side chips use the same `SubBus` instance;
       byte lanes, mirrors and buffer swaps have ROM-free checks.
-      Video and timed ADC conversion are host endpoints, pending 3b/3d.
+      Road/scenery video endpoints are connected in 3b; sprite triggering and
+      timed ADC scheduling remain for 3c/3d.
 - [x] 315-5250 compare/timer model: comparator, timer IRQ, and the
       main → sound command latch (offsets `$B`/`$F`); 2,438 of 2,438 MAME
       events identical, 0 skipped (see verified coverage in `ENGINE_NOTES.md`)
@@ -249,23 +250,42 @@ milestone ends with something visibly closer to the arcade in
       captures use `tools/oracle/gameplay.lua`; `make oracle-capture-main`
       regenerates the new captures, and `make oracle-test` checks them.
 
-The foundation and ADC slice are compiled but not called by the Stage 1
-reconstruction. The complete timer handler, ADC conversion scheduling and
-arcade frame loop remain for later milestones; next is 3b's stage setup.
+Phase 3a was merged in PR #4 (`559a2b7`). The main bus is now used by the
+road/scenery ports; ADC scheduling and the full frame loop remain for 3c/3d.
 
-**3b. Real road and scenery in the game (retires `draw_stage1` and `oroad`)**
+**3b. Real road and scenery in the game (complete)**
 
-- [ ] Port stage setup: stage number and road control words into sub RAM,
-      road palettes, scenery tile upload (`$018798`)
-- [ ] Port the stage event / scenery scroll engine (`$018444`): tile RAM
-      streaming and the roll-adjusted horizontal scroll
-- [ ] Run `OSubRoad::frame` once per frame in the game and render through
-      `hwroad` instead of `draw_stage1`
-- [ ] Port the special road sequence (`$0016D4`/`$001758`, likely the
-      carrier take-off); needs the 315-5250 comparator
-- [ ] Delete `draw_stage1`, `oroad` and the Stage 1 terrain sprites
+- [x] Stage/road setup and palettes (`OStageSetup`): reset attitude/limits,
+      runtime stage-selector table, palette descriptor lookup, both ground
+      palette modes, master palette and scenery reset/road color expansion.
+      168 of 168 setup calls identical, 0 skipped; includes separate directed
+      alternate-palette and road-control-command captures.
+- [x] Stage events and scenery scroll (`$018444`, `OScenery`), including
+      `$018798` tile upload: 4,137 of 4,400 calls identical, 263 skipped for
+      sub CPU input races. Regenerated captures use the active CPU stack.
+- [x] `OSubRoad::frame` runs once per host frame, after request processing
+      and the preceding road RAM latch. `MainBus` video endpoints send
+      tiles/text/palettes and the latched road buffer to the hardware renderer.
+      Request processing: 866 of 868 identical, 2 input races skipped;
+      road initialization: 34 of 34 identical, 0 skipped.
+- [x] Special road sequence `$0016D4`/`$001758`, including the comparator:
+      600 of 600 directed MAME frames identical, 0 skipped. These are routine
+      inputs, not proof of a complete carrier sequence.
+- [x] Delete `draw_stage1`, `oroad`, generated sky/sea gradients, terrain
+      sprites and the native speed-gauge overlay. The hardware compositor
+      always draws road, tiles, text and sprites through its verified path.
+
+The host still starts the native Stage 1 experience at raw selector `$10`;
+credit/stage dispatch is 3e. Native player controls do not drive arcade road
+attitude yet: that exact mapping is 3d, and the integration check exercises
+bank targets directly through shared RAM. Objects, sprites, HUD and sound
+command timing remain reconstructed. See `ENGINE_NOTES.md` for boundaries,
+coverage and mutation checks. `make test`, `make verify-stage1` and
+`make oracle-test` pass; no ROM data or captures are committed.
 
 **3c. Frame loop and sprite pipeline (retires `osprites`' reconstruction)**
+
+Implementation order and acceptance checks: [PHASE3C_PLAN.md](PHASE3C_PLAN.md).
 
 - [ ] Port the main CPU VBLANK handler (`$014674`): the 30/60 Hz split,
       the double-buffer pointer swaps (`$2A3C04`-`$2A3C1C`), the

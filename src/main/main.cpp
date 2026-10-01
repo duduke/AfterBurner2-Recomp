@@ -60,7 +60,6 @@ int main(int argc, char** argv)
     engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length, roms.subcpu.rom, roms.subcpu.length);
 
     Screen screen(SCREEN_WIDTH, SCREEN_HEIGHT, palette, road, sprites, tiles);
-    screen.init_stage1(roms.sprites.rom, roms.sprites.length);
     std::vector<RGB888> frame(static_cast<size_t>(SCREEN_WIDTH) * SCREEN_HEIGHT);
     std::vector<uint32_t> texture_pixels(frame.size());
 
@@ -190,7 +189,6 @@ int main(int argc, char** argv)
             { running = false; break; }
         }
 
-        screen.set_camera(engine.get_objects().get_roll(), engine.get_objects().get_pitch(), engine.get_objects().distance());
         screen.render_frame(frame.data());
         for (size_t i = 0; i < frame.size(); i++)
         {
