@@ -180,13 +180,18 @@ handler_reads=space:install_read_tap(0,0x3fffff,"handler_reads",function(a,data,
 end)
 handler_writes=space:install_write_tap(0,0x3fffff,"handler_writes",function(a,data,mask)
  if guard or not before then return end
+ local active=(main.state.SR.value&0x2000~=0) and main.state.SP or main.state.USP
+ local top=injected and injected_sp or leaf and leaf_sp
+ -- Stack writes can use a mapped mirror or an unmapped stack address.
+ -- Limit the exclusion to the active call's stack, never an entire RAM bank.
+ if top and a>=(active.value&0x3ffffe) and a<((top&0x3fffff)+4) then return end
  local o=offset(a)
  if o and o<0x8000 then
   -- Delayed fixtures may interrupt below the usual $FE00 stack window.
   -- Exclude the active stack by the CPU's actual SP, including nested pushes.
   local active=(main.state.SR.value&0x2000~=0) and main.state.SP or main.state.USP
   local stack=offset(active.value&0x3fffff)
-  if o>=0x7e00 or (stack and stack<0x8000 and o>=stack) then return end
+  if o>=0x7e00 or (not top and stack and stack<0x8000 and o>=stack) then return end
  end
  if pc.value>=0x1461c and pc.value<=0x14816 then
   before=nil;dropped=dropped+1;restore_fixture();return
@@ -206,6 +211,13 @@ local function inject_call()
  selected=targets[records%#targets+1]
  interrupted_registers=registers();interrupted_sr=main.state.SR.value
  local stack=(interrupted_sr&0x2000~=0) and main.state.SP or main.state.USP
+ -- A task may be using an object-local stack. Do not inject damage
+ -- fixtures on top of their scratch compound or allocated debris records.
+ if (selected>=0xe744 and selected<=0xecac) or (selected>=0xf58e and selected<=0xfaa0) then
+  local stack_offset=offset(stack.value&0x3fffff)
+  if stack_offset and ((stack_offset>=0x4400 and stack_offset<=0x4520)
+    or (stack_offset>=0x5200 and stack_offset<=0x5420)) then return end
+ end
  local sp=(stack.value-4)&0xffffffff
  guard=true;space:write_u32(sp&0x3fffff,main.state.CURPC.value);guard=false;stack.value=sp;injected_sp=sp
  main.state.A5.value=0xffffc400
@@ -355,6 +367,55 @@ local function inject_call()
    restore_buttons[#restore_buttons+1]={f[name],(previous&f[name].mask)==0 and 1 or 0}
    f[name]:set_value((n>>(i-1))&1)
   end
+ end
+ if (selected>=0xe744 and selected<=0xecac) or (selected>=0xf58e and selected<=0xfaa0) then
+  -- Damage callees are isolated routine coverage, awaiting the $E662 caller.
+  set(0x3f8802,({0,1,0x80000000,0xffffffff})[(n//4)%4+1],4)
+  set(0x3f8e7f,({0,3,4,8})[n%4+1],1)
+  for i=1,8 do set(0x3f8e7f+i,199+i,1) end
+  set(0x3fc414,200,1);set(0x3fc410,selected,4)
+  set(0x3fc404,({0,0x20,0xffe0,0x7fff})[n%4+1],2)
+  set(0x3fc406,({0x70,0,0x168,0x8000})[(n//4)%4+1],2)
+  set(0x3fc42a,({0,0x20,0xffe0,0x7fff})[(n//4)%4+1],2)
+  set(0x3fc42c,({0x70,0,0x168,0x8000})[n%4+1],2)
+  set(0x3fc41e,n*4,2);set(0x3fc420,({0,1,11,12,0xffff,0xfff5,0xfff4,0x8000})[n%8+1],2)
+  set(0x3fc430,({0,0x40,0xffc0,0x8000})[(n//4)%4+1],2)
+  set(0x3fc434,({1,2,4,0x8000})[(n//4)%4+1],2)
+  set(0x3fc436,({1,2,4,0x8000})[(n//4)%4+1],2)
+  set(0x3f91b4,({0,3,4,0x8000})[n%4+1],2)
+  set(0x3f91b6,({0,0x400,0x7fff,0x8000})[(n//4)%4+1],2)
+  set(0x3f91b8,({0,0x10,0xfff0,0x7fff})[n%4+1],2)
+  set(0x3f91ba,({0x70,0,0x168,0x8000})[(n//4)%4+1],2)
+  set(0x3f91bc,({0,1,0xffff,0x8000})[n%4+1],2)
+  set(0x3f9130,({0,0x40,0xffc0,0x7fff})[n%4+1],2)
+  set(0x3f9132,({0,0x20,0x80,0xd0,0xff,0x7fff,0x8000,0xffff})[n%8+1],2)
+  set(0x3f912e,({0,1,0xffff,0x7fff})[(n//4)%4+1],2)
+  set(0x29c0aa,({0,0x180,0x220,0x7fff})[n%4+1],2)
+  set(0x29c0ae,({0,1,7,8,9,0xffff,0xfff8,0xfff7})[n%8+1],2)
+  set(0x29c0b4,({0,0x40,0xffc0,0x8000})[(n//4)%4+1],2)
+  set(0x29c0b6,({0,0x40,0xffc0,0x8000})[n%4+1],2)
+  set(0x29c096,({0,0x59,0xffa8,0x8000})[(n//4)%4+1],2)
+  set(0x29c092,0x7f,2);set(0x29c090,0,2);set(0x29c09e,n*4,2)
+  set(0x29c080,0x10,2);set(0x29c088,0x20,2);set(0x29c08a,0x30,2)
+  set(0x29c630,({0,12,14,0xfffe})[n%4+1],2)
+  set(0x29c200,n%16==0 and 0 or 4,1);set(0x3f91d0,n%16==1 and 4 or 0,1)
+  -- Resolve all animation data from ROM, including delay and end markers.
+  local table=space:read_u32(0xe89e+(n%2)*4)
+  local start=space:read_u32(table+4+(n%4)*4)
+  local a=start
+  local delays,ends,animations={},{},{}
+  for i=1,256 do
+   local marker=space:read_u16(a)
+   if marker==0xffff then ends[#ends+1]=a;break
+   elseif marker==0xeeee then delays[#delays+1]=a;a=a+2
+   else animations[#animations+1]=a;a=a+16 end
+  end
+  local trajectory=start
+  if n%8==2 and #delays>0 then trajectory=delays[1]
+  elseif n%8==3 and #ends>0 then trajectory=ends[1]
+  elseif n%8>=4 and #animations>0 then trajectory=animations[n%#animations+1] end
+  set(0x3fc41a,trajectory,4)
+  main.state.D7.value=({0,0x20,0x7fff,0xffe0})[n%4+1]
  end
  guard=false
  injected=selected;before=snapshot();pre=registers();mathpre=mathstate();io_input=port_input();written,other,events={},{},{}

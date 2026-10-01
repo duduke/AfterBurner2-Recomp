@@ -1265,3 +1265,85 @@ sway/shadow, ground noise, collision damage and ADC duration. The vulcan
 mutation now fails all 64 directed initializer records. Collision mutation
 fails four hit records. Mutation logs and temporary variants remain ignored.
 The build and 180-frame dummy-video/audio headless launch also pass.
+
+
+## Phase 3d continuation: damage/debris callees (host replacement pending)
+
+`OMainDamage` translates nineteen callees below the live `$E662` damage
+entry through `MainBus`. The damage controller itself is still unported.
+No native object, flight, combat or sound producer has been removed.
+
+- `$E744` pops four free-list indices from `$8E7F`, activates the debris
+  records and loads five trajectory pointers (fuselage plus four parts)
+  from the runtime ROM table at `$E89E`. RNG chooses one of two orientations.
+- `$E7E0` converts the live screen position into the damage coordinate
+  system, using the divider, multiplier and runtime sine/cosine table.
+- `$EBD2/$EBF6/$EC1A/$EC3E` wait for damage tick four and enter `$F766`.
+  `$F766` reads sixteen-byte animation records from ROM, handles two-byte
+  delay markers and end markers, computes depth/scale and projects debris.
+  The first projection seeds previous position without emitting a request;
+  subsequent projections call the already checked `$B628`. Memory long
+  additions preserve the 68000's low-word-first write order.
+- `$F85A` removes a part and returns its slot to the same free list.
+- `$F878` projects damage coordinates and slews animation bank by at most
+  96 per call. `$F93E` publishes the five player position/depth words.
+- `$F58E` accelerates angular motion to +/-12; `$F95E/$F966` add RNG jitter;
+  `$F99E/$F9CE` update speed; `$F9E2/$FAA0` update bank/pitch and road history.
+  `$F9CE` intentionally shifts only the low word of the long MULU result.
+- `$EC62` hides scale and requests state 7. `$ECAC` is the recovery
+  transition *below* the lives caller at `$EC78`; it changes record handlers
+  and resets the shared damage/roll words. It does not decrement lives.
+  `$EC78`, its lives/HUD callee `$CF46`, and later credit/game-flow paths
+  are named unported Phase 3e boundaries, not native replacements.
+
+`make oracle-capture-damage` generates `damage_directed.bin`: **1,216 of
+1,216 identical, 0 skipped, 0 different**, with **64/64 identical for each**
+of `$E744`, `$E7E0`, `$EBD2`, `$EBF6`, `$EC1A`, `$EC3E`, `$EC62`, `$ECAC`,
+`$F58E`, `$F766`, `$F85A`, `$F878`, `$F93E`, `$F95E`, `$F966`, `$F99E`,
+`$F9CE`, `$F9E2` and `$FAA0`. The capture retains complete RAM/register/chip
+inputs and independent ordered-write replay; no captured callback writes
+are applied to the port. One interrupted capture window was rejected before
+recording. All recorded calls were race-free.
+
+Coverage counters report 32 allocations (16 per RNG orientation), 32
+insufficient-pool calls, 192 waiting-part calls, 64 animation steps, 48 delay
+markers, 8 end markers, 4 disabled removals and 4 draw-only calls. Waiting
+handlers cover first-projection history seeding; the direct animation calls
+cover subsequent request emission. Other fixtures cover angular limits,
+positive/negative bank slew, pitch endpoints, speed word widths, RNG zero-seed
+fallback and road-history wrap. Signed depth overflow fixtures exposed a real
+port error: `$F7C0` BGE follows ADD.W and tests N==V. Testing only the wrapped
+word's sign incorrectly kept negative overflow depth. The corrected port
+preserves that branch contract.
+
+The capture now excludes the active call's bounded stack even when it is
+outside the usual work-RAM stack window. For leaf/isolated calls it no longer
+excludes every work-RAM byte above SP. Damage injection defers when the
+interrupted task's stack overlaps the scratch compound or allocated debris
+records, so real object writes cannot disappear into stack filtering. The
+initial animation fixtures only exercised markers; scanning runtime ROM
+records to include actual animation steps made the coverage gap visible and
+closed it. Coverage inspection runs before enabling the C++ trace and cannot
+add artificial read dependencies to input-race decisions.
+
+Six deliberate mutations fail: debris-handler stride (32 records), animation
+pointer step (64), bank slew (40), projection shift (109), pitch limit (24),
+and signed depth branch (24). The unmodified port passes the same capture.
+Temporary variants and logs stay under ignored `build/oracle/`. Combined with
+the earlier checkpoint, 39 deliberate mutations have been rejected.
+
+Uncovered: the `$E662` damage initializer/caller, intact/breakup controllers
+`$E8D0/$E94E`, fuselage animation `$F640`, carrier/refuel controllers, life
+loss/HUD/credit flow, arbitrary timeline exhaustion, every zoom saturation
+combination, corrupted/overflowing free lists and every arithmetic overflow.
+A 120-second ordinary gameplay attempt captured no selected waiting/debris
+handlers; its incomplete capture is not a passing natural-gameplay result.
+Directed routines do not establish a real damage sequence or host cadence.
+Input IRQ/ADC wiring, other enemy graphs, sound cadence and paired 30/60 Hz
+player/weapon/video acceptance remain required before retiring `OLevelObjs`.
+
+Make/CMake targets include the new source and capture. `make test`,
+`make verify-stage1`, `make oracle-test`, the game build and the 180-frame
+headless launch pass. Stage 1 audio RMS remains 903.949. CMake is unavailable
+on this host; its updated definitions have not been executed. ROMs, binary
+images, captures and mutation outputs remain ignored.
