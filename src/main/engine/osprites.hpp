@@ -1,42 +1,23 @@
 #pragma once
+#include <array>
 #include <cstdint>
-#include <vector>
 #include "engine/oentry.hpp"
-#include "hwvideo/hwsprites.hpp"
-
-// Replaces the original dual-CPU counting-sort pipeline.
-// Collects sprite records from game objects during the frame tick,
-// sorts them by Z-depth, formats them into the X-Board 8-word descriptor format,
-// and blits them to HWSprites RAM before triggering the draw.
-class OSprites
-{
+#include "engine/omainsprites.hpp"
+// Temporary native-object adapter, not an arcade object port. It emits real
+// ROM frame pointers and request records through $00B628; it never sorts or
+// writes hardware descriptors. Remove with OLevelObjs in Phase 3d.
+class OSprites {
 public:
-    struct SpriteDesc
-    {
-        int16_t z{0};
-        uint16_t words[8]{0};
-    };
-
-    OSprites();
-
-    // Clear the active preparation list for a new frame tick.
+    void bind(MainBus&,const uint8_t* sub_rom,uint32_t length);
     void begin_frame();
-
-    // Emits a sprite into the frame queue. Height is in source ROM rows;
-    // append_raw instead accepts a hardware descriptor with destination height.
-    void append_sprite(const OEntry& obj, uint16_t rom_bank, uint16_t rom_offset,
-                      uint16_t pitch, uint16_t zoom_x, uint16_t zoom_y,
-                      uint16_t height, uint8_t palette, uint8_t priority);
-
-    // Alternative direct 8-word descriptor emission matching arcade append_sprite.
-    void append_raw(int16_t z, const uint16_t words[8]);
-
-    // Sort by Z distance, write into HWSprites RAM, and trigger the hardware scaler.
-    void flush_to_hardware(HWSprites& hw_sprites);
-
-    [[nodiscard]] size_t get_active_count() const { return sprite_queue.size(); }
-
+    void append_sprite(const OEntry&,uint16_t bank,uint16_t offset,uint16_t pitch,
+                       uint16_t zoom_x,uint16_t zoom_y,uint16_t height,uint8_t palette,uint8_t priority);
+    [[nodiscard]] size_t get_active_count() const { return count; }
+    [[nodiscard]] size_t unsupported_frames() const { return unsupported; }
 private:
-    static constexpr size_t MAX_SPRITES = 192; // Arcade limit ($C0 entries)
-    std::vector<SpriteDesc> sprite_queue;
+    MainBus* bus{};
+    const uint8_t* rom{}; uint32_t length{};
+    size_t count{},unsupported{};
+    std::array<int16_t,192> previous_x{},previous_y{};
+    OMainSprites main;
 };

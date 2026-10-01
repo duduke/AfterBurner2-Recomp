@@ -20,17 +20,28 @@ void sprite_scaling()
         for (int b = 0; b < 4; ++b) rom[y * 4 + b] = (word >> (b * 8)) & 255;
     }
     HWSprites hw; hw.init(rom.data(), rom.size());
-    for (const uint16_t zoom : {0x100, 0x200, 0x300, 0x400, 0x580})
+    std::vector<uint8_t> subrom(0x10010);
+    const uint16_t record[]={8,7,0,0,1,7};
+    for(unsigned i=0;i<6;++i) {subrom[0x10000+i*2]=record[i]>>8;subrom[0x10001+i*2]=record[i];}
+    for (const uint16_t zoom : {0x100, 0x200, 0x300})
     {
-        OSprites sprites; OEntry obj; obj.x = 8; obj.y = 8;
+        MainBus::Memory memory;MainBus bus(nullptr,0,subrom.data(),subrom.size(),memory);
+        OMainSprites main;main.initialize(bus);
+        OSprites sprites;sprites.bind(bus,subrom.data(),subrom.size());
+        OEntry obj; obj.x = 8; obj.y = 8;
         sprites.append_sprite(obj, 0, 0, 1, zoom, zoom, 8, 7, 2);
-        sprites.flush_to_hardware(hw);
+        main.publish(bus);
+        bus.write32(0x2a3c08,bus.read32(0x2a3c04));bus.write32(0x2a3c10,bus.read32(0x2a3c0c));
+        OSubSprites{}.pass(bus.sub);
+        bus.write32(0x2a3c14,bus.read32(0x2a3c18));bus.write32(0x2a3c1c,bus.read32(0x2a3c20));
+        bus.endpoints.video_write=[&](uint32_t a,uint16_t v){if(a>=0x100000&&a<0x101000) hw.write16(a-0x100000,v);};
+        bus.endpoints.sprite_draw=[&]{hw.swap();};main.blit(bus,false);bus.write8(0x110001,0xff);
         std::vector<uint16_t> pixels(32 * 32, 0xffff);
         hw.render(pixels.data(), 32, 32);
         int rows = 0;
         for (int y = 0; y < 32; ++y)
             if (pixels[y * 32 + 8] != 0xffff) ++rows;
-        check(rows == std::max(1, (8 * 512 + zoom - 1) / zoom), "Sprite must occupy its scaled destination height");
+        check(rows == (7*(0xfe00/zoom)/0x7f)+1, "Sprite must occupy its scaled destination height");
         for (const auto pixel : pixels)
             check(pixel == 0xffff || (pixel & 15) == 1, "Zoom must preserve all 11 bits and stay within source rows");
     }

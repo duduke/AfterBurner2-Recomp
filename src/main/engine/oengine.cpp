@@ -9,11 +9,13 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
 {
     memory = {};
     bus = std::make_unique<MainBus>(maincpu_rom,maincpu_len,subcpu_rom,subcpu_len,memory);
-    bus->endpoints.video_write = [&palette,&tiles](uint32_t address,uint16_t value) {
+    bus->endpoints.video_write = [&palette,&tiles,&sprites](uint32_t address,uint16_t value) {
         if (address>=0xc0000 && address<0xd0000) tiles.write_tile((address-0xc0000)/2,value);
         else if (address>=0xd0000 && address<0xd1000) tiles.write_text((address-0xd0000)/2,value);
+        else if (address>=0x100000 && address<0x101000) sprites.write16(address-0x100000,value);
         else if (address>=0x120000 && address<0x124000) palette.write((address-0x120000)/2,value);
     };
+    bus->endpoints.sprite_draw = [&sprites] { sprites.swap(); };
     bus->endpoints.road_swap = [this,&road] {
         // MainBus has just exchanged its CPU/latched halves. Copy the newly
         // latched words into the hardware's CPU half, then trigger its latch.
@@ -47,40 +49,75 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
     road_engine.initialize(bus->sub,0x5ee);
     scenery_engine.stage_events(*bus);
 
-    // Objects, their palettes, and HUD remain native until 3c/3d.
-    if (maincpu_rom && maincpu_len>=0x2ea34)
-        for (int i=0;i<16;++i) palette.write(0xf10+i,bus->read16(0x2ea14+i*2));
-    palette_engine.init(maincpu_rom,maincpu_len);
-    palette_engine.update(palette);
+    // Verified reset pointers/priority. Native Stage 1 selects interpolation
+    // and the terminal airframe palette transition until 3e boots a credit.
+    main_sprites.initialize(*bus);
+    bus->write16(0x29c056,0x1000); // $0139CA (also in verified reset tail)
+    bus->write16(0x2a3c00,1); // $01486E's caller re-arm value
+    bus->write8(0x3f8b6f,2); // native host opts into $014734 interpolation
+    bus->write16(0x3f8c2a,0x1e);
+    palette_engine.run(*bus,0x13f92);
+    bus->write16(0x3f8c2a,0);
+    // Empty list terminators in both reset pointer halves; Sub pass publishes
+    // the real normal/interpolated terminators before the first blit.
+    sub_sprites.pass(bus->sub);
+    sprite_engine.bind(*bus,subcpu_rom,subcpu_len);
     level_objs.set_rom(subcpu_rom,subcpu_len);
     level_objs.init();
     hud_engine.init(palette,tiles,maincpu_rom,maincpu_len);
     hud_engine.update(tiles,level_objs.hud());
     frame_count=0;
     sprite_engine.begin_frame();
-    sprite_engine.flush_to_hardware(sprites);
+    main_sprites.blit(*bus,false);
+    bus->write8(0x110001,0xff);
     tiles.latch_frame_registers();
 }
 
 void OEngine::handle_input(int stick_x,int stick_y,bool fire_vulcan,bool fire_missile,int throttle)
 {
-    level_objs.handle_input(stick_x,stick_y,fire_vulcan,fire_missile,throttle);
+    this->stick_x=stick_x;this->stick_y=stick_y;this->throttle=throttle;
+    vulcan=fire_vulcan;missile=fire_missile;
 }
 
-void OEngine::tick(HWPalette& palette,HWRoad&,HWSprites& sprites,HWTiles& tiles)
+void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
 {
     ++frame_count;
-    sprite_engine.begin_frame();
-    level_objs.update(sprite_engine);
-    // $000436-$00044A, $000464/$000466, then $00046A: generate next
-    // frame after latching the preceding frame, exactly once per host frame.
-    road_engine.service_requests(bus->sub);
-    bus->sub.read8(0xee001);
-    bus->sub.write8(0xee001,bus->sub.read8(SubBus::A6+0x320));
-    road_engine.frame(bus->sub);
-    scenery_engine.stage_events(*bus);
-    sprite_engine.flush_to_hardware(sprites);
-    palette_engine.update(palette);
-    hud_engine.update(tiles,level_objs.hud());
+    auto phase=frame_engine.interrupt(*bus,[&](uint32_t entry) {
+        switch(entry) {
+        case 0x18444: scenery_engine.stage_events(*bus);break;
+        case 0xb7c2: main_sprites.blit(*bus,false);break;
+        case 0xb7d2: main_sprites.blit(*bus,true);break;
+        case 0x148be: frame_engine.timers(*bus);break;
+        case 0x1495c: frame_engine.buttons(*bus);break;
+        case 0x148b8: bus->write32(0x3f8812,bus->read32(0x3f8812)+1);break;
+        case 0x147e8: frame_engine.service_edge(*bus);break;
+        case 0x14990: case 0xe2da: break; // ROM RTS-only callees
+        case 0x16c8a: break; // 3d missile/audio/HUD sequencer boundary
+        case 0x17146: case 0xc6f8: break; // 3e attract/credit boundaries
+        default: palette_engine.run(*bus,entry);break;
+        }
+    });
+    if(phase.logic && !phase.service_redirect) {
+        // $000556 waits for the negative logic-phase counter. $000640 then
+        // consumes the previous published requests, after the ISR's mutex.
+        road_engine.service_requests(bus->sub);
+        sub_sprites.pass(bus->sub);
+        // Native producer only: its constants stay in logic ticks, now 30 Hz.
+        sprite_engine.begin_frame();
+        level_objs.handle_input(stick_x,stick_y,vulcan,missile,throttle);
+        level_objs.update(sprite_engine);
+        main_sprites.publish(*bus);
+        frame_engine.resume_logic(*bus);
+        hud_engine.update(tiles,level_objs.hud());
+    }
+    if(!phase.logic) {
+        // $000452's BGT releases when the following display phase makes
+        // the counter zero. Latch the previous road, then generate the next
+        // one. Captures confirm this completes once per TWO display frames.
+        bus->sub.write8(SubBus::A6+0xd6,bus->sub.read8(SubBus::A6+0xd6)|2);
+        bus->sub.read8(0xee001);
+        bus->sub.write8(0xee001,bus->sub.read8(SubBus::A6+0x320));
+        road_engine.frame(bus->sub);
+    }
     tiles.latch_frame_registers();
 }

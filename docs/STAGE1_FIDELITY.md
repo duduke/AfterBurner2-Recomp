@@ -2,7 +2,8 @@
 
 PR #1 targets the Stage 1 appearance and playable experience selected by the
 user from `Afterburner2.mov`. The video is reference material, not instructions.
-The native simulation runs at 60 Hz and clears after 3,600 ticks. Enter resets
+Phase 3c runs native object logic at 30 Hz and display at 60 Hz. The temporary
+native stage still clears after 3,600 logic ticks (7,200 display ticks). Enter resets
 score, hits, ammunition, scenery, objects, palettes, and sound playback.
 
 ## Original data used at runtime
@@ -39,8 +40,24 @@ the full credit/stage dispatcher is still pending 3e. Until the exact player
 port in 3d supplies shared attitude targets, the native stick does not bank
 or pitch this road. The integration test sets arcade targets directly.
 
+Phase 3c replaced native depth sorting, hardware descriptor encoding and
+palette timing. `OMainFrame` preserves both interrupt branches, pointer swaps,
+mutex, lamps and callee order. Sprite requests pass through `$00B628`, the
+verified sub transform and `$00B7C2/$00B7D2`; palette animation/fade follow
+runtime ROM pointers. The sub CPU transforms after the logic phase and
+latches/generates road on the next display phase, once per two display frames.
+
+`OSprites` remains a temporary native producer adapter: it resolves exact
+bank/offset/stride/row tuples to real ROM records, inverts the ROM zoom formula
+for its linear scale branch, converts native top/left coordinates, truncates
+native depth to the request byte, and uses emission-slot position history.
+It omits unsupported tuples/scales. Per-native-sprite priority is discarded in
+favor of the arcade global priority. This is not verified object behavior.
+Host boot still chooses ordinary flight and a terminal airframe palette phase;
+credits, compound player setup and service/attract dispatch remain 3d/3e.
+
 Formation cadence/trajectories, aiming, projectile motion, hitboxes, scoring
-and the 60-second duration remain native rules. Original fighter art is
+and the 3,600-logic-tick duration remain native rules. Original fighter art is
 reused, but exact attitude selection/animation timing is still future work.
 This is not yet a frame-identical whole-game arcade port.
 

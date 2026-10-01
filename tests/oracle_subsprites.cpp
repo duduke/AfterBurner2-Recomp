@@ -47,7 +47,8 @@ int main(int argc, char** argv)
     }
     char magic[8];
     in.read(magic, 8);
-    if (!in || std::memcmp(magic, "AB2ORCL1", 8) != 0)
+    const bool write_sets=std::memcmp(magic,"AB2SPR02",8)==0;
+    if (!in || (!write_sets && std::memcmp(magic, "AB2ORCL1", 8) != 0))
     {
         std::cerr << path << " is not a sprite-pass capture\n";
         return 1;
@@ -56,6 +57,7 @@ int main(int argc, char** argv)
         return 1;
 
     std::vector<uint8_t> before(SHARED), after(SHARED), work(SHARED);
+    std::vector<uint8_t> expected(SHARED),other(SHARED),reads(SHARED),writes(SHARED);
     unsigned passes = 0, raced = 0, matched = 0, failed = 0, reported = 0;
     OSubSprites sprite_pass;
 
@@ -65,6 +67,7 @@ int main(int argc, char** argv)
         in.read(reinterpret_cast<char*>(header), 8);
         in.read(reinterpret_cast<char*>(before.data()), SHARED);
         in.read(reinterpret_cast<char*>(after.data()), SHARED);
+        if(write_sets) { in.read(reinterpret_cast<char*>(expected.data()),SHARED);in.read(reinterpret_cast<char*>(other.data()),SHARED); }
         if (!in) break;
         const uint32_t pass_no = r32(header, 0), frame = r32(header, 4);
         ++passes;
@@ -80,7 +83,18 @@ int main(int argc, char** argv)
 
         work = before;
         SubBus bus(roms.subcpu.rom, roms.subcpu.length, work.data());
+        std::fill(reads.begin(),reads.end(),0);std::fill(writes.begin(),writes.end(),0);
+        SubBus::Trace trace{reads.data(),writes.data(),nullptr};if(write_sets) bus.trace=&trace;
         sprite_pass.pass(bus);
+        if(write_sets) {
+            bool race=false;for(size_t i=0;i<SHARED;++i) race|=reads[i]&&other[i];
+            if(race) {++raced;continue;}
+            bool ok=true;
+            for(size_t i=0;i<SHARED;++i) if(writes[i]!=expected[i] || (expected[i]&&work[i]!=after[i])) {
+                ok=false;if(reported++<12) std::cerr << "pass " << pass_no << " byte " << std::hex << i << std::dec << " differs\n";
+            }
+            ok?++matched:++failed;continue;
+        }
 
         const long sorted = offset_of(r32(after.data(), 0x7c18));
         const long count_at = offset_of(r32(after.data(), 0x7c20));

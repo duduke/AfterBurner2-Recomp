@@ -831,13 +831,15 @@ pass. CMake targets are updated, but CMake is unavailable on this host.
 Captures/ROMs remain local and ignored. `make oracle-capture-road-setup`
 regenerates the new captures; `make oracle-test` includes them.
 
-Phase 3c proceeds according to [PHASE3C_PLAN.md](PHASE3C_PLAN.md): capture the
-frame boundary, port main sprite emission/blits, connect the sub sort/transform,
-port palette scheduling, then wire and verify the 30/60 Hz cadence.
+Phase 3c implementation/results follow below. The completed plan is recorded
+in [PHASE3C_PLAN.md](PHASE3C_PLAN.md); next work is [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 
 ## Open threads to pick up next
 
-- **Engine C++ Implementation**: We now have complete specifications for the object dispatch loop, 64-byte object structure, player jet composite parts, sprite pipeline, and road scanlines. Ready to scaffold `src/main/engine/` (`oentry.hpp`, `oplayer.cpp`, `osprites.cpp`).
+- **Phase 3d**: capture the real object dispatcher/initializer, enumerate its
+  runtime handler table, and replace native object state/flight/input. The
+  sprite/frame/palette foundation is now implemented; handler coverage and
+  whole-game behavior still require their own oracles.
 - Find what sets `$0CDD07`'s trigger bit (the palette fade effect's
   activation) and what reads/sets `$8C2A`/`$8D30` (the palette-animation
   frame counter and palette-set selector).
@@ -845,3 +847,129 @@ port palette scheduling, then wire and verify the 30/60 Hz cadence.
 - **RESOLVED**: Map object dispatch table and structure: 254 entries × 64 bytes (`$9FC0`–`$DF40`), active player jet compound slots 0..3, 3D enemy world-to-screen pipeline mapped.
 - **RESOLVED**: Sprite pipeline & Road / Ground-scroll generation mapped end-to-end.
 - **RESOLVED**: Main ↔ Sub boot handshake and mutex mechanisms.
+
+## Phase 3c — frame, sprite and palette ports
+
+`OMainFrame::interrupt` translates `$014674..$0147E6`: BSET/BCLR mutex,
+word counter with the signed-overflow-aware BGE phase, exact four pointer-pair
+swap order, one-shot palette flags, callee order, lamp write, normal/interpolated
+blit selection and service redirect. It returns an explicit redirect to the
+future `$01A130` service dispatcher; it does not synthesize CPU stack/register
+execution. The small callees `$0148BE` timers, `$01495C` buttons,
+`$0147E8` service edge and `$014856` main-loop wait/re-arm are separate ports.
+Waiting is exposed to the host instead of spinning a C++ thread.
+
+`OMainSprites` translates `$00B628` (signed `$C0` limit, four longword copies,
+then the object +20 size-slot byte replacing request +12), `$00B676`
+publication, and `$00B7C2/$00B7D2` hardware blits. DBF copies **count + 1**
+records, including the terminator; interpolation selects `+$C00`. The reset
+pointer slice `$013832..$013882` is captured separately before TRAP #10.
+Sprite RAM writes and draw triggers use `MainBus` video endpoints, keeping
+bus and hardware CPU/latched halves in the same swap order.
+
+`OMainPalette` replaces `OPalette`: `$014A86` trigger/capture/upload/fade,
+`$013F92` animation with runtime pointer tables, `$0142DC` blend coefficients,
+`$014424` color upload, `$013E5C` transition sequencing, and requested palette
+helpers `$013BB6`, `$013BCC`, `$013BFA`, `$01329E`. No native palette cadence,
+synthetic flame colors or embedded ROM tables remain. Red/green coefficient
+continuation reads the **high byte** at `-2(A0)`, whereas blue shifts the full
+word; this distinction is tested against MAME.
+
+### Captures, coverage and test limits
+
+`make oracle-capture-frame-sprites` regenerates the local references.
+`make oracle-test` includes all of them, plus every existing baseline:
+
+| Check | Identical / captured | Skipped |
+| --- | ---: | ---: |
+| Main sprite routines, natural | 600 / 600 | 0 |
+| Main sprite routines, directed | 600 / 600 | 0 |
+| Reset pointer slice | 1 / 1 | 0 |
+| Palette/small scheduler callees, natural | 600 / 600 | 0 |
+| Palette/small scheduler callees, directed | 1,600 / 1,600 | 0 |
+| Interrupt scheduler, natural | 60 / 120 | 60 concurrent sub-input writes |
+| Interrupt scheduler, directed | 120 / 120 | 0 |
+| Sub sprite pass, directed write sets | 240 / 240 | 0 |
+| Paired sub transform/main blit/draw/video | 120 / 120 | 0 |
+
+The interrupt oracle compares the handler's own writes/I/O and exact callee
+sequence. Captured callee RAM changes are replayed **only as external input
+boundaries**, with tracing disabled: they are not credited as translated
+handler behavior. Palette, small scheduler, scenery and sprite callees have
+independent real execution/write-set tests. `$016C8A` missile/HUD/audio,
+`$017146` attract/highscore and `$00C6F8` coin handling remain explicit 3d/3e
+callbacks; host bindings currently leave them inactive. `$014990`/`$00E2DA`
+are RTS-only. Interrupt stack/register preservation, instruction-cycle
+interleaving and full credit/attract/service dispatch are outside this test.
+Directed frame inputs hold the sub pause mutex, exercise all requested palette
+flags, counter `$8000` overflow, both display phases and a service redirect.
+
+Directed main sprite inputs exercise counts 0, `$BF`, `$C0`, `$C1` and both
+blits, including empty and capacity-boundary lists. Sub captures use real ROM
+frame pointers and test skip-sort, zero zoom/empty lists, 40 equal-depth
+requests spilling across buckets (including the last depth), far-left and
+vertical clipping, and the combined top/bottom path. Their newer format logs
+CPU-owned write sets and detects main writes to actual read inputs. Negative
+append counts, arbitrary malformed pointers/records, every tiny-zoom table
+entry and every combination of clip/flip/interpolation flags are not covered.
+Natural legacy sub baselines continue to pass (1,199/1,200 attract and
+1,198/1,200 gameplay; remaining records are input races).
+
+Directed palettes cover all eight fade-channel masks, trigger, capture banks,
+active/terminal/idle fade, animation suppression, blend initialization and
+terminal continuation, both upload destinations, both palette-cycle tables
+and its no-op selector. The wait/re-arm capture includes ordinary `$FFFF`
+and a missed-phase `$FFFE` input. The service-edge routine matches natural
+calls, but its switch-release transition is not exercised; whole service UI
+and arbitrary negative/out-of-table animation selectors are unverified.
+No palette windows and 38 natural / 16 directed main sprite windows were
+dropped by the capture's PC filter, separately from the listed input-race
+skips and accepted records.
+
+The paired capture keeps the sub before-state associated with its output
+pointer, snapshots main blit inputs and untouched hardware RAM, and pairs
+latched sprites/road/tile state with the subsequent MAME pixels. The test
+**computes** the sub descriptors, substitutes those computed output lists
+into the later main boundary's other-CPU state, runs the ported blit/draw, then
+compares all 4 KiB of latched sprite RAM and all RGB pixels. **60 normal and
+60 interpolated frames** are identical. This verifies the implemented
+pipeline across captured boundaries, not whole-game object/CPU execution.
+
+`python3 tools/oracle/mutation_check.py` compiles temporary changed copies
+under ignored `build/oracle/mutations`, without modifying checked-in source.
+It rejects the `$C0->$BF` append bound, eight-to-four fade-bank cycle,
+one-to-two interrupt decrement and 30-to-29 bucket capacity. Failure counts
+are recorded in its local logs; unmutated oracles pass. This makes the
+sensitivity check reproducible without risking a mutated game binary.
+
+### Host cadence and remaining native boundary
+
+The earlier once-per-display road assumption was wrong. Sub `$000556` waits
+for the negative main counter, then request processing and sprite transform
+run. `$000452` waits while the main counter is positive. The next normal
+VBLANK makes it zero, releasing `$000458`/`$000464`/`$000466` and road work.
+Captured normal gameplay road and sprite passes advance by **two display
+frames** (credit transitions can have short/long windows). The host now
+preserves these two phases, road latch-before-generation, main draw-before-sub
+transform and once-per-logic object production. This supersedes 3b's host
+cadence description above and corrects the original 3c implementation plan.
+
+Native `OLevelObjs` still chooses art, trajectory, combat and sound cues.
+`OSprites` is now just its temporary serialized-request adapter: exact
+bank/offset/stride/row tuples resolve to real aligned ROM records; linear
+zoom inverts `$FE00/scale`; left/top positions convert using the transform's
+origins. Native depth truncates to a byte, previous position uses emission-slot
+history, and the arcade global priority replaces native per-sprite priority.
+Unsupported art/zoom tuples are omitted, not fabricated. This adapter is not
+an oracle-verified flight/object port and will disappear in 3d. `OEntry` is
+explicitly labelled native state, not the arcade object's byte layout.
+
+Native timers remain unchanged **logic tick counts**: stage clear occurs
+at 3,600 logic ticks / 7,200 display frames (120 seconds), and inputs/actions
+are delivered on logic ticks. Boot still selects raw flight `$10`, interpolation
+and the terminal airframe palette phase; complete startup belongs to 3e.
+HUD remains native. Flight input still does not drive arcade road attitude.
+Make build, engine/bus checks, Stage 1 combat/restart/audio integration, the
+full oracle suite, rendered-scene generation and headless launch pass.
+CMake targets are updated but CMake remains unavailable on this host.
+No ROM data or captures are committed. Next: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).

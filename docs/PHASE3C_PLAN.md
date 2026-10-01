@@ -1,7 +1,7 @@
-# Phase 3c implementation plan
+# Phase 3c implementation plan (completed)
 
 Phase 3b provides shared arcade RAM, math chips, road/scenery ports and video
-endpoints. The next milestone replaces sprite scheduling and the native
+endpoints. This completed milestone replaces sprite scheduling and the native
 `OSprites` sorter/blitter. It does not establish whole-game fidelity: player,
 enemy and weapon behavior remain Phase 3d, and stage dispatch remains 3e.
 
@@ -30,8 +30,11 @@ enemy and weapon behavior remain Phase 3d, and stage dispatch remains 3e.
    palette timing only after the ports pass their write-set/I/O comparisons.
 5. **Wire the 30/60 Hz loop.** Call object logic only on the ROM's logic phase;
    draw the selected normal/interpolated sprite list on each display frame.
-   Keep road generation once per display frame and validate its latch order
-   against the captured handler. Update native adapters/tests explicitly for
+   Preserve the sub CPU waits at `$000556` and `$000452` and validate
+   the road latch order. Correction established during implementation: normal
+   gameplay road work completes once per **two** display frames, after the
+   intervening display phase releases `$000452`; the earlier plan's once-per-
+   display-frame assumption was incorrect. Update native adapters/tests explicitly for
    the cadence change; do not silently rewrite constants to compensate.
 
 Each port must pass its MAME oracle before wiring, fail a deliberate constant

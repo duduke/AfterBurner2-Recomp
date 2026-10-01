@@ -19,12 +19,11 @@ SRCS = \
 	src/main/hwaudio/ym2151.cpp \
 	src/main/engine/ohud.cpp \
 	src/main/engine/osprites.cpp \
-	src/main/engine/opalette.cpp \
 	src/main/engine/olevelobjs.cpp \
 	src/main/engine/oengine.cpp
 
 # Verified road/scenery and shared bus; ADC awaits the flight/input port.
-SRCS += src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
+SRCS += src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
@@ -79,9 +78,22 @@ oracle-capture:
 	tools/oracle/capture.sh tools/oracle/capture_subroad.lua build/oracle/subroad.bin 1800 120
 	tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames.bin 300 120
 	AB2_ORACLE_NO_SPRITES=1 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_nosprites.bin 100 60
+	$(MAKE) oracle-capture-frame-sprites
 	$(MAKE) oracle-capture-main
 	$(MAKE) oracle-capture-scenery
 	$(MAKE) oracle-capture-road-setup
+
+oracle-capture-frame-sprites:
+	@mkdir -p build/oracle
+	AB2_ORACLE_SPRITE_INIT=1 AB2_ORACLE_SKIP=500 tools/oracle/capture.sh tools/oracle/capture_mainsprites.lua build/oracle/spriteinit.bin 1 30
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_palette.lua build/oracle/palette.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_PALETTE_DIRECTED=1 AB2_ORACLE_SKIP=500 tools/oracle/capture.sh tools/oracle/capture_palette.lua build/oracle/palette_directed.bin 1600 45
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_mainsprites.lua build/oracle/mainsprites.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SPRITE_DIRECTED=1 AB2_ORACLE_SKIP=500 tools/oracle/capture.sh tools/oracle/capture_mainsprites.lua build/oracle/mainsprites_directed.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=500 tools/oracle/capture.sh tools/oracle/capture_mainframe.lua build/oracle/mainframe.bin 120 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_FRAME_DIRECTED=1 AB2_ORACLE_SKIP=500 tools/oracle/capture.sh tools/oracle/capture_mainframe.lua build/oracle/mainframe_directed.bin 120 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SPRITES_DIRECTED=1 AB2_ORACLE_SKIP=500 tools/oracle/capture.sh tools/oracle/capture_subsprites_directed.lua build/oracle/subsprites_directed.bin 240 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=540 AB2_ORACLE_STRIDE=1 tools/oracle/capture.sh tools/oracle/capture_pipeline.lua build/oracle/pipeline.bin 120 30
 
 oracle-capture-scenery:
 	@mkdir -p build/oracle
@@ -112,10 +124,20 @@ oracle-capture-gameplay:
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SKIP=540 AB2_ORACLE_STRIDE=3 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_gameplay.bin 300 60
 
 ORACLE_SRCS = src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp
-VIDEO_SRCS = src/main/romloader.cpp src/main/roms.cpp $(filter src/main/hwvideo/%,$(SRCS)) src/main/engine/osprites.cpp
+VIDEO_SRCS = src/main/romloader.cpp src/main/roms.cpp $(filter src/main/hwvideo/%,$(SRCS)) src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp
 
 oracle-test:
 	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_palette.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_palette
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_mainsprites.cpp src/main/engine/omainsprites.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_mainsprites
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_mainframe.cpp src/main/engine/omainframe.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_mainframe
+	./build/oracle_palette build/oracle/palette.bin
+	./build/oracle_palette build/oracle/palette_directed.bin
+	./build/oracle_mainsprites build/oracle/spriteinit.bin
+	./build/oracle_mainsprites build/oracle/mainsprites.bin
+	./build/oracle_mainsprites build/oracle/mainsprites_directed.bin
+	./build/oracle_mainframe build/oracle/mainframe.bin
+	./build/oracle_mainframe build/oracle/mainframe_directed.bin
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subsprites.cpp src/main/engine/osubsprites.cpp $(ORACLE_SRCS) -o build/oracle_subsprites
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subroad.cpp src/main/engine/osubroad.cpp $(ORACLE_SRCS) -o build/oracle_subroad
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_video.cpp $(VIDEO_SRCS) -o build/oracle_video
@@ -129,6 +151,8 @@ oracle-test:
 	./build/oracle_subroad build/oracle/roadrequests.bin
 	./build/oracle_subroad build/oracle/roadinit.bin
 	./build/oracle_subroad build/oracle/subroad_special.bin
+	./build/oracle_subsprites build/oracle/subsprites_directed.bin
+	./build/oracle_video build/oracle/pipeline.bin
 	./build/oracle_subsprites
 	./build/oracle_subroad
 	./build/oracle_video build/oracle/frames.bin
@@ -143,4 +167,4 @@ oracle-test:
 	./build/oracle_scenery build/oracle/scenery_extended.bin
 	./build/oracle_scenery build/oracle/scenery_gameplay.bin
 
-.PHONY: oracle-capture-road-setup oracle-capture oracle-capture-main oracle-capture-gameplay oracle-capture-scenery oracle-test
+.PHONY: oracle-capture-frame-sprites oracle-capture-road-setup oracle-capture oracle-capture-main oracle-capture-gameplay oracle-capture-scenery oracle-test
