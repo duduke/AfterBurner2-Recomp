@@ -102,12 +102,21 @@ int main()
     bus.write16(0x2efffe,4); CHECK(memory.road_control==4);
 
     std::array<uint8_t,MainBus::MEMORY_BYTES> reads{},writes{};
+    std::array<uint8_t,MainBus::MEMORY_BYTES> own_values{};
     unsigned accesses=0;
     MainBus::Trace trace{reads.data(),writes.data(),[&](bool,uint32_t,uint16_t,uint16_t){ ++accesses; }};
+    trace.write_values=own_values.data();
     bus.trace=&trace;
     bus.write8(0xffff8891,0x99); CHECK(writes[0x891] && !writes[0x890]);
     bus.read8(0xffff8890); CHECK(reads[0x890] && !reads[0x891]);
     CHECK(accesses==2);
+    // Shared sub writes must not alter the recorded main CPU write value.
+    bus.write16(0x29c094,0xffff);
+    bus.sub.write16(0x9c094,3);
+    CHECK(bus.read16(0x29c094)==3);
+    CHECK(own_values[MainBus::memory_offset(0x29c094)]==0xff);
+    CHECK(own_values[MainBus::memory_offset(0x29c094)+1]==0xff);
+    CHECK(own_values[0x891]==0x99 && own_values[0x890]==0);
     trace.before_access=[&](bool writing,uint32_t a,uint16_t mask) {
         if(!writing && a==0x3f8890 && mask==0xffff) {
             // A pending IRQ must change the operand before it is sampled.

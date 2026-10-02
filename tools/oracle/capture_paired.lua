@@ -1,6 +1,7 @@
--- One natural gameplay run supplies dispatcher prefixes and their associated
+-- One natural gameplay run supplies complete dispatchers and their associated
 -- sub passes, both display lists and RGB. No extra dispatch or IPL masking.
 assert(os.getenv("AB2_ORACLE_INTERLEAVE_PREFIX")=="1")
+assert(os.getenv("AB2_ORACLE_PUBLICATION")=="1")
 assert(os.getenv("AB2_ORACLE_PAIRED")=="1")
 assert(os.getenv("AB2_ORACLE_OBJECT_OUT"))
 local dir=assert(os.getenv("AB2_ORACLE_SCRIPT_DIR"))

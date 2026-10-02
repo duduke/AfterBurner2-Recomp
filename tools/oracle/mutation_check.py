@@ -143,6 +143,9 @@ cases.append(("servicemask","src/main/engine/omainirqservice.hpp",
 acceptance = handlers + ["src/main/engine/omainadc.cpp", "src/main/engine/omainframe.cpp", "src/main/engine/omainpalette.cpp", "src/main/engine/oscenery.cpp"]
 video = common + ["src/main/engine/omainsprites.cpp", "src/main/engine/osubsprites.cpp"] + ["src/main/hwvideo/"+p+".cpp" for p in ["hwroad", "hwsprites", "hwtiles", "hwpalette", "screen"]]
 for name,source,old,new,test,capture,deps in [
+    ("irq4normalphase", "src/main/engine/omainframe.cpp", "b.write16(0x3f8816,0x100)", "b.write16(0x3f8816,0x101)", "tests/oracle_host_interleave.cpp", "paired_objects", acceptance),
+    ("sharedhistory", "src/main/engine/oscenery.cpp", "d1=b.read16(0x29c620+s(d1))&0xfc", "d1=(b.read16(0x29c620+s(d1))&0xfc)+4", "tests/oracle_frame_host.cpp", "paired_frame", acceptance),
+    ("publicationcount", "src/main/engine/omainsprites.cpp", "b.write16(dst,b.read16(0x2a3cf0))", "b.write16(dst,b.read16(0x2a3cf0)+1)", "tests/oracle_host_interleave.cpp", "host_publication", acceptance),
     ("drawendmarker", "src/main/engine/mainbus.cpp", "m.bytes[SPRITE]=0xff;m.bytes[SPRITE+1]=0xff", "m.bytes[SPRITE]=0;m.bytes[SPRITE+1]=0", "tests/oracle_frame_host.cpp", "paired_frame", acceptance),
     ("framewordorder", "src/main/engine/omainframe.cpp", "b.write16(0x3f8814,value);b.write16(0x3f8812,value>>16)", "b.write16(0x3f8812,value>>16);b.write16(0x3f8814,value)", "tests/oracle_frame_host.cpp", "paired_frame", acceptance),
     ("publicationregister", "src/main/engine/omainsprites.cpp", "r.a[0]=b.read32(0x2a3c0c)", "r.a[0]=b.read32(0x2a3c0c)+2", "tests/oracle_host_objects.cpp", "host_objects", handlers),

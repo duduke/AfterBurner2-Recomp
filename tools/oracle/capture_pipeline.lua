@@ -50,32 +50,33 @@ end
 local function now() return manager.machine.time:as_double() end
 local function regs() return main_space:read_range(0x0D0E80, 0x0D0E9F, 8) end
 
-local pipeline_guard=false
+local pipeline_guard=false;ab2_capture_guard=false
 local pipeline_by_sorted={}
 local pass_before,pass_producer
 local blit_before,blit_entry
 local pipeline
 local main_pc=main.state.CURPC
 pipeline_sub_start=sub_space:install_read_tap(0x9c0d6,0x9c0d7,"pipeline_sub_start",function(a,d,m)
- if not pipeline_guard and sub_pc.value==0x640 and ((d>>8)&1)==0 and not pass_before then
-  pipeline_guard=true
+ if not pipeline_guard and not ab2_capture_guard and sub_pc.value==0x640 and ((d>>8)&1)==0 and not pass_before then
+  pipeline_guard=true;ab2_capture_guard=true
   pass_before=main_space:read_range(0x29c000,0x2a3fff,8)
   if paired then pass_producer=(ab2_producers or {})[main_space:read_u32(0x2a3c08)&0x3fffff] end
-  pipeline_guard=false
+  pipeline_guard=false;ab2_capture_guard=false
  end
 end)
 pipeline_sub_end=sub_space:install_write_tap(0x9c0d6,0x9c0d7,"pipeline_sub_end",function(a,d,m)
- if sub_pc.value==0x458 and pass_before then
+ if not ab2_capture_guard and sub_pc.value==0x458 and pass_before then
+  ab2_capture_guard=true
   local ptr=main_space:read_u32(0x2a3c18)&0x3fffff
-  pipeline_by_sorted[ptr]={ram=pass_before,producer=pass_producer,sizes=main_space:read_range(0x2a3800,0x2a3bff,8)};pass_before=nil
+  pipeline_by_sorted[ptr]={ram=pass_before,producer=pass_producer,sizes=main_space:read_range(0x2a3800,0x2a3bff,8)};pass_before=nil;ab2_capture_guard=false
  end
 end)
 pipeline_blit=main_space:install_read_tap(0x2a3c14,0x2a3c17,"pipeline_blit",function(a,d,m)
- if not pipeline_guard and a==0x2a3c14 and (main_pc.value==0xb7c2 or main_pc.value==0xb7d2) then
-  pipeline_guard=true
+ if not pipeline_guard and not ab2_capture_guard and a==0x2a3c14 and (main_pc.value==0xb7c2 or main_pc.value==0xb7d2) then
+  pipeline_guard=true;ab2_capture_guard=true
   blit_entry=main_pc.value
   blit_before=main_space:read_range(0x29c000,0x2a3fff,8)..main_space:read_range(0x100000,0x100fff,8)
-  pipeline_guard=false
+  pipeline_guard=false;ab2_capture_guard=false
  end
 end)
 local sprite_buffer = string.rep("\0", 4096)
@@ -92,7 +93,9 @@ local no_sprites = os.getenv("AB2_ORACLE_NO_SPRITES") == "1"
 sprite_trigger = main_space:install_write_tap(0x110000, 0x11FFFF, "ab2_sprite_trigger", function(offset, data, mask)
   if no_sprites then main_space:write_u16(0x100000, 0x8000) end
   sprite_buffer = main_space:read_range(0x100000, 0x100FFF, 8)
+  ab2_capture_guard=true
   local ptr=main_space:read_u32(0x2a3c14)&0x3fffff
+  ab2_capture_guard=false
   local source=pipeline_by_sorted[ptr]
   if source and blit_before and (not paired or source.producer) then pipeline=u32(blit_entry)..source.ram..blit_before..(paired and (u32(source.producer)..source.sizes) or "") else pipeline=nil end
   blit_before=nil

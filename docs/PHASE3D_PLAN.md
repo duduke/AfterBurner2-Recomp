@@ -130,3 +130,13 @@ remain active in `OEngine`; Phase 3d is incomplete. The next work is IRQ4
 and shared-input timing, independently progressed publication waits/callers,
 road-raster pairing and remaining stage/credit boundaries. Detailed evidence
 and commands are in `ENGINE_NOTES.md`.
+
+
+The IRQ4/shared-memory continuation extends the paired run through complete
+natural dispatch and `$B676` waits/publication: 122/122 dispatchers, 244/244
+VBLANK windows and 240/240 paired frames match, zero differences/skips and no
+excluded dispatcher. It supplies sub-write provenance at chronological operand
+boundaries, and handles back-to-back IRQ returns before the resumed operand.
+Publication progress is verified at captured frontiers. Independent CPU and
+caller timing, road-raster pairing and native retirement remain outstanding;
+see the updated continuation and engine notes. Phase 3d remains incomplete.

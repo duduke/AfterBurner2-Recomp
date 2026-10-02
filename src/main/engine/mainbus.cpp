@@ -82,11 +82,13 @@ void MainBus::write_word(uint32_t a, uint16_t data, uint16_t mask)
         {
             m.bytes[o] = static_cast<uint8_t>(data >> 8);
             if (trace && trace->written) trace->written[o] = 1;
+            if (trace && trace->write_values) trace->write_values[o] = static_cast<uint8_t>(data >> 8);
         }
         if (mask & 0xff)
         {
             m.bytes[o + 1] = static_cast<uint8_t>(data);
             if (trace && trace->written) trace->written[o + 1] = 1;
+            if (trace && trace->write_values) trace->write_values[o + 1] = static_cast<uint8_t>(data);
         }
         if (o >= TILE && endpoints.video_write)
         {

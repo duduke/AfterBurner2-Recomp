@@ -98,8 +98,8 @@ but 3d is not complete. Input, live-player, projectile and selected enemy
 handlers now have independent checks. The directed host-composition checkpoint
 PR #14 is merged. Natural IRQ2 interleaving and conditional paired
 player/weapon/video/sound acceptance now pass at supplied caller boundaries.
-Resume at IRQ4/shared-input timing, independent host scheduling and remaining
-caller boundaries; native Stage 1 remains active. Continue host acceptance in
+IRQ4/shared-input composition and publication waits now pass without race
+skips. Resume at independent host scheduling and remaining caller boundaries; native Stage 1 remains active. Continue host acceptance in
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md), following
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
@@ -401,7 +401,19 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       Continuous sound matches 1,259/1,259 calls and 256 latch writes without
       per-call ring resets. Eight mutations rejected. IRQ positions, ADC results,
       unknown callers and specified sub/compositor inputs remain supplied.
-      Independent scheduling, IRQ4 acceptance and native host retirement remain.
+      Superseded for IRQ4/shared-input acceptance by the continuation below.
+      Independent scheduling and native host retirement remain.
+- [x] IRQ4/shared-memory and publication-wait composition: 120/120 separate
+      complete dispatchers and 122/122 paired dispatchers identical, zero race
+      skips and zero dispatcher exclusions. Paired IRQ2/IRQ4/IRQ6 counts are
+      490/122/7. VBLANK matches 244/244 windows; both display lists/draw triggers
+      and RGB match 240/240 frames, zero skips. Continuous sound matches
+      1,250/1,250 calls and 255 latch writes. Three new mutations rejected.
+      Sub-write lane provenance preserves
+      computed main values; back-to-back IRQs share the first resumed operand.
+      IRQ frontiers/registers, ADC results, unknown callers and sub/compositor
+      inputs remain captured. Independent CPU timing/caller scheduling,
+      road-raster pairing and native retirement remain unverified.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,

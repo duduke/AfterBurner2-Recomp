@@ -2080,3 +2080,119 @@ Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
 `make oracle-test` (including this acceptance), and a 180-frame dummy-driver
 launch pass. Stage 1 audio RMS remains 903.949. CMake definitions are updated
 but unexecuted because CMake is unavailable. No ROMs or captures are tracked.
+
+
+## IRQ4/shared-memory and complete publication composition
+
+The `codex/phase3d-shared-interleave` continuation extends the preceding
+conditional checkpoint. This is execution of verified main routines at
+captured CPU boundaries, **not independently scheduled gameplay**.
+
+The earlier race skips came from sub-produced projection words (`$29C088`
+through `$29C098`, sine/cosine, roll/quadrant, scale, easing and projection
+scratch), the `$29C630` bank-history index and ring, and `$29C0D6` mutex/road
+readiness. `shared_inputs.lua` records ordered operands with byte-lane
+provenance: sub writes set a lane's provenance and subsequent main writes
+clear it. `oracle_shared_inputs.hpp` supplies only those sub-written lanes;
+other lanes must equal the computed port state. Every allowed read's address,
+mask and consumption order is checked. Main-owned road targets, object state,
+request pointers/counts and sound-ring results are never supplied this way.
+Actual read boundaries remain inputs; the test does not compute when the sub
+CPU writes these values. Fields written by both CPUs remain explicit races
+outside this captured operand contract.
+
+IRQ4 supplies only its two mutex operands, the sub-produced blit list/count
+and hidden sprite bank at draw. It executes the frame selector, pointer swaps,
+verified palette/scenery/reload/button/timer/blit callbacks and frame tail.
+The sub's road-ready bit 1 can change between mutex acquisition and release;
+main lock bit 0 and other flags must retain their computed values. The frame
+callback allowlist remains `$17146/$14990/$C6F8/$E2DA`. Ordinary object callers
+remain explicitly external, including stage-flow `$18E8A` after publication.
+
+A pending timer/VBLANK combination can produce IRQ6, then IRQ4, then IRQ2
+without a main operand between returns. The old capture retained only one
+pending return and silently lost earlier resume frontiers. The capture now
+queues all pending returns and attaches them to the first genuine resumed
+operand. Replay services every interrupt at that frontier before sampling it.
+Capture-finalization errors are explicitly surfaced as `[LUA ERROR]`, so
+`capture.sh` rejects partial captures instead of accepting silent memory-tap
+callback failures. Exception-stack writes with the interrupted CURPC cannot
+start a dispatcher window: natural captures start at `$14594`'s real counter
+write. The capture closes on signed nonpositive dispatcher counts.
+
+All scripts in the paired run share a debugger-read guard. Without it, one
+script's snapshot of shared RAM appeared as another script's CPU operands,
+including byte reads attributed to palette and blit callbacks. These are
+observer reads, not CPU reads. Last CPU-owned write values are captured and
+traced separately from live RAM, because the sub may overwrite a main result
+after the main's last write. Ordered handler/ISR write transcripts still pin
+intermediate writes; explicit unported main callers can update the final
+write-value shadow without becoming verified routines. A ROM-free bus check
+proves sub overwrites leave the main write-value trace intact.
+
+`AB2OBJ06` retains prefix captures with operand provenance; `AB2OBJ07` captures
+complete dispatchers including `$B676`. `AB2FRM06` adds the same operand
+contract to VBLANK. Full publication waits execute captured IRQ2/IRQ4/IRQ6
+services, then retry the actual port; there is no replay of publication
+outputs. Paired producer requests and five road targets are saved from the
+computed state before publication, associated at the actual publication write,
+and used by the sub transform and both main blits. The formerly excluded
+`$B684` window is covered by the complete capture; no dispatcher is dropped.
+
+| Fresh capture | Identical / recorded | Differences | Skipped |
+| --- | ---: | ---: | ---: |
+| Early dispatcher prefixes | 120 / 120 | 0 | 0 |
+| Separate complete dispatch/publication | 120 / 120 | 0 | 0 |
+| Paired complete dispatch/publication | 122 / 122 | 0 | 0 |
+| Complete VBLANK windows | 244 / 244 | 0 | 0 |
+| Paired player/weapon/sub/video frames | 240 / 240 | 0 | 0 |
+| Continuous sound calls | 1,250 / 1,250 | 0 | 0 |
+
+The separate full capture executes 482 IRQ2, 120 IRQ4 and seven IRQ6 services,
+214 latch writes and 13,890 verified object callbacks (1,283 explicit external
+callbacks). The paired run executes 490 IRQ2, 122 IRQ4 and seven IRQ6 services,
+217 ISR latch writes and 14,134 verified object callbacks (1,305 external).
+The full dispatcher waits exercise normal-list IRQ4; the standalone VBLANK
+capture checks 122 logic/interpolated and 122 normal windows. There are no
+excluded dispatchers in either complete capture. One unfinished shutdown
+VBLANK remains excluded. The 240 paired frames are 120 normal and 120
+interpolated, all pixel-identical with zero mismatched pixels. The continuous
+ring checks 255 producers, 995 consumers and 255 latch writes, with no external
+ring writes. These sample intervals differ from the earlier prefix run, so
+counts are not added to its historical denominators.
+
+Independent scheduling is still unverified. `OMainIrqService` predicts bounded
+IRQ2/IRQ6 cycles, but does not implement IRQ4/callee cycle timing. The literal
+routine ports have no general instruction/prefetch clocks, and unported main
+callers are register/write transcripts, not executable CPU schedules. Advancing
+an arbitrary frame clock while executing these calls would invent IRQ latency
+and operand ordering. Next: port/check IRQ4 bus phases and callee timing,
+`$14856` re-arm/caller execution and the interrupted instruction stream, then
+independently schedule ADC results, publication and sub progress. Captured
+sound caller timestamps, road raster/tile/palette inputs and hidden renderer
+feedback remain separate boundaries. Native `OEngine` producers remain active;
+Phase 3d is incomplete. Natural death/recovery, refuel/credit, remaining stage
+callers and whole-credit coverage are unchanged.
+
+Commands:
+
+```bash
+make oracle-capture-host-interleave
+make oracle-capture-host-publication
+make oracle-capture-paired
+make oracle-host-publication
+make oracle-paired
+python3 tools/oracle/mutation_check.py irq4normalphase sharedhistory publicationcount
+```
+
+
+All three new temporary-source mutations are rejected: IRQ4 normal phase
+`$100->$101` fails 122/122 paired dispatchers; bank-history scroll selection
+`+4` fails 244/244 VBLANK windows; publication count `+1` fails 120/120
+complete dispatchers. The original sources are unchanged by the mutation
+runner. Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test`, and a 180-frame dummy-driver launch pass. Existing
+oracle captures have no new differences; Stage 1 audio RMS remains 903.949.
+CMake's test definitions are updated but not executed (CMake is unavailable).
+ROMs, flattened images, diagnostic output and captures remain untracked under
+ignored build/ or temporary paths.

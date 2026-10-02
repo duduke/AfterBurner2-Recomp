@@ -1,6 +1,7 @@
 -- Phase 3d dispatcher/initializer and compound initialization capture.
 -- AB2OBJ03 adds natural IRQ entry/return contexts and ordered ISR writes.
--- AB2OBJ05 ends before publication and adds chronological sub size operands.
+-- AB2OBJ06 adds shared operand values with sub-write lane provenance.
+-- AB2OBJ07 captures the complete dispatch, including publication waits.
 -- IRQ boundaries, entry registers, ADC results and sub operands are inputs;
 -- this is routine composition, not an independently clocked CPU interpreter.
 -- AB2OBJ01: header index/frame/entry, before/after 15 registers, RAM,
@@ -12,10 +13,12 @@ local sub=manager.machine.devices[":mainpcb:subcpu"]
 local space,subspace=main.spaces.program,sub.spaces.program
 local pc=main.state.CURPC
 local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OBJECT_OUT") or os.getenv("AB2_ORACLE_OUT")),"wb"))
+local complete=os.getenv("AB2_ORACLE_PUBLICATION")=="1"
 local prefix=os.getenv("AB2_ORACLE_INTERLEAVE_PREFIX")=="1"
 local interleave=os.getenv("AB2_ORACLE_INTERLEAVE")=="1"
 local host=os.getenv("AB2_ORACLE_HOST")=="1" or interleave
-out:write(prefix and "AB2OBJ05" or interleave and "AB2OBJ03" or host and "AB2OBJ02" or "AB2OBJ01")
+assert(not complete or (prefix and interleave),"publication capture needs the interleaved operand contract")
+out:write(complete and "AB2OBJ07" or prefix and "AB2OBJ06" or interleave and "AB2OBJ03" or host and "AB2OBJ02" or "AB2OBJ01")
 local calls=os.getenv("AB2_ORACLE_OBJECT_CALLS")=="1"
 local injected,restore_registers,restore_sr
 local leaves=os.getenv("AB2_ORACLE_OBJECT_LEAVES")=="1"
@@ -36,10 +39,10 @@ local ranges = {
   {0x100000,0x100fff}, {0x120000,0x123fff}, {0x2ec000,0x2ecfff}
 }
 local function snapshot()
-  guard = true
+  guard=true;ab2_capture_guard=true
   local parts = {}
   for _, r in ipairs(ranges) do parts[#parts+1] = space:read_range(r[1],r[2],8) end
-  guard = false
+  guard=false;ab2_capture_guard=false
   return table.concat(parts)
 end
 local function offset(a)
@@ -78,20 +81,24 @@ end
 -- host router. Sub inputs remain captured; concurrent sub writes are races
 -- only when the composed port actually reads those bytes.
 local function math_state()
- guard=true
+ guard=true;ab2_capture_guard=true
  local parts={}
  for _,a in ipairs({0xe0000,0xe4000,0x2e0000,0x2e4000}) do
   for i=0,7 do parts[#parts+1]=u32(space:read_u16(a+i*2)) end
  end
- guard=false
+ guard=false;ab2_capture_guard=false
  return table.concat(parts)
 end
 local function io_input()
- guard=true;local v=space:read_u8(0x150001);guard=false;return u32(v)
+ guard=true;ab2_capture_guard=true;local v=space:read_u8(0x150001);guard=false;ab2_capture_guard=false;return u32(v)
 end
 local math_pre
+local own_values={}
 local size_inputs={}
-local interrupts,irq,ordinal,last_irq={},nil,0,nil
+local shared=dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/shared_inputs.lua")
+local provenance=shared.new()
+local interrupts,irq,ordinal={},nil,0
+local pending_resume={}
 local frame_calls={
  [0x146c6]=0x14a86,[0x146ca]=0x13f92,[0x146d8]=0x13bcc,
  [0x146e6]=0x13bb6,[0x146f4]=0x13bfa,[0x14702]=0x1329e,
@@ -112,25 +119,42 @@ local function irq_access(w,a,d,m)
  if not interleave or not before then return false end
  local p=pc.value
  if not irq and not w and (p==0x1461c or p==0x1466c or p==0x14674) then
-  irq={entry=p,ordinal=ordinal,owner=hook and (#hooks+1) or 0,pre=registers(),writes={},hooks={},adc=0,io=io_input()}
+  irq={entry=p,ordinal=ordinal,owner=hook and (#hooks+1) or 0,pre=registers(),writes={},hooks={},adc=0,io=io_input(),mutex=0,lock=0,hidden=""}
  end
  if irq then
+  if prefix and irq.entry==0x14674 and not w and p==0x14674 and a==0x29c0d6 then irq.lock=d>>8&255 end
+  if prefix and irq.entry==0x14674 and not w and p==0x14798 and a==0x29c0d6 then irq.mutex=d>>8&255 end
+  if prefix and irq.entry==0x14674 and w and a>=0x110000 and a<0x120000 then
+   local device=manager.machine.devices[":mainpcb:sprites"]
+   local hidden=emu.item(assert(device.items["0/m_buffer"]))
+   local parts={};for i=0,2047 do parts[#parts+1]=string.pack(">I2",hidden:read(i)) end
+   irq.hidden=table.concat(parts)
+  end
   if irq.entry==0x14674 then
    if p>=0x14674 and p<=0x147e6 then
     if not (irq.hook and frame_calls[p]==irq.hook.entry) then
      irq_hook_end()
-     if frame_calls[p] then irq.hook={entry=frame_calls[p],writes={},pre=nil} end
+     if frame_calls[p] then irq.hook={entry=frame_calls[p],writes={},inputs={},pre=nil} end
     end
    elseif irq.hook and not irq.hook.pre then
-    irq.hook.pre=registers();irq.hook.math_pre=math_state();irq.hook.io=io_input()
+    irq.hook.pre=registers();irq.hook.math_pre=math_state();irq.hook.io=io_input();irq.hook.blit=""
+    if prefix and (irq.hook.entry==0xb7c2 or irq.hook.entry==0xb7d2) then
+     guard=true;ab2_capture_guard=true
+     local ptr=(space:read_u32(0x2a3c14)+(irq.hook.entry==0xb7d2 and 0xc00 or 0))&0x3fffff
+     local cp=space:read_u32(0x2a3c1c)&0x3fffff;local count=space:read_u16(cp)
+     assert(count<=192,"invalid IRQ blit count")
+     irq.hook.blit=u32(ptr)..u32(cp)..u32(count)..space:read_range(ptr,ptr+(count+1)*16-1,8)
+     guard=false;ab2_capture_guard=false
+    end
    end
   end
   if not w and p==0x14626 and a==0x130000 then irq.adc=d&255 end
   if not w and (p==0x1466a or p==0x14672 or p==0x147c6) then
    -- First RTE access: general registers have already been restored.
-   irq_hook_end();irq.post=registers();interrupts[#interrupts+1]=irq;last_irq=irq;irq=nil
+   irq_hook_end();irq.post=registers();interrupts[#interrupts+1]=irq;pending_resume[#pending_resume+1]=irq;irq=nil
    return true
   end
+  if prefix and not w and irq.hook then provenance.read(irq.hook.inputs,a,d,m) end
   local o=offset(a)
   if w and not (o and o>=0x7e00 and o<0x8000) then
    local e=u32(a)..u32(d)..u32(m)
@@ -143,8 +167,11 @@ local function irq_access(w,a,d,m)
  -- Ignore exception and return stacks even when CURPC is the interrupted PC.
  local o=offset(a)
  if o and o>=0x7e00 and o<0x8000 then return true end
- if last_irq and not last_irq.resume and (a>=0x80000) then
-  last_irq.resume={w and 1 or 0,a,m};last_irq=nil
+ if #pending_resume>0 and a>=0x80000 then
+  -- Back-to-back IRQs may return directly into another exception without
+  -- a main operand in between. They share the first actual resumed access.
+  for _,q in ipairs(pending_resume) do q.resume={w and 1 or 0,a,m} end
+  pending_resume={}
  end
  return false
 end
@@ -157,7 +184,7 @@ local function begin(e)
   saved_sr=main.state.SR.value; main.state.SR.value=saved_sr|0x700
  end
  if directed then
-  guard=true
+  guard=true;ab2_capture_guard=true
   local n=records%8
   if e==0x14594 then
    local count=space:read_u16(0x1c176)
@@ -181,18 +208,24 @@ local function begin(e)
    local a=main.state.A5.value&0x3fffff
    for i=0,3 do space:write_u8(a+i*64,({0,0x7f,0x80,0xff})[n%4+1]) end
   end
-  guard=false
+  guard=false;ab2_capture_guard=false
  end
- interrupts,irq,ordinal,last_irq={},nil,0,nil;size_inputs={}
+ interrupts,irq,ordinal={},nil,0;pending_resume={};size_inputs={};own_values={};provenance=shared.new()
  if prefix then
-  guard=true;local ptr=space:read_u32(0x2a3c04)&0x3fffff;guard=false
+  guard=true;ab2_capture_guard=true;local ptr=space:read_u32(0x2a3c04)&0x3fffff;guard=false;ab2_capture_guard=false
   ab2_producers=ab2_producers or {};ab2_producers[ptr]=nil
  end
  before=snapshot();entry=e;pre=registers();if host then math_pre=math_state() end;written,other,events,hooks={},{},{},{}
 end
-local function finish(a,data,mask,post_override)
+local function finish_impl(a,data,mask,post_override)
  finish_hook()
  local after=snapshot()
+ if prefix then
+  local bytes={after:byte(1,#after)}
+  for o,v in pairs(own_values) do bytes[o+1]=v end
+  local parts={};for i=1,#bytes,4096 do parts[#parts+1]=string.char(table.unpack(bytes,i,math.min(i+4095,#bytes))) end
+  after=table.concat(parts)
+ end
  if a then
   local o=offset(a)
   if mask&0xff00~=0 then after=after:sub(1,o)..string.char((data>>8)&255)..after:sub(o+2) end
@@ -202,21 +235,21 @@ local function finish(a,data,mask,post_override)
  for _,h in ipairs(hooks) do
   p[#p+1]=u32(h.entry)..packed(h.pre)..packed(h.post)
   if host then p[#p+1]=h.io..h.math_pre..h.math_post end
-  p[#p+1]=u32(#h.writes)..table.concat(h.writes)
+  p[#p+1]=u32(#h.writes)..table.concat(h.writes)..(prefix and shared.pack(h.inputs) or "")
  end
  local iq={u32(#interrupts)}
  if interleave then
   for _,q in ipairs(interrupts) do
    assert(q.resume,"interrupt has no resumed data boundary")
-   iq[#iq+1]=u32(q.entry)..u32(q.ordinal)..u32(q.owner)..packed(q.pre)..packed(q.post)..u32(q.adc)..q.io..u32(q.resume[1])..u32(q.resume[2])..u32(q.resume[3])..u32(#q.writes)..table.concat(q.writes)..u32(#q.hooks)
+   iq[#iq+1]=u32(q.entry)..u32(q.ordinal)..u32(q.owner)..packed(q.pre)..packed(q.post)..u32(q.adc)..q.io..u32(q.resume[1])..u32(q.resume[2])..u32(q.resume[3])..u32(#q.writes)..table.concat(q.writes)..u32(#q.hooks)..(prefix and (u32(q.mutex)..u32(q.lock)..u32(#q.hidden)..q.hidden) or "")
    for _,h in ipairs(q.hooks) do
     assert(h.pre,"frame caller did not execute")
-    iq[#iq+1]=u32(h.entry)..packed(h.pre)..packed(h.post)..h.io..h.math_pre..h.math_post..u32(#h.writes)..table.concat(h.writes)
+    iq[#iq+1]=u32(h.entry)..packed(h.pre)..packed(h.post)..h.io..h.math_pre..h.math_post..u32(#h.writes)..table.concat(h.writes)..(prefix and (shared.pack(h.inputs)..u32(#h.blit)..h.blit) or "")
    end
   end
  end
  if prefix then
-  guard=true;local ptr=space:read_u32(0x2a3c04)&0x3fffff;guard=false
+  guard=true;ab2_capture_guard=true;local ptr=space:read_u32(0x2a3c04)&0x3fffff;guard=false;ab2_capture_guard=false
   ab2_producers=ab2_producers or {};ab2_producers[ptr]=records
  end
  out:write(u32(records),u32(frame),u32(entry),packed(pre),packed(post_override or registers()),
@@ -232,23 +265,34 @@ local function finish(a,data,mask,post_override)
   out:close();print(string.format("captured %d object boundaries (%d interrupted windows dropped) -> %s",records,dropped,os.getenv("AB2_ORACLE_OUT")));manager.machine:exit()
  end
 end
+local function finish(...)
+ local ok,message=pcall(finish_impl,...)
+ if not ok then print("[LUA ERROR] object finish: "..tostring(message));manager.machine:exit() end
+end
 object_frames=emu.add_machine_frame_notifier(function() frame=frame+1; if interleave and os.getenv("AB2_ORACLE_DEBUG")=="1" and frame%120==0 then print(string.format("interleave frame=%d records=%d dropped=%d entry=%s irq=%s pc=%x",frame,records,dropped,tostring(entry),irq and string.format("%x",irq.entry) or "none",pc.value));out:flush() end end)
 object_start=space:install_read_tap(0x1c176,0x1c177,"object_start",function(a,data,mask)
- if guard or before then return end
+ if guard or ab2_capture_guard or before then return end
+ -- Natural windows begin just before the real $14594 counter write;
+ -- exception-stack writes retaining CURPC=$14594 must not open a window.
+ if interleave then return end
  if leaves then return end
  if pc.value==0x14898 and not host then begin(0x1488e)
  elseif pc.value==0x14594 and (not host or injected or interleave) and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then begin(0x14594) end
 end)
 object_reads=space:install_read_tap(0,0x3fffff,"object_reads",function(a,data,mask)
- if guard then return end
+ if guard or ab2_capture_guard then return end
  local p=pc.value
  if irq_access(false,a,data,mask) then return data end
  -- A comparator IRQ can consume the dispatcher's JSR prefetch. In that
  -- case use the first actual publication operand as the same prefix end.
- if prefix and before and p==0xb676 then finish();return data end
- if prefix and before and a>=0x2a3800 and a<0x2a3c00 then
-  size_inputs[#size_inputs+1]=u32(a)..u32(data)..u32(mask)
+ if prefix and not complete and before and (p==0xb676 or p==0xb67e or p==0xb684) then
+  -- An IRQ may consume both the JSR prefetch and the TST prefetch. End
+  -- before any publication write, at its first remaining operand. A0 at
+  -- the dispatcher call boundary is the handler pointer, not publish's
+  -- count pointer if MOVEA has already completed.
+  local r=registers();r[9]=0xb676;finish(nil,nil,nil,r);return data
  end
+
  -- The dispatcher is a main-loop range, not an RTS routine. Its final
  -- branch back to $1458A is outside the captured range; substitute RTS
  -- only for this directed fixture so it returns to the synthesized caller.
@@ -262,33 +306,50 @@ object_reads=space:install_read_tap(0,0x3fffff,"object_reads",function(a,data,ma
  end
  if not before and leaves and (not calls or injected) and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") and (p==0x16976 or p==0x169b8 or p==0xc5a8 or p==0xb7f8 or p==0xb840 or p==0xb84c) then
   begin(p==0x169b8 and 0x169b2 or p)
-  guard=true;data=space:read_u16(a);guard=false
+  guard=true;ab2_capture_guard=true;data=space:read_u16(a);guard=false;ab2_capture_guard=false
  end
  if not before then return data end
+ if complete and p==0x145b8 then finish();return data end
+ if prefix and hook then provenance.read(hook.inputs,a,data,mask) end
  if entry==0x14594 then
   if p==0x145ac and not hook then
-   guard=true
+   guard=true;ab2_capture_guard=true
    local r=registers();local target=space:read_u32((r[14]+16)&0x3fffff)
    r[9]=target -- A0 after MOVEA.L, before JSR.
-   if prefix and target==0xb676 then
-    guard=false;finish(nil,nil,nil,r);return data
+   if prefix and not complete and target==0xb676 then
+    guard=false;ab2_capture_guard=false;finish(nil,nil,nil,r);return data
    end
-   hook={entry=target,pre=r,writes={}};guard=false
+   hook={entry=target,pre=r,writes={},inputs={}};guard=false;ab2_capture_guard=false
    if host then hook.io=io_input();hook.math_pre=math_state() end
   elseif p==0x145b2 then finish_hook() end
  elseif p==0x148b4 or p==0x16974 or p==0x169b0 or p==0x169d6 or p==0xc5ce or p==0xb834 or p==0xb83e or p==0xb87a or p==0xb884 then finish() end
  return data
 end)
 object_writes=space:install_write_tap(0,0x3fffff,"object_writes",function(a,data,mask)
- if guard then return end
+ if guard or ab2_capture_guard then return end
  local p=pc.value
  if not before then
   if p==0x16892 and not host and (not calls or injected) then begin(0x16892)
   elseif not host and not leaves and p==0x148a4 and offset(a)==0x2000 then begin(0x1488e)
-  elseif not leaves and p==0x14594 and (not host or injected or interleave) and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then begin(0x14594) end
+  elseif not leaves and p==0x14594 and a==0x3f8806 and (not host or injected or interleave) and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then begin(0x14594) end
  end
  if not before then return end
+ if prefix then
+  provenance.write(a,mask,false)
+  local o=offset(a)
+  if o and not(o>=0x7e00 and o<0x8000) then
+   if mask&0xff00~=0 then own_values[o]=data>>8&255 end
+   if mask&255~=0 then own_values[o+1]=data&255 end
+  end
+ end
  if irq_access(true,a,data,mask) then return end
+ if complete and p==0xb684 then
+  guard=true;ab2_capture_guard=true;local ptr=space:read_u32(0x2a3c04)&0x3fffff;guard=false;ab2_capture_guard=false
+  ab2_producers=ab2_producers or {};ab2_producers[ptr]=records
+ end
+ if prefix and not complete and p==0xb684 then
+  local r=registers();r[9]=0xb676;finish(nil,nil,nil,r);return
+ end
  ordinal=ordinal+1
  local o=offset(a)
  if o and o>=0x7e00 and o<0x8000 then return end
@@ -303,14 +364,16 @@ object_writes=space:install_write_tap(0,0x3fffff,"object_writes",function(a,data
   or ((entry==0xb7f8 or entry==0xb840 or entry==0xb84c) and p>=0xb7f8 and p<=0xb884)
  if own then
   if o then mark(written,o,mask) else events[#events+1]=u32(a)..u32(data)..u32(mask) end
-  if entry==0x14594 and p==0x145b2 and data==0 then finish(a,data,mask) end
+  if entry==0x14594 and p==0x145b2 and (data==0 or data&0x8000~=0) then finish(a,data,mask) end
  elseif entry==0x14594 and hook then
   hook.writes[#hook.writes+1]=u32(a)..u32(data)..u32(mask)
  else if prefix then print(string.format("dispatcher prefix excluded: pc=%x write=%x frame=%d",p,a,frame)) end;before=nil;hook=nil;dropped=dropped+1;if saved_sr then main.state.SR.value=(main.state.SR.value&~0x700)|(saved_sr&0x700);saved_sr=nil end end
 end)
 object_other=subspace:install_write_tap(0x80000,0xeffff,"object_other",function(a,data,mask)
- if guard or not before then return end
- local o=offset((a&0xffffe)+0x200000)
+ if guard or ab2_capture_guard or not before then return end
+ local address=(a&0xffffe)+0x200000
+ if prefix then provenance.write(address,mask,true) end
+ local o=offset(address)
  if o then
   if interleave then
    -- Same-value size-table writes do not change an input. Keep a mark if
@@ -331,7 +394,7 @@ object_directed_calls=emu.add_machine_frame_notifier(function()
  restore_registers=registers();restore_sr=main.state.SR.value
  local stack=(restore_sr&0x2000~=0) and main.state.SP or main.state.USP
  local sp=(stack.value-4)&0xffffffff
- guard=true;space:write_u32(sp&0x3fffff,main.state.CURPC.value);guard=false
+ guard=true;ab2_capture_guard=true;space:write_u32(sp&0x3fffff,main.state.CURPC.value);guard=false;ab2_capture_guard=false
  stack.value=sp
  main.state.A5.value=0xffffa300
  main.state.D0.value=0x1234007b;main.state.D1.value=0xabcd9876
@@ -346,16 +409,16 @@ object_host_calls=emu.add_machine_frame_notifier(function()
  if not host or interleave or before or injected or frame<540 or frame%2~=0 then return end
  restore_registers=registers();restore_sr=main.state.SR.value
  local saved_pc=main.state.PC.value
- guard=true
+ guard=true;ab2_capture_guard=true
  space:write_u16(0x3ffd00,0x46fc);space:write_u16(0x3ffd02,0x2700) -- MOVE #$2700,SR
  space:write_u16(0x3ffd04,0x4eb9);space:write_u32(0x3ffd06,0x14594) -- JSR dispatcher
  space:write_u16(0x3ffd0a,0x46fc);space:write_u16(0x3ffd0c,restore_sr)
  space:write_u16(0x3ffd0e,0x4ef9);space:write_u32(0x3ffd10,saved_pc) -- JMP resume
- guard=false
+ guard=false;ab2_capture_guard=false
  -- Select supervisor privilege so MOVE to SR is legal; IPL changes only
  -- when MAME executes the synthesized instruction above.
  main.state.SR.value=restore_sr|0x2000
  injected=0x14594;main.state.PC.value=0x3ffd00
 end)
 
-if os.getenv("AB2_ORACLE_OBJECT_OUT") then ab2_objects_close=function() out:close();print(string.format("captured %d natural dispatcher prefixes (%d unrelated/interrupted windows dropped)",records,dropped)) end end
+if os.getenv("AB2_ORACLE_OBJECT_OUT") then ab2_objects_close=function() out:close();print(string.format("captured %d natural dispatcher windows (%d unrelated/interrupted windows dropped)",records,dropped)) end end
