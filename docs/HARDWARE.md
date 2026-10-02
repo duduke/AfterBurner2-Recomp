@@ -445,9 +445,13 @@ Shared verbatim with the original `aburner` set.
 - The 315-5250 register/IRQ/sound-latch protocol is modeled and checked
   against MAME (Phase 3a, `ENGINE_NOTES.md`); command cadence from the
   complete main CPU sound sequencer is still unported.
-- ADC0804 conversion timing (`machine/adc0804.*`, not yet read) — only
-  matters if analog stick/throttle timing needs to be cycle-accurate.
+- ADC0804 conversion timing is modeled from `machine/adc0804.*` and
+  MAME-checked (59.2 us at 1.25 MHz). The independently generated board
+  timeline now checks scanline/EXCK/VBLANK and ADC deadlines. Bounded
+  IRQ2/IRQ6 CPU service cycles also have MAME checks; full main-program
+  scheduling and host wiring remain Phase 3d work (`ENGINE_NOTES.md`).
 - CXD1095 register semantics are modeled (`hwmath/io_expander.hpp`);
-  the main CPU input mapping and ADC conversion scheduling remain for 3d.
+  main CPU input mapping has routine oracles. Connecting the verified
+  input/ADC/IRQ callers to the gameplay host remains Phase 3d work.
 - Sub CPU memory map (`segaxbd_state::sub_map`) hasn't been fully
   transcribed here yet — read it before starting the sub-CPU logic port.

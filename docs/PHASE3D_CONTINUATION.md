@@ -17,15 +17,22 @@ The user authorized merging checkpoint [PR #11](https://github.com/duduke/AfterB
 before phase completion. It adds the remaining independent handler graphs to
 PR #10's damage companion checkpoint: 7,409/7,424 calls identical, zero
 differences, 15 sub-input races skipped; all ten new mutations fail.
-For the next continuation, start from current `main`, create a new `codex/`
-branch, and resume the remaining work below. Do not mark Phase 3d complete
-or start Phase 3e based on this checkpoint.
+After that merged checkpoint, the next continuation started from `main`
+on a new `codex/` branch. Current open work is recorded below; do not mark
+Phase 3d complete or start Phase 3e based on the handler checkpoint.
 
 The user also authorized pushing and merging comparator IRQ checkpoint
 [PR #12](https://github.com/duduke/AfterBurner2-Recomp/pull/12), implementation
 commit `e2f973b`, before phase completion. It verifies the combined ADC/timer/
 sound caller and physical endpoint mapping described below. Independent host
 scheduling, object wiring and paired player/weapon acceptance remain next.
+
+The current continuation is [draft PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13),
+branch `codex/phase3d-board-timeline`: independently generated board timing
+(`460b69b`) plus the requested bounded CPU service verification (`f006d98`).
+Continue from this branch while the PR is open. Host wiring, sound producers
+and paired player/weapon acceptance remain incomplete; the timing ports do
+not yet change the `afterburner2` gameplay host.
 
 ## 1. Finish the input/player caller contract
 
@@ -56,6 +63,27 @@ scheduling, object wiring and paired player/weapon acceptance remain next.
   0 skipped. Three deliberate mutations fail. The oracle supplies MAME bus
   timestamps and entry work RAM; this does not establish an independently
   scheduled host or the producers' cadence. Ports remain unwired.
+- The physical board timeline now independently generates 64 us scanlines,
+  main EXCK and the line-223/224 VBLANK pulse from reset, with chronological
+  ADC completion. Ordinary, endpoint and directed probes match
+  669,845/669,845 events, 0 skipped; three schedule mutations fail. Frame
+  notifier ordering at line 224 is explicitly checked. CPU bus timestamps
+  remain external inputs; this does not establish CPU IRQ service latency.
+  `OEngine` remains unwired. The bounded service contract is now checked in
+  the next entry; full main-program execution remains unported. See
+  `ENGINE_NOTES.md` and `make oracle-capture-board`.
+- Bounded CPU IRQ2/IRQ6 service now matches 9,439/9,439 calls and
+  474,024/474,024 bus events, 0 skipped, computing access/return timestamps
+  from 80 ns CPU cycles and the E-clock IACK phase. MOVEM/JSR/RTS/RTE stack
+  phases, all sampler slots, disabled/even/empty/emitting sound paths and
+  real IPL7 masking/IPL1 unmasking are checked; seven mutations fail.
+  The interrupted instruction's last bus boundary and entry context still
+  come from the capture; the board computes the level at that boundary.
+  Completion tails cover observed opcodes; arbitrary
+  instructions, all mask transitions, nested ISRs and independent full CPU
+  execution remain unverified. Next: connect verified callers at those
+  boundaries and complete paired player/weapon/producer/video acceptance.
+  Use `make oracle-capture-service` / `make oracle-irq-service`.
 - `OMainDamage` now independently checks `$E662`, intact/breakup
   `$E8D0/$E94E` states 0..6, fuselage `$F640`, and their projection/frame,
   trajectory, debris and attitude callees: 1,792/1,792 directed calls and

@@ -4,6 +4,9 @@
 -- two I/O direction bytes), kind 7 (return: registers, work bytes, u32
 -- count and ordered offset/data/mask u32/u16/u16 writes), and kind 8
 -- (interrupted-window discard). Ordinary AB2ADT01 records are unchanged.
+-- AB2_ORACLE_BOARD instead adds one VBLANK state byte to each record and
+-- kind 9 probes at every scanline + 1 ns. AB2BRD01's header phase is an
+-- assertion, not a clock/edge input to the C++ scheduler.
 local main=manager.machine.devices[":mainpcb:maincpu"]
 local space=main.spaces.program
 local adc=assert(manager.machine.devices[":mainpcb:adc"])
@@ -12,11 +15,18 @@ local irq=emu.item(assert(board.items["0/m_timer_irq_state"]))
 local mux=emu.item(assert(board.items["0/m_pc_0"]))
 local ports=manager.machine.ioport.ports
 local integrated=os.getenv("AB2_ORACLE_IRQ")=="1"
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write(integrated and "AB2IRQ01" or "AB2ADT01")
+local scheduled=os.getenv("AB2_ORACLE_BOARD")=="1"
+assert(not (integrated and scheduled),"select IRQ or board timeline format")
+local vblank
+if scheduled then
+ vblank=emu.item(assert(board.items["0/m_vblank_irq_state"]))
+end
+local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write(scheduled and "AB2BRD01" or integrated and "AB2IRQ01" or "AB2ADT01")
 local first_rise=manager.machine.time:as_double()+manager.machine.screens[":mainpcb:screen"]:time_until_pos(1)
 out:write(string.pack(">I8",math.floor(first_rise*1e9+0.5)))
 local records,frame,calls,dropped=0,0,0,0
 local active,guard=false,false
+local finished=false
 local writes={}
 local controls={0xff,0xff}
 local function registers()
@@ -31,12 +41,16 @@ local function snapshot()
  guard=false;return bytes
 end
 local function record(kind,a,data,mask)
+ if finished then return end
  local now=manager.machine.time:as_double()
  local values={};for i=0,7 do
   local p=ports[":mainpcb:ADC"..i];values[#values+1]=string.char(p and p:read() or 0x10)
  end
  out:write(string.pack(">I8I4I4I2I2BBBB",math.floor(now*1e9+0.5),main.state.CURPC.value,a,data,mask,
   kind,kind==1 and data&255 or 0,0,irq:read(0)),string.char(mux:read(0)),table.concat(values))
+ if scheduled then
+  out:write(string.char(vblank:read(0)))
+ end
  records=records+1
 end
 adc_timing_r=space:install_read_tap(0x130000,0x13ffff,"adc_timing_r",function(a,d,m) record(1,a,d,m) end)
@@ -50,6 +64,17 @@ adc_timing_timer=space:install_write_tap(0xe8000,0xebfff,"adc_timing_timer",func
  end
  record(4,a,d,m)
 end)
+
+-- Sample immediately after every independently timed scanline, including
+-- falling EXCK edges and the one-line VBLANK pulse. Do not provide scanline
+-- events as replay inputs: the C++ board must generate them from reset.
+if scheduled then
+ adc_board_lines=coroutine.create(function()
+  emu.wait(manager.machine.screens[":mainpcb:screen"]:time_until_pos(0)+0.000000001)
+  while not finished do record(9,0,0,0);emu.wait(0.000064) end
+ end)
+ assert(coroutine.resume(adc_board_lines))
+end
 if integrated then
  adc_irq_writes=space:install_write_tap(0,0x3fffff,"adc_irq_writes",function(a,d,m)
   if guard then return end
@@ -76,7 +101,7 @@ adc_timing_frames=emu.add_machine_frame_notifier(function()
  frame=frame+1;record(5,0,0,0)
  if frame>=tonumber(os.getenv("AB2_ORACLE_PASSES") or "900") then
   if active then record(8,0,0,0);dropped=dropped+1;active=false end
-  out:close();print(string.format("captured %d ADC/timer timeline events through frame %d (%d IRQ calls, %d interrupted)",records,frame,calls,dropped));manager.machine:exit()
+  finished=true;out:close();print(string.format("captured %d ADC/timer timeline events through frame %d (%d IRQ calls, %d interrupted)",records,frame,calls,dropped));manager.machine:exit()
  end
 end)
 

@@ -41,6 +41,7 @@ add_executable(afterburner2
     src/main/engine/subbus.cpp
     src/main/engine/mainbus.cpp
     src/main/engine/omainadc.cpp
+    src/main/engine/omainirqservice.cpp
     src/main/engine/oscenery.cpp
     src/main/engine/ostagesetup.cpp
     src/main/engine/osubroad.cpp
@@ -55,6 +56,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(xboard_timeline_regression tests/xboard_timeline_regression.cpp)
+    target_include_directories(xboard_timeline_regression PRIVATE src/main)
+    add_test(NAME xboard_timeline_regression COMMAND xboard_timeline_regression)
     add_executable(mainbus_regression tests/mainbus_regression.cpp
         src/main/engine/mainbus.cpp src/main/engine/subbus.cpp)
     target_include_directories(mainbus_regression PRIVATE src/main)
@@ -101,10 +105,24 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_handlers build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
+    add_executable(oracle_board tests/oracle_board.cpp)
+    target_include_directories(oracle_board PRIVATE src/main)
+    foreach(CAPTURE board board_endpoints board_directed)
+        add_test(NAME oracle_${CAPTURE} COMMAND oracle_board build/oracle/${CAPTURE}.bin)
+        set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
     add_executable(oracle_adc_timing tests/oracle_adc_timing.cpp)
     target_include_directories(oracle_adc_timing PRIVATE src/main)
     foreach(CAPTURE adc_timing adc_timing_directed)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_adc_timing build/oracle/${CAPTURE}.bin)
+        set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
+    add_executable(oracle_irq_service tests/oracle_irq_service.cpp
+        src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp
+        src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
+    target_include_directories(oracle_irq_service PRIVATE src/main)
+    foreach(CAPTURE service service_endpoints service_directed)
+        add_test(NAME oracle_${CAPTURE} COMMAND oracle_irq_service build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
     add_executable(oracle_mainirq tests/oracle_mainirq.cpp

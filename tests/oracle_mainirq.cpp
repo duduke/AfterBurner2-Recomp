@@ -10,7 +10,7 @@
 #include <tuple>
 #include <vector>
 #include "engine/omainadc.hpp"
-#include "hwmath/adc0804.hpp"
+#include "hwmath/xboard_timeline.hpp"
 
 namespace {
 uint64_t number(std::ifstream& f,unsigned n) {
@@ -47,10 +47,14 @@ using Write=std::tuple<uint32_t,uint16_t,uint16_t>;
 int main(int argc,char** argv) try {
     std::ifstream f(argc>1 ? argv[1] : "build/oracle/mainirq.bin",std::ios::binary);
     char magic[8];if(!f.read(magic,8) || std::memcmp(magic,"AB2IRQ01",8)) throw std::runtime_error("invalid IRQ timeline");
-    uint64_t edge=number(f,8),now=0;
+    const uint64_t captured_rise=number(f,8);
+    if(captured_rise!=XBoardTimeline::RESET_LINE0_NS+XBoardTimeline::LINE_NS)
+        throw std::runtime_error("unexpected MAME reset phase");
+    uint64_t now=0;
     MainBus::Memory memory;
     MainBus bus(nullptr,0,nullptr,0,memory);
-    ADC0804 adc;
+    XBoardTimeline board(bus.compare_timer);
+    auto& adc=board.adc;
     uint8_t mux=0;std::array<uint8_t,8> inputs{};inputs.fill(0x10);
     adc.analog=[&] { return inputs[(mux>>2)&7]; };
     bus.endpoints.adc_read=[&] { return adc.read(now); };
@@ -68,9 +72,8 @@ int main(int argc,char** argv) try {
     auto prepare=[&](const Event& e) {
         if(e.ns<now) throw std::runtime_error("nonmonotonic hardware timeline");
         now=e.ns;
-        while(edge<=now) { bus.compare_timer.clock(false);bus.compare_timer.clock(true);edge+=128000; }
         if(adc.busy() && adc.deadline()<=now) ++conversions;
-        adc.advance(now);
+        if(e.kind==5) board.advance_before(now); else board.advance(now);
         bool equal=bus.compare_timer.state().irq==bool(e.irq) && mux==e.mux;
         if(e.kind==1) equal &= adc.value()==e.result && (adc.value()&e.mask)==(e.data&e.mask);
         if(e.kind==5) { inputs=e.inputs;seen_frame=true; }

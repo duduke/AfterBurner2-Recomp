@@ -30,3 +30,8 @@ The upstream license and attribution remain in the unmodified header.
 Only the sound CPU uses this core; the 68000 game logic is native C++.
 
 Vendored header SHA-256: `6ca70ffd91b1bdbaf00f7a41e7092b326145fd1c95dcdd7bb01183370de734f3`
+
+`src/main/engine/omainirqservice.*` references the bus/internal-cycle and
+E-clock synchronization behavior of MAME's `m68000` core (BSD-3-Clause,
+Olivier Galibert) for its original bounded IRQ service translation. The
+MAME CPU core is not vendored or copied into this project.

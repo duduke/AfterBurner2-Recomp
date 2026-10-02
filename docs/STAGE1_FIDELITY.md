@@ -130,3 +130,20 @@ calls and 45,176/45,176 events identical, including 946 sound-latch writes,
 720/720 calls. This test supplies MAME bus timestamps and entry work RAM;
 it does not independently schedule host IRQs or produce the sound ring from
 ported gameplay. `OEngine` still runs native Stage 1 objects and sound cues.
+
+The board-timeline continuation independently generates physical EXCK,
+VBLANK and ADC deadlines from reset; 669,845/669,845 MAME probe events match,
+0 skipped, and three mutations fail. Its frame period is 16.768 ms, derived
+from the hardware clock. CPU transaction timestamps remain capture inputs;
+The board oracle alone does not establish CPU IRQ service latency; the
+bounded service check follows below. `OEngine` retains its native display-step
+scheduling until host wiring and paired acceptance pass.
+This checkpoint does not replace native controls, objects or sound cues.
+
+The CPU service extension checks IRQ2/IRQ6 entry, ADC/sound accesses and
+stack/return timings: 9,439/9,439 calls and 474,024/474,024 bus events match,
+0 skipped, with seven mutations rejected. The unported main instruction's
+last-bus boundary and entry context remain external inputs. Running
+`./afterburner2` shows the existing Stage 1 experience; this timing port is
+still separate from `OEngine`. Visible Phase 3d player/weapon changes require
+host wiring and paired acceptance before the native producers are retired.

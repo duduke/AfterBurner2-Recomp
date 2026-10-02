@@ -103,6 +103,32 @@ for name,source,old,new,extra in [
 ]:
     cases.append((name,source,old,new,"tests/oracle_mainirq.cpp","mainirq_endpoints",irq_common+extra))
 
+# Physical board schedule: reject incorrect line clock, VBLANK edge and
+# ordering of the frame notifier relative to a coincident raster edge.
+for name,old,new in [
+    ("boardclock", "next_line += LINE_NS", "next_line += LINE_NS + 1"),
+    ("boardblank", "if (line == 223) blank = true", "if (line == 222) blank = true"),
+    ("boardorder", "advance_to(ns, false)", "advance_to(ns, true)"),
+]:
+    cases.append((name,"src/main/hwmath/xboard_timeline.hpp",old,new,
+                  "tests/oracle_board.cpp","board_endpoints",[]))
+
+# CPU service clocks must change outputs without changing the captured inputs.
+service_dependencies = common
+for name,old,new in [
+    ("serviceentry", "idle(6);write16(sp-2,c.return_pc)", "idle(8);write16(sp-2,c.return_pc)"),
+    ("servicevpa", "sync=cycles-mod+(mod<7 ? 10 : 20)", "sync=cycles-mod+10"),
+    ("serviceadc", "pc=0x14626;idle(8)", "pc=0x14626;idle(6)"),
+    ("servicewrap", "else { idle(12);pc=0x14640", "else { idle(10);pc=0x14640"),
+    ("servicelatch", "pc=0xb81e;idle(6)", "pc=0xb81e;idle(4)"),
+    ("servicetail", "return (size==2 ? 4 : 2)+2*count", "return (size==2 ? 4 : 2)+2*count+2"),
+]:
+    cases.append((name,"src/main/engine/omainirqservice.cpp",old,new,
+                  "tests/oracle_irq_service.cpp","service_directed",service_dependencies))
+cases.append(("servicemask","src/main/engine/omainirqservice.hpp",
+              "return level>((sr>>8)&7)","return level!=0",
+              "tests/oracle_irq_service.cpp","service_directed",service_dependencies+["src/main/engine/omainirqservice.cpp"]))
+
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}
@@ -116,7 +142,7 @@ for name, source, old, new, test, capture, dependencies in cases:
     variant, binary, log_path = root / (name + ".cpp"), root / name, root / (name + ".log")
     variant.write_text(text.replace(old, new))
     if source.endswith(".hpp"):
-        include = root / name / "hwmath"
+        include = root / name / Path(source).parent.name
         # Keep the executable separate from the shadow include directory.
         binary = root / (name + "_test")
         include.mkdir(parents=True, exist_ok=True)
@@ -130,6 +156,7 @@ for name, source, old, new, test, capture, dependencies in cases:
         result = subprocess.run([str(binary), "build/oracle/" + capture + ".bin"],
                                 stdout=log, stderr=subprocess.STDOUT)
     summary = [line for line in log_path.read_text().splitlines() if " identical, " in line and " different," in line]
-    if result.returncode != 1 or not summary or ", 0 different," in summary[-1]:
+    differences = [line for line in summary if ", 0 different," not in line]
+    if result.returncode != 1 or not differences:
         raise RuntimeError(f"{name}: mutation did not produce a differential failure; see {log_path}")
-    print(f"{name}: rejected — {summary[-1]}", flush=True)
+    print(f"{name}: rejected — {differences[-1]}", flush=True)
