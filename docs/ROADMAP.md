@@ -95,7 +95,9 @@ the decoder needs extending; in a data table it's expected.
 
 **Picking the next task**: Phase 3c is complete; 3d foundations are verified,
 but 3d is not complete. Input, live-player, projectile and selected enemy
-handlers now have independent checks. Continue host acceptance in
+handlers now have independent checks. The directed host-composition checkpoint
+PR #14 is merged; resume at the live `$B676` register/wait publication contract
+and remaining caller boundaries. Continue host acceptance in
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md), following
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
@@ -374,6 +376,12 @@ player/weapon acceptance remain pending.
       and entry context remain supplied; full CPU scheduling and host wiring
       are not established by this check. Board and CPU service timing are
       delivered together in merged [PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13).
+
+[PR #14](https://github.com/duduke/AfterBurner2-Recomp/pull/14) is the user-authorized
+merged host-composition checkpoint (`363bce4`, merge `a8849a4`). Continue
+from updated `main` on a new `codex/` branch; the live `$B676` publication
+caller, IRQ interleaving, sound cadence and paired acceptance remain next.
+
 - [x] Directed host object composition: common explicit entry router plus
       live dispatcher/handler register and ordered-write checks match 480/480
       MAME windows, executing 53,404 verified callbacks, 0 skipped. Additional

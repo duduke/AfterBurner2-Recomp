@@ -1881,6 +1881,13 @@ RAM fixtures and captures remain ignored.
 
 ## Phase 3d continuation: directed host object composition
 
+Delivery: [PR #14](https://github.com/duduke/AfterBurner2-Recomp/pull/14),
+implementation `363bce4`, merged on `main` as `a8849a4` at the user's request.
+This is a completed composition checkpoint, not Phase 3d completion. The next
+continuation starts from updated `main` on a new `codex/` branch and establishes
+the live `$B676` register/wait publication contract before the remaining
+IRQ/input, producer/latch and paired player/weapon/sub/video acceptance.
+
 `engine/omainhost.*` provides a common entry router and composes the real
 `$14594..$145B6` dispatcher with independently checked input, flight,
 compound, weapon/projectile, world, damage and sequence ports. Entry lists

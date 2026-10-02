@@ -97,8 +97,11 @@ boundary and entry context remain external inputs; this is not full CPU
 execution or gameplay wiring. Complete paired acceptance before retirement.
 
 
-Host object composition now has a common verified entry router and a directed
-IPL7 dispatcher fixture on live gameplay records. Its 480/480 windows match,
+The host-composition checkpoint is merged in
+[PR #14](https://github.com/duduke/AfterBurner2-Recomp/pull/14)
+(implementation `363bce4`, merge `a8849a4`). Continue from updated `main`
+on a new `codex/` branch. Host object composition now has a common verified
+entry router and a directed IPL7 dispatcher fixture on live gameplay records. Its 480/480 windows match,
 executing 53,404 verified callbacks, with 128/128 isolated `$9D34/$B628` entry
 calls and four mutations rejected. Explicitly unported caller transcripts
 remain inputs; masked fixture traversal does not verify natural host cadence,

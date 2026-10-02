@@ -28,12 +28,17 @@ sound caller and physical endpoint mapping described below. Independent host
 scheduling, object wiring and paired player/weapon acceptance remain next.
 
 The board/CPU timing checkpoint [PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13)
-is merged on `main` (`ca90197`). The current continuation uses branch
-`codex/phase3d-host-wiring`: a common verified entry router and directed live
-object-dispatch composition. It matches 480/480 MAME windows, executing
-53,404 verified callbacks; 128/128 additional `$9D34/$B628` entry calls match.
-The IPL7 fixture isolates composition and does not establish natural cadence.
-`OEngine` still uses the retained native Stage 1 host.
+is merged on `main` (`ca90197`). The user also authorized merging the host
+object-composition checkpoint [PR #14](https://github.com/duduke/AfterBurner2-Recomp/pull/14)
+before phase completion. Implementation commit `363bce4` is merged on `main`
+as `a8849a4`; `codex/phase3d-host-wiring` is a completed checkpoint branch.
+The common entry router and directed live object-dispatch composition match
+480/480 MAME windows, executing 53,404 verified callbacks; 128/128 additional
+`$9D34/$B628` entry calls match. All four mutations fail. The IPL7 fixture
+isolates composition and does not establish natural cadence. `OEngine` still
+uses the retained native Stage 1 host. Phase 3d remains incomplete.
+
+Start the next continuation from updated `main` on a new `codex/` branch.
 
 Next: establish the live `$B676` register/wait publication contract and the
 remaining explicit external caller boundaries listed in `ENGINE_NOTES.md`;
