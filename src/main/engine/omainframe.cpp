@@ -6,14 +6,16 @@ bool OMainFrame::resume_logic(MainBus& b) {
     b.write16(0x2a3c00,1);return true;
 }
 void OMainFrame::bookkeeping(MainBus& b) {
-    // $0148B8-$0148BC.
-    b.write32(0x3f8812,b.read32(0x3f8812)+1);
+    // $0148B8-$0148BC: ADDQ.L memory RMW writes low word before high.
+    auto value=b.read32(0x3f8812)+1;
+    b.write16(0x3f8814,value);b.write16(0x3f8812,value>>16);
 }
 void OMainFrame::timers(MainBus& b) {
     // $0148BE-$0148FA: display-rate second counters, unsigned comparison.
+    // $0148D8/$0148F8 ADDQ.L has the same low/high RMW bus order.
     auto step=[&](uint32_t a) {
         uint16_t count=b.read16(a+4)+1;b.write16(a+4,count);
-        if(count>0x3b) {b.write16(a+4,0);b.write32(a,b.read32(a)+1);}
+        if(count>0x3b) {b.write16(a+4,0);auto value=b.read32(a)+1;b.write16(a+2,value);b.write16(a,value>>16);}
     };
     step(0x3f8170);if(b.read16(0x3f880a)) step(0x3f8818);
 }

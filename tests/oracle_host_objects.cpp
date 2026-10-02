@@ -65,7 +65,7 @@ void apply(MainBus& b,const Event& e) {
 // A verified handler may never be downgraded to transcript replay.
 constexpr uint32_t external_callers[]={
     0x427c,0x6252,0x6466,0x64d4,0x65ec,0x65fa,0x6844,0x6d18,
-    0x71e4,0x7bb6,0x805a,0xb676,0xd0da,0x13236,0x18e8a
+    0x71e4,0x7bb6,0x805a,0xd0da,0x13236,0x18e8a
 };
 struct Hook { uint32_t entry;Registers pre,post;uint8_t io;Math before,after;std::vector<Event> writes; };
 }

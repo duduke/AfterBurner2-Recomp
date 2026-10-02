@@ -98,7 +98,7 @@ endif()
 
 option(ORACLE_TESTS "Enable tests against MAME captures in build/oracle (see make oracle-capture)" OFF)
 if(BUILD_TESTING AND ORACLE_TESTS)
-    add_executable(oracle_handlers tests/oracle_handlers.cpp
+    add_executable(oracle_handlers tests/oracle_handlers.cpp src/main/engine/omainsprites.cpp
         src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp
         src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp
         src/main/engine/omainobjects.cpp src/main/engine/omainhost.cpp
@@ -108,7 +108,7 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_handlers build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
-    add_executable(oracle_host_objects tests/oracle_host_objects.cpp
+    add_executable(oracle_host_objects tests/oracle_host_objects.cpp src/main/engine/omainsprites.cpp
         src/main/engine/omainhost.cpp src/main/engine/omaininput.cpp
         src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp
         src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp
@@ -120,6 +120,28 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_host_objects build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
+    set(HOST_ACCEPTANCE_SOURCES
+        src/main/engine/omainsprites.cpp src/main/engine/omainhost.cpp
+        src/main/engine/omainobjects.cpp src/main/engine/omaininput.cpp
+        src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp
+        src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp
+        src/main/engine/omainweapons.cpp src/main/engine/omainsound.cpp
+        src/main/engine/mainbus.cpp src/main/engine/subbus.cpp
+        src/main/engine/omainadc.cpp src/main/engine/omainframe.cpp
+        src/main/engine/omainpalette.cpp src/main/engine/oscenery.cpp
+        src/main/roms.cpp src/main/romloader.cpp)
+    add_executable(oracle_host_interleave tests/oracle_host_interleave.cpp ${HOST_ACCEPTANCE_SOURCES})
+    add_executable(oracle_frame_host tests/oracle_frame_host.cpp ${HOST_ACCEPTANCE_SOURCES})
+    add_executable(oracle_sound_stream tests/oracle_sound_stream.cpp
+        src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp)
+    foreach(TEST oracle_host_interleave oracle_frame_host oracle_sound_stream)
+        target_include_directories(${TEST} PRIVATE src/main)
+    endforeach()
+    add_test(NAME oracle_host_prefix COMMAND oracle_host_interleave build/oracle/host_prefix.bin build/oracle/host_requests.bin)
+    add_test(NAME oracle_paired_objects COMMAND oracle_host_interleave build/oracle/paired_objects.bin build/oracle/paired_requests.bin)
+    add_test(NAME oracle_paired_frame COMMAND oracle_frame_host build/oracle/paired_frame.bin)
+    add_test(NAME oracle_paired_sound COMMAND oracle_sound_stream build/oracle/paired_sound.bin)
+    set_tests_properties(oracle_host_prefix oracle_paired_objects oracle_paired_frame oracle_paired_sound PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_board tests/oracle_board.cpp)
     target_include_directories(oracle_board PRIVATE src/main)
     foreach(CAPTURE board board_endpoints board_directed)
@@ -225,6 +247,8 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     target_include_directories(oracle_video PRIVATE src/main)
     add_test(NAME oracle_video COMMAND oracle_video build/oracle/frames.bin)
     add_test(NAME oracle_video_nosprites COMMAND oracle_video build/oracle/frames_nosprites.bin)
+    add_test(NAME oracle_paired COMMAND oracle_video build/oracle/paired.bin 0 build/oracle/paired_requests.bin)
+    set_tests_properties(oracle_paired PROPERTIES DEPENDS oracle_paired_objects WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_test(NAME oracle_pipeline COMMAND oracle_video build/oracle/pipeline.bin)
     add_test(NAME oracle_video_gameplay COMMAND oracle_video build/oracle/frames_gameplay.bin)
     set_tests_properties(oracle_video oracle_video_nosprites oracle_video_gameplay oracle_pipeline PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

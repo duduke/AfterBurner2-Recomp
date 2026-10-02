@@ -1946,7 +1946,7 @@ modified. These extra directed traversals alter the gameplay run's cadence;
 they do not prove naturally scheduled 30 Hz execution or a whole credit.
 Both runs capture 240 windows with zero interrupted windows dropped.
 
-The external caller allowlist is `$427C/$6252/$6466/$64D4/$65EC/$65FA/$6844/
+At the directed checkpoint, the external caller allowlist was `$427C/$6252/$6466/$64D4/$65EC/$65FA/$6844/
 $6D18/$71E4/$7BB6/$805A/$B676/$D0DA/$13236/$18E8A`. These outputs are inputs
 to this check, not verified implementations. `$B676` already has a Phase 3c
 RAM-effect port; its live A0/wait caller contract is still outside this router.
@@ -1973,3 +1973,110 @@ ignored temporary copies. Validation: `make -j4`, `make test`,
 dummy-driver launch pass. Existing captures have no new differences;
 Stage 1 audio RMS stays 903.949. CMake targets are updated but unexecuted
 because CMake is unavailable. No ROM data or captures are tracked.
+
+## Conditional natural IRQ and paired acceptance
+
+The `codex/phase3d-irq-acceptance` checkpoint uses one natural MAME gameplay
+run without synthesized dispatcher calls or IPL masking. It establishes
+composition at supplied operand/caller boundaries, not independent execution
+of the main instruction stream. `OEngine` retains native Stage 1 producers.
+
+`$B676` is now executed by the host router rather than replayed: a positive
+publication counter leaves A0 and memory unchanged; a ready counter loads A0
+from `$2A3C0C`, publishes the request count and clears it. A named external
+boundary can progress a wait once; a still-pending counter fails explicitly.
+The directed 480/480 host checks now execute this callback. This contract
+does not independently schedule the other CPU while waiting.
+
+| Natural capture | Identical / recorded | Differences | Skipped |
+| --- | ---: | ---: | ---: |
+| Early dispatcher prefixes | 120 / 120 | 0 | 0 |
+| Paired-run dispatcher prefixes | 116 / 123 | 0 | 7 sub read-input races |
+| Complete VBLANK windows | 160 / 246 | 0 | 86 sub read-input races |
+| Continuous sound calls | 1,259 / 1,259 | 0 | 0 |
+| Paired player/weapon/sub/video frames | 226 / 240 | 0 | 14 raced-producer frames |
+
+Early accepted prefixes service 324 IRQ2 calls, producing 174 sound-latch
+writes. Later accepted prefixes service 381 IRQ2 calls and 177 latch writes;
+including raced records, the harness executes 407 IRQ2 and seven IRQ4 calls.
+**Every IRQ4-overlapped prefix is raced; IRQ4 interleaving is unverified.**
+No IRQ6 occurs inside these prefixes. VBLANK is checked separately:
+123 logic/interpolated and 37 normal windows are identical.
+The later run executes 14,124 verified callbacks (including raced windows)
+and 1,193 explicitly external callbacks. Coverage includes live player,
+shadow/exhaust, input, weapon controller, missiles/shadows/trails, vulcan,
+world/enemy/carrier handlers and direct sprite emissions. It does not add
+natural death/recovery, refuel/credit or full stage-flow coverage.
+
+The dispatcher capture ends before the publication wait. IRQ2 entry registers,
+actual ADC result, IRQ operand/write frontiers and chronological sub-owned
+scaled-size operands are supplied inputs. Verified handler and ISR writes
+carry through without resets to captured outputs. Unported caller transcripts
+remain explicit inputs. The capture excludes one window at `$B684` on frame
+1233 when its publication frontier cannot be resolved; producer provenance
+is invalidated and the corresponding display frames are omitted. Excluded
+windows are not included in the identical/skipped denominators.
+
+VBLANK executes palette, scenery, buttons/service edge, bookkeeping/timers,
+reload and normal/interpolated sprite ports. Its unported callback allowlist
+is `$17146/$14990/$C6F8/$E2DA`. Sub-produced blit lists/counts, the actual
+mutex operand at `$14798` and the hidden sprite bank at draw time are supplied
+boundary inputs. Other changed bytes actually read cause a race skip.
+One incomplete shutdown VBLANK is excluded. Ordered main-owned writes, chip
+state, reload registers, final write sets and IRQ I/O are compared.
+
+This exposed two hardware/access details: MAME's sprite draw swap forces the
+first CPU-visible word to `$FFFF`; `MainBus` now does the same. MAME's renderer
+also modifies hidden-buffer word 7, so its hidden bank is supplied at the draw
+boundary rather than claiming the port independently generates that feedback.
+The long ADDQ writes in `$148B8/$148D8/$148F8` issue low word before high;
+the frame port now preserves that event order. `MainBus::read32` explicitly
+reads high then low, and the trace hook can service a captured IRQ before the
+operand is sampled. This hook supplies timing; it does not predict it.
+
+The continuous sound test initializes its ring only once and carries it
+through 256 producer calls and 1,003 consumer calls, comparing ordered ring
+and latch writes, registers, selectors, and final ring. All 256 latch events
+match; there are zero external ring writes. Caller timestamps, enqueue D0 and selector are captured
+inputs; the sound test does not replace them with the paired object outputs.
+This verifies producer-to-consumer command order at those callers,
+not independent scheduling, Z80 waveform equality or a full credit.
+
+The paired video test consumes the **computed** dispatcher requests and five
+main road target words, checking each against the actual sub input. It then
+executes `OSubSprites`, compares its size table at sub-pass completion, and
+computes both main blits. It checks producer provenance strictly: an unknown
+producer fails; only an explicitly raced producer skips a pair. The 226
+accepted frames comprise 113 normal and 113 interpolated lists/draw triggers;
+all 226 RGB frames are pixel-identical, zero mismatched pixels. Road raster,
+tile and palette state remain captured compositor inputs; a combined
+`OSubRoad` raster path is still required before native retirement.
+
+Formats are `AB2OBJ05` (natural prefixes), `AB2REQ03` (computed producer
+results), `AB2FRM05` (VBLANK boundaries), `AB2PAIR2` (associated sub/video
+frames) and the continuous sound stream. All remain in ignored `build/oracle/`.
+`capture_paired.lua` coordinates object, frame, pipeline and sound taps in one
+run; publication pointers associate producers with actual sub passes.
+
+```bash
+make oracle-capture-host-interleave
+make oracle-capture-paired
+make oracle-host-interleave
+make oracle-paired                 # also included in make oracle-test
+python3 tools/oracle/mutation_check.py drawendmarker framewordorder \
+  publicationregister interleavedsample pairedproducer pairedblit \
+  pairedframe streamsounds
+```
+
+All eight mutations are rejected: draw end marker, long-write order,
+publication A0 result, IRQ sampled operand, computed request producer, paired
+blit, composed frame and continuous sound command. Temporary mutated sources
+and results remain ignored. Independent main instruction/caller timing,
+IRQ4/shared-input acceptance, publication wait progress, road composition,
+unknown stage/credit callers and complete-credit validation remain next.
+Phase 3d is **not complete**.
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make oracle-test` (including this acceptance), and a 180-frame dummy-driver
+launch pass. Stage 1 audio RMS remains 903.949. CMake definitions are updated
+but unexecuted because CMake is unavailable. No ROMs or captures are tracked.

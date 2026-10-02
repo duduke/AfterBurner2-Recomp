@@ -25,7 +25,8 @@ local out_path = os.getenv("AB2_ORACLE_OUT") or "frames.bin"
 local max_records = tonumber(os.getenv("AB2_ORACLE_PASSES") or "300")
 local stride = tonumber(os.getenv("AB2_ORACLE_STRIDE") or "5")
 local skip = tonumber(os.getenv("AB2_ORACLE_SKIP") or "120")
-if os.getenv("AB2_ORACLE_GAMEPLAY") == "1" then
+if os.getenv("AB2_ORACLE_GAMEPLAY") == "1" and not ab2_gameplay_loaded then
+  ab2_gameplay_loaded=true
   dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")) .. "/gameplay.lua")
 end
 
@@ -40,7 +41,8 @@ local LINE = 400 / 6250000            -- htotal / pixel clock
 local LATCH_DELAY = (261 - 224) * LINE -- frame notifier runs at VBLANK start (line 224)
 
 local out = assert(io.open(out_path, "wb"))
-out:write("AB2PIPE1")
+local paired=os.getenv("AB2_ORACLE_PAIRED")=="1"
+out:write(paired and "AB2PAIR2" or "AB2PIPE1")
 
 local function u32(v)
   return string.char((v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff)
@@ -50,7 +52,7 @@ local function regs() return main_space:read_range(0x0D0E80, 0x0D0E9F, 8) end
 
 local pipeline_guard=false
 local pipeline_by_sorted={}
-local pass_before
+local pass_before,pass_producer
 local blit_before,blit_entry
 local pipeline
 local main_pc=main.state.CURPC
@@ -58,13 +60,14 @@ pipeline_sub_start=sub_space:install_read_tap(0x9c0d6,0x9c0d7,"pipeline_sub_star
  if not pipeline_guard and sub_pc.value==0x640 and ((d>>8)&1)==0 and not pass_before then
   pipeline_guard=true
   pass_before=main_space:read_range(0x29c000,0x2a3fff,8)
+  if paired then pass_producer=(ab2_producers or {})[main_space:read_u32(0x2a3c08)&0x3fffff] end
   pipeline_guard=false
  end
 end)
 pipeline_sub_end=sub_space:install_write_tap(0x9c0d6,0x9c0d7,"pipeline_sub_end",function(a,d,m)
  if sub_pc.value==0x458 and pass_before then
   local ptr=main_space:read_u32(0x2a3c18)&0x3fffff
-  pipeline_by_sorted[ptr]=pass_before;pass_before=nil
+  pipeline_by_sorted[ptr]={ram=pass_before,producer=pass_producer,sizes=main_space:read_range(0x2a3800,0x2a3bff,8)};pass_before=nil
  end
 end)
 pipeline_blit=main_space:install_read_tap(0x2a3c14,0x2a3c17,"pipeline_blit",function(a,d,m)
@@ -91,7 +94,7 @@ sprite_trigger = main_space:install_write_tap(0x110000, 0x11FFFF, "ab2_sprite_tr
   sprite_buffer = main_space:read_range(0x100000, 0x100FFF, 8)
   local ptr=main_space:read_u32(0x2a3c14)&0x3fffff
   local source=pipeline_by_sorted[ptr]
-  if source and blit_before then pipeline=u32(blit_entry)..source..blit_before else pipeline=nil end
+  if source and blit_before and (not paired or source.producer) then pipeline=u32(blit_entry)..source.ram..blit_before..(paired and (u32(source.producer)..source.sizes) or "") else pipeline=nil end
   blit_before=nil
 end)
 
@@ -122,7 +125,9 @@ end)
 -- palette as it is *now*, so the palette is snapshotted here.
 local frame, records = 0, 0
 local pending = nil
+local finished=false
 frame_sub = emu.add_machine_frame_notifier(function()
+  if finished then return end
   frame = frame + 1
   if pending ~= nil then
     out:write(u32(frame - 1), screen:pixels(), pending.video, main_space:read_range(0x120000, 0x123FFF, 8),
@@ -130,7 +135,7 @@ frame_sub = emu.add_machine_frame_notifier(function()
     pending = nil
     records = records + 1
     if records >= max_records then
-      out:close()
+      finished=true;out:close();if ab2_objects_close then ab2_objects_close() end;if ab2_sound_close then ab2_sound_close() end;if ab2_frame_close then ab2_frame_close() end
       print(string.format("captured %d frames through frame %d -> %s", records, frame - 1, out_path))
       manager.machine:exit()
     end

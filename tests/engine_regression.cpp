@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include "engine/oengine.hpp"
+#include "engine/omainhost.hpp"
 
 void check(bool ok, const char* message)
 {
@@ -74,8 +75,30 @@ void release_stick()
           "Releasing the stick must restore neutral roll and pitch");
 }
 
+void publication_wait()
+{
+    MainBus::Memory memory;MainBus bus(nullptr,0,nullptr,0,memory);
+    OMainHost::Registers r;r.a[0]=0x12345678;
+    bus.write32(0x2a3c0c,0x2a3cf8);bus.write16(0x2a3cf0,17);
+    bus.write16(0x2a3c00,1);
+    const auto before=memory.bytes;
+    check(!OMainSprites::publish(bus,r) && r.a[0]==0x12345678 && memory.bytes==before,
+          "Publication must yield without changing RAM or A0 while the counter is positive");
+    unsigned boundaries=0;
+    OMainHost::call(bus,r,0xb676,[&](uint32_t entry,OMainHost::Registers&) {
+        check(entry==0xb676,"Publication must expose its named wait boundary");
+        ++boundaries;bus.write16(0x2a3c00,0);
+    });
+    check(boundaries==1 && r.a[0]==0x2a3cf8 && bus.read16(0x2a3cf8)==17 &&
+          bus.read16(0x29c058)==17 && bus.read16(0x2a3cf0)==0,
+          "Publication must resume through the port with the live A0 and request count");
+    bus.write16(0x2a3c00,0x8000);bus.write16(0x2a3cf0,192);
+    check(OMainSprites::publish(bus,r) && bus.read16(0x29c058)==192,
+          "The signed BGT wait must publish negative counters");
+}
+
 int main()
 {
-    sprite_scaling(); palette_colors(); release_stick();
+    sprite_scaling(); palette_colors(); release_stick(); publication_wait();
     std::cout << "Engine regression checks passed\n";
 }

@@ -16,9 +16,14 @@ void OMainSprites::append(MainBus& b,uint32_t object) {
     b.write16(0x2a3cf0,b.read16(0x2a3cf0)+1);
 }
 bool OMainSprites::publish(MainBus& b) {
+    OMainObjects::Registers r;
+    return publish(b,r);
+}
+bool OMainSprites::publish(MainBus& b, OMainObjects::Registers& r) {
     // $00B676-$00B696: BGT wait is exposed to the host.
     if(int16_t(b.read16(0x2a3c00))>0) return false;
-    uint32_t dst=b.read32(0x2a3c0c);
+    r.a[0]=b.read32(0x2a3c0c);
+    const uint32_t dst=r.a[0];
     b.write16(dst,b.read16(0x2a3cf0));
     b.write16(0x29c058,b.read16(dst)); b.write16(0x2a3cf0,0); return true;
 }

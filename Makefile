@@ -142,7 +142,7 @@ oracle-capture-gameplay:
 
 
 # Independent handler execution, including chip state and ordered RAM writes.
-HANDLER_SRCS = src/main/engine/omainhost.cpp src/main/engine/omainobjects.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS)
+HANDLER_SRCS = src/main/engine/omainsprites.cpp src/main/engine/omainhost.cpp src/main/engine/omainobjects.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS)
 HANDLER_CAPTURES = host_entries_directed input input_gameplay input_directed input_endpoints buttons_endpoints player_init player player_directed player_parts player_parts_gameplay player_parts_directed reload reload_directed weapon_control weapon_control_directed world world_directed buttons buttons_directed projectiles projectiles_directed missiles missiles_directed effects_directed collision_directed enemy_weapons_directed enemy_parts_directed enemy_effects enemy_effects_gameplay damage_directed damage_gameplay companion_directed companion_gameplay sequence_directed sequence_gameplay enemy_tracking_directed enemy_tracking_gameplay world_graph_directed refuel_parts_directed
 
 oracle-capture-handlers: oracle-capture-damage oracle-capture-companion oracle-capture-sequence oracle-capture-enemy-tracking oracle-capture-world-graph oracle-capture-refuel-parts
@@ -212,7 +212,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects
+oracle-test: oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -341,3 +341,38 @@ oracle-host-objects:
 	./build/oracle_host_objects build/oracle/host_objects_endpoints.bin
 
 .PHONY: oracle-capture-host-objects oracle-host-objects
+
+# Natural dispatcher IRQ composition; interrupted CPU boundaries remain inputs.
+INTERLEAVE_SRCS = $(HANDLER_SRCS) src/main/engine/omainadc.cpp src/main/engine/omainframe.cpp src/main/engine/omainpalette.cpp src/main/engine/oscenery.cpp
+oracle-host-interleave:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_host_interleave.cpp $(INTERLEAVE_SRCS) -o build/oracle_host_interleave
+	./build/oracle_host_interleave build/oracle/host_prefix.bin build/oracle/host_requests.bin
+
+oracle-capture-host-interleave:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INTERLEAVE=1 AB2_ORACLE_INTERLEAVE_PREFIX=1 AB2_ORACLE_SKIP=540 tools/oracle/capture.sh tools/oracle/capture_objects.lua build/oracle/host_prefix.bin 120 60
+
+.PHONY: oracle-host-interleave oracle-capture-host-interleave
+
+# Linked natural producers -> sub transform -> both display lists -> RGB.
+oracle-capture-paired:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INTERLEAVE=1 AB2_ORACLE_INTERLEAVE_PREFIX=1 AB2_ORACLE_PAIRED=1 AB2_ORACLE_OBJECT_OUT=build/oracle/paired_objects.bin AB2_ORACLE_SOUND_OUT=build/oracle/paired_sound.bin AB2_ORACLE_FRAME_OUT=build/oracle/paired_frame.bin AB2_ORACLE_SKIP=1020 AB2_ORACLE_STRIDE=1 tools/oracle/capture.sh tools/oracle/capture_paired.lua build/oracle/paired.bin 240 60
+
+oracle-paired: oracle-host-interleave oracle-frame-host oracle-sound-stream
+	./build/oracle_host_interleave build/oracle/paired_objects.bin build/oracle/paired_requests.bin
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_video.cpp $(VIDEO_SRCS) -o build/oracle_video
+	./build/oracle_video build/oracle/paired.bin 0 build/oracle/paired_requests.bin
+
+.PHONY: oracle-capture-paired oracle-paired
+
+oracle-frame-host:
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_frame_host.cpp $(INTERLEAVE_SRCS) -o build/oracle_frame_host
+	./build/oracle_frame_host build/oracle/paired_frame.bin
+
+oracle-sound-stream:
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_sound_stream.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o build/oracle_sound_stream
+	./build/oracle_sound_stream build/oracle/paired_sound.bin
+
+.PHONY: oracle-frame-host oracle-sound-stream
