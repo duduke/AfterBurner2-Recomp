@@ -8,6 +8,7 @@ public:
     static void missile_hud(MainBus&, OMainObjects::Registers&); // $00CFC4
     static void decimal(OMainObjects::Registers&); // $00D062
     static void initialize(MainBus&, OMainObjects::Registers&); // $009D2C
+    static void indicator_initialize(MainBus&, OMainObjects::Registers&); // $009D34
     static void update(MainBus&, OMainObjects::Registers&); // $009D56
     static void missile_fire(MainBus&, OMainObjects::Registers&); // $009DF8
     static void vulcan_fire(MainBus&, OMainObjects::Registers&); // $009E50

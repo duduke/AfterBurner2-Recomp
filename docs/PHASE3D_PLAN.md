@@ -95,3 +95,12 @@ CPU timestamps: 9,439/9,439 calls and 474,024/474,024 bus events identical,
 0 skipped. Seven mutations fail. The unported main instruction's final bus
 boundary and entry context remain external inputs; this is not full CPU
 execution or gameplay wiring. Complete paired acceptance before retirement.
+
+
+Host object composition now has a common verified entry router and a directed
+IPL7 dispatcher fixture on live gameplay records. Its 480/480 windows match,
+executing 53,404 verified callbacks, with 128/128 isolated `$9D34/$B628` entry
+calls and four mutations rejected. Explicitly unported caller transcripts
+remain inputs; masked fixture traversal does not verify natural host cadence,
+IRQ interleaving or paired video/sound acceptance. Continue the remaining
+host boundaries in `PHASE3D_CONTINUATION.md`; keep Phase 3d incomplete.

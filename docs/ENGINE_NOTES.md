@@ -1877,3 +1877,92 @@ mutations and a 180-frame dummy-driver launch pass. Existing oracle results
 have no new differences; Stage 1 audio RMS remains 903.949. CMake definitions
 are updated but unexecuted because CMake is unavailable. ROM data, generated
 RAM fixtures and captures remain ignored.
+
+
+## Phase 3d continuation: directed host object composition
+
+`engine/omainhost.*` provides a common entry router and composes the real
+`$14594..$145B6` dispatcher with independently checked input, flight,
+compound, weapon/projectile, world, damage and sequence ports. Entry lists
+are explicit; internal branch labels and unknown pointers cannot fall through
+to a guessed implementation. Unknown callers require a supplied boundary or
+throw. Existing independent handler oracles now use this same router.
+`OEngine` still uses the native Stage 1 producer pending paired acceptance.
+
+The live dispatcher exposed two additional entry contracts. `$B628` routes
+to the already translated register-preserving sprite emission port.
+`$9D34` enters weapon-indicator setup after the two pool resets at
+`$9D2C/$9D30`, then falls through to `$9D56`. `indicator_initialize` shares
+that instruction translation with `initialize`; routing `$9D34` to the whole
+initializer would reset live projectile pools. The new isolated entry capture
+checks both with complete RAM/register/chip/IO inputs and ordered writes.
+
+`tools/oracle/capture_objects.lua` adds opt-in `AB2OBJ02` records: the existing
+RAM, dispatcher writes and callback boundaries plus initial math state and
+per-callback input port and pre/post math state. Old `AB2OBJ01` captures and
+capture modes remain supported. `tests/oracle_host_objects.cpp` executes
+verified callbacks, compares entry/return registers, main math chips and all
+ordered non-stack RAM/I/O writes, then compares the composed write set and
+final dispatcher state. Only explicitly listed unported caller transcripts
+are replayed as external inputs; downgrading a verified entry to such a
+transcript fails the test. Main chip state and verified writes carry between
+handlers without resetting to captured outputs. Sub chip state is a captured
+external input; actual shared-memory input races are detected by read sets.
+
+| Capture | Identical / captured windows | Executed verified callbacks | External callbacks | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| `host_objects` | 240 / 240 | 26,934 | 2,316 | 0 |
+| `host_objects_endpoints` | 240 / 240 | 26,470 | 2,377 | 0 |
+| `host_entries_directed` | 128 / 128 isolated calls | 64 each at `$9D34/$B628` | 0 | 0 |
+
+Composition: **480/480 windows identical, 53,404 verified callbacks executed,
+zero differences, zero skipped**. Executed callbacks include 480 each of
+input `$B0AC`, live flight `$98C0`, shadow `$9C9E`, both exhaust handlers,
+and horizon setup `$10EB0`; 200 weapon-controller `$9D56` calls; both
+weapon-indicator transitions; missiles, trails, vulcan, ground effects,
+world initialization/update and carrier parts. The two fixtures produce
+6,720 direct `$B628` emissions. The router's remaining supported entries
+retain their separate routine checks; inclusion in the router alone does not
+establish their composed caller coverage.
+
+**Directed fixture, not natural cadence:** an unmasked full dispatcher
+traversal is routinely interrupted by the comparator IRQ. Dropping every
+interrupted window produced no usable composition records. The new fixture
+therefore executes synthesized `MOVE.W #$2700,SR; JSR dispatcher` instructions
+on live gameplay RAM every second display notifier, restores SR with a real
+instruction and resumes the saved program/register context. Initial
+supervisor privilege is selected externally; masking itself executes on the
+68000. The dispatcher is a main-loop range, not a subroutine: only its final
+branch back to `$1458A`, outside the tested range, is replaced by RTS in the
+fixture's ROM read tap to return to the synthesized caller. No ROM file is
+modified. These extra directed traversals alter the gameplay run's cadence;
+they do not prove naturally scheduled 30 Hz execution or a whole credit.
+Both runs capture 240 windows with zero interrupted windows dropped.
+
+The external caller allowlist is `$427C/$6252/$6466/$64D4/$65EC/$65FA/$6844/
+$6D18/$71E4/$7BB6/$805A/$B676/$D0DA/$13236/$18E8A`. These outputs are inputs
+to this check, not verified implementations. `$B676` already has a Phase 3c
+RAM-effect port; its live A0/wait caller contract is still outside this router.
+The dispatcher entry RAM/registers and unported callers remain external.
+IRQ interleaving, independently scheduled input conversion, VBLANK/reload,
+producer-to-latch cadence, sub handshake, paired normal/interpolated lists and
+rendered RGB remain required before changing the gameplay host or retiring
+`OLevelObjs`. Natural death/recovery, score/lives and refuel/credit flow retain
+the previously named coverage limits. Phase 3d remains incomplete.
+
+Commands: `make oracle-capture-host-objects`, `make oracle-host-objects`, and
+`python3 tools/oracle/mutation_check.py hostreplay hostindicator hostappend
+hostregisters`. The host composition check and isolated entry capture replay
+are part of `make oracle-test`; capture data and fixture instructions stay
+under ignored `build/oracle/`.
+
+
+All four temporary-source mutations fail: replaying every handler externally
+rejects 240/240 windows, resetting the pools at `$9D34` rejects its 64 isolated
+calls, misrouting `$B628` rejects 240/240 windows, and discarding handler
+register results rejects 240/240 windows. The mutation runner changes only
+ignored temporary copies. Validation: `make -j4`, `make test`,
+`make verify-stage1`, the complete `make oracle-test`, and a 180-frame
+dummy-driver launch pass. Existing captures have no new differences;
+Stage 1 audio RMS stays 903.949. CMake targets are updated but unexecuted
+because CMake is unavailable. No ROM data or captures are tracked.

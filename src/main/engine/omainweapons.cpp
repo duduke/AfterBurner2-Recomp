@@ -101,8 +101,14 @@ void OMainWeapons::pool(MainBus& b, OMainObjects::Registers& r, bool vulcan, boo
 }
 
 void OMainWeapons::initialize(MainBus& b, OMainObjects::Registers& r) {
-    // $009D2C-$009D4E: initialize both pools and the weapon indicator.
+    // $009D2C-$009D30: reset both pools, then fall through to $009D34.
     pool(b,r,false,false); pool(b,r,true,false);
+    indicator_initialize(b,r);
+}
+
+void OMainWeapons::indicator_initialize(MainBus& b, OMainObjects::Registers& r) {
+    // $009D34-$009D4E: the carrier returns directly here without resetting
+    // live projectile pools; $009D56 follows in the original instruction flow.
     auto p=r.a[5]; b.write32(p+12,0x10a00); b.write8(p+1,0x7f); b.write8(p+2,0xff);
     b.write8(p+3,0x1d); b.write32(p+16,0x9d56); update(b,r);
 }
