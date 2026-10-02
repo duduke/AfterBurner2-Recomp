@@ -40,20 +40,32 @@ uses the retained native Stage 1 host. Phase 3d remains incomplete.
 
 Start the next continuation from updated `main` on a new `codex/` branch.
 
-The `codex/phase3d-irq-acceptance` checkpoint now establishes `$B676` ready
+The merged [PR #15](https://github.com/duduke/AfterBurner2-Recomp/pull/15)
+(`05b6e82`) establishes `$B676` ready
 A0/publication behavior and a named wait/yield contract, and composes natural
 IRQ2, VBLANK and sound callers with paired computed requests/video. See
 "Conditional natural IRQ and paired acceptance" in `ENGINE_NOTES.md` for
 counts, capture exclusions and supplied inputs. It does not independently
 progress the publication wait or schedule the main instruction stream.
 
-Next: resolve all seven IRQ4-overlapped/shared-input dispatcher races, the
-86 VBLANK read-input races, and the excluded `$B684` publication window.
-Establish independent caller/operand timing and publication progress, port
-the remaining explicit external caller boundaries, and pair the road raster
-and compositor inputs before replacing the native host. Keep unknown caller
-transcripts labelled as inputs until independently ported. Phase 3d remains
-incomplete; do not merge this checkpoint without user authorization.
+The shared-interleaving continuation supersedes those exclusions. Complete
+natural dispatchers, including `$B676` waits/publication, match 120/120 in a
+separate capture and 122/122 in the paired run, with zero races or excluded
+dispatchers. The paired run checks 490 IRQ2, 122 IRQ4 and seven IRQ6 services;
+244/244 VBLANK windows and 240/240 paired RGB frames match with zero skips.
+Shared operands carry sub-write lane provenance; main-produced lanes are
+compared rather than replaced. Back-to-back IRQ returns share their first
+resumed operand frontier. Detailed limits are in `ENGINE_NOTES.md`.
+
+**Next:** independently predict IRQ4 service/callee cycles, interrupted
+instruction completion and the `$14856`/dispatcher caller timeline. The
+publication wait now progresses through executed IRQ4 at captured frontiers,
+not through an independent CPU scheduler. IRQ contexts/frontiers, ADC results,
+unknown caller transcripts, sub-produced operands and hidden renderer feedback
+remain inputs. Port remaining explicit external caller boundaries and pair
+`OSubRoad` raster/compositor inputs before replacing the native host. Keep
+Phase 3d incomplete. The user authorized committing and merging this
+shared-interleaving checkpoint before phase completion.
 
 ## 1. Finish the input/player caller contract
 

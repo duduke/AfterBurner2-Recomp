@@ -1,4 +1,4 @@
--- Natural $14674 VBLANK composition (AB2FRM05): initial chips, IO1 and
+-- Natural $14674 VBLANK composition (AB2FRM06, including shared operand provenance): initial chips, IO1 and
 -- hidden sprite bank, before/after RAM, write sets, and complete callback
 -- entry/return registers, chips, IO1 and ordered writes. Known 3e callbacks
 -- stay explicit inputs. The final unfinished IRQ at shutdown is excluded.
@@ -7,7 +7,7 @@ local sub = manager.machine.devices[":mainpcb:subcpu"]
 local space, subspace = main.spaces.program, sub.spaces.program
 local pc = main.state.CURPC
 local out = assert(io.open(assert(os.getenv("AB2_ORACLE_FRAME_OUT") or os.getenv("AB2_ORACLE_OUT")), "wb"))
-out:write("AB2FRM05")
+out:write("AB2FRM06")
 local limit = os.getenv("AB2_ORACLE_FRAME_OUT") and 1000000 or tonumber(os.getenv("AB2_ORACLE_PASSES") or "600")
 local playing = os.getenv("AB2_ORACLE_GAMEPLAY") == "1"
 if playing and not ab2_gameplay_loaded then ab2_gameplay_loaded=true;dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")) .. "/gameplay.lua") end
@@ -21,10 +21,10 @@ local ranges = {
   {0x100000,0x100fff}, {0x120000,0x123fff}, {0x2ec000,0x2ecfff}
 }
 local function snapshot()
-  guard = true
+  guard=true;ab2_capture_guard=true
   local parts = {}
   for _, r in ipairs(ranges) do parts[#parts+1] = space:read_range(r[1],r[2],8) end
-  guard = false
+  guard=false;ab2_capture_guard=false
   return table.concat(parts)
 end
 local function offset(a)
@@ -65,15 +65,18 @@ local calls={
  [0x147ac]=0x148b8,[0x147b0]=0x14990,[0x147b4]=0xc6f8,
  [0x147ba]=0xe2da,[0x147be]=0x147e8
 }
+local shared=dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/shared_inputs.lua")
+local provenance=shared.new()
+local own_values={}
 local hooks,hook
 local function in_handler(p) return p>=0x14674 and p<=0x147e6 end
 local function registers()
  local r={};for i=0,7 do r[#r+1]=u32(main.state["D"..i].value) end;for i=0,6 do r[#r+1]=u32(main.state["A"..i].value) end;return table.concat(r)
 end
 local function mathstate()
- guard=true;local r={};for _,a in ipairs({0xe0000,0xe4000,0x2e0000,0x2e4000}) do for i=0,7 do r[#r+1]=u32(space:read_u16(a+2*i)) end end;guard=false;return table.concat(r)
+ guard=true;ab2_capture_guard=true;local r={};for _,a in ipairs({0xe0000,0xe4000,0x2e0000,0x2e4000}) do for i=0,7 do r[#r+1]=u32(space:read_u16(a+2*i)) end end;guard=false;ab2_capture_guard=false;return table.concat(r)
 end
-local function input() guard=true;local v=space:read_u8(0x150001);guard=false;return u32(v) end
+local function input() guard=true;ab2_capture_guard=true;local v=space:read_u8(0x150001);guard=false;ab2_capture_guard=false;return u32(v) end
 local initial_math,initial_input,initial_sprites,mutex_clear_input
 local sprites=manager.machine.devices[":mainpcb:sprites"]
 local hidden=emu.item(assert(sprites.items["0/m_buffer"]))
@@ -87,12 +90,12 @@ local function start_hook()
  if hook and not hook.pre then
   hook.pre=registers();hook.math_pre=mathstate();hook.io=input();hook.blit=""
   if hook.entry==0xb7c2 or hook.entry==0xb7d2 then
-   guard=true
+   guard=true;ab2_capture_guard=true
    local ptr=(space:read_u32(0x2a3c14)+(hook.entry==0xb7d2 and 0xc00 or 0))&0x3fffff
    local cp=space:read_u32(0x2a3c1c)&0x3fffff;local count=space:read_u16(cp)
    assert(count<=192,"invalid blit input count")
    hook.blit=u32(ptr)..u32(cp)..u32(count)..space:read_range(ptr,ptr+(count+1)*16-1,8)
-   guard=false
+   guard=false;ab2_capture_guard=false
   end
  end
 end
@@ -100,31 +103,36 @@ local function end_hook()
  if hook then assert(hook.pre,"frame callee never entered");hook.post=registers();hook.math_post=mathstate();hooks[#hooks+1]=hook;hook=nil end
 end
 frame_start=space:install_read_tap(0x29c0d6,0x29c0d7,"frame_start",function(a,data,mask)
- if guard or before or pc.value~=0x14674 or frame<skip then return end
+ if guard or ab2_capture_guard or before or pc.value~=0x14674 or frame<skip then return end
  if os.getenv("AB2_ORACLE_FRAME_DIRECTED")=="1" then
-  guard=true
+  guard=true;ab2_capture_guard=true
   space:write_u8(0x29c000,space:read_u8(0x29c000)|1)
   if records==limit-2 then space:write_u16(0x2a3c00,0x8000) end
   space:write_u8(0x3f913d,3);space:write_u8(0x3f913e,1);space:write_u8(0x3f9140,1)
   space:write_u8(0x3f8b6f,space:read_u8(0x3f8b6f)|2)
   space:write_u8(0x3f8050,records==limit-1 and 0xff or 1)
-  guard=false
+  guard=false;ab2_capture_guard=false
  end
- mutex_clear_input=nil;initial_sprites=hidden_sprites();initial_math=mathstate();initial_input=input();before=snapshot();written,other,events,hooks={},{},{},{}
+ own_values={};provenance=shared.new();mutex_clear_input=nil;initial_sprites=hidden_sprites();initial_math=mathstate();initial_input=input();before=snapshot();written,other,events,hooks={},{},{},{}
 end)
 frame_mutex_read=space:install_read_tap(0x29c0d6,0x29c0d7,"frame_mutex_read",function(a,d,m)
- if not guard and before and pc.value==0x14798 then mutex_clear_input=d>>8&255 end
+ if not guard and not ab2_capture_guard and before and pc.value==0x14798 then mutex_clear_input=d>>8&255 end
 end)
 frame_writes=space:install_write_tap(0,0x3fffff,"frame_writes",function(a,data,mask)
- if guard or not before then return end
+ if guard or ab2_capture_guard or not before then return end
  a=a&0x3ffffe
+ provenance.write(a,mask,false)
  local p=pc.value
  if not in_handler(p) then start_hook() end
  local o=offset(a)
+ if o and not(o>=0x7e00 and o<0x8000) then
+  if mask&0xff00~=0 then own_values[o]=data>>8&255 end
+  if mask&255~=0 then own_values[o+1]=data&255 end
+ end
  if in_handler(p) then
   if not(hook and calls[p]==hook.entry) then
    end_hook()
-   if calls[p] then hook={entry=calls[p],writes={}} end
+   if calls[p] then hook={entry=calls[p],writes={},inputs={}} end
   end
   if o and o>=0x7e00 and o<0x8000 then return end
   if o then mark(written,o,mask) else events[#events+1]=u32(a)..u32(data)..u32(mask) end
@@ -133,26 +141,37 @@ frame_writes=space:install_write_tap(0,0x3fffff,"frame_writes",function(a,data,m
  end
 end)
 frame_reads=space:install_read_tap(0,0x7ffff,"frame_reads",function(a,data,mask)
- if guard or not before then return end
+ if guard or ab2_capture_guard or not before then return end
  if not in_handler(pc.value) then start_hook();return end
  if not(hook and calls[pc.value]==hook.entry) then end_hook() end
  -- RTE first exception-stack access; no CPU register/stack comparison.
  if pc.value~=0x147c6 and pc.value~=0x147e6 then return end
  assert(mutex_clear_input~=nil,"missing sub mutex release boundary")
  local parts={u32(#hooks)}
- for _,h in ipairs(hooks) do parts[#parts+1]=u32(h.entry)..h.pre..h.post..h.io..h.math_pre..h.math_post..u32(#h.blit)..h.blit..u32(#h.writes)..table.concat(h.writes) end
- out:write(u32(records),u32(frame),u32(0x14674),initial_math,initial_input,initial_sprites,u32(mutex_clear_input),before,snapshot(),offsets(written),offsets(other),u32(#events),table.concat(events),table.concat(parts))
+ for _,h in ipairs(hooks) do parts[#parts+1]=u32(h.entry)..h.pre..h.post..h.io..h.math_pre..h.math_post..u32(#h.blit)..h.blit..u32(#h.writes)..table.concat(h.writes)..shared.pack(h.inputs) end
+ local after=snapshot();local bytes={after:byte(1,#after)}
+ for o,v in pairs(own_values) do bytes[o+1]=v end
+ local chunks={};for i=1,#bytes,4096 do chunks[#chunks+1]=string.char(table.unpack(bytes,i,math.min(i+4095,#bytes))) end
+ after=table.concat(chunks)
+ out:write(u32(records),u32(frame),u32(0x14674),initial_math,initial_input,initial_sprites,u32(mutex_clear_input),before,after,offsets(written),offsets(other),u32(#events),table.concat(events),table.concat(parts))
  before=nil;records=records+1
  if records>=limit then
   out:close();print(string.format("captured %d frame boundaries through frame %d -> %s",records,frame,os.getenv("AB2_ORACLE_OUT")));manager.machine:exit()
  end
 end)
 frame_other=subspace:install_write_tap(0x80000,0xeffff,"frame_other",function(a,data,mask)
- if guard or not before then return end
- local o=offset((a&0xffffe)+0x200000);if o then
+ if guard or ab2_capture_guard or not before then return end
+ local address=(a&0xffffe)+0x200000;provenance.write(address,mask,true)
+ local o=offset(address);if o then
   if mask&0xff00~=0 and before:byte(o+1)~=(data>>8&255) then other[o]=true end
   if mask&0xff~=0 and before:byte(o+2)~=(data&255) then other[o+1]=true end
  end
 end)
 
 if os.getenv("AB2_ORACLE_FRAME_OUT") then ab2_frame_close=function() local pending=before and 1 or 0;before=nil;out:close();print(string.format("captured %d natural VBLANK calls (%d unfinished shutdown windows excluded)",records,pending)) end end
+
+frame_shared_reads=space:install_read_tap(0x280000,0x2bffff,"frame_shared_reads",function(a,d,m)
+ if guard or ab2_capture_guard or not before or in_handler(pc.value) then return end
+ start_hook()
+ if hook then provenance.read(hook.inputs,a,d,m) end
+end)

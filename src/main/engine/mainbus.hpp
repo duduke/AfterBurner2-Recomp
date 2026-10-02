@@ -36,6 +36,8 @@ public:
         // An externally established CPU boundary may service an IRQ before
         // the next operand access. This supplies no invented CPU timing.
         std::function<void(bool, uint32_t, uint16_t)> before_access{};
+        // Last CPU-owned write values, independent of later other-CPU writes.
+        uint8_t* write_values = nullptr;
     };
     struct Endpoints
     {

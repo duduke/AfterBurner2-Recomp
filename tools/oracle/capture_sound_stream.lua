@@ -8,12 +8,12 @@ out:write("AB2SND01")
 local frame,guard,started,active,calls,external=0,false,false,nil,0,0
 local function u32(v) return string.pack(">I4",v&0xffffffff) end
 local function ns() return math.floor(manager.machine.time:as_double()*1e9+0.5) end
-local function ring() guard=true;local v=space:read_range(0x3f8900,0x3f894b,8);guard=false;return v end
+local function ring() guard=true;ab2_capture_guard=true;local v=space:read_range(0x3f8900,0x3f894b,8);guard=false;ab2_capture_guard=false;return v end
 local function regs() local v={};for i=0,7 do v[#v+1]=u32(main.state["D"..i].value) end;for i=0,6 do v[#v+1]=u32(main.state["A"..i].value) end;return table.concat(v) end
 local function begin(p)
  assert(not active,"nested sound call requires an interleaved sound fixture")
  if not started then out:write(ring());started=true end
- guard=true;local selector=space:read_u16(0x29c09c);guard=false
+ guard=true;ab2_capture_guard=true;local selector=space:read_u16(0x29c09c);guard=false;ab2_capture_guard=false
  active={entry=p,time=ns(),pre=regs(),selector=selector,writes={}}
 end
 local function finish()
@@ -21,7 +21,7 @@ local function finish()
  active=nil;calls=calls+1
 end
 local function sound_read(a,d,m)
- if guard or frame<tonumber(os.getenv("AB2_ORACLE_SKIP") or "540") then return end
+ if guard or ab2_capture_guard or frame<tonumber(os.getenv("AB2_ORACLE_SKIP") or "540") then return end
  local p=main.state.CURPC.value
  if p==0xb7f8 or p==0xb840 or p==0xb84c then
   if not active or active.entry~=p then begin(p) end
@@ -31,7 +31,7 @@ end
 sound_stream_reads=space:install_read_tap(0xb7f8,0xb885,"sound_stream_reads",sound_read)
 sound_stream_returns=space:install_read_tap(0x3f8000,0x3fffff,"sound_stream_returns",sound_read)
 local function sound_write(a,d,m)
- if guard or not started then return end
+ if guard or ab2_capture_guard or not started then return end
  local p=main.state.CURPC.value
  local e=u32(a)..u32(d)..u32(m)
  if active and p>=0xb7f8 and p<=0xb884 and (a<0x3ffe00) then active.writes[#active.writes+1]=e

@@ -358,9 +358,9 @@ oracle-capture-host-interleave:
 # Linked natural producers -> sub transform -> both display lists -> RGB.
 oracle-capture-paired:
 	@mkdir -p build/oracle
-	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INTERLEAVE=1 AB2_ORACLE_INTERLEAVE_PREFIX=1 AB2_ORACLE_PAIRED=1 AB2_ORACLE_OBJECT_OUT=build/oracle/paired_objects.bin AB2_ORACLE_SOUND_OUT=build/oracle/paired_sound.bin AB2_ORACLE_FRAME_OUT=build/oracle/paired_frame.bin AB2_ORACLE_SKIP=1020 AB2_ORACLE_STRIDE=1 tools/oracle/capture.sh tools/oracle/capture_paired.lua build/oracle/paired.bin 240 60
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INTERLEAVE=1 AB2_ORACLE_INTERLEAVE_PREFIX=1 AB2_ORACLE_PUBLICATION=1 AB2_ORACLE_PAIRED=1 AB2_ORACLE_OBJECT_OUT=build/oracle/paired_objects.bin AB2_ORACLE_SOUND_OUT=build/oracle/paired_sound.bin AB2_ORACLE_FRAME_OUT=build/oracle/paired_frame.bin AB2_ORACLE_SKIP=1020 AB2_ORACLE_STRIDE=1 tools/oracle/capture.sh tools/oracle/capture_paired.lua build/oracle/paired.bin 240 60
 
-oracle-paired: oracle-host-interleave oracle-frame-host oracle-sound-stream
+oracle-paired: oracle-host-interleave oracle-frame-host oracle-sound-stream oracle-host-publication
 	./build/oracle_host_interleave build/oracle/paired_objects.bin build/oracle/paired_requests.bin
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_video.cpp $(VIDEO_SRCS) -o build/oracle_video
 	./build/oracle_video build/oracle/paired.bin 0 build/oracle/paired_requests.bin
@@ -376,3 +376,13 @@ oracle-sound-stream:
 	./build/oracle_sound_stream build/oracle/paired_sound.bin
 
 .PHONY: oracle-frame-host oracle-sound-stream
+
+# Natural complete dispatch, including the publication wait and IRQ4 progress.
+oracle-capture-host-publication:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INTERLEAVE=1 AB2_ORACLE_INTERLEAVE_PREFIX=1 AB2_ORACLE_PUBLICATION=1 AB2_ORACLE_SKIP=1020 tools/oracle/capture.sh tools/oracle/capture_objects.lua build/oracle/host_publication.bin 120 60
+
+oracle-host-publication: oracle-host-interleave
+	./build/oracle_host_interleave build/oracle/host_publication.bin
+
+.PHONY: oracle-capture-host-publication oracle-host-publication

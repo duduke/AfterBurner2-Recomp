@@ -165,7 +165,8 @@ remain in use; Phase 3d is incomplete.
 The conditional natural IRQ and paired acceptance checkpoint adds 120/120
 identical early dispatcher prefixes (324 IRQ2 services) and 116/123 later
 prefixes (381 IRQ2 services in accepted windows, seven sub-input races).
-All seven IRQ4-overlapped prefixes are raced and remain unverified. Composed
+At that checkpoint, all seven IRQ4-overlapped prefixes were raced and unverified;
+the continuation below supersedes these exclusions. Composed
 VBLANK matches 160/246 windows with 86 actual read-input races skipped.
 Computed player/weapon requests and road targets feed the sub sprite port;
 both hardware lists/draw triggers and RGB match 226/240 paired frames
@@ -179,7 +180,20 @@ callers, sub size/blit/mutex operands and hidden renderer feedback. Sound
 caller timestamps and road/tile/palette compositor inputs remain supplied.
 They establish conditional composition, not independently scheduled gameplay
 or waveform equality. Native `OLevelObjs`, controls, adapter and sound cues
-remain active in `OEngine`; Phase 3d is incomplete. The next work is IRQ4
-and shared-input timing, independently progressed publication waits/callers,
+remain active in `OEngine`; Phase 3d is incomplete. The next work is independent CPU/caller timing,
 road-raster pairing and remaining stage/credit boundaries. Detailed evidence
 and commands are in `ENGINE_NOTES.md`.
+
+
+IRQ4/shared-memory continuation: complete natural dispatchers now include
+publication waits and match 120/120 separately and 122/122 in the paired run,
+zero differences/skips/excluded dispatchers. The paired run executes 490 IRQ2,
+122 IRQ4 and seven IRQ6 services. Shared road/size operands are captured with
+sub-write lane provenance; main-produced lanes must match. VBLANK matches
+244/244 windows and both sprite lists/draw triggers/RGB match 240/240 frames,
+zero skips. The continuous ring matches 1,250/1,250 calls and 255 latch writes.
+These checks still supply IRQ frontiers/contexts, ADC results, unknown callers,
+sub operands and hidden renderer feedback. Publication progresses by executing
+captured interrupt boundaries. Independent CPU scheduling, the road raster
+pair and remaining game-flow callers are unverified. `OEngine` continues to
+use native Stage 1 controls, objects, adapter and sound cues.
