@@ -17,15 +17,22 @@ The user authorized merging checkpoint [PR #11](https://github.com/duduke/AfterB
 before phase completion. It adds the remaining independent handler graphs to
 PR #10's damage companion checkpoint: 7,409/7,424 calls identical, zero
 differences, 15 sub-input races skipped; all ten new mutations fail.
-For the next continuation, start from current `main`, create a new `codex/`
-branch, and resume the remaining work below. Do not mark Phase 3d complete
-or start Phase 3e based on this checkpoint.
+After that merged checkpoint, the next continuation started from `main`
+on a new `codex/` branch. Current open work is recorded below; do not mark
+Phase 3d complete or start Phase 3e based on the handler checkpoint.
 
 The user also authorized pushing and merging comparator IRQ checkpoint
 [PR #12](https://github.com/duduke/AfterBurner2-Recomp/pull/12), implementation
 commit `e2f973b`, before phase completion. It verifies the combined ADC/timer/
 sound caller and physical endpoint mapping described below. Independent host
 scheduling, object wiring and paired player/weapon acceptance remain next.
+
+The current continuation is [draft PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13),
+branch `codex/phase3d-board-timeline`: independently generated board timing
+(`460b69b`) plus the requested bounded CPU service verification (`f006d98`).
+Continue from this branch while the PR is open. Host wiring, sound producers
+and paired player/weapon acceptance remain incomplete; the timing ports do
+not yet change the `afterburner2` gameplay host.
 
 ## 1. Finish the input/player caller contract
 

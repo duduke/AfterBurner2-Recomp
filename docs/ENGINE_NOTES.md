@@ -1771,6 +1771,10 @@ installed on this host, so its updated targets were not executed.
 
 ## Phase 3d continuation: bounded CPU service timing
 
+Delivery: [draft PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13)
+contains board commit `460b69b` and CPU service commit `f006d98`. This is the
+requested combined timing checkpoint; Phase 3d remains incomplete.
+
 `engine/omainirqservice.*` adds a cycle-timed service port for the main
 68000's IRQ2/IRQ6 exception entry, ROM `$1461C/$1466C`, the `$B7F8` sound
 consumer, and return. It uses the X-Board's 12.5 MHz main CPU clock: one

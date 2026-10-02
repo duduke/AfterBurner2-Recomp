@@ -372,7 +372,8 @@ player/weapon acceptance remain pending.
       cycles; seven mutations fail. Pending IPL7/unmask-to-IPL1 has a real
       CPU-instruction fixture. The unported instruction's last bus boundary
       and entry context remain supplied; full CPU scheduling and host wiring
-      are not established by this check.
+      are not established by this check. Board and CPU service timing are
+      delivered together in [draft PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13).
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,
