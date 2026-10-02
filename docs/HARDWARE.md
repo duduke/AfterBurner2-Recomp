@@ -447,8 +447,9 @@ Shared verbatim with the original `aburner` set.
   complete main CPU sound sequencer is still unported.
 - ADC0804 conversion timing is modeled from `machine/adc0804.*` and
   MAME-checked (59.2 us at 1.25 MHz). The independently generated board
-  timeline now checks scanline/EXCK/VBLANK and ADC deadlines; CPU service
-  timing and host wiring remain Phase 3d work (`ENGINE_NOTES.md`).
+  timeline now checks scanline/EXCK/VBLANK and ADC deadlines. Bounded
+  IRQ2/IRQ6 CPU service cycles also have MAME checks; full main-program
+  scheduling and host wiring remain Phase 3d work (`ENGINE_NOTES.md`).
 - CXD1095 register semantics are modeled (`hwmath/io_expander.hpp`);
   main CPU input mapping has routine oracles. Connecting the verified
   input/ADC/IRQ callers to the gameplay host remains Phase 3d work.

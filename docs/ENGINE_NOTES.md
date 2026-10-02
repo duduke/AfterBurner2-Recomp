@@ -1752,17 +1752,124 @@ boardblank boardorder`. Sources, Make and CMake definitions are updated;
 ROMs, probes and capture files remain ignored.
 
 **Limit:** this establishes an independent physical board clock, not an
-independently executed CPU host. CPU transaction timestamps, interrupt entry
-latency, masked/nested IRQ service, exception cycles and the ordering of an ADC
-completion exactly coincident with a raster callback remain unverified.
+independently executed CPU host. This board oracle alone does not establish CPU transaction execution or
+IRQ entry/return latency; the next section checks the bounded IRQ2/IRQ6
+service window. Independent main-program execution, nested IRQs and the
+ordering of an ADC completion exactly coincident with a raster callback
+remain unverified.
 `OEngine` still advances its retained native Stage 1 host on fixed display
 steps and does not use this timeline. Do not silently change its refresh or
-wire handlers at invented cycle offsets. Next: establish the actual CPU
-service/bus-time contract, then connect the verified ADC/IRQ and object
-callers and complete paired player/weapon, sound-producer and rendered-RGB
+wire handlers at invented cycle offsets. Next: use the bounded service contract below to connect the verified
+ADC/IRQ and object callers and complete paired player/weapon, sound-producer and rendered-RGB
 acceptance. Phase 3d remains incomplete.
 
 Validation: `make -j4`, `make test`, `make verify-stage1`, the full
 `make oracle-test` and a 180-frame dummy-driver launch pass. Existing oracles
 have zero new differences; Stage 1 audio RMS remains 903.949. CMake is not
 installed on this host, so its updated targets were not executed.
+
+
+## Phase 3d continuation: bounded CPU service timing
+
+`engine/omainirqservice.*` adds a cycle-timed service port for the main
+68000's IRQ2/IRQ6 exception entry, ROM `$1461C/$1466C`, the `$B7F8` sound
+consumer, and return. It uses the X-Board's 12.5 MHz main CPU clock: one
+cycle is 80 ns. Timing comes from MAME's `m68000` bus/internal microcycles
+and `vpa_sync/vpa_after`, with each arcade instruction identified by its
+ROM PC. No captured per-access timestamp is supplied to this execution.
+
+Exception entry writes the interrupted PC low word before SR and PC high,
+reads the selected autovector, and accounts for handler prefetch. CPU-space
+IACK synchronizes to the ten-clock E phase, including its one-clock delay
+after synchronization. This produces variable entry latency. Handler timing
+includes the
+48-clock predecrement MOVEM (low words before high), the sampler's absolute
+and indexed bus phases, word BCS's taken/untaken timing and sample wrap,
+byte read/modify/write prefetch, and the actual mux/ADC-start order. The
+20-clock JSR, sound consumer branch paths and latch write, 16-clock RTS,
+52-clock postincrement MOVEM (including its extra dummy read), and 20-clock
+RTE are all checked. IRQ6 uses its actual acknowledgement-only ROM entry.
+Unlike the earlier functional ports, this oracle deliberately includes
+exception/JSR/MOVEM stack transactions as CPU-owned outputs.
+
+The service caller supplies the interrupted CPU context and the final bus
+transaction of the otherwise unported instruction. Its remaining completion
+clocks are computed from the runtime opcode and, for register shifts, the
+source count sampled before the shift. Observed tails include register
+shifts, long ALU/address arithmetic, EXG and immediate register BTST. The
+capture showed why a last prefetch cannot always stand for a completed
+instruction: those forms still do internal work afterwards; memory RMW
+stores can also follow the final prefetch. This is a bounded caller profile,
+not a complete decoder or interpreter for arbitrary main-program code.
+
+`tools/oracle/capture_irq_service.lua` records `AB2SVC02` service windows,
+entry registers/SSP/SR, full main work RAM, vector and data/stack transactions,
+and post registers/SSP/SR/RAM through RTE's final prefetch. Outside the
+window, external CPU device transactions and frame inputs maintain one
+continuous board/ADC timeline from reset. `tests/oracle_irq_service.cpp`
+compares **predicted** access and return timestamps, PC/address/lane/data,
+register restoration and every CPU-written RAM byte. The board model computes the IRQ2/IRQ6 level at the supplied CPU
+eligibility boundary; the captured level is only an assertion. ADC samples
+and sound commands are computed by the service port; captured before-RAM supplies the
+sound ring produced by the unported main program. Sub CPU code cannot access
+these work-RAM/stack inputs; no input-race skips are needed.
+
+| Capture | Identical / captured calls | Identical / captured bus events | Skipped | Ported latch writes |
+| --- | ---: | ---: | ---: | ---: |
+| `service` | 3,556 / 3,556 | 177,767 / 177,767 | 0 | 473 |
+| `service_endpoints` | 3,556 / 3,556 | 177,767 / 177,767 | 0 | 473 |
+| `service_directed` | 2,327 / 2,327 | 118,490 / 118,490 | 0 | 576 |
+
+Combined: **9,439/9,439 calls and 474,024/474,024 bus events identical,
+zero differences, zero skipped**. The corpus includes 9,367 IRQ2 services,
+72 IRQ6 services and 1,522 predicted sound-latch writes. The separate
+2,541 external hardware/probe records also match. Service duration spans
+86..580 clocks, depending on E phase, IRQ entry and consumer branch. All
+six sampler slots and wrap are exercised; the directed run has 582 each
+of disabled, even-cadence and empty-queue entries, plus ring index 63 to 0
+and command emission. Natural and endpoint captures contain ordinary
+original execution and the earlier physical-axis/button fixture.
+
+The directed mask fixture executes synthesized RAM `MOVE.W #imm,SR`,
+NOP/BRA and restore/JMP instructions. It checks 97 mask probes, including
+66 with an IRQ pending while IPL7 prevents service, then observes service
+after a real unmask to IPL1. MAME's debugger SR setter does **not** call
+`update_interrupt`; using it to stand for an unmask left the request pending
+until another line update and was rejected as a fixture. Only the initial
+supervisor privilege is selected by the fixture; actual mask/unmask and
+mode restoration execute as CPU instructions. Its RAM/queue/PC redirections
+are directed inputs and do not establish natural credit progression.
+
+Seven temporary-source mutations fail: exception-entry clocks (27,589
+bus events differ), VPA phase (56,573), ADC read timing (81,384), sample
+wrap branch timing (12,857), sound-latch timing (12,096), interrupted shift
+completion (770), and ignoring the IRQ mask (66 hardware/probe records).
+The source is never modified by the mutation runner. Commands:
+`make oracle-capture-service`, `make oracle-irq-service` (part of
+`make oracle-test`), and `python3 tools/oracle/mutation_check.py serviceentry
+servicevpa serviceadc servicewrap servicelatch servicetail servicemask`.
+
+**Unverified boundaries:** the full main CPU loop is not independently
+executed. Its last-bus boundary and entry RAM/registers remain supplied; the completion profile covers this corpus, not arbitrary
+opcodes, all operand counts or MUL/DIV/STOP/trace/address/bus exceptions.
+Only E phases 1/3/5/7/9 occur in these captures. IPL7 masking followed by IPL1
+unmasking is checked; every mask transition and a nested higher-priority ISR
+are not. Arbitrary IRQ edges during an instruction's internal tail and
+level-seven NMI are outside this bounded selection contract. No frame input notifier lands inside a service window in this
+corpus; that supported input-boundary path remains unexercised. ADC/raster
+completion ties and whole-program instruction scheduling remain separate.
+Sound producers and Z80 delivery/waveforms are still outside this check.
+
+`OEngine` remains on the retained native Stage 1 host. The bounded CPU
+service timing gap is now checked before gameplay wiring; it does not itself
+replace input, flight, weapon, object or sound producers. Next: connect the
+verified callers at their established CPU/board boundaries and prove paired
+player/weapon, normal/interpolated requests, shared targets, latch/draw events
+and rendered RGB before retiring native code. Phase 3d remains incomplete.
+
+Validation for the combined board/service checkpoint: `make -j4`, `make test`,
+`make verify-stage1`, the complete `make oracle-test`, all seven new service
+mutations and a 180-frame dummy-driver launch pass. Existing oracle results
+have no new differences; Stage 1 audio RMS remains 903.949. CMake definitions
+are updated but unexecuted because CMake is unavailable. ROM data, generated
+RAM fixtures and captures remain ignored.

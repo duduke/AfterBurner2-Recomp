@@ -86,6 +86,8 @@ the decoder needs extending; in a data table it's expected.
   lines from `manager.machine.time` (64 us per line).
 - In a frame notifier, `screen:pixels()` is the image drawn from the state
   at the *previous* notifier, converted through the *current* palette.
+- For IRQ mask fixtures, execute a real SR-writing instruction. MAME's
+  debugger SR setter does not update pending interrupt selection.
 - Start each MAME run with fresh NVRAM and config (`capture.sh` does), or
   boot isn't deterministic.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
@@ -364,6 +366,13 @@ player/weapon acceptance remain pending.
       MAME probe events, 0 skipped; three mutations fail. CPU transaction times
       remain supplied by MAME. CPU service latency and `OEngine` wiring are
       still pending; this does not complete the input or paired acceptance items.
+- [x] Bounded CPU IRQ2/IRQ6 service timing: exception/IACK E phase, sampler,
+      consumer, stack and RTE match 9,439/9,439 calls and 474,024/474,024 bus
+      events, 0 skipped. Per-access and return times are predicted from CPU
+      cycles; seven mutations fail. Pending IPL7/unmask-to-IPL1 has a real
+      CPU-instruction fixture. The unported instruction's last bus boundary
+      and entry context remain supplied; full CPU scheduling and host wiring
+      are not established by this check.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,

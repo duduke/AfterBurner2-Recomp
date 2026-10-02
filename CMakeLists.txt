@@ -41,6 +41,7 @@ add_executable(afterburner2
     src/main/engine/subbus.cpp
     src/main/engine/mainbus.cpp
     src/main/engine/omainadc.cpp
+    src/main/engine/omainirqservice.cpp
     src/main/engine/oscenery.cpp
     src/main/engine/ostagesetup.cpp
     src/main/engine/osubroad.cpp
@@ -114,6 +115,14 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     target_include_directories(oracle_adc_timing PRIVATE src/main)
     foreach(CAPTURE adc_timing adc_timing_directed)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_adc_timing build/oracle/${CAPTURE}.bin)
+        set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
+    add_executable(oracle_irq_service tests/oracle_irq_service.cpp
+        src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp
+        src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
+    target_include_directories(oracle_irq_service PRIVATE src/main)
+    foreach(CAPTURE service service_endpoints service_directed)
+        add_test(NAME oracle_${CAPTURE} COMMAND oracle_irq_service build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
     add_executable(oracle_mainirq tests/oracle_mainirq.cpp

@@ -23,7 +23,7 @@ SRCS = \
 	src/main/engine/oengine.cpp
 
 # Verified road/scenery and shared bus; ADC awaits the flight/input port.
-SRCS += src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
+SRCS += src/main/engine/omainirqservice.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
@@ -211,7 +211,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-handlers oracle-mainirq oracle-board
+oracle-test: oracle-handlers oracle-mainirq oracle-board oracle-irq-service
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -308,3 +308,19 @@ oracle-board:
 	./build/oracle_board build/oracle/board_directed.bin
 
 .PHONY: oracle-board oracle-capture-board
+
+# IRQ2/IRQ6 service: predict bus and return timestamps from CPU cycles.
+oracle-capture-service:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_irq_service.lua build/oracle/service.bin 900 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INPUT_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq_service.lua build/oracle/service_endpoints.bin 900 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_SERVICE_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_irq_service.lua build/oracle/service_directed.bin 600 30
+
+oracle-irq-service:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_irq_service.cpp src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_irq_service
+	./build/oracle_irq_service build/oracle/service.bin
+	./build/oracle_irq_service build/oracle/service_endpoints.bin
+	./build/oracle_irq_service build/oracle/service_directed.bin
+
+.PHONY: oracle-irq-service oracle-capture-service

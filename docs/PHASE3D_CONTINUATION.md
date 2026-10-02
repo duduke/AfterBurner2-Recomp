@@ -62,9 +62,21 @@ scheduling, object wiring and paired player/weapon acceptance remain next.
   669,845/669,845 events, 0 skipped; three schedule mutations fail. Frame
   notifier ordering at line 224 is explicitly checked. CPU bus timestamps
   remain external inputs; this does not establish CPU IRQ service latency.
-  `OEngine` remains unwired. Establish the CPU service/bus-time contract
-  before replacing its display-step host; see the new `ENGINE_NOTES.md`
-  board-timeline section and `make oracle-capture-board`.
+  `OEngine` remains unwired. The bounded service contract is now checked in
+  the next entry; full main-program execution remains unported. See
+  `ENGINE_NOTES.md` and `make oracle-capture-board`.
+- Bounded CPU IRQ2/IRQ6 service now matches 9,439/9,439 calls and
+  474,024/474,024 bus events, 0 skipped, computing access/return timestamps
+  from 80 ns CPU cycles and the E-clock IACK phase. MOVEM/JSR/RTS/RTE stack
+  phases, all sampler slots, disabled/even/empty/emitting sound paths and
+  real IPL7 masking/IPL1 unmasking are checked; seven mutations fail.
+  The interrupted instruction's last bus boundary and entry context still
+  come from the capture; the board computes the level at that boundary.
+  Completion tails cover observed opcodes; arbitrary
+  instructions, all mask transitions, nested ISRs and independent full CPU
+  execution remain unverified. Next: connect verified callers at those
+  boundaries and complete paired player/weapon/producer/video acceptance.
+  Use `make oracle-capture-service` / `make oracle-irq-service`.
 - `OMainDamage` now independently checks `$E662`, intact/breakup
   `$E8D0/$E94E` states 0..6, fuselage `$F640`, and their projection/frame,
   trajectory, debris and attitude callees: 1,792/1,792 directed calls and

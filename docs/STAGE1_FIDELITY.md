@@ -135,6 +135,15 @@ The board-timeline continuation independently generates physical EXCK,
 VBLANK and ADC deadlines from reset; 669,845/669,845 MAME probe events match,
 0 skipped, and three mutations fail. Its frame period is 16.768 ms, derived
 from the hardware clock. CPU transaction timestamps remain capture inputs;
-CPU IRQ service latency is not established. `OEngine` retains its native
-display-step scheduling until that contract and paired acceptance pass.
+The board oracle alone does not establish CPU IRQ service latency; the
+bounded service check follows below. `OEngine` retains its native display-step
+scheduling until host wiring and paired acceptance pass.
 This checkpoint does not replace native controls, objects or sound cues.
+
+The CPU service extension checks IRQ2/IRQ6 entry, ADC/sound accesses and
+stack/return timings: 9,439/9,439 calls and 474,024/474,024 bus events match,
+0 skipped, with seven mutations rejected. The unported main instruction's
+last-bus boundary and entry context remain external inputs. Running
+`./afterburner2` shows the existing Stage 1 experience; this timing port is
+still separate from `OEngine`. Visible Phase 3d player/weapon changes require
+host wiring and paired acceptance before the native producers are retired.
