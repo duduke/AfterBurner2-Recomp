@@ -21,6 +21,12 @@ For the next continuation, start from current `main`, create a new `codex/`
 branch, and resume the remaining work below. Do not mark Phase 3d complete
 or start Phase 3e based on this checkpoint.
 
+The user also authorized pushing and merging comparator IRQ checkpoint
+[PR #12](https://github.com/duduke/AfterBurner2-Recomp/pull/12), implementation
+commit `e2f973b`, before phase completion. It verifies the combined ADC/timer/
+sound caller and physical endpoint mapping described below. Independent host
+scheduling, object wiring and paired player/weapon acceptance remain next.
+
 ## 1. Finish the input/player caller contract
 
 - The damage companion graph assigned by `$E662` is now translated through

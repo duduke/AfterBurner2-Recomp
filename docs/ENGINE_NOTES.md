@@ -1626,6 +1626,11 @@ on this host; its source/test definitions are updated but not executed.
 
 ## Phase 3d continuation: comparator IRQ caller and input endpoints
 
+Delivery checkpoint: [PR #12](https://github.com/duduke/AfterBurner2-Recomp/pull/12),
+implementation commit `e2f973b`. The user explicitly authorized pushing and
+merging this checkpoint before Phase 3d completion. Host scheduling and paired
+player/weapon acceptance remain pending.
+
 `main_compare_interrupt` in `engine/omainadc.cpp` translates the observable
 `$01461C..$01466A` caller: write D0.W to `$0E8012` to acknowledge IRQ,
 save the modified register contract, run `$014626`'s sampler/mux/conversion

@@ -340,6 +340,11 @@ companion checkpoint; the user authorized its merge before phase completion.
 Resume host acceptance in a new PR using the continuation plan. See the per-capture results
 and uncovered paths in `ENGINE_NOTES.md`.
 
+[PR #12](https://github.com/duduke/AfterBurner2-Recomp/pull/12) adds the combined
+comparator IRQ caller and physical input endpoint checks. The user authorized
+its push and merge before phase completion; host scheduling and paired
+player/weapon acceptance remain pending.
+
 - [x] Object initializer and dispatch loop: 254 × 64-byte records from
       `$A000` to `$DF40` (preceded by the `$9FC0` sentinel), runtime templates,
       live active/handler reads and register contracts. Oracle-verified;
