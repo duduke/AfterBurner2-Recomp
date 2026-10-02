@@ -14,7 +14,7 @@ root = Path("build/oracle/mutations")
 root.mkdir(parents=True, exist_ok=True)
 common = ["src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp",
           "src/main/roms.cpp", "src/main/romloader.cpp"]
-handlers = common + ["src/main/engine/omainhost.cpp", "src/main/engine/omainobjects.cpp", "src/main/engine/omaininput.cpp", "src/main/engine/omainplayer.cpp",
+handlers = common + ["src/main/engine/omainsprites.cpp", "src/main/engine/omainhost.cpp", "src/main/engine/omainobjects.cpp", "src/main/engine/omaininput.cpp", "src/main/engine/omainplayer.cpp",
                      "src/main/engine/omainworld.cpp", "src/main/engine/omainweapons.cpp", "src/main/engine/omainsound.cpp",
                      "src/main/engine/omaindamage.cpp", "src/main/engine/omainsequence.cpp"]
 def handler_dependencies(source):
@@ -138,6 +138,21 @@ for name,old,new in [
 cases.append(("servicemask","src/main/engine/omainirqservice.hpp",
               "return level>((sr>>8)&7)","return level!=0",
               "tests/oracle_irq_service.cpp","service_directed",service_dependencies+["src/main/engine/omainirqservice.cpp"]))
+
+# Natural IRQ, linked output and continuous-ring acceptance sensitivity.
+acceptance = handlers + ["src/main/engine/omainadc.cpp", "src/main/engine/omainframe.cpp", "src/main/engine/omainpalette.cpp", "src/main/engine/oscenery.cpp"]
+video = common + ["src/main/engine/omainsprites.cpp", "src/main/engine/osubsprites.cpp"] + ["src/main/hwvideo/"+p+".cpp" for p in ["hwroad", "hwsprites", "hwtiles", "hwpalette", "screen"]]
+for name,source,old,new,test,capture,deps in [
+    ("drawendmarker", "src/main/engine/mainbus.cpp", "m.bytes[SPRITE]=0xff;m.bytes[SPRITE+1]=0xff", "m.bytes[SPRITE]=0;m.bytes[SPRITE+1]=0", "tests/oracle_frame_host.cpp", "paired_frame", acceptance),
+    ("framewordorder", "src/main/engine/omainframe.cpp", "b.write16(0x3f8814,value);b.write16(0x3f8812,value>>16)", "b.write16(0x3f8812,value>>16);b.write16(0x3f8814,value)", "tests/oracle_frame_host.cpp", "paired_frame", acceptance),
+    ("publicationregister", "src/main/engine/omainsprites.cpp", "r.a[0]=b.read32(0x2a3c0c)", "r.a[0]=b.read32(0x2a3c0c)+2", "tests/oracle_host_objects.cpp", "host_objects", handlers),
+    ("interleavedsample", "src/main/engine/omainadc.cpp", "if (d1 >= 6) d1 = 0", "if (d1 >= 5) d1 = 0", "tests/oracle_host_interleave.cpp", "host_prefix", acceptance),
+    ("pairedproducer", "src/main/engine/omainplayer.cpp", "b.write8(r.a[0],b.read8(r.a[5]+20))", "b.write8(r.a[0],b.read8(r.a[5]+21))", "tests/oracle_host_interleave.cpp", "paired_objects", acceptance),
+    ("pairedblit", "src/main/engine/omainsprites.cpp", "(interpolated?0xc00:0)", "(interpolated?0xc10:0)", "tests/oracle_video.cpp", "paired", video),
+    ("pairedframe", "src/main/engine/omainsprites.cpp", "(interpolated?0xc00:0)", "(interpolated?0xc10:0)", "tests/oracle_frame_host.cpp", "paired_frame", acceptance),
+    ("streamsounds", "src/main/engine/omainsound.cpp", "b.write8(0xffff8906,b.read8(0xffff8906)-1)", "b.write8(0xffff8906,b.read8(0xffff8906)-2)", "tests/oracle_sound_stream.cpp", "paired_sound", ["src/main/engine/omainsound.cpp", "src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp"]),
+]:
+    cases.append((name,source,old,new,test,capture,[p for p in deps if p!=source]))
 
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 if len(sys.argv)>1:

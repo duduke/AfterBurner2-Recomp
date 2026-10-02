@@ -40,6 +40,7 @@ uint32_t MainBus::memory_offset(uint32_t addr)
 
 uint16_t MainBus::read_word(uint32_t a, uint16_t mask)
 {
+    if (trace && trace->before_access) trace->before_access(false, a, mask);
     uint16_t value = 0xffff;
     const uint32_t o = memory_offset(a);
     if (o != UNMAPPED)
@@ -73,6 +74,7 @@ uint16_t MainBus::read_word(uint32_t a, uint16_t mask)
 
 void MainBus::write_word(uint32_t a, uint16_t data, uint16_t mask)
 {
+    if (trace && trace->before_access) trace->before_access(true, a, mask);
     const uint32_t o = memory_offset(a);
     if (o != UNMAPPED)
     {
@@ -107,6 +109,9 @@ void MainBus::write_word(uint32_t a, uint16_t data, uint16_t mask)
     else if (a >= 0x110000 && a < 0x120000)
     {
         std::swap_ranges(m.bytes.begin() + SPRITE, m.bytes.begin() + PALETTE, m.sprite_buffer.begin());
+        // sega_16bit_sprite_device::draw_write: after exchanging the RAM
+        // halves, the CPU-visible first word is forced to the end marker.
+        m.bytes[SPRITE]=0xff;m.bytes[SPRITE+1]=0xff;
         if (endpoints.sprite_draw) endpoints.sprite_draw();
     }
     else if (a >= 0x130000 && a < 0x140000)
@@ -128,7 +133,7 @@ uint8_t MainBus::read8(uint32_t addr)
     return static_cast<uint8_t>(a & 1 ? w : w >> 8);
 }
 uint16_t MainBus::read16(uint32_t addr) { return read_word((addr & MASK) & ~1u, 0xffff); }
-uint32_t MainBus::read32(uint32_t addr) { return (uint32_t(read16(addr)) << 16) | read16(addr + 2); }
+uint32_t MainBus::read32(uint32_t addr) { const auto high=read16(addr);return (uint32_t(high)<<16)|read16(addr+2); }
 void MainBus::write8(uint32_t addr, uint8_t data)
 {
     const uint32_t a = addr & MASK;

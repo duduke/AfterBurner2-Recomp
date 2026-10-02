@@ -33,6 +33,9 @@ public:
         // One transaction per bus access, including byte-lane mask. Useful
         // for comparing I/O side effects as well as final RAM write sets.
         std::function<void(bool, uint32_t, uint16_t, uint16_t)> access;
+        // An externally established CPU boundary may service an IRQ before
+        // the next operand access. This supplies no invented CPU timing.
+        std::function<void(bool, uint32_t, uint16_t)> before_access{};
     };
     struct Endpoints
     {

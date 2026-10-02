@@ -92,8 +92,8 @@ int main()
     unsigned swaps=0;
     bus.endpoints.sprite_draw=[&]{ ++swaps; };
     bus.write16(0x100000,0x4444); bus.write8(0x11ffff,0);
-    CHECK(bus.read16(0x100000)==0 && memory.sprite_buffer[0]==0x44 && swaps==1);
-    bus.write16(0x110000,0); CHECK(bus.read16(0x100000)==0x4444 && swaps==2);
+    CHECK(bus.read16(0x100000)==0xffff && memory.sprite_buffer[0]==0x44 && swaps==1);
+    bus.write16(0x110000,0); CHECK(bus.read16(0x100000)==0xffff && swaps==2 && memory.sprite_buffer[0]==0xff);
     bus.write16(0x2ec000,0x5555); CHECK(bus.read16(0x2ee000)==0xffff);
     CHECK(bus.sub.read16(0xec000)==0 && memory.road_buffer[0]==0x55);
     bus.sub.read16(0xee000); CHECK(bus.read16(0x2ec000)==0x5555);
@@ -108,5 +108,12 @@ int main()
     bus.write8(0xffff8891,0x99); CHECK(writes[0x891] && !writes[0x890]);
     bus.read8(0xffff8890); CHECK(reads[0x890] && !reads[0x891]);
     CHECK(accesses==2);
+    trace.before_access=[&](bool writing,uint32_t a,uint16_t mask) {
+        if(!writing && a==0x3f8890 && mask==0xffff) {
+            // A pending IRQ must change the operand before it is sampled.
+            bus.trace=nullptr;bus.write16(a,0x1234);bus.trace=&trace;
+        }
+    };
+    CHECK(bus.read16(0x3f8890)==0x1234);
     std::cout << "Main bus/chip regression checks passed\n";
 }

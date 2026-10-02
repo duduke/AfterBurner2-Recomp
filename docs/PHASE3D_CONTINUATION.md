@@ -40,11 +40,20 @@ uses the retained native Stage 1 host. Phase 3d remains incomplete.
 
 Start the next continuation from updated `main` on a new `codex/` branch.
 
-Next: establish the live `$B676` register/wait publication contract and the
-remaining explicit external caller boundaries listed in `ENGINE_NOTES.md`;
-then compose IRQ/input, VBLANK/reload and sound producers at their actual
-boundaries and prove paired player/weapon/sub/video acceptance. Keep the
-unknown caller transcripts labelled as inputs until independently ported.
+The `codex/phase3d-irq-acceptance` checkpoint now establishes `$B676` ready
+A0/publication behavior and a named wait/yield contract, and composes natural
+IRQ2, VBLANK and sound callers with paired computed requests/video. See
+"Conditional natural IRQ and paired acceptance" in `ENGINE_NOTES.md` for
+counts, capture exclusions and supplied inputs. It does not independently
+progress the publication wait or schedule the main instruction stream.
+
+Next: resolve all seven IRQ4-overlapped/shared-input dispatcher races, the
+86 VBLANK read-input races, and the excluded `$B684` publication window.
+Establish independent caller/operand timing and publication progress, port
+the remaining explicit external caller boundaries, and pair the road raster
+and compositor inputs before replacing the native host. Keep unknown caller
+transcripts labelled as inputs until independently ported. Phase 3d remains
+incomplete; do not merge this checkpoint without user authorization.
 
 ## 1. Finish the input/player caller contract
 

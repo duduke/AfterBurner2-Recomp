@@ -96,8 +96,10 @@ the decoder needs extending; in a data table it's expected.
 **Picking the next task**: Phase 3c is complete; 3d foundations are verified,
 but 3d is not complete. Input, live-player, projectile and selected enemy
 handlers now have independent checks. The directed host-composition checkpoint
-PR #14 is merged; resume at the live `$B676` register/wait publication contract
-and remaining caller boundaries. Continue host acceptance in
+PR #14 is merged. Natural IRQ2 interleaving and conditional paired
+player/weapon/video/sound acceptance now pass at supplied caller boundaries.
+Resume at IRQ4/shared-input timing, independent host scheduling and remaining
+caller boundaries; native Stage 1 remains active. Continue host acceptance in
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md), following
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
@@ -337,8 +339,8 @@ Implementation plan: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 Continuation: [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
 Independent input, live-flight, compound-part, projectile, reload/HUD, world
 effect and enemy-missile routine checks now pass. Host wiring, remaining
-stage/credit caller boundaries, sound cadence and paired player/weapon video acceptance
-remain incomplete. [PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11)
+stage/credit caller boundaries and independent sound/input scheduling
+remain incomplete; conditional paired acceptance is recorded below. [PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11)
 delivers the remaining independent handler graphs after PR #10's damage
 companion checkpoint; the user authorized its merge before phase completion.
 Resume host acceptance in a new PR using the continuation plan. See the per-capture results
@@ -379,8 +381,9 @@ player/weapon acceptance remain pending.
 
 [PR #14](https://github.com/duduke/AfterBurner2-Recomp/pull/14) is the user-authorized
 merged host-composition checkpoint (`363bce4`, merge `a8849a4`). Continue
-from updated `main` on a new `codex/` branch; the live `$B676` publication
-caller, IRQ interleaving, sound cadence and paired acceptance remain next.
+from updated `main` on a new `codex/` branch. The subsequent conditional
+acceptance checkpoint establishes `$B676` ready/register/yield behavior and
+IRQ2 composition; independent publication progress and IRQ4 timing remain.
 
 - [x] Directed host object composition: common explicit entry router plus
       live dispatcher/handler register and ordered-write checks match 480/480
@@ -389,6 +392,16 @@ caller, IRQ interleaving, sound cadence and paired acceptance remain next.
       fixture and explicit unported caller transcripts do not establish natural
       cadence, IRQ interleaving or paired gameplay/video acceptance. `OEngine`
       retains its native producers; Phase 3d remains incomplete.
+- [x] Conditional natural IRQ2 and paired acceptance checkpoint: 120/120 early
+      dispatcher prefixes and 116/123 later prefixes identical; 7 sub-input
+      races skipped, including every IRQ4-overlapped prefix. VBLANK composition
+      matches 160/246 windows with 86 input races skipped. Computed requests,
+      five road targets, sub size tables, both sprite lists/draw triggers and
+      RGB match 226/240 paired frames; 14 raced-producer frames skipped.
+      Continuous sound matches 1,259/1,259 calls and 256 latch writes without
+      per-call ring resets. Eight mutations rejected. IRQ positions, ADC results,
+      unknown callers and specified sub/compositor inputs remain supplied.
+      Independent scheduling, IRQ4 acceptance and native host retirement remain.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,

@@ -5,6 +5,7 @@
 #include "engine/omainsequence.hpp"
 #include "engine/omainweapons.hpp"
 #include "engine/omainworld.hpp"
+#include "engine/omainsprites.hpp"
 #include <algorithm>
 #include <initializer_list>
 #include <stdexcept>
@@ -20,6 +21,15 @@ bool OMainHost::execute(MainBus& bus, Registers& r, uint32_t entry, const Call& 
     // branch labels are owned by each port; unknown game-flow entries cannot
     // be silently treated as a handler or replaced with native behaviour.
     if(entry==0xb628) OMainPlayer::append(bus,r);
+    else if(entry==0xb676) {
+        // $00B676 BGT yields at the actual wait; never replay publication.
+        // A supplied boundary may service the pending interrupt, then retry.
+        if(!OMainSprites::publish(bus,r)) {
+            if(!boundary) throw std::runtime_error("main sprite publication waiting for IRQ");
+            boundary(entry,r);
+            if(!OMainSprites::publish(bus,r)) throw std::runtime_error("main sprite publication still waiting for IRQ");
+        }
+    }
     else if(entry==0xb0ac) OMainInput::update(bus,r);
     else if(entry==0x14976) OMainInput::buttons(bus,r);
     else if(contains(entry,{

@@ -160,3 +160,26 @@ unported caller outputs as external inputs. It isolates composition; natural
 host cadence, IRQ interleaving, sound delivery and paired player/weapon/video
 acceptance remain pending. `OEngine`, native Stage 1 rules and its adapter
 remain in use; Phase 3d is incomplete.
+
+
+The conditional natural IRQ and paired acceptance checkpoint adds 120/120
+identical early dispatcher prefixes (324 IRQ2 services) and 116/123 later
+prefixes (381 IRQ2 services in accepted windows, seven sub-input races).
+All seven IRQ4-overlapped prefixes are raced and remain unverified. Composed
+VBLANK matches 160/246 windows with 86 actual read-input races skipped.
+Computed player/weapon requests and road targets feed the sub sprite port;
+both hardware lists/draw triggers and RGB match 226/240 paired frames
+(113 normal, 113 interpolated; 14 raced-producer frames skipped).
+A continuous ring matches 1,259/1,259 sound calls and 256 latch writes with
+zero external ring writes. Eight mutations fail. `$B676` now executes in the
+host router, including its ready A0 contract and named wait/yield boundary.
+
+These checks supply captured IRQ frontiers/registers, ADC results, unported
+callers, sub size/blit/mutex operands and hidden renderer feedback. Sound
+caller timestamps and road/tile/palette compositor inputs remain supplied.
+They establish conditional composition, not independently scheduled gameplay
+or waveform equality. Native `OLevelObjs`, controls, adapter and sound cues
+remain active in `OEngine`; Phase 3d is incomplete. The next work is IRQ4
+and shared-input timing, independently progressed publication waits/callers,
+road-raster pairing and remaining stage/credit boundaries. Detailed evidence
+and commands are in `ENGINE_NOTES.md`.
