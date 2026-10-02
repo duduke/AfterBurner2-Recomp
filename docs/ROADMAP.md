@@ -359,6 +359,11 @@ player/weapon acceptance remain pending.
       consumer checked together against MAME, including 946 sound-latch writes
       across ordinary and endpoint runs. All three mutations fail. Bus timestamps
       are supplied by the capture; independent host scheduling remains unverified.
+- [x] Physical board timeline: independently generated scanline/EXCK/VBLANK
+      and ADC deadlines match 669,845/669,845 ordinary, endpoint and directed
+      MAME probe events, 0 skipped; three mutations fail. CPU transaction times
+      remain supplied by MAME. CPU service latency and `OEngine` wiring are
+      still pending; this does not complete the input or paired acceptance items.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,

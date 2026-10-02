@@ -1694,3 +1694,75 @@ Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
 `make oracle-test` and a 180-frame headless launch pass. Existing capture
 results do not regress; Stage 1 audio RMS remains 903.949. CMake definitions
 are updated, but CMake remains unavailable on this host.
+
+
+## Phase 3d continuation: independently generated board timeline
+
+`hwmath/xboard_timeline.hpp` implements the physical scheduling in MAME's
+`segaxbd_state::scanline_tick`, `device_reset`, `update_main_irqs` and screen
+configuration. Pixel clock is 50 MHz / 8; 400 pixels make a 64,000 ns line,
+262 lines make a 16,768,000 ns frame (about 59.637 Hz). The board clocks only
+the **main** 315-5250 EXCK with scanline bit zero, asserts both CPUs' VBLANK
+on line 223 and clears it on line 224. The main pending level is 2 for timer,
+4 for VBLANK and 6 for both; sub VBLANK is level 4. This model generates
+both rising and falling clock levels, rather than replaying captured edges.
+
+The fresh MAME screen begins at line 224. Board reset arms line zero at
+2,432,000 ns, so the first EXCK rise is at 2,496,000 ns. The capture's phase
+header is checked against this independently configured reset phase; it is
+never supplied to the scheduler. ADC0804 completion is advanced at its own
+59,200 ns deadline, in chronological order with raster events. Analog inputs
+and mux changes after completion cannot change an already latched result.
+
+A MAME capture exposed a same-timestamp ordering contract: the frame notifier
+at line 224 runs **before** the scanline callback clears VBLANK. The timeline
+has `advance_before` for this external input boundary and `advance` for
+inclusive hardware delivery. A ROM-free check verifies this split, large
+versus small time advances, ADC sampling and combined IRQ levels.
+
+`AB2_ORACLE_BOARD=1` extends the existing ADC timeline as `AB2BRD01`, with
+one observed VBLANK byte per event and probes one nanosecond after every
+scanline. `tests/oracle_board.cpp` computes the hardware events from reset;
+CPU bus transactions, their timestamps and external analog changes remain
+inputs. It compares ADC reads, timer IRQ, mux and VBLANK at every record.
+This MAME build exposes board IRQ/VBLANK save items but no timer/ADC device
+save items: internal counter, EXCK and INTR are not independently observed.
+The original IRQ oracle now uses the same timeline and still matches all
+7,058/7,058 calls and 45,176/45,176 events, 0 skipped, 946 latch writes.
+
+| Capture | Identical / captured | Skipped | Scanline probes | ADC completions |
+| --- | ---: | ---: | ---: | ---: |
+| `board` | 251,292 / 251,292 | 0 | 235,762 | 3,529 |
+| `board_endpoints` | 251,292 / 251,292 | 0 | 235,762 | 3,529 |
+| `board_directed` | 167,261 / 167,261 | 0 | 157,162 | 2,322 |
+
+Combined: **669,845/669,845 identical, zero differences, zero skips**,
+628,686 scanline probes and 72 simultaneous timer/VBLANK assertions.
+Captures end at the final frame notifier, before that frame's VBLANK clear;
+there are 2,400 assertions and 2,397 clears. Directed ADC cases cover busy
+writes and mux changes around conversion completion. Endpoint inputs retain
+the previous physical-axis/button fixture. Three temporary mutations fail:
+a 1 ns error in the line increment causes 208,297 differing events; moving
+VBLANK to line 222 causes 900; delivering the frame-notifier edge inclusively
+causes 900. Unmodified sources pass.
+
+Commands: `make oracle-capture-board`, `make oracle-board` (included in
+`make oracle-test`), and `python3 tools/oracle/mutation_check.py boardclock
+boardblank boardorder`. Sources, Make and CMake definitions are updated;
+ROMs, probes and capture files remain ignored.
+
+**Limit:** this establishes an independent physical board clock, not an
+independently executed CPU host. CPU transaction timestamps, interrupt entry
+latency, masked/nested IRQ service, exception cycles and the ordering of an ADC
+completion exactly coincident with a raster callback remain unverified.
+`OEngine` still advances its retained native Stage 1 host on fixed display
+steps and does not use this timeline. Do not silently change its refresh or
+wire handlers at invented cycle offsets. Next: establish the actual CPU
+service/bus-time contract, then connect the verified ADC/IRQ and object
+callers and complete paired player/weapon, sound-producer and rendered-RGB
+acceptance. Phase 3d remains incomplete.
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the full
+`make oracle-test` and a 180-frame dummy-driver launch pass. Existing oracles
+have zero new differences; Stage 1 audio RMS remains 903.949. CMake is not
+installed on this host, so its updated targets were not executed.

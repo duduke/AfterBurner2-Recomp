@@ -81,3 +81,9 @@ The user authorized merging the remaining handler-graph checkpoint,
 [PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11), before host
 acceptance. Continue that acceptance in a separate PR; do not retire the
 native object adapter or mark Phase 3d complete based on this checkpoint.
+
+The board timing continuation adds an independently generated scanline,
+EXCK/VBLANK and ADC timeline, with 669,845/669,845 MAME probe events identical
+and three mutations rejected. CPU bus timestamps are still external inputs;
+CPU service latency, gameplay wiring and paired acceptance remain pending.
+See the continuation plan's board-timeline entry before changing `OEngine`.

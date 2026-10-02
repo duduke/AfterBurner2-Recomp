@@ -56,6 +56,15 @@ scheduling, object wiring and paired player/weapon acceptance remain next.
   0 skipped. Three deliberate mutations fail. The oracle supplies MAME bus
   timestamps and entry work RAM; this does not establish an independently
   scheduled host or the producers' cadence. Ports remain unwired.
+- The physical board timeline now independently generates 64 us scanlines,
+  main EXCK and the line-223/224 VBLANK pulse from reset, with chronological
+  ADC completion. Ordinary, endpoint and directed probes match
+  669,845/669,845 events, 0 skipped; three schedule mutations fail. Frame
+  notifier ordering at line 224 is explicitly checked. CPU bus timestamps
+  remain external inputs; this does not establish CPU IRQ service latency.
+  `OEngine` remains unwired. Establish the CPU service/bus-time contract
+  before replacing its display-step host; see the new `ENGINE_NOTES.md`
+  board-timeline section and `make oracle-capture-board`.
 - `OMainDamage` now independently checks `$E662`, intact/breakup
   `$E8D0/$E94E` states 0..6, fuselage `$F640`, and their projection/frame,
   trajectory, debris and attitude callees: 1,792/1,792 directed calls and

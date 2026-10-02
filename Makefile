@@ -53,6 +53,9 @@ test:
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/mainbus_regression.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o build/mainbus_regression
 	./build/mainbus_regression
 
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/xboard_timeline_regression.cpp -o build/xboard_timeline_regression
+	./build/xboard_timeline_regression
+
 .PHONY: test
 
 # Optional visual check; requires the user's ROMs in roms/.
@@ -208,7 +211,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-handlers oracle-mainirq
+oracle-test: oracle-handlers oracle-mainirq oracle-board
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -289,3 +292,19 @@ oracle-capture-refuel-parts:
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_HANDLER_DELAY=0 AB2_ORACLE_HANDLERS=161b8,163c2,163ec,1641c,164da,169d8 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/refuel_parts_directed.bin 384 90
 
 .PHONY: oracle-capture-refuel-parts
+
+# Physical scanline/ADC timeline: reset phase is asserted, edges are generated.
+oracle-capture-board:
+	@mkdir -p build/oracle
+	AB2_ORACLE_BOARD=1 tools/oracle/capture.sh tools/oracle/capture_adc_timing.lua build/oracle/board.bin 900 45
+	AB2_ORACLE_BOARD=1 AB2_ORACLE_INPUT_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_adc_timing.lua build/oracle/board_endpoints.bin 900 45
+	AB2_ORACLE_BOARD=1 AB2_ORACLE_ADC_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_adc_timing.lua build/oracle/board_directed.bin 600 45
+
+oracle-board:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_board.cpp -o build/oracle_board
+	./build/oracle_board build/oracle/board.bin
+	./build/oracle_board build/oracle/board_endpoints.bin
+	./build/oracle_board build/oracle/board_directed.bin
+
+.PHONY: oracle-board oracle-capture-board

@@ -130,3 +130,11 @@ calls and 45,176/45,176 events identical, including 946 sound-latch writes,
 720/720 calls. This test supplies MAME bus timestamps and entry work RAM;
 it does not independently schedule host IRQs or produce the sound ring from
 ported gameplay. `OEngine` still runs native Stage 1 objects and sound cues.
+
+The board-timeline continuation independently generates physical EXCK,
+VBLANK and ADC deadlines from reset; 669,845/669,845 MAME probe events match,
+0 skipped, and three mutations fail. Its frame period is 16.768 ms, derived
+from the hardware clock. CPU transaction timestamps remain capture inputs;
+CPU IRQ service latency is not established. `OEngine` retains its native
+display-step scheduling until that contract and paired acceptance pass.
+This checkpoint does not replace native controls, objects or sound cues.

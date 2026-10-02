@@ -103,6 +103,16 @@ for name,source,old,new,extra in [
 ]:
     cases.append((name,source,old,new,"tests/oracle_mainirq.cpp","mainirq_endpoints",irq_common+extra))
 
+# Physical board schedule: reject incorrect line clock, VBLANK edge and
+# ordering of the frame notifier relative to a coincident raster edge.
+for name,old,new in [
+    ("boardclock", "next_line += LINE_NS", "next_line += LINE_NS + 1"),
+    ("boardblank", "if (line == 223) blank = true", "if (line == 222) blank = true"),
+    ("boardorder", "advance_to(ns, false)", "advance_to(ns, true)"),
+]:
+    cases.append((name,"src/main/hwmath/xboard_timeline.hpp",old,new,
+                  "tests/oracle_board.cpp","board_endpoints",[]))
+
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}
