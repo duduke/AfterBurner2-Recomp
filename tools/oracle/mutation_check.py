@@ -14,7 +14,7 @@ root = Path("build/oracle/mutations")
 root.mkdir(parents=True, exist_ok=True)
 common = ["src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp",
           "src/main/roms.cpp", "src/main/romloader.cpp"]
-handlers = common + ["src/main/engine/omainobjects.cpp", "src/main/engine/omaininput.cpp", "src/main/engine/omainplayer.cpp",
+handlers = common + ["src/main/engine/omainhost.cpp", "src/main/engine/omainobjects.cpp", "src/main/engine/omaininput.cpp", "src/main/engine/omainplayer.cpp",
                      "src/main/engine/omainworld.cpp", "src/main/engine/omainweapons.cpp", "src/main/engine/omainsound.cpp",
                      "src/main/engine/omaindamage.cpp", "src/main/engine/omainsequence.cpp"]
 def handler_dependencies(source):
@@ -66,6 +66,16 @@ cases = [
      "s(bus.read16(a0)) < 0x1d", "tests/oracle_subsprites.cpp", "subsprites_directed",
      ["src/main/engine/subbus.cpp", "src/main/roms.cpp", "src/main/romloader.cpp"]),
 ]
+# Host composition must reject transcript replay of verified entries too.
+for name,source,old,new,capture,test in [
+    ("hostreplay", "omainhost", "call(bus,state,entry,boundary)", "boundary(entry,state)", "host_objects", "tests/oracle_host_objects.cpp"),
+    ("hostindicator", "omainhost", "OMainWeapons::indicator_initialize(bus,r)", "OMainWeapons::initialize(bus,r)", "host_entries_directed", "tests/oracle_handlers.cpp"),
+    ("hostappend", "omainhost", "OMainPlayer::append(bus,r)", "OMainPlayer::shadow_update(bus,r)", "host_objects", "tests/oracle_host_objects.cpp"),
+    ("hostregisters", "omainhost", "call(bus,state,entry,boundary);", "auto saved=state; call(bus,state,entry,boundary); state=saved;", "host_objects", "tests/oracle_host_objects.cpp"),
+]:
+    source="src/main/engine/"+source+".cpp"
+    cases.append((name,source,old,new,test,capture,handler_dependencies(source)))
+
 cases.append(('missilelaunch', 'src/main/engine/omainweapons.cpp', 'if(s(b.read16(p+62))>=8)', 'if(s(b.read16(p+62))>=9)', "tests/oracle_handlers.cpp", 'missiles_directed', handler_dependencies('src/main/engine/omainweapons.cpp')))
 cases.append(('missileguidance', 'src/main/engine/omainweapons.cpp', 'r.a[0]=0x34018; r.a[1]=0x34098', 'r.a[0]=0x34019; r.a[1]=0x34098', "tests/oracle_handlers.cpp", 'missiles_directed', handler_dependencies('src/main/engine/omainweapons.cpp')))
 cases.append(('missilehit', 'src/main/engine/omainweapons.cpp', 'b.write8(r.a[4]+22,b.read8(r.a[4]+22)|2)', 'b.write8(r.a[4]+22,b.read8(r.a[4]+22)|4)', "tests/oracle_handlers.cpp", 'projectiles_directed', handler_dependencies('src/main/engine/omainweapons.cpp')))

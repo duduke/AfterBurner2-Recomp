@@ -1,17 +1,20 @@
 -- Phase 3d dispatcher/initializer and compound initialization capture.
 -- AB2OBJ01: header index/frame/entry, before/after 15 registers, RAM,
 -- own/other write sets, own I/O, callback boundaries (registers and writes).
--- Callback writes are external inputs, never credited to the dispatcher.
+-- Callback writes are external inputs in AB2OBJ01. The host AB2OBJ02
+-- replay executes verified handlers and checks their complete call outputs.
 local main=manager.machine.devices[":mainpcb:maincpu"]
 local sub=manager.machine.devices[":mainpcb:subcpu"]
 local space,subspace=main.spaces.program,sub.spaces.program
 local pc=main.state.CURPC
 local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"))
-out:write("AB2OBJ01")
+local host=os.getenv("AB2_ORACLE_HOST")=="1"
+out:write(host and "AB2OBJ02" or "AB2OBJ01")
 local calls=os.getenv("AB2_ORACLE_OBJECT_CALLS")=="1"
 local injected,restore_registers,restore_sr
 local leaves=os.getenv("AB2_ORACLE_OBJECT_LEAVES")=="1"
 local directed=os.getenv("AB2_ORACLE_OBJECT_DIRECTED")=="1"
+assert(not host or (not calls and not leaves and not directed),"host composition must use its own IPL7 fixture")
 local limit=tonumber(os.getenv("AB2_ORACLE_PASSES") or "120")
 if os.getenv("AB2_ORACLE_GAMEPLAY")=="1" then
  dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/gameplay.lua")
@@ -64,10 +67,27 @@ end
 local function packed(r)
  local p={};for _,v in ipairs(r) do p[#p+1]=u32(v) end;return table.concat(p)
 end
+-- Full chip and digital-input contract for executing handlers through the
+-- host router. Sub inputs remain captured; concurrent sub writes are races
+-- only when the composed port actually reads those bytes.
+local function math_state()
+ guard=true
+ local parts={}
+ for _,a in ipairs({0xe0000,0xe4000,0x2e0000,0x2e4000}) do
+  for i=0,7 do parts[#parts+1]=u32(space:read_u16(a+i*2)) end
+ end
+ guard=false
+ return table.concat(parts)
+end
+local function io_input()
+ guard=true;local v=space:read_u8(0x150001);guard=false;return u32(v)
+end
+local math_pre
 local function finish_hook()
- if hook then hook.post=registers();hooks[#hooks+1]=hook;hook=nil end
+ if hook then hook.post=registers();if host then hook.math_post=math_state() end;hooks[#hooks+1]=hook;hook=nil end
 end
 local function begin(e)
+ if host then assert(main.state.SR.value&0x700==0x700,"host fixture must execute the IPL7 instruction") end
  if e==0x1488e or e==0x16892 or (e==0x14594 and directed) then
   saved_sr=main.state.SR.value; main.state.SR.value=saved_sr|0x700
  end
@@ -98,7 +118,7 @@ local function begin(e)
   end
   guard=false
  end
- before=snapshot();entry=e;pre=registers();written,other,events,hooks={},{},{},{}
+ before=snapshot();entry=e;pre=registers();if host then math_pre=math_state() end;written,other,events,hooks={},{},{},{}
 end
 local function finish(a,data,mask)
  finish_hook()
@@ -110,13 +130,15 @@ local function finish(a,data,mask)
  end
  local p={u32(#hooks)}
  for _,h in ipairs(hooks) do
-  p[#p+1]=u32(h.entry)..packed(h.pre)..packed(h.post)..u32(#h.writes)..table.concat(h.writes)
+  p[#p+1]=u32(h.entry)..packed(h.pre)..packed(h.post)
+  if host then p[#p+1]=h.io..h.math_pre..h.math_post end
+  p[#p+1]=u32(#h.writes)..table.concat(h.writes)
  end
  out:write(u32(records),u32(frame),u32(entry),packed(pre),packed(registers()),
-  before,after,offsets(written),offsets(other),u32(#events),table.concat(events),table.concat(p))
+  (host and math_pre or ""),before,after,offsets(written),offsets(other),u32(#events),table.concat(events),table.concat(p))
  before=nil;records=records+1
  if saved_sr then main.state.SR.value=(main.state.SR.value&~0x700)|(saved_sr&0x700);saved_sr=nil end
- if injected then
+ if injected and not host then
   for i=0,7 do main.state["D"..i].value=restore_registers[i+1] end
   for i=0,6 do main.state["A"..i].value=restore_registers[i+9] end
   main.state.SR.value=restore_sr;injected=nil
@@ -129,12 +151,23 @@ object_frames=emu.add_machine_frame_notifier(function() frame=frame+1 end)
 object_start=space:install_read_tap(0x1c176,0x1c177,"object_start",function(a,data,mask)
  if guard or before then return end
  if leaves then return end
- if pc.value==0x14898 then begin(0x1488e)
- elseif pc.value==0x14594 and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then begin(0x14594) end
+ if pc.value==0x14898 and not host then begin(0x1488e)
+ elseif pc.value==0x14594 and (not host or injected) and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then begin(0x14594) end
 end)
 object_reads=space:install_read_tap(0,0x3fffff,"object_reads",function(a,data,mask)
  if guard then return end
  local p=pc.value
+ -- The dispatcher is a main-loop range, not an RTS routine. Its final
+ -- branch back to $1458A is outside the captured range; substitute RTS
+ -- only for this directed fixture so it returns to the synthesized caller.
+ if host and injected and a==0x145b8 then data=0x4e75 end
+ if host and injected and p==0x3ffd0a then
+  -- RTS has returned from the dispatcher. The following real MOVE to SR
+  -- restores the mask/mode; restore only the interrupted data registers.
+  for i=0,7 do main.state["D"..i].value=restore_registers[i+1] end
+  for i=0,6 do main.state["A"..i].value=restore_registers[i+9] end
+  injected=nil
+ end
  if not before and leaves and (not calls or injected) and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") and (p==0x16976 or p==0x169b8 or p==0xc5a8 or p==0xb7f8 or p==0xb840 or p==0xb84c) then
   begin(p==0x169b8 and 0x169b2 or p)
   guard=true;data=space:read_u16(a);guard=false
@@ -146,6 +179,7 @@ object_reads=space:install_read_tap(0,0x3fffff,"object_reads",function(a,data,ma
    local r=registers();local target=space:read_u32((r[14]+16)&0x3fffff)
    r[9]=target -- A0 after MOVEA.L, before JSR.
    hook={entry=target,pre=r,writes={}};guard=false
+   if host then hook.io=io_input();hook.math_pre=math_state() end
   elseif p==0x145b2 then finish_hook() end
  elseif p==0x148b4 or p==0x16974 or p==0x169b0 or p==0x169d6 or p==0xc5ce or p==0xb834 or p==0xb83e or p==0xb87a or p==0xb884 then finish() end
  return data
@@ -154,14 +188,14 @@ object_writes=space:install_write_tap(0,0x3fffff,"object_writes",function(a,data
  if guard then return end
  local p=pc.value
  if not before then
-  if p==0x16892 and (not calls or injected) then begin(0x16892)
-  elseif not leaves and p==0x148a4 and offset(a)==0x2000 then begin(0x1488e)
-  elseif not leaves and p==0x14594 and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then begin(0x14594) end
+  if p==0x16892 and not host and (not calls or injected) then begin(0x16892)
+  elseif not host and not leaves and p==0x148a4 and offset(a)==0x2000 then begin(0x1488e)
+  elseif not leaves and p==0x14594 and (not host or injected) and frame>=tonumber(os.getenv("AB2_ORACLE_SKIP") or "0") then begin(0x14594) end
  end
  if not before then return end
  local o=offset(a)
  if o and o>=0x7e00 and o<0x8000 then return end
- if p>=0x1461c and p<=0x14816 and not hook then
+ if p>=0x1461c and p<=0x14816 and (host or not hook) then
   before=nil;hook=nil;dropped=dropped+1;if saved_sr then main.state.SR.value=(main.state.SR.value&~0x700)|(saved_sr&0x700);saved_sr=nil end;return
  end
  local own=(entry==0x1488e and p>=0x1488e and p<=0x148b4)
@@ -197,4 +231,24 @@ object_directed_calls=emu.add_machine_frame_notifier(function()
  main.state.A5.value=0xffffa300
  main.state.D0.value=0x1234007b;main.state.D1.value=0xabcd9876
  injected=target;main.state.PC.value=target
+end)
+
+-- Directed host composition: call the ROM dispatcher on live gameplay
+-- records with a real IPL7 instruction, then restore SR and resume the
+-- interrupted program. This isolates composition, not IRQ interleaving or
+-- independent host cadence. Never use the debugger SR setter as a mask.
+object_host_calls=emu.add_machine_frame_notifier(function()
+ if not host or before or injected or frame<540 or frame%2~=0 then return end
+ restore_registers=registers();restore_sr=main.state.SR.value
+ local saved_pc=main.state.PC.value
+ guard=true
+ space:write_u16(0x3ffd00,0x46fc);space:write_u16(0x3ffd02,0x2700) -- MOVE #$2700,SR
+ space:write_u16(0x3ffd04,0x4eb9);space:write_u32(0x3ffd06,0x14594) -- JSR dispatcher
+ space:write_u16(0x3ffd0a,0x46fc);space:write_u16(0x3ffd0c,restore_sr)
+ space:write_u16(0x3ffd0e,0x4ef9);space:write_u32(0x3ffd10,saved_pc) -- JMP resume
+ guard=false
+ -- Select supervisor privilege so MOVE to SR is legal; IPL changes only
+ -- when MAME executes the synthesized instruction above.
+ main.state.SR.value=restore_sr|0x2000
+ injected=0x14594;main.state.PC.value=0x3ffd00
 end)

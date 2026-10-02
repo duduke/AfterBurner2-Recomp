@@ -23,7 +23,7 @@ SRCS = \
 	src/main/engine/oengine.cpp
 
 # Verified road/scenery and shared bus; ADC awaits the flight/input port.
-SRCS += src/main/engine/omainirqservice.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
+SRCS += src/main/engine/omainhost.cpp src/main/engine/omainirqservice.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
@@ -88,6 +88,7 @@ oracle-capture:
 	$(MAKE) oracle-capture-mainirq
 	$(MAKE) oracle-capture-scenery
 	$(MAKE) oracle-capture-road-setup
+	$(MAKE) oracle-capture-host-objects
 
 # 3d foundations only; leaf and directed calls do not prove player gameplay.
 oracle-capture-objects:
@@ -141,8 +142,8 @@ oracle-capture-gameplay:
 
 
 # Independent handler execution, including chip state and ordered RAM writes.
-HANDLER_SRCS = src/main/engine/omainobjects.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS)
-HANDLER_CAPTURES = input input_gameplay input_directed input_endpoints buttons_endpoints player_init player player_directed player_parts player_parts_gameplay player_parts_directed reload reload_directed weapon_control weapon_control_directed world world_directed buttons buttons_directed projectiles projectiles_directed missiles missiles_directed effects_directed collision_directed enemy_weapons_directed enemy_parts_directed enemy_effects enemy_effects_gameplay damage_directed damage_gameplay companion_directed companion_gameplay sequence_directed sequence_gameplay enemy_tracking_directed enemy_tracking_gameplay world_graph_directed refuel_parts_directed
+HANDLER_SRCS = src/main/engine/omainhost.cpp src/main/engine/omainobjects.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS)
+HANDLER_CAPTURES = host_entries_directed input input_gameplay input_directed input_endpoints buttons_endpoints player_init player player_directed player_parts player_parts_gameplay player_parts_directed reload reload_directed weapon_control weapon_control_directed world world_directed buttons buttons_directed projectiles projectiles_directed missiles missiles_directed effects_directed collision_directed enemy_weapons_directed enemy_parts_directed enemy_effects enemy_effects_gameplay damage_directed damage_gameplay companion_directed companion_gameplay sequence_directed sequence_gameplay enemy_tracking_directed enemy_tracking_gameplay world_graph_directed refuel_parts_directed
 
 oracle-capture-handlers: oracle-capture-damage oracle-capture-companion oracle-capture-sequence oracle-capture-enemy-tracking oracle-capture-world-graph oracle-capture-refuel-parts
 	@mkdir -p build/oracle
@@ -211,7 +212,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-handlers oracle-mainirq oracle-board oracle-irq-service
+oracle-test: oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -324,3 +325,19 @@ oracle-irq-service:
 	./build/oracle_irq_service build/oracle/service_directed.bin
 
 .PHONY: oracle-irq-service oracle-capture-service
+
+# Directed IPL7 dispatcher + verified handlers on live gameplay records.
+# Unknown 3e callers remain external inputs; this is not natural host cadence.
+oracle-capture-host-objects:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_HANDLERS=9d34,b628 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/host_entries_directed.bin 128 45
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HOST=1 AB2_ORACLE_SKIP=540 tools/oracle/capture.sh tools/oracle/capture_objects.lua build/oracle/host_objects.bin 240 60
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INPUT_ENDPOINTS=1 AB2_ORACLE_HOST=1 AB2_ORACLE_SKIP=540 tools/oracle/capture.sh tools/oracle/capture_objects.lua build/oracle/host_objects_endpoints.bin 240 60
+
+oracle-host-objects:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_host_objects.cpp $(HANDLER_SRCS) -o build/oracle_host_objects
+	./build/oracle_host_objects build/oracle/host_objects.bin
+	./build/oracle_host_objects build/oracle/host_objects_endpoints.bin
+
+.PHONY: oracle-capture-host-objects oracle-host-objects

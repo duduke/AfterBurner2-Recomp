@@ -12,12 +12,7 @@
 #include <vector>
 #include "roms.hpp"
 #include "engine/omainobjects.hpp"
-#include "engine/omaininput.hpp"
-#include "engine/omainplayer.hpp"
-#include "engine/omaindamage.hpp"
-#include "engine/omainsequence.hpp"
-#include "engine/omainweapons.hpp"
-#include "engine/omainworld.hpp"
+#include "engine/omainhost.hpp"
 
 
 namespace
@@ -186,49 +181,8 @@ int main(int argc, char** argv) try
         uint32_t observed_terminal=0;
         bus.trace=&trace;
         try {
-        if(entry==0xb0ac) OMainInput::update(bus,r);
-        else if(entry==0x14976) OMainInput::buttons(bus,r);
-        else if((entry>=0xe662 && entry<=0xecac) || (entry>=0xf3e2 && entry<=0x10346)) OMainDamage::run(bus,r,entry);
-        else if((entry>=0x10348 && entry<=0x10ffe) || entry==0x161b8 || entry==0x163c2 || entry==0x163ec || entry==0x1641c || entry==0x164da || entry==0x169d8) OMainSequence::run(bus,r,entry);
-        else if(entry==0x9810) OMainPlayer::initialize(bus,r);
-        else if(entry==0x98c0) OMainPlayer::update(bus,r);
-        else if(entry==0x9c34) OMainPlayer::shadow_initialize(bus,r);
-        else if(entry==0x9c9e) OMainPlayer::shadow_update(bus,r);
-        else if(entry==0xae8c || entry==0xaee4 || entry==0xaf08) OMainPlayer::exhaust_initialize(bus,r,entry);
-        else if(entry==0xaf3c || entry==0xafcc || entry==0xb05c) OMainPlayer::exhaust_update(bus,r,entry);
-        else if(entry==0x1653a || entry==0x1656a || entry==0x16572 || entry==0x1657a) OMainPlayer::sequence_update(bus,r,entry);
-        else if(entry==0x1678e) OMainPlayer::sequence_project(bus,r);
-        else if(entry==0x16c8a) OMainWeapons::reload(bus,r);
-        else if(entry==0xcfc4) OMainWeapons::missile_hud(bus,r);
-        else if(entry==0xd062) OMainWeapons::decimal(r);
-        else if(entry==0x9d2c) OMainWeapons::initialize(bus,r);
-        else if(entry==0x9d56) OMainWeapons::update(bus,r);
-        else if(entry==0x9df8) OMainWeapons::missile_fire(bus,r);
-        else if(entry==0x9e50) OMainWeapons::vulcan_fire(bus,r);
-        else if(entry==0x9e82) OMainWeapons::missile_allocate(bus,r);
-        else if(entry==0x9ed8) OMainWeapons::vulcan_allocate(bus,r);
-        else if(entry==0x9f08 || entry==0x9f22 || entry==0x9f44 || entry==0x9f5e)
-            OMainWeapons::pool(bus,r,entry==0x9f44 || entry==0x9f5e,entry==0x9f08 || entry==0x9f44);
-        else if(entry==0x9626 || entry==0x964c) OMainPlayer::recover(bus,r,entry);
-        else if(entry==0x8946 || entry==0x8c1c || entry==0x9046 || entry==0x90ac || entry==0x9366 || entry==0x93a0 || entry==0x94b8)
-            OMainWorld::run(bus,r,entry,[](uint32_t target,OMainObjects::Registers&) { throw Boundary{target}; });
-        else if(entry==0x88c2) OMainWorld::initialize(bus,r);
-        else if(entry==0x8af2) OMainWorld::update(bus,r);
-        else if(entry==0x91c0) OMainWorld::explosion(bus,r);
-        else if(entry==0x8d44 || entry==0x8d58) OMainWorld::effect_initialize(bus,r,entry==0x8d44);
-        else if(entry==0x8e18 || entry==0x8ece) OMainWorld::effect_update(bus,r,entry==0x8e18);
-        else if(entry==0x8cc8) OMainWorld::player_collision(bus,r);
-        else if(entry==0x9556) OMainWorld::release(bus,r);
-        else if(entry==0x9f7c) OMainWeapons::missile_initialize(bus,r);
-        else if(entry==0xa030) OMainWeapons::vulcan_initialize(bus,r);
-        else if(entry==0xac4c) OMainWeapons::vulcan_update(bus,r);
-        else if(entry==0xae1c || entry==0xae2e || entry==0xae50) OMainWeapons::remove(bus,r,entry!=0xae50,entry==0xae1c);
-        else if(entry==0xa234 || entry==0xa382 || entry==0xa53a) OMainWeapons::missile_update(bus,r,entry);
-        else if(entry==0xa9f2) OMainWeapons::trail_allocate(bus,r);
-        else if(entry==0xaa32 || entry==0xaaee) OMainWeapons::trail(bus,r,entry==0xaa32);
-        else if(entry==0xae32) OMainWeapons::remove(bus,r,true,false,false);
-        else if(entry>=0x14dc4 && entry<=0x160a6) OMainWeapons::enemy(bus,r,entry);
-        else throw std::runtime_error("unknown handler entry");
+        if(!OMainHost::execute(bus,r,entry,[](uint32_t target,OMainObjects::Registers&) { throw Boundary{target}; }))
+            throw std::runtime_error("unknown handler entry");
         } catch(const Boundary& stop) { observed_terminal=stop.target; }
         bus.trace=nullptr;
         if(terminal) ++damage_paths[terminal==0xe542 ? "score-boundary-prefix" : "unknown-boundary-prefix"];

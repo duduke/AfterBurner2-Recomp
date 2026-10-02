@@ -27,12 +27,19 @@ commit `e2f973b`, before phase completion. It verifies the combined ADC/timer/
 sound caller and physical endpoint mapping described below. Independent host
 scheduling, object wiring and paired player/weapon acceptance remain next.
 
-The current continuation is [draft PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13),
-branch `codex/phase3d-board-timeline`: independently generated board timing
-(`460b69b`) plus the requested bounded CPU service verification (`f006d98`).
-Continue from this branch while the PR is open. Host wiring, sound producers
-and paired player/weapon acceptance remain incomplete; the timing ports do
-not yet change the `afterburner2` gameplay host.
+The board/CPU timing checkpoint [PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13)
+is merged on `main` (`ca90197`). The current continuation uses branch
+`codex/phase3d-host-wiring`: a common verified entry router and directed live
+object-dispatch composition. It matches 480/480 MAME windows, executing
+53,404 verified callbacks; 128/128 additional `$9D34/$B628` entry calls match.
+The IPL7 fixture isolates composition and does not establish natural cadence.
+`OEngine` still uses the retained native Stage 1 host.
+
+Next: establish the live `$B676` register/wait publication contract and the
+remaining explicit external caller boundaries listed in `ENGINE_NOTES.md`;
+then compose IRQ/input, VBLANK/reload and sound producers at their actual
+boundaries and prove paired player/weapon/sub/video acceptance. Keep the
+unknown caller transcripts labelled as inputs until independently ported.
 
 ## 1. Finish the input/player caller contract
 

@@ -147,3 +147,14 @@ last-bus boundary and entry context remain external inputs. Running
 `./afterburner2` shows the existing Stage 1 experience; this timing port is
 still separate from `OEngine`. Visible Phase 3d player/weapon changes require
 host wiring and paired acceptance before the native producers are retired.
+
+
+The host-wiring continuation adds `OMainHost` and executes verified handlers
+through the original dispatcher in 480/480 matching directed MAME windows,
+with 53,404 verified callbacks and no input-race skips. `$9D34` indicator
+setup and direct `$B628` request emission have 128/128 isolated entry checks.
+The fixture masks IRQs with a real CPU instruction and replays explicitly
+unported caller outputs as external inputs. It isolates composition; natural
+host cadence, IRQ interleaving, sound delivery and paired player/weapon/video
+acceptance remain pending. `OEngine`, native Stage 1 rules and its adapter
+remain in use; Phase 3d is incomplete.

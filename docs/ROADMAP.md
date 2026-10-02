@@ -373,7 +373,14 @@ player/weapon acceptance remain pending.
       CPU-instruction fixture. The unported instruction's last bus boundary
       and entry context remain supplied; full CPU scheduling and host wiring
       are not established by this check. Board and CPU service timing are
-      delivered together in [draft PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13).
+      delivered together in merged [PR #13](https://github.com/duduke/AfterBurner2-Recomp/pull/13).
+- [x] Directed host object composition: common explicit entry router plus
+      live dispatcher/handler register and ordered-write checks match 480/480
+      MAME windows, executing 53,404 verified callbacks, 0 skipped. Additional
+      `$9D34/$B628` entry checks match 128/128 isolated calls. The real IPL7
+      fixture and explicit unported caller transcripts do not establish natural
+      cadence, IRQ interleaving or paired gameplay/video acceptance. `OEngine`
+      retains its native producers; Phase 3d remains incomplete.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,
