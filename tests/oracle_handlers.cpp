@@ -101,6 +101,19 @@ int main(int argc, char** argv) try
         }};
         // Inspect fixture inputs before enabling trace: coverage inspection
         // must not add reads to the routine's input-race footprint.
+        if(entry==0xb0ac) {
+            const unsigned lo[]={0x20,0x40,0},hi[]={0xe0,0xc0,255};
+            for(unsigned lane=0;lane<3;++lane) {
+                const auto value=bus.read8(0xffff8892+lane);
+                const char* label=value==0x80 ? "neutral" : value==lo[lane] ? "min" : value==hi[lane] ? "max" : "other";
+                ++damage_paths["input-lane-"+std::to_string(lane)+"-"+label];
+            }
+        }
+        if(entry==0x14976) {
+            const auto previous=(bus.read8(0x29c076)>>4)&3;
+            const auto current=((~io_input)>>4)&3;
+            ++damage_paths["weapon-buttons-"+std::to_string(previous)+"-to-"+std::to_string(current)];
+        }
         if(entry==0xe744) {
             ++damage_paths[bus.read8(0xffff8e7f)<4 ? "pool-under-four" : "pool-allocate"];
         }

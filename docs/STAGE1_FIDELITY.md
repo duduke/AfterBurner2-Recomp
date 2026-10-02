@@ -122,3 +122,11 @@ Native flight, objects, sound cues and their host adapter remain in use.
 handler-graph checkpoint. Its independent routine checks leave the native
 Stage 1 experience unchanged. Phase 3d remains incomplete until the host
 input/IRQ, sound cadence and paired player/weapon acceptance checks pass.
+
+The comparator IRQ continuation verifies the full acknowledge/sample/start/
+sound-consume chain against a continuous MAME hardware timeline: 7,058/7,058
+calls and 45,176/45,176 events identical, including 946 sound-latch writes,
+0 skipped. Separate physical axis endpoint and button mapping checks match
+720/720 calls. This test supplies MAME bus timestamps and entry work RAM;
+it does not independently schedule host IRQs or produce the sound ring from
+ported gameplay. `OEngine` still runs native Stage 1 objects and sound cues.

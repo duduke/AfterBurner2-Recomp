@@ -69,7 +69,9 @@ waveform equality remain 3f/audio acceptance work.
 
 Dispatcher/initializer, RNG, sequence compound setup/hiding and sound-ring
 foundations and the remaining independent handler graphs now have oracle
-checks. Host ADC/IRQ, sound cadence and paired player/weapon acceptance remain
+checks. The comparator IRQ caller now has a combined ADC/timer/sound oracle
+and physical endpoint/button mapping checks. Independently scheduled host
+ADC/IRQ, sound producers' cadence and paired player/weapon acceptance remain
 pending. Phase 3d remains incomplete; resume at
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md). The dispatcher establishes
 traversal/callback contracts only. Each actual handler still needs its complete

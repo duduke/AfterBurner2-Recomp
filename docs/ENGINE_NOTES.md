@@ -1623,3 +1623,74 @@ interrupted windows.
 Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
 `make oracle-test` and a 180-frame headless launch pass. Stage 1 audio RMS remains 903.949. CMake is unavailable
 on this host; its source/test definitions are updated but not executed.
+
+## Phase 3d continuation: comparator IRQ caller and input endpoints
+
+Delivery checkpoint: [PR #12](https://github.com/duduke/AfterBurner2-Recomp/pull/12),
+implementation commit `e2f973b`. The user explicitly authorized pushing and
+merging this checkpoint before Phase 3d completion. Host scheduling and paired
+player/weapon acceptance remain pending.
+
+`main_compare_interrupt` in `engine/omainadc.cpp` translates the observable
+`$01461C..$01466A` caller: write D0.W to `$0E8012` to acknowledge IRQ,
+save the modified register contract, run `$014626`'s sampler/mux/conversion
+start, call `$00B7F8`'s sound consumer, and restore D0..D2/A0..A1. The existing
+sampler and consumer ports are reused at their original calls. `$01466C`'s
+acknowledgement uses the same word write; its separate L6 entry has no natural
+coverage. A7, SR, exception frames and instruction cycles stay outside this
+routine port.
+
+`AB2_ORACLE_IRQ=1` extends `capture_adc_timing.lua` with IRQ entry/return
+records (`AB2IRQ01`), complete work RAM, D0..D7/A0..A6 and ordered CPU-owned
+work-RAM writes. Active stacks are excluded. A main write outside the IRQ or
+its consumer discards that interrupted window. Sub CPU code cannot access
+main work RAM, so this caller has no shared-input race exclusions.
+
+`tests/oracle_mainirq.cpp` keeps one ADC0804 and one bus/315-5250 alive for
+the complete capture, starting from reset. It advances physical timer edges
+and conversion completion, then executes the full IRQ port at each recorded
+caller boundary. ADC results, sample/mux writes, timer acknowledgement,
+sound-latch values and ordered RAM/I/O writes are computed by the port and
+compared with MAME. No captured ADC result or sound command is fed back as an
+input. External analog input changes, entry work RAM/registers, I/O directions
+and **bus timestamps are supplied by MAME**. Entry RAM includes the sound
+ring produced by the ROM, so this verifies the consumer's caller and observable
+timed output, not ported producers or independent host interrupt latency.
+
+| Capture | Identical / captured | Skipped | Coverage |
+| --- | ---: | ---: | --- |
+| `mainirq` | 3,529 / 3,529 | 0 | Ordinary fresh-NVRAM input run, 473 sound-latch writes |
+| `mainirq_endpoints` | 3,529 / 3,529 | 0 | Physical axis/throttle endpoints and weapon combinations, 473 sound-latch writes |
+| `input_endpoints` | 360 / 360 | 0 | Independent `$B0AC` mapped-axis calls |
+| `buttons_endpoints` | 360 / 360 | 0 | Independent `$14976` current/previous input bytes |
+
+Each IRQ capture also matches **22,588 / 22,588 hardware timeline events**,
+including 3,529 completed conversions; every sample-ring slot is exercised.
+There are no interrupted IRQ windows in these captures. The mapped-axis
+capture drops eight interrupted windows before recording its 360 calls; the
+button capture drops none. Replay skips are zero for all four new captures.
+
+The physical fixture uses MAME's configured X `$20..$E0`, Y `$40..$C0`
+(reversed) and throttle `$00..$FF`, with neutral `$80`, press/release and all
+four Vulcan/Missile combinations. `$B0AC` coverage includes each lane's
+minimum, neutral and maximum. Button transitions observed are 0→1, 1→2,
+2→3 and 3→0, plus holds of all four combinations. Every possible transition,
+arbitrary ADC channel/ring corruption, nested IRQs and a full credit remain
+uncovered. The existing raw-byte directed input fixtures remain separate.
+
+Commands: `make oracle-capture-mainirq`, `make oracle-mainirq` (also included
+in `make oracle-test`), and
+`python3 tools/oracle/mutation_check.py irqack irqsamplewrap irqsoundring`.
+The three temporary-source mutations fail 3,529, 1,176 and 224 IRQ records
+respectively. Unmodified captures pass. ROM bytes and captures stay ignored.
+
+Phase 3d remains incomplete. `OEngine` still uses native input/objects and
+sound cues. Next: schedule this verified caller in the host, connect verified
+objects/flight/weapons, and prove paired 30/60 Hz request/size-table/road/video
+and sound-producer acceptance before retiring native code. Named score/lives/
+stage boundaries remain Phase 3e.
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make oracle-test` and a 180-frame headless launch pass. Existing capture
+results do not regress; Stage 1 audio RMS remains 903.949. CMake definitions
+are updated, but CMake remains unavailable on this host.

@@ -340,13 +340,25 @@ companion checkpoint; the user authorized its merge before phase completion.
 Resume host acceptance in a new PR using the continuation plan. See the per-capture results
 and uncovered paths in `ENGINE_NOTES.md`.
 
+[PR #12](https://github.com/duduke/AfterBurner2-Recomp/pull/12) adds the combined
+comparator IRQ caller and physical input endpoint checks. The user authorized
+its push and merge before phase completion; host scheduling and paired
+player/weapon acceptance remain pending.
+
 - [x] Object initializer and dispatch loop: 254 × 64-byte records from
       `$A000` to `$DF40` (preceded by the `$9FC0` sentinel), runtime templates,
       live active/handler reads and register contracts. Oracle-verified;
       not wired into the game while handlers remain unported.
 - [ ] Input read: stick X/Y and throttle through the ADC, buttons, and
       their mapping to the arcade's input bytes. `$B0AC/$14976` and observable
-      ADC timing pass routine checks; actual host IRQ/conversion wiring remains.
+      ADC timing pass routine checks. The complete `$1461C` IRQ caller now
+      matches 7,058/7,058 calls and 45,176/45,176 continuous hardware events,
+      0 skipped; physical axis endpoints and button edges have 720/720
+      separate mapping checks. Actual host IRQ/conversion wiring remains.
+- [x] Comparator IRQ caller: acknowledgement, six-channel sampler and sound
+      consumer checked together against MAME, including 946 sound-latch writes
+      across ordinary and endpoint runs. All three mutations fail. Bus timestamps
+      are supplied by the capture; independent host scheduling remains unverified.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,
