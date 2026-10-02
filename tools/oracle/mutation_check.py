@@ -94,6 +94,15 @@ for name,source,old,new,capture in [
     source="src/main/engine/"+source+".cpp"
     cases.append((name,source,old,new,"tests/oracle_handlers.cpp",capture,handler_dependencies(source)))
 
+# Complete comparator IRQ: acknowledgement, six-lane wrap and sound consumer.
+irq_common = ["src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp"]
+for name,source,old,new,extra in [
+    ("irqack", "src/main/engine/omainadc.cpp", "bus.write16(0x0e8012, r.d[0])", "bus.write16(0x0e8010, r.d[0])", ["src/main/engine/omainsound.cpp"]),
+    ("irqsamplewrap", "src/main/engine/omainadc.cpp", "if (d1 >= 6) d1 = 0", "if (d1 >= 5) d1 = 0", ["src/main/engine/omainsound.cpp"]),
+    ("irqsoundring", "src/main/engine/omainsound.cpp", "word(r.d[1],r.d[1]+1); word(r.d[1],r.d[1]&0x3f);\n        b.write16(0xffff890a", "word(r.d[1],r.d[1]+1); word(r.d[1],r.d[1]&0x1f);\n        b.write16(0xffff890a", ["src/main/engine/omainadc.cpp"]),
+]:
+    cases.append((name,source,old,new,"tests/oracle_mainirq.cpp","mainirq_endpoints",irq_common+extra))
+
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}
@@ -120,7 +129,7 @@ for name, source, old, new, test, capture, dependencies in cases:
     with log_path.open("w") as log:
         result = subprocess.run([str(binary), "build/oracle/" + capture + ".bin"],
                                 stdout=log, stderr=subprocess.STDOUT)
-    summary = [line for line in log_path.read_text().splitlines() if " identical, " in line]
+    summary = [line for line in log_path.read_text().splitlines() if " identical, " in line and " different," in line]
     if result.returncode != 1 or not summary or ", 0 different," in summary[-1]:
         raise RuntimeError(f"{name}: mutation did not produce a differential failure; see {log_path}")
     print(f"{name}: rejected — {summary[-1]}", flush=True)

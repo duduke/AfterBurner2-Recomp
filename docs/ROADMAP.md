@@ -346,7 +346,14 @@ and uncovered paths in `ENGINE_NOTES.md`.
       not wired into the game while handlers remain unported.
 - [ ] Input read: stick X/Y and throttle through the ADC, buttons, and
       their mapping to the arcade's input bytes. `$B0AC/$14976` and observable
-      ADC timing pass routine checks; actual host IRQ/conversion wiring remains.
+      ADC timing pass routine checks. The complete `$1461C` IRQ caller now
+      matches 7,058/7,058 calls and 45,176/45,176 continuous hardware events,
+      0 skipped; physical axis endpoints and button edges have 720/720
+      separate mapping checks. Actual host IRQ/conversion wiring remains.
+- [x] Comparator IRQ caller: acknowledgement, six-channel sampler and sound
+      consumer checked together against MAME, including 946 sound-latch writes
+      across ordinary and endpoint runs. All three mutations fail. Bus timestamps
+      are supplied by the capture; independent host scheduling remains unverified.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,

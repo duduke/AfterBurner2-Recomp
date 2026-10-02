@@ -42,6 +42,14 @@ or start Phase 3e based on this checkpoint.
   The carrier's exact selector increment/HUD request is checked locally;
   it does not implement general stage progression. Refuel setup/part checks
   do not verify controller states after `$E224`.
+- The full `$1461C..$1466A` comparator IRQ caller is now translated and
+  checked with a continuous hardware timeline: 7,058/7,058 calls and
+  45,176/45,176 events identical, 0 skipped, including 946 sound-latch writes.
+  Neutral/physical axis endpoints, throttle endpoints and weapon button
+  combinations have separate `$B0AC/$14976` checks: 720/720 identical,
+  0 skipped. Three deliberate mutations fail. The oracle supplies MAME bus
+  timestamps and entry work RAM; this does not establish an independently
+  scheduled host or the producers' cadence. Ports remain unwired.
 - `OMainDamage` now independently checks `$E662`, intact/breakup
   `$E8D0/$E94E` states 0..6, fuselage `$F640`, and their projection/frame,
   trajectory, debris and attitude callees: 1,792/1,792 directed calls and
@@ -71,13 +79,12 @@ or start Phase 3e based on this checkpoint.
   dispatcher transcripts are external boundaries and cannot substitute for
   these handler oracles. Record changes made by the other CPU to actual
   read inputs; exclude active stacks and reject unrelated main writes.
-- Trace the comparator IRQ `$01461C`, verified sampler `$014626`, its
-  `$00B7F8` consumer call and the ADC conversion completion. Capture the
-  original channel/result/IRQ timeline before connecting host input. Use
-  local MAME hardware configuration for conversion timing.
-- Add neutral, raw axis endpoints, throttle endpoints, button press/release
-  and simultaneous-button fixtures plus ordinary gameplay records. Compare
-  the six sample-ring bytes and the mapped arcade input bytes separately.
+- The comparator trace is complete: `$01461C` acknowledges before `$014626`
+  reads the previous conversion; mux/start precede `$00B7F8`. Physical MAME
+  axis limits are X `$20..$E0`, Y `$40..$C0` (reversed), throttle `$00..$FF`.
+  `make oracle-capture-mainirq` captures ordinary and endpoint timelines plus
+  separate mapped-axis/button records. Keep the bus-time/CPU-cycle boundary
+  explicit when connecting host input and scheduling the verified caller.
 
 ## 2. Connect verified flight and projection
 

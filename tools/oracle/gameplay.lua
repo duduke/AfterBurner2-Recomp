@@ -17,6 +17,17 @@ gameplay_inputs = emu.add_machine_frame_notifier(function()
     x:set_value(0x80); y:set_value(0x80); throttle:set_value(0x80)
     vulcan:set_value(0); missile:set_value(0)
   else
+    if os.getenv("AB2_ORACLE_INPUT_ENDPOINTS")=="1" then
+      -- Physical input fixtures: hold each lane endpoint long enough for
+      -- all six ADC samples; include all four weapon-button combinations.
+      local phase=((frame-480)//24)%12
+      x:set_value(({0x80,0x20,0xe0,0x80,0x80,0x80,0x80,0x20,0xe0,0x80,0x80,0x80})[phase+1])
+      y:set_value(({0x80,0x80,0x80,0x40,0xc0,0x80,0x80,0xc0,0x40,0x80,0x80,0x80})[phase+1])
+      throttle:set_value(phase==5 and 0 or phase==6 and 0xff or 0x80)
+      vulcan:set_value((phase==7 or phase==9 or phase==10) and 1 or 0)
+      missile:set_value((phase==8 or phase==9 or phase==10) and 1 or 0)
+      return
+    end
     local phase = ((frame - 480) // 120) % 4
     x:set_value(({0x30, 0x80, 0xd0, 0x80})[phase + 1])
     y:set_value(({0x60, 0xa0, 0x80, 0x80})[phase + 1])
