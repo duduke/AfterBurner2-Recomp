@@ -197,3 +197,12 @@ sub operands and hidden renderer feedback. Publication progresses by executing
 captured interrupt boundaries. Independent CPU scheduling, the road raster
 pair and remaining game-flow callers are unverified. `OEngine` continues to
 use native Stage 1 controls, objects, adapter and sound cues.
+
+
+The bounded IRQ4 timing checkpoint adds the actual interrupt wrapper,
+selected small callees and both sprite blits with predicted CPU bus phases,
+plus an uninterrupted `$14856` wait/re-arm oracle. Complex IRQ4 routine
+state/durations, sub-produced blit operands and interrupted caller contexts
+remain external. No independent IRQ/caller/sub scheduler has been established,
+and these timing ports are not wired into `OEngine`. Native Stage 1 controls,
+objects, request adapter and sound cues remain active; Phase 3d is incomplete.

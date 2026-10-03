@@ -57,15 +57,24 @@ Shared operands carry sub-write lane provenance; main-produced lanes are
 compared rather than replaced. Back-to-back IRQ returns share their first
 resumed operand frontier. Detailed limits are in `ENGINE_NOTES.md`.
 
-**Next:** independently predict IRQ4 service/callee cycles, interrupted
-instruction completion and the `$14856`/dispatcher caller timeline. The
-publication wait now progresses through executed IRQ4 at captured frontiers,
-not through an independent CPU scheduler. IRQ contexts/frontiers, ADC results,
-unknown caller transcripts, sub-produced operands and hidden renderer feedback
-remain inputs. Port remaining explicit external caller boundaries and pair
-`OSubRoad` raster/compositor inputs before replacing the native host. Keep
-Phase 3d incomplete. The user authorized committing and merging this
-shared-interleaving checkpoint before phase completion.
+The next IRQ4 timing checkpoint adds independently computed exception,
+wrapper, stack/return, button/timer/bookkeeping/service-edge and both blit
+cycles, plus uninterrupted `$14856` spin/re-arm steps. The remaining complex
+IRQ4 callees still supply state and elapsed clocks; those clocks are added to
+the predicted caller timeline rather than resetting it. See "Bounded IRQ4
+service and logic-wait timing" in `ENGINE_NOTES.md` for current counts and
+uncovered paths. This continuation is on `codex/phase3d-irq4-timing`.
+
+**Next:** remove the remaining IRQ4 palette/scenery/reload/HUD timing
+boundaries (`$14A86/$13F92/$13BCC/$13BB6/$13BFA/$1329E/$16C8A/$18444/$13E5C`)
+with independent callee-cycle checks. Keep `$17146/$14990/$C6F8/$E2DA` as
+explicit game-flow boundaries until their own ports pass. Check IRQ entry
+within the re-arm loop and the `$14856`/dispatcher caller instruction stream;
+uninterrupted steps do not establish that schedule. Then independently
+schedule ADC results, publication and sub progress. IRQ contexts/frontiers,
+physical inputs, unknown caller transcripts, sub-produced blit operands and
+hidden renderer feedback remain inputs. Pair `OSubRoad` raster/compositor
+inputs before replacing the native host. Keep Phase 3d incomplete.
 
 ## 1. Finish the input/player caller contract
 

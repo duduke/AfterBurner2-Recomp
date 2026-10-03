@@ -1,0 +1,103 @@
+#include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <vector>
+#include "engine/omainirqservice.hpp"
+#include "roms.hpp"
+namespace {
+uint64_t num(std::ifstream& f,unsigned n) {uint64_t v=0;while(n--){int c=f.get();if(c<0)throw std::runtime_error("truncated IRQ4 capture");v=v<<8|c;}return v;}
+void bytes(std::ifstream& f,uint8_t* p,size_t n) {if(!f.read(reinterpret_cast<char*>(p),n))throw std::runtime_error("truncated IRQ4 RAM");}
+OMainObjects::Registers regs(std::ifstream& f) {OMainObjects::Registers r;for(auto& v:r.d)v=num(f,4);for(auto& v:r.a)v=num(f,4);return r;}
+bool same(const OMainObjects::Registers& a,const OMainObjects::Registers& b) {return a.d==b.d&&a.a==b.a;}
+struct Event {uint64_t ns;uint32_t pc,a;uint16_t d,m;bool w;};
+Event event(std::ifstream& f) {Event e;e.ns=num(f,8);e.pc=num(f,4);e.a=num(f,4);e.d=num(f,2);e.m=num(f,2);e.w=num(f,1);return e;}
+struct Hook {uint32_t entry;uint64_t start,end;OMainObjects::Registers pre,post;std::vector<Event> events;};
+bool leaf(uint32_t p) {return p==0x1495c||p==0x148be||p==0x148b8||p==0x147e8||p==0xb7c2||p==0xb7d2;}
+}
+int main(int argc,char** argv) try {
+    std::ifstream f(argc>1?argv[1]:"build/oracle/irq4_service.bin",std::ios::binary);
+    char magic[8];if(!f.read(magic,8)||memcmp(magic,"AB2IRQ41",8))throw std::runtime_error("invalid IRQ4 capture");
+    if(!roms.load_aburner2())throw std::runtime_error("ROMs required");
+    MainBus::Memory memory;MainBus bus(roms.maincpu.rom,roms.maincpu.length,nullptr,0,memory);
+    unsigned calls=0,identical=0,failed=0,events=0,differences=0,external=0,leaves=0,logic=0,normal=0,overflow=0;
+    unsigned redirects=0,interpolated=0,normal_blits=0,draw_skipped=0,rollovers=0;
+    unsigned phases[10]{};
+    uint64_t now=0;
+    while(f.peek()!=std::char_traits<char>::eof()) {
+        OMainIrqService::Context c{};c.level=4;c.boundary_ns=num(f,8);c.interrupted_pc=num(f,4);c.return_pc=num(f,4);c.sr=num(f,2);c.supervisor_sp=num(f,4);
+        const auto source=num(f,2);c.registers=regs(f);bytes(f,memory.bytes.data(),memory.bytes.size());
+        const auto end=num(f,8);const auto n=num(f,4),nh=num(f,4);
+        if(n>20000||nh>30)throw std::runtime_error("invalid IRQ4 event counts");
+        std::vector<Event> expected;for(unsigned i=0;i<n;++i)expected.push_back(event(f));
+        std::vector<Hook> hooks;
+        for(unsigned i=0;i<nh;++i) {
+            Hook h;h.entry=num(f,4);h.start=num(f,8);h.end=num(f,8);auto count=num(f,4);h.pre=regs(f);h.post=regs(f);
+            if(count>200000)throw std::runtime_error("invalid IRQ4 callee count");
+            for(unsigned j=0;j<count;++j)h.events.push_back(event(f));
+            if(h.entry==0xb7c2)++normal_blits;
+            if(h.entry==0xb7d2)++interpolated;
+            if(leaf(h.entry)){expected.insert(expected.end(),h.events.begin(),h.events.end());++leaves;}
+            hooks.push_back(std::move(h));
+        }
+        const auto post=regs(f);const auto sp=num(f,4),sr=num(f,2);
+        if(sr==0x700)++redirects;
+        for(const auto& e:expected)if(e.w&&(e.pc==0x148d2||e.pc==0x148f2))++rollovers;
+        if(std::none_of(hooks.begin(),hooks.end(),[](const Hook& h){return h.entry==0xb7c2||h.entry==0xb7d2;}))++draw_skipped;
+        std::sort(expected.begin(),expected.end(),[](const auto& a,const auto& b){return a.ns<b.ns;});
+        c.boundary_ns+=80*OMainIrqService::completion_tail(bus.read16(c.interrupted_pc),source);
+        ++phases[(c.boundary_ns/80)%10];
+        const auto count=bus.read16(0x2a3c00);if(int16_t(count)<=0)++logic;else ++normal;if(count==0x8000)++overflow;
+        bool ok=true;size_t cursor=0,hcursor=0;OMainIrqService service;
+        MainBus::Trace trace{nullptr,nullptr,[&](bool w,uint32_t a,uint16_t d,uint16_t m) {
+            ++events;bool equal=cursor<expected.size();
+            if(equal) {const auto& e=expected[cursor++];equal=e.w==w&&e.ns==now&&e.pc==service.current_pc()&&e.a==a&&e.m==m&&(e.d&m)==(d&m);
+                if(!equal&&calls==0)std::cerr<<std::hex<<"IRQ4 bus pc="<<service.current_pc()<<'/'<<e.pc<<" a="<<a<<'/'<<e.a<<" data="<<(d&m)<<'/'<<(e.d&e.m)<<std::dec<<" time="<<now<<'/'<<e.ns<<'\n';}
+            if(!equal){++differences;ok=false;}
+        }};
+        // Only sub-owned mutex bit 1 and physical input byte are supplied
+        // to executed leaves; main's lock bit 0 must match computed state.
+        trace.before_access=[&](bool w,uint32_t a,uint16_t m) {
+            if(w||cursor>=expected.size())return;
+            const auto& e=expected[cursor];
+            if(e.a!=a||e.m!=m)return;
+            if(a==0x29c0d6) {
+                const auto o=MainBus::memory_offset(a);ok &= (memory.bytes[o]&1)==((e.d>>8)&1);
+                memory.bytes[o]=(memory.bytes[o]&1)|((e.d>>8)&~1);
+            } else if(service.current_pc()==0xb7e2 || (service.current_pc()>=0xb7ea&&service.current_pc()<=0xb7f0)) {
+                // The sub-produced sorted list/count remains an operand
+                // boundary; main-produced pointer loads are compared.
+                const auto o=MainBus::memory_offset(a);
+                if(o<MainBus::SHARED || o>=MainBus::TILE)throw std::runtime_error("invalid sub blit operand");
+                memory.bytes[o]=e.d>>8;memory.bytes[o+1]=e.d;
+            } else if(a==0x150000)bus.io[1].input=[&,v=uint8_t(e.d)](unsigned p){return p==0?v:uint8_t(0xff);};
+        };
+        auto advance=[&](uint64_t ns){if(ns<now)throw std::runtime_error("nonchronological service clock");now=ns;};
+        now=c.boundary_ns;
+        auto boundary=[&](uint32_t entry,OMainObjects::Registers& r,uint32_t stack,uint64_t start) {
+            if(hcursor==hooks.size())throw std::runtime_error("missing IRQ4 callee boundary");
+            const auto& h=hooks[hcursor++];if(calls==0 && (h.entry!=entry||h.start!=start||!same(r,h.pre))) std::cerr<<std::hex<<"Boundary "<<entry<<std::dec<<" start "<<start<<'/'<<h.start<<" regs "<<same(r,h.pre)<<'\n';
+            ok &= h.entry==entry&&h.start==start&&same(r,h.pre);
+            bus.trace=nullptr;
+            ok &= bus.read32(stack)>=0x14674&&bus.read32(stack)<=0x147c2;
+            // Explicit external routine: supplied state/events/duration are
+            // excluded from the verified bus-event denominator.
+            bus.trace=nullptr;
+            for(const auto& e:h.events)if(e.w){advance(start+e.ns-h.start);if(e.m==0xffff)bus.write16(e.a,e.d);else bus.write8(e.a+(e.m==255),e.m==255?e.d:e.d>>8);}
+            bus.trace=&trace;r=h.post;++external;
+            return unsigned((h.end-h.start)/80);
+        };
+        auto observe=[&](bool entering,uint32_t entry,const OMainObjects::Registers& r,uint64_t at) {
+            if(hcursor>=hooks.size())throw std::runtime_error("missing timed leaf capture");
+            const auto& h=hooks[hcursor];
+            ok &= h.entry==entry&&at==(entering?h.start:h.end)&&same(r,entering?h.pre:h.post);
+            if(!entering)++hcursor;
+        };
+        bus.trace=&trace;auto result=service.run(bus,c,advance,boundary,observe);bus.trace=nullptr;
+        ok &= cursor==expected.size()&&hcursor==hooks.size()&&result.ns==end&&result.sp==sp&&result.sr==sr&&same(result.registers,post)&&result.pc==(sr==0x700?0x1a130:c.return_pc);
+        ++calls;if(ok)++identical;else {++failed;if(failed<8)std::cerr<<"IRQ4 call "<<calls<<" end "<<result.ns<<'/'<<end<<" consumed "<<cursor<<'/'<<expected.size()<<'\n';}
+    }
+    std::cout<<"IRQ4 service envelope: "<<identical<<" of "<<calls<<" identical, "<<failed<<" different, 0 skipped\nIRQ4 predicted bus events: "<<events-differences<<" of "<<events<<" identical, "<<differences<<" different, 0 skipped\nCoverage: logic="<<logic<<" normal="<<normal<<" signed-overflow="<<overflow<<" timed leaves="<<leaves<<" external callee boundaries="<<external<<"\nEdges: redirects="<<redirects<<" normal/interpolated blits="<<normal_blits<<'/'<<interpolated<<" skipped draw="<<draw_skipped<<" timer rollovers="<<rollovers<<"; E phases";
+    for(unsigned i=0;i<10;++i)std::cout<<' '<<i<<'='<<phases[i];std::cout<<'\n';
+    return calls&&!failed&&!differences?0:1;
+} catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

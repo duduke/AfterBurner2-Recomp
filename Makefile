@@ -212,7 +212,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
+oracle-test: oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -386,3 +386,30 @@ oracle-host-publication: oracle-host-interleave
 	./build/oracle_host_interleave build/oracle/host_publication.bin
 
 .PHONY: oracle-capture-host-publication oracle-host-publication
+
+# IRQ4 envelope, selected timed callees and uninterrupted re-arm steps.
+oracle-capture-irq4-service:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_directed.bin 900 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_edges.bin 120 15
+
+oracle-irq4-service:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_irq4_service.cpp src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_irq4_service
+	./build/oracle_irq4_service build/oracle/irq4_service.bin
+	./build/oracle_irq4_service build/oracle/irq4_service_directed.bin
+	./build/oracle_irq4_service build/oracle/irq4_service_edges.bin
+
+oracle-capture-logic-wait:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_logic_wait.lua build/oracle/logic_wait.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_WAIT_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_logic_wait.lua build/oracle/logic_wait_directed.bin 120 15
+
+oracle-logic-wait:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_logic_wait.cpp src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_logic_wait
+	./build/oracle_logic_wait build/oracle/logic_wait.bin
+	./build/oracle_logic_wait build/oracle/logic_wait_directed.bin
+
+.PHONY: oracle-capture-irq4-service oracle-irq4-service oracle-capture-logic-wait oracle-logic-wait

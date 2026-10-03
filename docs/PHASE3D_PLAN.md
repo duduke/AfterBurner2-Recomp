@@ -140,3 +140,13 @@ boundaries, and handles back-to-back IRQ returns before the resumed operand.
 Publication progress is verified at captured frontiers. Independent CPU and
 caller timing, road-raster pairing and native retirement remain outstanding;
 see the updated continuation and engine notes. Phase 3d remains incomplete.
+
+
+The bounded IRQ4 timing continuation computes the interrupt envelope and six
+callee entries (buttons, timers, bookkeeping, service edge, normal blit and
+interpolated blit), including stack transactions and the service-mode return.
+Uninterrupted `$14856` spin/re-arm steps have a separate timing oracle. Complex
+IRQ4 callee durations/state, sub blit operands and interrupted caller boundaries
+remain supplied. Continue removing those boundaries; this does not complete
+independent host scheduling or authorize native retirement. See the latest
+continuation and engine notes.
