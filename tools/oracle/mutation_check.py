@@ -139,6 +139,18 @@ cases.append(("servicemask","src/main/engine/omainirqservice.hpp",
               "return level>((sr>>8)&7)","return level!=0",
               "tests/oracle_irq_service.cpp","service_directed",service_dependencies+["src/main/engine/omainirqservice.cpp"]))
 
+# IRQ4 and caller clocks: external callee durations never erase drift.
+for name,old,new,capture,test in [
+    ("irq4bsr", "pc=p;idle(absolute_long?8:2)", "pc=p;idle(absolute_long?8:4)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("irq4overflow", "const bool logic=int16_t(previous)<=0", "const bool logic=int16_t(uint16_t(previous-1))<0", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("irq4delay", "word(r.d[0],r.d[0]-1);idle(14)", "word(r.d[0],r.d[0]-1);idle(12)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("irq4blit", "write16(r.a[1],v>>16);write16(r.a[1]+2,v)", "write16(r.a[1]+2,v);write16(r.a[1],v>>16)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("irq4redirect", "write16(sp,0x700)", "write16(sp,0x701)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("waitbranch", "idle(8); // Short conditional", "idle(10); // Short conditional", "logic_wait_directed", "tests/oracle_logic_wait.cpp"),
+    ("waitrearm", "write16(0x2a3c00,1)", "write16(0x2a3c00,2)", "logic_wait_directed", "tests/oracle_logic_wait.cpp"),
+]:
+    cases.append((name,"src/main/engine/omainirqservice.cpp",old,new,test,capture,common))
+
 # Natural IRQ, linked output and continuous-ring acceptance sensitivity.
 acceptance = handlers + ["src/main/engine/omainadc.cpp", "src/main/engine/omainframe.cpp", "src/main/engine/omainpalette.cpp", "src/main/engine/oscenery.cpp"]
 video = common + ["src/main/engine/omainsprites.cpp", "src/main/engine/osubsprites.cpp"] + ["src/main/hwvideo/"+p+".cpp" for p in ["hwroad", "hwsprites", "hwtiles", "hwpalette", "screen"]]

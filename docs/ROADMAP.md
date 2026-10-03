@@ -99,7 +99,9 @@ handlers now have independent checks. The directed host-composition checkpoint
 PR #14 is merged. Natural IRQ2 interleaving and conditional paired
 player/weapon/video/sound acceptance now pass at supplied caller boundaries.
 IRQ4/shared-input composition and publication waits now pass without race
-skips. Resume at independent host scheduling and remaining caller boundaries; native Stage 1 remains active. Continue host acceptance in
+skips. Bounded IRQ4 wrapper/selected-callee and uninterrupted re-arm timing
+now pass; remaining IRQ4 callee timing and the interrupted caller schedule
+are still supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Continue host acceptance in
 [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md), following
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
@@ -414,6 +416,18 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       IRQ frontiers/registers, ADC results, unknown callers and sub/compositor
       inputs remain captured. Independent CPU timing/caller scheduling,
       road-raster pairing and native retirement remain unverified.
+- [x] Bounded IRQ4 service envelope and selected callee timing: exception,
+      mutex/phase, pointer swaps, BSR/JSR, DBF delays, register/stack return,
+      service redirect, buttons/timers/bookkeeping/service edge and both
+      sprite blits match 1,611/1,611 envelopes and 2,611,132/2,611,132
+      predicted bus events, zero skips. `$14856` wait/re-arm matches
+      16,349/16,349 uninterrupted steps (six IRQ-overlapped attempts excluded).
+      Seven mutations fail. Coverage and remaining boundaries are
+      in `ENGINE_NOTES.md`; complex callee clocks/state, sub blit operands and
+      interrupted caller contexts remain supplied. IRQ4 timing is not complete.
+- [ ] Remove remaining IRQ4 palette/scenery/reload/HUD timing boundaries,
+      verify re-arm/dispatcher instruction scheduling across IRQs, then progress
+      publication and sub execution without captured operand frontiers.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,

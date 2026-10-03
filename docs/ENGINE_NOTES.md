@@ -2161,8 +2161,9 @@ ring checks 255 producers, 995 consumers and 255 latch writes, with no external
 ring writes. These sample intervals differ from the earlier prefix run, so
 counts are not added to its historical denominators.
 
-Independent scheduling is still unverified. `OMainIrqService` predicts bounded
-IRQ2/IRQ6 cycles, but does not implement IRQ4/callee cycle timing. The literal
+Independent scheduling is still unverified. At this checkpoint,
+`OMainIrqService` predicted bounded IRQ2/IRQ6 cycles but did not implement
+IRQ4/callee cycle timing; the bounded continuation below extends that coverage. The literal
 routine ports have no general instruction/prefetch clocks, and unported main
 callers are register/write transcripts, not executable CPU schedules. Advancing
 an arbitrary frame clock while executing these calls would invent IRQ latency
@@ -2196,3 +2197,115 @@ oracle captures have no new differences; Stage 1 audio RMS remains 903.949.
 CMake's test definitions are updated but not executed (CMake is unavailable).
 ROMs, flattened images, diagnostic output and captures remain untracked under
 ignored build/ or temporary paths.
+
+
+## Bounded IRQ4 service and logic-wait timing
+
+The `codex/phase3d-irq4-timing` continuation extends `OMainIrqService` through
+main ROM `$14674..$147E6`. It independently computes 80 ns bus/internal cycles
+for exception entry and E-clock IACK, mutex byte bit RMW, phase selection,
+15-register MOVEM, four pointer swaps, conditional palette requests, BSR/JSR
+stack phases, lamps, the 58-decrement display delay, conditional draw,
+ordinary return and the service redirect to `$1A130` with SR `$0700`.
+The `$8000` counter case uses SUBQ's N/V condition, not the sign of the
+wrapped result. Memory-to-memory longs write high/low; predecrement register
+longs write low/high. BSR's stack writes precede both target prefetches,
+unlike absolute JSR. Every block retains its ROM address.
+
+Six callee entries also execute with predicted operand/return cycles and
+entry/exit register checks: `$1495C` buttons, `$148BE` timers, `$148B8`
+bookkeeping, `$147E8` service-button edge, `$B7C2` normal blit and `$B7D2`
+interpolated blit. Blits execute all four longs per descriptor and the
+count+1 terminator, preserving the actual DBF and RTS phases. They compute
+main-owned pointer loads; the sub-produced list/count are supplied at operand
+boundaries. The physical IO1 input byte and sub mutex flags are inputs;
+main lock bit 0 must retain its computed value.
+
+**This is a bounded envelope, not a completely independently timed IRQ4.**
+Complex palette/scenery/reload/HUD routines and explicit game-flow callbacks
+remain supplied state/write transcripts plus elapsed CPU clocks. The boundary
+receives the predicted callee start and return stack, and returns a duration;
+it never resets the caller to a captured absolute timestamp. Tests assert
+that predicted starts and entry registers match, then exclude these external
+callee events from the verified-event denominator. Remaining timing entries
+are `$14A86/$13F92/$13BCC/$13BB6/$13BFA/$1329E/$16C8A/$18444/$13E5C` and the
+existing game-flow boundaries `$17146/$14990/$C6F8/$E2DA`. Missing boundaries
+throw rather than inventing latency.
+
+`capture_irq4_service.lua` records `AB2IRQ41` contexts, full mapped RAM,
+root and callee data/stack events, callee start/return registers/timestamps,
+and final RTE state. ROM prefetches contribute computed cycles, not supplied
+per-fetch times. `oracle_irq4_service.cpp` compares PC/address/lane/direction/
+data/time for every executed bus event, every timed leaf's entry/exit state,
+and final registers/SP/SR/PC/time. Initial CPU completion boundary and IRQ4
+selection remain supplied; observed instruction tails use the existing
+completion profile. No main instruction interpreter or independent board IRQ
+selection is claimed by this test. One unfinished shutdown service per run
+is excluded by the capture, separately from accepted record counts.
+
+| IRQ4 capture | Identical / recorded envelopes | Identical / predicted bus events | Skipped |
+| --- | ---: | ---: | ---: |
+| Natural (600 frames) | 597 / 597 | 1,038,908 / 1,038,908 | 0 |
+| Directed (900 frames) | 897 / 897 | 1,475,405 / 1,475,405 | 0 |
+| Directed edges (120 frames) | 117 / 117 | 96,819 / 96,819 | 0 |
+
+Combined: **1,611/1,611 envelopes and 2,611,132/2,611,132 executed bus
+events identical, zero differences, zero race skips**. The runs execute
+5,900 timed leaf calls and supply 13,964 external callee boundaries.
+Coverage includes 1,068 logic and 543 normal phases, 253 signed-overflow
+counter cases, 543 normal and 941 interpolated blits, 127 skipped draws,
+2,039 timer rollovers and two service redirects. Entry E phases 1/3/5/6/7/9
+are exercised; phases 0/2/4/8 are not. Directed timer words start at 59;
+palette requests are set, display interpolation alternates, frame counters
+cycle through 0/1/$8000/$FFFF and the final fixture requests service mode.
+The natural run retains ordinary coin/start/weapon inputs. These directed
+RAM inputs do not establish natural game-flow or all callee timing.
+
+
+`logic_step` translates `$14856..$14878` as one uninterrupted spin iteration
+or the ready/re-arm/RTS path. It computes TST/BGE, CMPI/BEQ, optional missed
+count ADDQ, re-arm, NOP, return stack phases and SR. A taken spin returns
+PC `$14856`; it does not synthesize progress or consume a display frame.
+`AB2WAIT1` records use the active USP/SSP: MAME's named SP is specifically
+the supervisor stack, even while user code runs. IRQ exception writes are
+excluded even when CURPC still names the interrupted wait instruction.
+Natural nonnegative spins are sampled every 128th iteration; negative ready
+paths are captured without sampling. The directed run checks words 0, 1,
+`$7FFF/$FFFF/$FFFE/$8000`, missed counts `$FFFF` and 9, and carry-preserving SR.
+
+| Logic-wait capture | Identical / recorded steps | Identical / recorded bus events | Excluded |
+| --- | ---: | ---: | --- |
+| Natural | 16,151 / 16,151 | 17,319 / 17,319 | 6 IRQ-overlapped steps |
+| Directed | 198 / 198 | 726 / 726 | 0 |
+
+Natural coverage is 15,861 sampled spins and 290 ready returns, four with
+missed-frame increments. Directed coverage is 99 spins and 99 returns,
+66 missed increments and 33 carry wraps. Accepted steps have zero differences
+and zero race skips; six IRQ-overlapped attempts are explicitly outside the
+step oracle. Neither a full interrupted wait nor the surrounding dispatcher
+caller is independently scheduled. Service-button helper edge branches,
+nested higher-priority interrupts, arbitrary interrupted opcodes/E phases,
+sub execution deadlines and whole-credit game flow remain coverage limits.
+
+Seven temporary-source mutations are rejected: BSR stack phase, signed
+counter overflow selection, DBF delay, blit long word order, redirect SR,
+short BGE untaken timing and re-arm value. No original source is changed by
+the mutation runner. Commands:
+
+```bash
+make oracle-capture-irq4-service
+make oracle-capture-logic-wait
+make oracle-irq4-service
+make oracle-logic-wait
+python3 tools/oracle/mutation_check.py irq4bsr irq4overflow irq4delay irq4blit irq4redirect waitbranch waitrearm
+```
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the full
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Stage 1 audio
+RMS remains 903.949; existing paired RGB remains 240/240 pixel-identical.
+CMake test definitions are updated but not executed because CMake is
+unavailable. ROM images, disassembly output, captures and mutation artifacts
+stay ignored. Native `OEngine` remains active and Phase 3d is incomplete.
+Next: independently check the remaining IRQ4 callee cycles, then IRQ service
+within the re-arm/caller stream and publication/sub progress, retaining the
+explicit stage/credit and road-raster/compositor boundaries.
