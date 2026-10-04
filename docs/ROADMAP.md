@@ -513,18 +513,114 @@ See the Stage 1 fidelity notes for the verified command and memory maps.
 
 ## Phase 5 — Enhancements Phase
 
-Optional features and quality-of-life improvements for After Burner II:
-
-- [ ] Frontend and configuration menus
-- [ ] Input remapping
+- [ ] Frontend and configuration menus (Seamless in-game integration):
+      - Integrated visual aesthetic: Render menus directly through the engine's
+        native tilemap/sprite/text pipeline (or a cohesive HUD/cockpit overlay)
+        using arcade font tiles and palette themes, avoiding jarring external OS
+        windows or generic UI popups
+      - Seamless in-game pause & settings overlay: Pressing Pause brings up an
+        instant in-game overlay menu (Audio, Video, Controls, Gameplay Modifiers,
+        Service DIP switches) with real-time setting previews (e.g. immediate
+        audio volume sliders, CRT shader toggles, deadzone visualizer)
+      - Pre-flight / Mission Select frontend: An in-engine attract/menu screen
+        styled after a military briefing / mission computer to choose game modes
+        (Arcade, Roguelite/Random, Time Attack), view high scores, and configure
+        flight controls before takeoff
+      - Integrated DIP switch & Service Mode access: Seamless access to arcade
+        cabinet settings (difficulty, lives, coin ratios, sound test) directly
+        within the menu without needing manual text-config editing
+      - Seamless persistence: Instant save/load of player settings and high
+        scores to JSON/INI configuration files without interrupting game flow
+- [ ] Input remapping:
+      - Full custom binding support for keyboard, gamepads, flight sticks, and HOTAS setups
+      - In-game binding configuration UI and deadzone / linearity / sensitivity calibration
+      - Automatic controller detection and out-of-the-box auto-mapping presets for popular controllers:
+        - Modern standard gamepads: Xbox Controller, PlayStation DualSense / DualShock 4, Nintendo Switch Pro Controller (using SDL GameController DB)
+        - Flight sticks & HOTAS: Thrustmaster T.Flight HOTAS / T.16000M, Logitech G Extreme 3D Pro, Turtle Beach VelocityOne, and VKB flight sticks
+        - Retro arcade sticks & Sega controllers: Sega Saturn USB / 8BitDo M30, Astro City Mini arcade stick, and generic USB arcade encoders
+      - Dedicated analog throttle mapping modes: incremental throttle, absolute lever axis, or bumper/trigger-based acceleration and airbrake
+- [ ] Force Feedback (FFB) & Haptic Rumble Support:
+      - Modern Gamepad Rumble: SDL haptics/game controller rumble for gun fire
+        (vulcan), missile launches, afterburner kick, incoming missile lock-on
+        warnings, and flak/explosion/crash impacts
+      - Flight Stick & DirectDrive / FFB Wheel Support: Constant force centering
+        and spring resistance scaling with airspeed/afterburner, pitch/roll G-load
+        resistance, stall shudder, and turbulence
+      - Arcade Deluxe Moving Cabinet Emulation: Hook the original arcade motor
+        I/O signals (ADC3/ADC4 motor sensors and cabinet motor board commands
+        for the Moving Deluxe cockpit) and translate them into modern motion
+        rig telemetry (e.g. SimHub / telemetry UDP packets) or FFB outputs
 - [ ] Save states
 - [ ] Evaluate and adapt relevant quality-of-life features from Cannonball,
       Cannonball-SE, and Cannonball DX
-- [ ] Random gameplay mode
-- [ ] Wide-screen support
-- [ ] 4K resolution support
-- [ ] Upscaled sprites
+- [ ] Random gameplay mode (Roguelite / Arranged Mode):
+      - Seeded run generator (custom seed entry and daily challenge seed) for competitive runs and reproducibility
+      - Shuffled & dynamic stage sequencing: randomize stage order, time-of-day/weather palettes, and environment/scenery tilemaps across runs
+      - New procedural stage environment types & gameplay variants:
+        - Night Sortie / Searchlight & Flak Storm: Low-visibility nighttime combat illuminated by tracer fire, engine afterburners, searchlights, and dense anti-aircraft artillery (AAA) flak bursts
+        - Sea-Skimming Naval Fleet Assault: Low-altitude anti-ship strike over stormy oceans; dodge surface-to-air missile umbrellas and CIWS fire by wave-skimming to attack warship superstructures
+        - Supersonic City Trench / Megacity Skyline Run: High-speed urban obstacle run weaving through skyscraper gaps, elevated transit lines, and bridges
+        - Severe Weather / Typhoon Penetration: Violent crosswinds, wind shear turbulence requiring active stick compensation, and canopy rain sheets
+      - Procedural enemy wave formations and composition: randomize enemy squadron entry angles, attack archetypes, missile aggression, and speed scaling
+      - Dynamic stage event & hazard placement: procedural spawning of obstacles (canyon pillars, rock formations), supply drops/refueling encounters, and surprise SP stages
+- [ ] Wide-screen support (16:9, 16:10, and 21:9 Ultrawide):
+      - Extended horizontal rendering viewport: Expand the native 320×224 raster
+        horizontally to 398×224 (16:9) or 526×224 (21:9 Ultrawide) without
+        stretching or letterboxing
+      - Road/ground raster generator extension: Extend the Sub CPU / `hwroad`
+        scanline banking and perspective curve generator to compute wider
+        horizontal scanlines across the extended display bounds
+      - Tilemap & scenery layer wrapping: Utilize the X-Board's 1024×512 virtual
+        tilemap surface to render wider scrolling backgrounds seamlessly without
+        edge clipping or visual pop-in
+      - Sprite clipping & projection boundary expansion: Widen the 3D projection
+        frustum and horizontal culling limits so enemies, formations, and
+        projectiles spawn and maneuver naturally across the entire wide field of view
+      - Flexible HUD layout options: Choose between classic 4:3 centered HUD
+        (original placement) or anchored widescreen HUD (instruments, radar, and
+        missile stocks pushed cleanly to the screen edges)
+- [ ] 4K resolution support (3840×2160 / Ultra HD):
+      - Modern GPU rendering backend: hardware-accelerated presentation via SDL_Renderer (Vulkan / Metal / Direct3D 11 / OpenGL)
+      - Integer scaling & aspect ratio modes: crisp pixel-perfect integer scaling (e.g. 9× scale of the 320×224 raster) with configurable pillarboxing or fill modes
+      - High-fidelity scaling shaders: integrated CRT emulation (scanlines, shadow mask, phosphor glow, curvature) and modern edge-preserving scalers (xBRZ, ScaleHQ) optimized for 4K display densities
+      - High-DPI UI & HUD rendering: crisp native 4K text, timer, and HUD overlay rendering option to prevent UI blurriness alongside scaled game elements
+      - Performance optimization: zero-copy frame presentation and fractional frame pacing to ensure lockstep 60 Hz/120 Hz refresh rates at 4K
+- [ ] Upscaled sprites:
+      - CLI option/flag in the main binary to dump and extract raw/decoded ROM
+        sprites (e.g. `--dump-sprites` / `--extract-sprites` to PNG) for AI
+        upscaling pipelines or manual texture editing
+      - High-resolution sprite loading path with transparent replacement and
+        scaling support
+      - Smoother 360-degree rotation steps: support additional roll/rotation
+        angles for the player jet and enemies, achievable either by injecting
+        intermediate pre-rendered sprite assets (expanded sprite banks) or
+        via runtime software/GPU-based intermediate angle rotation and
+        interpolation between discrete banking frames
 - [ ] Complete sprite replacement option
+- [ ] Introduce optional SP (Special) stages:
+      - Airborne Fortress / Arsenal Bird boss fight: Multi-phase battle against a giant airborne aircraft carrier bristling with point-defense turrets and parasite drone escorts
+      - ICBM High-Speed Interception: Maximum-afterburner pursuit and terminal precision strike against an ascending ballistic missile
+      - Naval Fleet Flagship Strike: Low-altitude wave-skimming penetration to neutralize a carrier battle group flagship
+      - Megacity Canyon Dash: Extreme-speed urban obstacle course threading needle gaps between illuminated skyscrapers
+      - Typhoon Eye Penetration: Battle through severe hurricane turbulence and lightning storms to intercept an ace squadron inside the storm's calm eye
+- [ ] Introduce optional interactive landing and in-flight refueling sequences:
+      - Add the aircraft carrier as an inbetween-missions landing and refueling point
+      - Quick Time Event (QTE) and fine-control based inputs:
+        - Pitch: Up / Down (glide slope / boom altitude alignment)
+        - Bank: Left / Right (centerline / drogue basket alignment)
+        - Throttle: Increase / Decrease (airspeed matching / arrestor hook capture)
+      - Short, arcade-paced duration (~10 seconds)
+      - Seamless transition back to combat upon successful contact/docking or landing
+- [ ] Optional 2-Player Co-op / Competitive Wingman Mode:
+      - Shared-screen wingman gameplay: Two player F-14 Tomcat jets airborne simultaneously on screen (Player 1 and Player 2 with distinct tail livery / cockpit markings)
+      - Competitive scoring & tally: Players fly together to complete stages while competing for top score, kill count, accuracy percentage, and combo chains
+      - Split HUD / telemetry: Dual HUD readouts (independent altitude/throttle gauges, lock-on sights, missile stocks, and lives)
+      - Friendly fire toggle & collision options (no-clip vs. wingtip turbulence)
+      - Local couch co-op (dual controller support) with optional rollback/lockstep peer-to-peer netplay support
+- [ ] Optional Missile Evasion Score Bonus & Dynamic Audio Cue:
+      - Near-miss / close evasion scoring: Award extra bonus score when dodging incoming enemy homing missiles at close proximity (near-miss detection radius)
+      - Dynamic "whoosh" sound cue: Trigger a distinct 3D stereo audio effect of a missile whistling / whooshing past the cockpit on successful close evades
+      - Consecutive evasion combo multiplier: Rewarding risk-taking flight maneuvers (e.g., barrel rolls / high-G turns right as the missile closes in) with escalating evasion bonus points
 - [ ] **Option: substitute Sega Ages After Burner II (Saturn, 1996) music
       tracks for the arcade FM/PCM soundtrack.** That release's music is
       redbook/CD-quality audio per stage, rippable to WAV/MP3 — a much
