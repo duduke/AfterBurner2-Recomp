@@ -146,6 +146,9 @@ for name,old,new,capture,test in [
     ("irq4delay", "word(r.d[0],r.d[0]-1);idle(14)", "word(r.d[0],r.d[0]-1);idle(12)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
     ("irq4blit", "write16(r.a[1],v>>16);write16(r.a[1]+2,v)", "write16(r.a[1]+2,v);write16(r.a[1],v>>16)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
     ("irq4redirect", "write16(sp,0x700)", "write16(sp,0x701)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("irq4roadcount", "word(r.d[0],0x1f);idle(8)", "word(r.d[0],0x20);idle(8)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("irq4roadshift", "pc=0x13bda;word(r.d[0],r.d[0]<<4);idle(14)", "pc=0x13bda;word(r.d[0],r.d[0]<<4);idle(12)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
+    ("irq4roadstage", "word(r.d[1],r.d[1]+r.d[1]);idle(4)", "word(r.d[1],r.d[1]+r.d[1]+2);idle(4)", "irq4_service_edges", "tests/oracle_irq4_service.cpp"),
     ("waitbranch", "idle(8); // Short conditional", "idle(10); // Short conditional", "logic_wait_directed", "tests/oracle_logic_wait.cpp"),
     ("waitrearm", "write16(0x2a3c00,1)", "write16(0x2a3c00,2)", "logic_wait_directed", "tests/oracle_logic_wait.cpp"),
 ]:

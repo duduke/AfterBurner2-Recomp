@@ -4,7 +4,7 @@ local space=main.spaces.program
 local board=manager.machine.devices[":mainpcb"]
 local timer=emu.item(assert(board.items["0/m_timer_irq_state"]))
 local blank=emu.item(assert(board.items["0/m_vblank_irq_state"]))
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2IRQ41")
+local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2IRQ42")
 local guard,active,last,hook=false,false,nil,nil
 local events,hooks,pre={},{},nil
 local frame,calls,dropped=0,0,0
@@ -41,6 +41,17 @@ local function access(w,a,d,m)
    space:write_u16(0x2a3c00,({0,1,0x8000,0xffff})[calls%4+1])
    space:write_u8(0x3f8050,calls==limit-5 and 0xff or 1) -- skip explicit credit/service callbacks
    space:write_u8(0x3f913d,3);space:write_u8(0x3f913e,1);space:write_u8(0x3f9140,1)
+   -- Directed operand fixtures, not gameplay/stage-selection claims.
+   local road_case=calls//4
+   space:write_u32(0x3f9142,0x30cf4+((road_case&7)<<4))
+   space:write_u8(0x3f9115,road_case&0xff)
+   space:write_u8(0x3f9114,road_case&0xff)
+   space:write_u16(0x29c060,road_case%26==25 and 0xffff or road_case%26)
+   if os.getenv("AB2_ORACLE_IRQ4_ROAD_ENDPOINTS")=="1" then
+    space:write_u8(0x3f9115,({0,1,0xfe,0xff})[road_case%4+1])
+    space:write_u8(0x3f9114,0xf8|(road_case&7))
+    space:write_u16(0x29c060,({0,24,0xffff,0x8000})[road_case%4+1])
+   end
    space:write_u8(0x3f8b6f,calls%8==3 and (space:read_u8(0x3f8b6f)&~2) or (space:read_u8(0x3f8b6f)|2))
    space:write_u16(0x3f8174,59);space:write_u16(0x3f881c,59);space:write_u16(0x3f880a,1)
    guard=false
@@ -56,7 +67,11 @@ local function access(w,a,d,m)
   end
   -- Data/stack and vector transactions are included. ROM instruction
   -- fetches are represented by clocks. External callees remain transcripts.
-  if w or a>=0x80000 or a==0x70 or a==0x72 then
+  -- Include road-palette ROM operands. These MOVE instructions have no
+  -- extensions; their prefetch is at p+4. Data ranges in these fixtures
+  -- are disjoint from the instruction stream (also asserted by the test).
+  local road_read=(p==0x13bc4 or (p>=0x13bf0 and p<=0x13bf6) or p==0x13c12 or (p>=0x13c28 and p<=0x13c36)) and a~=p+4
+  if w or a>=0x80000 or a==0x70 or a==0x72 or road_read then
    local e=string.pack(">I8I4I4I2I2B",ns(),p,a,d,m,w and 1 or 0)
    if hook then hook.events[#hook.events+1]=e else events[#events+1]=e end
   end
