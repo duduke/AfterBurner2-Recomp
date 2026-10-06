@@ -13,15 +13,17 @@ bool same(const OMainObjects::Registers& a,const OMainObjects::Registers& b) {re
 struct Event {uint64_t ns;uint32_t pc,a;uint16_t d,m;bool w;};
 Event event(std::ifstream& f) {Event e;e.ns=num(f,8);e.pc=num(f,4);e.a=num(f,4);e.d=num(f,2);e.m=num(f,2);e.w=num(f,1);return e;}
 struct Hook {uint32_t entry;uint64_t start,end;OMainObjects::Registers pre,post;std::vector<Event> events;};
-bool leaf(uint32_t p) {return p==0x1495c||p==0x148be||p==0x148b8||p==0x147e8||p==0xb7c2||p==0xb7d2||p==0x13bb6||p==0x13bcc||p==0x13bfa;}
+bool leaf(uint32_t p) {return p==0x1495c||p==0x148be||p==0x148b8||p==0x147e8||p==0xb7c2||p==0xb7d2||p==0x13bb6||p==0x13bcc||p==0x13bfa||p==0x1329e;}
 }
 int main(int argc,char** argv) try {
     std::ifstream f(argc>1?argv[1]:"build/oracle/irq4_service.bin",std::ios::binary);
-    char magic[8];if(!f.read(magic,8)||memcmp(magic,"AB2IRQ42",8))throw std::runtime_error("invalid IRQ4 capture (regenerate with ROM operand reads)");
+    char magic[8];if(!f.read(magic,8)||memcmp(magic,"AB2IRQ43",8))throw std::runtime_error("invalid IRQ4 capture (regenerate with ROM operand reads)");
     if(!roms.load_aburner2())throw std::runtime_error("ROMs required");
     MainBus::Memory memory;MainBus bus(roms.maincpu.rom,roms.maincpu.length,nullptr,0,memory);
     unsigned calls=0,identical=0,failed=0,events=0,differences=0,external=0,leaves=0,logic=0,normal=0,overflow=0;
     unsigned redirects=0,interpolated=0,normal_blits=0,draw_skipped=0,rollovers=0;
+    unsigned cycle_calls=0,cycle_empty=0,cycle_ordinary=0,cycle_alternate=0,cycle_fade=0;
+    std::vector<uint16_t> cycle_selectors,cycle_phases;
     unsigned road_full=0,road_partial=0,road_repeat=0;
     bool road_sources[256]{},road_destinations[8]{};
     std::vector<uint16_t> road_stages;
@@ -43,6 +45,18 @@ int main(int argc,char** argv) try {
             if(h.entry==0x13bb6)++road_full;
             if(h.entry==0x13bcc)++road_partial;
             if(h.entry==0x13bfa)++road_repeat;
+            if(h.entry==0x1329e) {
+                ++cycle_calls;bool copied=false;
+                for(const auto& e:h.events) {
+                    if(!e.w&&e.pc==0x1329e&&e.a==0x29c09c&&std::find(cycle_selectors.begin(),cycle_selectors.end(),e.d)==cycle_selectors.end())cycle_selectors.push_back(e.d);
+                    if(!e.w&&(e.pc==0x132b4||e.pc==0x132ea)&&std::find(cycle_phases.begin(),cycle_phases.end(),e.d)==cycle_phases.end())cycle_phases.push_back(e.d);
+                    if(e.w&&(e.pc==0x132da||e.pc==0x13310)&&!copied) {
+                        copied=true;if(e.pc==0x132da)++cycle_ordinary;else ++cycle_alternate;
+                        if(e.a==0xcdab0)++cycle_fade;
+                    }
+                }
+                if(!copied)++cycle_empty;
+            }
             for(const auto& e:h.events)if(!e.w) {
                 if(e.pc==0x13bd2&&e.a==0x3f9114)road_sources[e.d&255]=true;
                 if(e.pc==0x13be4&&e.a==0x3f9114)road_destinations[(e.d>>8)&7]=true;
@@ -62,8 +76,8 @@ int main(int argc,char** argv) try {
         bool ok=true;size_t cursor=0,hcursor=0;OMainIrqService service;
         MainBus::Trace trace{nullptr,nullptr,[&](bool w,uint32_t a,uint16_t d,uint16_t m) {
             const auto p=service.current_pc();
-            if(!w&&a==p+4&&(p==0x13bc4||(p>=0x13bf0&&p<=0x13bf6)||p==0x13c12||(p>=0x13c28&&p<=0x13c36)))
-                throw std::runtime_error("road operand aliases instruction prefetch excluded by capture");
+            if(!w&&a==p+4&&(p==0x13bc4||(p>=0x13bf0&&p<=0x13bf6)||p==0x13c12||(p>=0x13c28&&p<=0x13c36)||(p>=0x132da&&p<=0x132e6)||(p>=0x13310&&p<=0x1331c)))
+                throw std::runtime_error("palette operand aliases instruction prefetch excluded by capture");
             ++events;bool equal=cursor<expected.size();
             if(equal) {const auto& e=expected[cursor++];equal=e.w==w&&e.ns==now&&e.pc==service.current_pc()&&e.a==a&&e.m==m&&(e.d&m)==(d&m);
                 if(!equal&&calls==0)std::cerr<<std::hex<<"IRQ4 bus pc="<<service.current_pc()<<'/'<<e.pc<<" a="<<a<<'/'<<e.a<<" data="<<(d&m)<<'/'<<(e.d&e.m)<<std::dec<<" time="<<now<<'/'<<e.ns<<'\n';}
@@ -119,5 +133,6 @@ int main(int argc,char** argv) try {
         <<" source selectors="<<std::count(std::begin(road_sources),std::end(road_sources),true)
         <<" destination banks="<<std::count(std::begin(road_destinations),std::end(road_destinations),true)
         <<" stage operands="<<road_stages.size()<<'\n';
+    std::cout<<"Palette cycle calls: "<<cycle_calls<<" empty="<<cycle_empty<<" ordinary="<<cycle_ordinary<<" alternate="<<cycle_alternate<<" fade destinations="<<cycle_fade<<" selectors="<<cycle_selectors.size()<<" phase words="<<cycle_phases.size()<<'\n';
     return calls&&!failed&&!differences?0:1;
 } catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

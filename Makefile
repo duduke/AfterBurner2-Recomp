@@ -394,6 +394,7 @@ oracle-capture-irq4-service:
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_directed.bin 900 30
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_edges.bin 120 15
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_ROAD_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_road_endpoints.bin 120 15
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_CYCLE_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_cycle_endpoints.bin 600 30
 
 oracle-irq4-service:
 	@mkdir -p build
@@ -402,6 +403,7 @@ oracle-irq4-service:
 	./build/oracle_irq4_service build/oracle/irq4_service_directed.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_edges.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_road_endpoints.bin
+	./build/oracle_irq4_service build/oracle/irq4_service_cycle_endpoints.bin
 
 oracle-capture-logic-wait:
 	@mkdir -p build/oracle

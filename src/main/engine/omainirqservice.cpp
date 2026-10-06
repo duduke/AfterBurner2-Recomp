@@ -160,7 +160,7 @@ OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t
         pc=p;idle(absolute_long?8:2);sp-=4;
         const uint32_t ret=p+(absolute_long?6:4);
         write16(sp,ret>>16);write16(sp+2,ret);idle(absolute_long?4:8);
-        if(target==0x1495c || target==0x148be || target==0x148b8 || target==0x147e8 || target==0xb7c2 || target==0xb7d2 || target==0x13bb6 || target==0x13bcc || target==0x13bfa)
+        if(target==0x1495c || target==0x148be || target==0x148b8 || target==0x147e8 || target==0xb7c2 || target==0xb7d2 || target==0x13bb6 || target==0x13bcc || target==0x13bfa || target==0x1329e)
             { if(frame_leaf(target,r,sp)!=ret)throw std::runtime_error("corrupt IRQ4 leaf return stack"); }
         else {
             if(!boundary)throw std::runtime_error("IRQ4 callee timing boundary required");
@@ -317,6 +317,37 @@ uint32_t OMainIrqService::frame_leaf(uint32_t entry,OMainObjects::Registers& r,u
             pc=0x13c38;word(r.d[0],r.d[0]-1);idle(i==7?14:10);
         }
         retpc=0x13c3c;
+    } else if(entry==0x1329e) {
+        // $1329E..$132B0: subtract in word width, zero exits before
+        // unsigned BCS selects the alternate palette for differences 1..5.
+        pc=0x1329e;idle(8);word(r.d[0],read16(0x29c09c));idle(4);
+        pc=0x132a4;word(r.d[0],r.d[0]-0x11);idle(8);
+        pc=0x132a8;const bool empty=uint16_t(r.d[0])==0;idle(empty?10:12);
+        retpc=0x132e8;
+        if(!empty) {
+            pc=0x132ac;idle(8);
+            pc=0x132b0;const bool alternate=uint16_t(r.d[0])<6;idle(alternate?10:12);
+            // $132B4..$132D4 / $132EA..$1330A: phase shift/mask,
+            // signed ADDA.W and optional destination in fade RAM.
+            const uint32_t base=alternate?0x132ea:0x132b4;
+            pc=base;idle(4);word(r.d[0],read16(0xffff9146));idle(4);
+            pc=base+4;word(r.d[0],r.d[0]<<(alternate?1:3));idle(alternate?8:12);
+            pc=base+6;word(r.d[0],r.d[0]&(alternate?0x1e0:0x3e0));idle(8);
+            pc=base+10;r.a[0]=alternate?0x35492:0x35192;idle(12);
+            pc=base+16;r.a[0]+=int16_t(r.d[0]);idle(8);
+            pc=base+18;r.a[1]=0x121e82;idle(12);
+            pc=base+24;idle(8);const auto fading=read8(0xcdd05);idle(4);
+            pc=base+30;idle(fading?8:10);
+            if(fading){pc=base+32;r.a[1]=0xcdab0;idle(12);}
+            // $132DA..$132E6 / $13310..$1331C: seven runtime ROM
+            // longs, high/low source reads and destination writes.
+            const uint32_t moves=alternate?0x13310:0x132da;
+            for(unsigned i=0;i<7;++i) {
+                pc=moves+2*i;const auto v=read32(r.a[0]);r.a[0]+=4;
+                write16(r.a[1],v>>16);write16(r.a[1]+2,v);r.a[1]+=4;idle(4);
+            }
+            retpc=alternate?0x1331e:0x132e8;
+        }
     } else if(entry==0x1495c) {
         // $1495C/$14966 memory-to-memory MOVE.B, then NOT/MOVE.
         pc=0x1495c;idle(8);auto old=read8(0x29c074);idle(4);write8(0x29c075,old);idle(8);
