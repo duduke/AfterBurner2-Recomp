@@ -17,6 +17,8 @@
 #include "engine/omainobjects.hpp"
 #include "engine/omaininput.hpp"
 #include "engine/omainadc.hpp"
+#include "engine/omainsound.hpp"
+#include "engine/omainweapons.hpp"
 
 // Master Engine Coordinator.
 // Verified video/scheduling ports share MainBus. Native object producers and HUD remain native until milestone 3d.
@@ -37,6 +39,11 @@ public:
 
     [[nodiscard]] OLevelObjs& get_objects() { return level_objs; }
     [[nodiscard]] MainBus& arcade_bus() { return *bus; }
+    std::vector<uint8_t> take_sound_commands() {
+        auto r = std::move(sound_commands);
+        sound_commands.clear();
+        return r;
+    }
 
 private:
     OLevelObjs level_objs;
@@ -57,4 +64,5 @@ private:
     OMainObjects::Registers input_regs{};
     uint8_t adc_mux{0};
     uint8_t raw_axis_x{0x80}, raw_axis_y{0x80}, raw_throttle{0x80};
+    std::vector<uint8_t> sound_commands{};
 };

@@ -133,8 +133,82 @@ void host_input_adc()
     check(e.arcade_bus().read8(0xffff8894) == 0xb0, "ADC channel 2 (Throttle afterburner) must be 0xB0");
 }
 
+void sound_queue_and_reload()
+{
+    HWPalette p(8192); HWRoad r(0x1700, 0x1720, 0x1780, -166);
+    HWSprites s; HWTiles t; OEngine e;
+    e.init(p, r, s, t, nullptr, 0);
+
+    // 1. Initial state: sound queue enabled at $8902 ($0D16E)
+    check(e.arcade_bus().read8(0xffff8902) == 0xff, "Sound queue at 0xffff8902 must be enabled ($FF)");
+    check(e.arcade_bus().read8(0xffff8906) == 0, "Sound queue count at 0xffff8906 must be 0 initially");
+    check(e.arcade_bus().read16(0xffff8908) == 0, "Sound queue write pointer at 0xffff8908 must be 0 initially");
+    check(e.arcade_bus().read16(0xffff890a) == 0, "Sound queue read pointer at 0xffff890a must be 0 initially");
+
+    // 2. Enqueue sound command 0x90 (vulcan) via OMainSound::enqueue ($00B84C)
+    OMainObjects::Registers reg{};
+    reg.d[0] = 0x90;
+    OMainSound::enqueue(e.arcade_bus(), reg, true);
+    check(e.arcade_bus().read8(0xffff8906) == 1, "Sound queue count must increment to 1");
+    check(e.arcade_bus().read16(0xffff8908) == 1, "Sound queue write pointer must advance to 1");
+    check(e.arcade_bus().read8(0xffff890c) == 0x90, "First ring slot at 0xffff890c must contain 0x90");
+
+    // Enqueue second command 0x40 (missile)
+    reg.d[0] = 0x40;
+    OMainSound::enqueue(e.arcade_bus(), reg, true);
+    check(e.arcade_bus().read8(0xffff8906) == 2, "Sound queue count must increment to 2");
+    check(e.arcade_bus().read16(0xffff8908) == 2, "Sound queue write pointer must advance to 2");
+    check(e.arcade_bus().read8(0xffff890d) == 0x40, "Second ring slot at 0xffff890d must contain 0x40");
+
+    // 3. Tick the engine: main_compare_interrupt runs 6 times per frame,
+    // stepping phase 0xffff8900. On odd phases with count > 0, OMainSound::consume
+    // consumes the command and writes to $0E8017 (compare_timer register 11).
+    e.tick(p, r, s, t);
+    auto cmds = e.take_sound_commands();
+    check(cmds.size() == 2, "Engine tick must drain both queued sound commands via compare_timer latch");
+    check(cmds[0] == 0x90 && cmds[1] == 0x40, "Sound commands must be received in FIFO order (0x90, 0x40)");
+    check(e.arcade_bus().read8(0xffff8906) == 0, "Sound queue count must return to 0 after consumption");
+    check(e.arcade_bus().read16(0xffff890a) == 2, "Sound queue read pointer must advance to 2");
+
+    // take_sound_commands() must clear the internal buffer
+    check(e.take_sound_commands().empty(), "take_sound_commands must clear internal queue");
+
+    // 4. Test disabled queue ($8902 == 0):
+    e.arcade_bus().write8(0xffff8902, 0);
+    reg.d[0] = 0x91;
+    OMainSound::enqueue(e.arcade_bus(), reg, true);
+    check(e.arcade_bus().read8(0xffff8906) == 0, "Disabled sound queue must reject enqueue");
+    check(e.arcade_bus().read16(0xffff8908) == 0, "Disabled sound queue must reset write pointer");
+    // While disabled, consume resets read pointer ($00B836):
+    e.tick(p, r, s, t);
+    check(e.arcade_bus().read16(0xffff890a) == 0, "Disabled sound consumer must reset read pointer");
+    e.arcade_bus().write8(0xffff8902, 0xff); // Re-enable
+
+    // 5. Test missile reload at $16C8A:
+    // Set deficit = 5, active reload flag $90FF = $FF, countdown $9103 = 0, missiles = 10
+    e.arcade_bus().write16(0xffff9100, 5);  // deficit = 5
+    e.arcade_bus().write8(0xffff90ff, 0xff); // reload in progress
+    e.arcade_bus().write8(0xffff9103, 0);   // countdown
+    e.arcade_bus().write16(0xffff8d66, 10); // current missiles
+
+    // Advance ticks until reload executes at $16C8A, enqueues $9B, and drains to compare_timer:
+    std::vector<uint8_t> reload_cmds;
+    for (int i = 0; i < 10; ++i) {
+        e.tick(p, r, s, t);
+        auto c = e.take_sound_commands();
+        if (!c.empty()) {
+            reload_cmds = std::move(c);
+            break;
+        }
+    }
+    check(!reload_cmds.empty() && reload_cmds.front() == 0x9b,
+          "Missile reload at $16C8A must enqueue reload sound 0x9B and emit to latch");
+    check(e.arcade_bus().read16(0xffff8d66) == 11, "Missile reload must increment missile count to 11");
+    check(e.arcade_bus().read16(0xffff9100) == 4, "Missile reload must decrement deficit to 4");
+}
+
 int main()
 {
-    sprite_scaling(); palette_colors(); release_stick(); publication_wait(); host_input_adc();
+    sprite_scaling(); palette_colors(); release_stick(); publication_wait(); host_input_adc(); sound_queue_and_reload();
     std::cout << "Engine regression checks passed\n";
 }

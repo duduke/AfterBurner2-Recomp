@@ -69,7 +69,10 @@ world handler graphs now have separate routine checks. Refuel stage-flow and
 a natural death sequence remain unverified. Object handlers remain unwired to
 gameplay pending paired player/weapon acceptance, but host input and ADC conversion
 are now wired to `OMainInput` in `OEngine` and naturally drive arcade RAM and road attitude.
-`OLevelObjs`, its request adapter and native sound cues therefore remain.
+The 68000 sound ring (`$890C`), comparator IRQ consumer (`$00B7F8`), hardware latch (`$0E8017`),
+and display IRQ reload producer (`$016C8A`) are now wired into `OEngine`, delivering ported
+sound commands to `ArcadeAudio`. `OLevelObjs`, its request adapter and remaining native sound
+cues coexist with ported sound until full handler acceptance passes.
 This foundation does not change the native combat experience.
 
 Formation cadence/trajectories, aiming, projectile motion, hitboxes, scoring

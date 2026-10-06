@@ -121,9 +121,12 @@ weapon-button coverage when connecting host controls.
 - [ ] Connect verified weapon, projectile, reload and HUD routines at their
   actual callers. Retain held/released fire, launch-side, cooldown/reload,
   exhaustion, targeting, removal and attachment-transition checks.
-- [ ] Connect sound-ring producers and the timer consumer at their actual
-  callers. Verify command order and latch timing before removing native sound
-  events; routine ring equality does not establish producer cadence.
+- [x] Connect sound-ring producers and the timer consumer at their actual
+  callers. Comparator IRQ drains the 64-byte ring through `$00B7F8`, writing
+  the 315-5250 sound latch at `$0E8017`. Display IRQ runs `$016C8A` missile
+  reload, enqueuing reload sound `$9B` into the ring and updating the HUD.
+  Sound commands route to `ArcadeAudio` alongside native cues; native event
+  removal remains pending full object acceptance.
 
 Each handler's independent capture contract includes complete object/shared
 RAM, D0..D7/A0..A6, main/sub math-chip state, IO1 input and ordered CPU-owned

@@ -499,9 +499,10 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       waiting/animation/removal, projection and attitude callees are verified;
       `$E662/$E8D0/$E94E` states 0..6 now pass directed and bounded gameplay
       checks. Companion emission/animation/pool-reset routines are now checked;
-      lives/HUD flow remains an explicit 3e boundary.
-- [ ] Main → sound commands from the ported code instead of the
-      reconstruction's hand-picked cues
+- [x] Main → sound commands from the ported code: wired comparator IRQ consumer
+      `$00B7F8` and sound latch `$0E8017`, queue initialization at `$0D16E`,
+      and reload producer `$016C8A` enqueuing `$9B`. Ported commands route
+      from `OEngine::take_sound_commands()` to `ArcadeAudio` alongside native cues.
 
 **3e. Stages and game flow**
 

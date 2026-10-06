@@ -57,6 +57,17 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
     input_regs.a[5] = 0xffffa040;
     input_regs.a[6] = 0x000e4000;
 
+    sound_commands.clear();
+    bus->compare_timer.sound_command = [this](uint8_t cmd) {
+        sound_commands.push_back(cmd);
+    };
+    // $00D16E: enable the arcade sound queue at $8902 and initialize ring pointers
+    bus->write8(0xffff8902, 0xff);
+    bus->write16(0xffff8900, 0);
+    bus->write8(0xffff8906, 0);
+    bus->write16(0xffff8908, 0);
+    bus->write16(0xffff890a, 0);
+
     stage_setup.run(*bus,0x13972);
     stage_setup.run(*bus,0x18918);
     stage_setup.run(*bus,0xddfe);
@@ -126,7 +137,7 @@ void OEngine::handle_input(int stick_x,int stick_y,bool fire_vulcan,bool fire_mi
 void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
 {
     ++frame_count;
-    for (int i = 0; i < 6; ++i) main_adc_sample(*bus);
+    for (int i = 0; i < 6; ++i) main_compare_interrupt(*bus, input_regs);
     auto phase=frame_engine.interrupt(*bus,[&](uint32_t entry) {
         switch(entry) {
         case 0x18444: scenery_engine.stage_events(*bus);break;
@@ -137,7 +148,7 @@ void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
         case 0x148b8: frame_engine.bookkeeping(*bus);break;
         case 0x147e8: frame_engine.service_edge(*bus);break;
         case 0x14990: case 0xe2da: break; // ROM RTS-only callees
-        case 0x16c8a: break; // 3d missile/audio/HUD sequencer boundary
+        case 0x16c8a: OMainWeapons::reload(*bus, input_regs); break;
         case 0x17146: case 0xc6f8: break; // 3e attract/credit boundaries
         default: palette_engine.run(*bus,entry);break;
         }

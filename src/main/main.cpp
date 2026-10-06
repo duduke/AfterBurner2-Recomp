@@ -176,6 +176,8 @@ int main(int argc, char** argv)
         {
             engine.handle_input(stick_x, stick_y, fire_vulcan, fire_missile, throttle);
             engine.tick(palette, road, sprites, tiles);
+            for (const auto command : engine.take_sound_commands())
+                if (audio) audio->command(command);
             for (const auto command : engine.get_objects().take_audio_commands())
                 if (audio) audio->command(command);
             if (audio)

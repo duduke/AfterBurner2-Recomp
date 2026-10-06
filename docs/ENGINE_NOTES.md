@@ -2805,3 +2805,30 @@ Host input from SDL and test harnesses is wired into the arcade hardware bus and
   - `tests/engine_regression.cpp` tests active-low button states, 60 Hz display vs 30 Hz logic button persistence, ADC channel clamping, and neutral release.
   - `tests/stage1_integration.cpp` verifies natural stick bank/neutral/climb response in shared RAM and road scanline generation.
 
+## Sound ring, comparator consumer & reload producer wiring (`OEngine`)
+
+The arcade sound queue and hardware compare-timer latch are connected to ported 68000 routines:
+- **Sound Queue Initialization**:
+  - `OEngine::init` enables the queue at `$8902` with `$FF` (`$0D16E`) and resets the 64-byte circular buffer pointers (`$8900` phase, `$8906` count, `$8908` write pointer, `$890A` read pointer).
+- **Comparator Interrupt & Consumer (`$01461C` / `$00B7F8`)**:
+  - `main_compare_interrupt(*bus, input_regs)` executes 6 times per frame tick in `OEngine::tick`.
+  - Each interrupt acknowledges the timer chip (`$0E8012`), latches an ADC sample, and calls `OMainSound::consume`.
+  - On odd phases of `$8900` with nonzero count (`$8906 > 0`), the consumer fetches the next byte from `$890C + $890A`, writes it to the 315-5250 sound latch at `$0E8017`, decrements count, and advances `$890A` modulo 64.
+- **Hardware Sound Latch (`CompareTimer5250`)**:
+  - Writing to `$0E8017` sets register 11 of the 315-5250 and invokes `compare_timer.sound_command`.
+  - `OEngine` connects this callback to buffer latch-written commands into `sound_commands`.
+  - `OEngine::take_sound_commands()` drains these commands and routes them to `ArcadeAudio` in `main.cpp` and `stage1_integration.cpp`.
+- **Missile Reload Producer (`$016C8A`)**:
+  - Wired into `frame_engine.interrupt` at entry `0x16C8A`, executing `OMainWeapons::reload(*bus, input_regs)` on 30 Hz logic frames.
+  - When reload is active, increments countdown timer `$9103`. When timer reaches 1, increments missile inventory `$8D66`, decrements deficit `$9100`, updates the HUD via `missile_hud`, and enqueues reload sound `$9B` via `OMainSound::enqueue(*bus, r, true)`.
+  - The comparator interrupt consumer then drains `$9B` from the ring and emits it to the sound latch.
+- **Verification**:
+  - `tests/engine_regression.cpp` contains `sound_queue_and_reload()` verifying:
+    - Queue enable and zero-initialized pointers.
+    - FIFO ordering of enqueued commands (`$90` vulcan, `$40` missile) draining to compare-timer latch.
+    - Disabled queue behavior: enqueue rejection, write-pointer reset (`$00B87C`), and consumer read-pointer reset (`$00B836`).
+    - Missile reload at `$16C8A` executing, incrementing missile count, decrementing deficit, and emitting `$9B` through the latch.
+  - `tests/stage1_integration.cpp` exercises reload in the real-ROM Stage 1 environment.
+  - Deliberate mutation check (expecting `$9C` instead of `$9B`) proved test failure.
+
+

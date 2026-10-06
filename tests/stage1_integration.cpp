@@ -52,6 +52,7 @@ int main()
         }
         // Headless checks consume the same event queue as the app.
         engine.get_objects().take_audio_commands();
+        engine.take_sound_commands();
     }
     require(engine.get_objects().hud().score > 0, "Stage 1 weapons must hit fighters and update score");
     require(engine.get_objects().hud().missiles < 50, "Missile inventory must update");
@@ -78,8 +79,27 @@ int main()
         engine.handle_input(0, 0, false, false, 1);
         engine.tick(palette, road, sprites, tiles);
         engine.get_objects().take_audio_commands();
+        engine.take_sound_commands();
     }
     require(engine.get_objects().hud().hits > 0, "Enemy missiles must reach the player and update HITS");
+
+    // Verify ported sound ring and reload sequence in Stage 1 environment with real ROMs:
+    require(engine.arcade_bus().read8(0xffff8902) == 0xff, "Arcade sound queue must be enabled");
+    engine.arcade_bus().write16(0xffff8d66, 10);
+    engine.arcade_bus().write8(0xffff9102, 2);
+    std::vector<uint8_t> ported_cmds;
+    for (int i = 0; i < 10; ++i) {
+        engine.tick(palette, road, sprites, tiles);
+        auto c = engine.take_sound_commands();
+        if (!c.empty()) {
+            ported_cmds = std::move(c);
+            break;
+        }
+    }
+    require(!ported_cmds.empty() && ported_cmds.front() == 0x9b,
+            "Stage 1 missile reload must emit ported reload sound 0x9B through compare_timer latch");
+    require(engine.arcade_bus().read16(0xffff8d66) > 10, "Missile count must increase from reload");
+
     engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length,
                 roms.subcpu.rom, roms.subcpu.length);
     ArcadeAudio audio(roms);
