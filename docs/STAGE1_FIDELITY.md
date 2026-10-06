@@ -212,3 +212,13 @@ physical inputs, sub-produced blit operands and interrupted caller contexts
 remain external. No independent IRQ/caller/sub scheduler has been established,
 and these timing ports are not wired into `OEngine`. Native Stage 1 controls,
 objects, request adapter and sound cues remain active; Phase 3d is incomplete.
+
+The bounded caller continuation now checks `$1458A..$145B8`,
+`$14856..$14878` and `$B676..$B696` one instruction at a time, including
+prefetch/operand phases, CCR, consecutive caller state and IRQ2/IRQ4/IRQ6
+exception entry. Directed IRQ4 covers every re-arm instruction. Physical IPL
+visibility, initial contexts, external handler/ISR resumptions and sub progress
+remain supplied; this does not independently schedule the host. In particular,
+MAME can deliver a pending scanline edge after a CPU's reported bus timestamp.
+The exact counts and limits are in `ENGINE_NOTES.md`. These ports remain
+outside `OEngine`; the native Stage 1 producers are still active.

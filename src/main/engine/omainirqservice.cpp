@@ -36,11 +36,11 @@ uint8_t OMainIrqService::read8(uint32_t a) { clock(ns);auto v=bus->read8(a);idle
 void OMainIrqService::write16(uint32_t a,uint16_t v) { clock(ns);bus->write16(a,v);idle(4); }
 void OMainIrqService::write8(uint32_t a,uint8_t v) { clock(ns);bus->write8(a,v);idle(4); }
 
-OMainIrqService::Result OMainIrqService::run(MainBus& b,const Context& c,const Clock& advance,const Boundary& boundary,const LeafObserver& observer) {
+OMainIrqService::Result OMainIrqService::enter(MainBus& b,const Context& c,const Clock& advance) {
     if((c.level!=2 && c.level!=4 && c.level!=6) || c.boundary_ns%CYCLE_NS || (c.supervisor_sp&1))
-        throw std::runtime_error("unsupported 68000 service context");
-    bus=&b;clock=advance;observe_leaf=observer;ns=c.boundary_ns;pc=c.interrupted_pc;
-    auto r=c.registers;uint32_t sp=c.supervisor_sp;
+        throw std::runtime_error("unsupported 68000 entry context");
+    bus=&b;clock=advance;ns=c.boundary_ns;pc=c.interrupted_pc;
+    uint32_t sp=c.supervisor_sp;
     // 68000 exception entry: six internal clocks, PC low; CPU-space IACK
     // uses the ten-clock E phase (VPA), one after-delay clock, four bus
     // clocks, then four internal clocks. Source: MAME m68000 state_interrupt
@@ -55,6 +55,18 @@ OMainIrqService::Result OMainIrqService::run(MainBus& b,const Context& c,const C
     if(entry!=(c.level==2 ? 0x1461c : c.level==4 ? 0x14674 : 0x1466c))
         throw std::runtime_error("unexpected arcade IRQ vector");
     idle(10); // two handler prefetch bus phases separated by two clocks
+
+    clock(ns);
+    return {c.registers,entry,sp,uint16_t((c.sr&0x38ff)|0x2000|(c.level<<8)),ns};
+}
+
+OMainIrqService::Result OMainIrqService::run(MainBus& b,const Context& c,const Clock& advance,const Boundary& boundary,const LeafObserver& observer) {
+    if((c.level!=2 && c.level!=4 && c.level!=6) || c.boundary_ns%CYCLE_NS || (c.supervisor_sp&1))
+        throw std::runtime_error("unsupported 68000 service context");
+    const auto initial=enter(b,c,advance);
+    observe_leaf=observer;
+    auto r=initial.registers;uint32_t sp=initial.sp;
+    const uint32_t entry=initial.pc;
 
     if(c.level==4) return irq4(r,sp,boundary);
 
@@ -423,4 +435,93 @@ OMainIrqService::Result OMainIrqService::logic_step(MainBus& b,const Context& c,
     pc=0x14876;idle(4);pc=0x14878;const auto ret=read32(sp);sp+=4;idle(8);clock(ns);
     // MOVE.W #1 clears NZVC and leaves X from CMPI or ADDQ.
     return {r,ret,sp,uint16_t((c.sr&0xffe0)|x),ns};
+}
+
+OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Context& c,const Clock& advance,const Poll& poll) {
+    if(c.boundary_ns%CYCLE_NS || (c.supervisor_sp&1) || !poll || (c.sr&0xc000))
+        throw std::runtime_error("unsupported caller instruction context");
+    bus=&b;clock=advance;ns=c.boundary_ns;pc=c.interrupted_pc;
+    auto r=c.registers;auto sp=c.supervisor_sp;auto sr=c.sr;
+    uint32_t next=pc;unsigned selected=0;uint64_t selection=0;
+    auto latch=[&] { selection=ns;clock(ns);auto level=poll(ns);
+        if(level!=0&&level!=2&&level!=4&&level!=6)throw std::runtime_error("unsupported caller IPL");
+        selected=eligible(level,sr)?level:0; };
+    auto final=[&](uint32_t address) { latch();read16(address); };
+    auto nz=[&](uint16_t value) { sr=(sr&0xfff0)|(value?0:4)|(value&0x8000?8:0); };
+    auto arithmetic=[&](uint16_t old,uint16_t value,bool subtract,bool x) {
+        const bool carry=subtract?old<1:old==0xffff;
+        const bool overflow=subtract?old==0x8000:old==0x7fff;
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x8000?8:0)|(overflow?2:0)|(carry?1:0);
+        if(x)sr=(sr&~16)|(carry?16:0);
+    };
+    auto branch=[&](bool take,uint32_t target,unsigned length) {
+        next=take?target:pc+length;idle(2);
+        if(take) {read16(next);final(next+2);}
+        else {idle(2);if(length==4)read16(pc+4);final(next+2);}
+    };
+    switch(pc) {
+    // $1458A/$14590: main loop's road pointer and BSR wait caller.
+    case 0x1458a:r.a[6]=0xe4000;read16(pc+4);read16(pc+6);final(pc+8);next=pc+6;break;
+    case 0x14590:
+        idle(2);sp-=4;write16(sp,1);write16(sp+2,0x4594);
+        read16(0x14856);final(0x14858);next=0x14856;break;
+    // $14594..$145B8: live 254-record dispatcher, handler stays a boundary.
+    case 0x14594: {
+        read16(pc+4);read16(pc+6);auto value=read16(0x1c176);
+        read16(pc+8);nz(value);write16(0xffff8806,value);final(pc+10);next=pc+8;break;
+    }
+    case 0x1459c:r.a[5]=0xffff9fc0;read16(pc+4);final(pc+6);next=pc+4;break;
+    case 0x145a0:r.a[5]+=64;read16(pc+4);final(pc+6);next=pc+4;break;
+    case 0x145a4: {
+        read16(pc+4);auto value=read8(r.a[5]);sr=(sr&~4)|(value&0x80?0:4);
+        final(pc+6);next=pc+4;break;
+    }
+    case 0x145a8:branch(sr&4,0x145b2,4);break;
+    case 0x145ac:read16(pc+4);r.a[0]=read32(r.a[5]+16);final(pc+6);next=pc+4;break;
+    case 0x145b0:
+        next=r.a[0];read16(next);sp-=4;write16(sp,1);write16(sp+2,0x45b2);final(next+2);break;
+    case 0x145b2: {
+        read16(pc+4);auto old=read16(0xffff8806);auto value=uint16_t(old-1);
+        arithmetic(old,value,true,true);read16(pc+6);latch();write16(0xffff8806,value);next=pc+4;break;
+    }
+    case 0x145b6:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x145a0,2);break;
+    case 0x145b8:branch(true,0x1458a,2);break;
+    // $14856..$14878: preserve flags and complete each instruction before IRQ.
+    case 0x14856:read16(pc+4);read16(pc+6);nz(read16(0x2a3c00));final(pc+8);next=pc+6;break;
+    case 0x1485c:branch(bool(sr&8)==bool(sr&2),0x14856,2);break;
+    case 0x1485e: {
+        read16(pc+4);read16(pc+6);read16(pc+8);auto old=read16(0x2a3c00);auto value=uint16_t(old-0xffff);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x8000?8:0)|((old&0x8000)==0&&value&0x8000?2:0)|(old<0xffff?1:0);
+        final(pc+10);next=pc+8;break;
+    }
+    case 0x14866:branch(sr&4,0x1486e,4);break;
+    case 0x1486a: {
+        read16(pc+4);auto old=read16(0xffff8ba4);auto value=uint16_t(old+1);
+        arithmetic(old,value,false,true);read16(pc+6);latch();write16(0xffff8ba4,value);next=pc+4;break;
+    }
+    case 0x1486e: {
+        constexpr uint16_t armed=1;
+        read16(pc+4);read16(pc+6);nz(armed);read16(pc+8);write16(0x2a3c00,armed);final(pc+10);next=pc+8;break;
+    }
+    case 0x14876:final(pc+4);next=pc+2;break;
+    case 0x14878:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // $B676..$B696: publication wait and main-owned count/pointer operands.
+    case 0xb676:read16(pc+4);read16(pc+6);nz(read16(0x2a3c00));final(pc+8);next=pc+6;break;
+    case 0xb67c:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0xb676,2);break;
+    case 0xb67e:read16(pc+4);read16(pc+6);r.a[0]=read32(0x2a3c0c);final(pc+8);next=pc+6;break;
+    case 0xb684: {
+        read16(pc+4);read16(pc+6);auto value=read16(0x2a3cf0);nz(value);
+        write16(r.a[0],value);final(pc+8);next=pc+6;break;
+    }
+    case 0xb68a: {
+        auto value=read16(r.a[0]);nz(value);read16(pc+4);write16(0x29c058,value);
+        read16(pc+6);final(pc+8);next=pc+6;break;
+    }
+    case 0xb690:
+        read16(pc+4);read16(pc+6);read16(0x2a3cf0);nz(0);read16(pc+8);
+        latch();write16(0x2a3cf0,0);next=pc+6;break;
+    case 0xb696:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    default:throw std::runtime_error("unported caller instruction");
+    }
+    clock(ns);return {{r,next,sp,sr,ns},selected,selection};
 }

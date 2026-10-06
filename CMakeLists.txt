@@ -266,7 +266,7 @@ if(BUILD_TESTING AND STAGE1_ROM_TESTS)
 endif()
 
 if(BUILD_TESTING AND ORACLE_TESTS)
-    foreach(PORT irq4_service logic_wait)
+    foreach(PORT irq4_service logic_wait caller)
         add_executable(oracle_${PORT} tests/oracle_${PORT}.cpp
             src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp
             src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
@@ -280,4 +280,9 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_logic_wait build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
+    foreach(CAPTURE caller caller_directed)
+        add_test(NAME oracle_${CAPTURE} COMMAND oracle_caller build/oracle/${CAPTURE}.bin)
+        set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
+
 endif()

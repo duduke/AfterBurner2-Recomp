@@ -212,7 +212,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
+oracle-test: oracle-caller oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -421,3 +421,17 @@ oracle-logic-wait:
 	./build/oracle_logic_wait build/oracle/logic_wait_directed.bin
 
 .PHONY: oracle-capture-irq4-service oracle-irq4-service oracle-capture-logic-wait oracle-logic-wait
+
+# Bounded wait/dispatcher/publication instruction stream and IRQ entry.
+oracle-capture-caller:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_directed.bin 600 30
+
+oracle-caller:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_caller.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_caller
+	./build/oracle_caller build/oracle/caller.bin
+	./build/oracle_caller build/oracle/caller_directed.bin
+
+.PHONY: oracle-capture-caller oracle-caller

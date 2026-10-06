@@ -188,6 +188,16 @@ for name,source,old,new,test,capture,deps in [
 ]:
     cases.append((name,source,old,new,test,capture,[p for p in deps if p!=source]))
 
+for name,old,new in [
+    ("callerrearm", "constexpr uint16_t armed=1", "constexpr uint16_t armed=2"),
+    ("callerreturn", "write16(sp,1);write16(sp+2,0x4594)", "write16(sp,0);write16(sp+2,0x4594)"),
+    ("callerpoll", "auto level=poll(ns)", "auto level=poll(ns+CYCLE_NS*4)"),
+    ("callercarry", "const bool carry=subtract?old<1:old==0xffff", "const bool carry=false"),
+]:
+    cases.append((name, "src/main/engine/omainirqservice.cpp", old, new,
+                  "tests/oracle_caller.cpp", "caller_directed",
+                  ["src/main/engine/omainirqcallee.cpp", *common]))
+
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}

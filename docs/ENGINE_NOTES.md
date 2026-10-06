@@ -2560,3 +2560,115 @@ Stage 1 audio RMS remains 903.949. CMake registers both new endpoint tests
 but is unavailable here, so that build path was not executed. ROM images,
 captures, disassembly and mutation artifacts remain ignored. These timing
 ports remain outside the active native `OEngine`; Phase 3d is incomplete.
+
+
+## Bounded caller instructions and IRQ-entry continuation
+
+`OMainIrqService::caller_step` translates one address-labelled instruction
+at a time in `$1458A..$145B8`, `$14856..$14878` and `$B676..$B696`. It computes
+ROM prefetches, operand/stack phases, short/word branches, CCR, active SP,
+next PC and completion clocks. The dispatcher reads active flags and handler
+pointers live; JSR returns the handler PC as an explicit boundary. Publication
+reads the actual buffer pointer and request count. No handler or sub progress
+is invented. Unknown PCs, traced contexts and unsupported IPL levels throw.
+
+The CPU samples IPL at the instruction's selection phase, before completing
+the final four-clock bus phase. The word RMW forms sample before their final
+write. The resulting eligible level stays latched until exception entry;
+selecting the board level again at the instruction end would change latency.
+`enter`, shared with the existing full IRQ service port, receives the computed
+completion time, next PC, registers and SR. It computes stack writes, E-clock
+IACK synchronization, vector reads and both handler-prefetch clocks. The
+supervisor stack remains supplied when interrupted code runs in user mode.
+
+`capture_caller.lua` records `AB2CALL1` instruction prefetches and CPU-owned
+operand/write/stack transactions, entry/final registers and CCR, the following
+CURPC, physical IPL at each transaction, and any immediately following IRQ
+entry. `oracle_caller.cpp` compares every address, lane, direction, masked data
+and timestamp. Its IRQ context uses the caller's computed result; captured
+completion/return state is compared rather than used for exception entry.
+Consecutive retained caller instructions also compare register/SR/SP/time
+continuity and preserve computed main write lanes on subsequent reads. Reads
+across external handlers, ISR returns, sampling gaps and fixture resets remain
+supplied operand/context boundaries. This is not a continuously executed host.
+
+Natural nonnegative wait and positive publication spins are sampled every
+128th iteration; immediately interrupted instructions are retained even when
+unsampled. Sampling is outside the accepted-record denominator. Directed
+fixtures run a real `MOVE.W #$2300,SR` and JSR before the physical line-223
+edge, varying lead time. Ready words `$FFFF/$FFFE/$8000`, missed counts
+`$FFFF/9`, and an inactive-record dispatcher are RAM fixtures, not natural
+producer or game-flow claims. A real SR-writing instruction restores the
+original mask after each fixture. Fixture resets cut in-flight or undecided
+caller records explicitly; they never enter the accepted denominator.
+
+Physical IPL visibility is still an input. The test also observes the ideal
+`XBoardTimeline` VBLANK at the computed selection time. Directed endpoint
+cases can finish a CPU bus phase beyond a pending scanline timer before MAME
+delivers that timer; the actual captured IPL is retained and those supplied
+edge frontiers are reported, without a guessed delay or skipped record.
+Independent timer/ADC and scanline delivery at CPU boundaries remains the
+next scheduling task.
+
+| Caller capture | Identical / recorded instructions + IRQ entries | Identical / predicted bus events | Identical / consecutive caller boundaries | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| Natural, 600 frames | 467,278 / 467,278 | 1,336,198 / 1,336,198 | 410,301 / 410,301 | 0 |
+| Directed, 600 frames | 310,974 / 310,974 | 845,756 / 845,756 | 271,932 / 271,932 | 0 |
+
+Combined: **778,252/778,252 records, 2,181,954/2,181,954 bus events and
+682,233/682,233 consecutive caller boundaries identical, zero differences,
+zero skips**. Records comprise 773,708 instructions and 4,544 exception
+entries. The natural run has 1,316 IRQ2, 486 IRQ4 and 14 IRQ6 entries; the
+directed run has 2,199 IRQ2, 519 IRQ4 and ten IRQ6 entries. Directed selection
+also checks 6,334 masked polls. Ideal VBLANK differs from supplied IPL at
+zero natural and three directed selection frontiers. The directed capture
+excludes 181 fixture reset cuts outside these denominators. Both captures
+finish with zero unfinished instruction/entry records.
+
+Directed IRQ4 coverage in the re-arm routine, in ROM order:
+
+| Instruction PC | `$14856` | `$1485C` | `$1485E` | `$14866` | `$1486A` | `$1486E` | `$14876` | `$14878` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| IRQ4 entries | 282 | 158 | 15 | 6 | 3 | 9 | 2 | 5 |
+
+Coverage includes both branch outcomes, complete 254-record dispatcher
+loops, live handler fetches, both publication outcomes, ready/re-arm/RTS,
+missed-word carry wrap, user and supervisor stacks, and IRQ2/IRQ4/IRQ6 entry.
+Directed IRQ4 enters after all eight used wait/re-arm instruction PCs,
+including CMPI/BEQ, ADDQ, counter write, NOP and RTS; the natural run only
+interrupts the spin portion of this wait. Both dispatcher active branches
+are natural; directed inactive loops target IRQ4 within record traversal.
+
+Remaining limits: external handler/ISR return contexts and operands,
+physical timer IRQ/scanline visibility, sub-produced progress, mask-writing
+instruction timing, arbitrary completion tails/E phases, nested ISR graphs,
+trace/NMI and service-button branches remain supplied or unverified. Arithmetic
+overflow endpoints of dispatcher SUBQ and missed-count ADDQ are unexercised;
+an exploratory overflow mutation did not fail and is not acceptance evidence.
+A5/A6 initial LEA absolute assignments and BSR/dependent LEA entry-phase register
+changes are normalized at the first observable bus phase. General reset,
+credit/stage callers and the main program are not interpreted. The previous
+whole-wait oracle still excludes its six interrupted attempts; this new
+instruction oracle has its own captured denominators.
+
+Commands:
+
+```bash
+make oracle-capture-caller
+make oracle-caller
+python3 tools/oracle/mutation_check.py callerrearm callerreturn callerpoll callercarry
+```
+
+Four temporary-source mutations are rejected: re-arm value `1->2`, BSR
+return-PC high word `1->0`, IPL poll delayed by four clocks and missed-count
+carry disabled. Mutation sources/binaries/logs remain ignored under
+`build/oracle/mutations`; original sources are intact.
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the full
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Existing
+oracle differences remain zero with their previously documented race skips;
+Stage 1 audio RMS remains 903.949. CMake registers the new oracle but is
+unavailable here, so that build path was not executed. ROM images, disassembly
+and captures remain ignored. Native `OEngine` remains active and Phase 3d is
+incomplete. Next: physical IRQ visibility, external handler/ISR resumptions,
+ADC/publication/sub scheduling and road-raster/compositor pairing.

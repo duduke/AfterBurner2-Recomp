@@ -100,8 +100,11 @@ PR #14 is merged. Natural IRQ2 interleaving and conditional paired
 player/weapon/video/sound acceptance now pass at supplied caller boundaries.
 IRQ4/shared-input composition and publication waits now pass without race
 skips. Bounded IRQ4 wrapper/selected-callee and uninterrupted re-arm timing
-now pass; the selected IRQ4 callee graphs now compute their own timing. The interrupted
-caller schedule and sub-write frontiers remain supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
+now pass; the selected IRQ4 callee graphs now compute their own timing.
+Bounded re-arm/dispatcher/publication instruction phases and IRQ entry now
+pass, including IRQ4 at every re-arm instruction. Physical IPL visibility,
+external handler/ISR resumptions and sub-write frontiers remain supplied.
+Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
@@ -443,8 +446,16 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       18,769/18,769 calls match in 3,519/3,519 envelopes and
       8,099,444/8,099,444 predicted bus events, zero skips. Eight mutations
       fail; coverage and supplied sub-write frontiers are in `ENGINE_NOTES.md`.
-- [ ] Verify re-arm/dispatcher instruction scheduling across IRQs, then progress
-      publication and sub execution without captured operand frontiers.
+- [x] Bounded re-arm/dispatcher/publication instructions and IRQ entry: ROM
+      prefetches, operand cycles, CCR, consecutive caller boundaries and
+      exception entry match 778,252/778,252 records and 2,181,954/2,181,954
+      bus events, zero skips; 682,233/682,233 caller boundaries are identical.
+      Directed IRQ4 exercises every re-arm instruction. Physical IPL visibility,
+      external handler/ISR resumptions and unported caller contexts remain
+      supplied; results and uncovered paths are in `ENGINE_NOTES.md`.
+- [ ] Independently schedule physical IRQ visibility, handler/caller and ISR
+      resumptions, then progress publication and sub execution without
+      captured operand frontiers.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
       road generator reads. Live `$9810/$98C0`, recovery `$9626/$964C`,

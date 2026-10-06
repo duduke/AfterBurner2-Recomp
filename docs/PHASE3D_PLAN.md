@@ -10,8 +10,11 @@ The continuation on `codex/irq4-remaining-callee-timing` computes the remaining
 `$14A86/$13F92/$16C8A/$18444/$13E5C` callee graphs, alongside the previously
 checked `$1329E`. All seven current IRQ4 datasets pass: 3,519/3,519 envelopes,
 8,099,444/8,099,444 predicted bus events and 18,769/18,769 calls to these six
-entries, zero skips. The next boundary is IRQ entry within `$14856` re-arm
-and the interrupted dispatcher/caller stream; Phase 3d remains incomplete.
+entries, zero skips. The bounded caller continuation checks IRQ entry within
+`$14856` re-arm,
+the `$1458A..$145B8` dispatcher and `$B676..$B696` publication instructions.
+Physical IPL visibility, external handler/ISR resumptions and sub progress
+remain supplied boundaries; Phase 3d remains incomplete.
 
 ## Scope and current status
 
@@ -38,6 +41,7 @@ The current host/timing evidence is:
 | Bounded IRQ2/IRQ6 service | 9,439/9,439 calls; 474,024/474,024 predicted bus events; zero skips | Interrupted instruction boundary/context; bounded opcode and mask coverage |
 | Directed object composition | 480/480 dispatch windows; 53,404 callbacks; 128/128 additional entry calls | IPL7 fixture isolates composition; unported callers remain transcripts |
 | Natural IRQ/shared-input and paired composition | 120/120 separate and 122/122 paired complete dispatchers; 244/244 VBLANK windows; 240/240 RGB frames; zero skips | Captured IRQ frontiers, sub-produced operands and compositor feedback |
+| Bounded caller instructions and IRQ entry | 778,252/778,252 records; 2,181,954/2,181,954 bus events; 682,233/682,233 caller boundaries; zero skips; IRQ4 at every re-arm PC | Physical IPL visibility, initial contexts, external handler/ISR resumptions and sub progress |
 | Bounded IRQ4, complete selected callee graphs and re-arm timing | 3,519/3,519 envelopes; 8,099,444/8,099,444 predicted bus events; 18,769/18,769 fade/animation/cycle/reload/scenery/transition calls; 16,349/16,349 uninterrupted wait steps | Game-flow caller transcripts, sub-owned write frontiers and interrupted contexts; six IRQ-overlapped wait attempts excluded |
 
 The shared-input checkpoint supersedes earlier IRQ4 race exclusions. Complete
@@ -64,11 +68,16 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   Coverage and supplied sub-write frontiers are explicit in `ENGINE_NOTES.md`.
   Only the unported game-flow callers still supply state and durations;
   their durations add to predicted time without resetting the caller clock.
-- [ ] Check IRQ entry within `$14856` re-arm and the dispatcher caller
-  instruction stream. Uninterrupted wait steps do not prove that schedule.
-  Retain explicit limits for instruction completion tails, mask transitions,
-  nested ISRs and unexercised service-button branches.
-- [ ] Independently schedule ADC results, publication waits and sub progress.
+- [x] Check bounded IRQ entry within `$14856` re-arm and the dispatcher/
+  publication caller instruction stream. Instruction prefetches, operand
+  phases, CCR, consecutive caller boundaries and exception entry are checked.
+  Every re-arm instruction has directed IRQ4 coverage. Physical IPL visibility,
+  initial contexts and external handler/ISR resumptions remain supplied;
+  arbitrary instruction tails, mask-writing instructions, nested ISRs and
+  unexercised service-button branches remain explicit limits. See the caller
+  continuation in `ENGINE_NOTES.md` for counts and mutation evidence.
+- [ ] Independently schedule physical IRQ visibility, caller/ISR resumptions,
+  ADC results, publication waits and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller
   transcripts, sub-produced blit operands and hidden renderer feedback remain
   inputs. Advancing an arbitrary frame clock would invent IRQ latency and
