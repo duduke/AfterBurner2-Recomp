@@ -102,9 +102,10 @@ IRQ4/shared-input composition and publication waits now pass without race
 skips. Bounded IRQ4 wrapper/selected-callee and uninterrupted re-arm timing
 now pass; the selected IRQ4 callee graphs now compute their own timing.
 Bounded re-arm/dispatcher/publication instruction phases and IRQ entry now
-pass, including IRQ4 at every re-arm instruction. Physical IPL visibility,
-external handler/ISR resumptions and sub-write frontiers remain supplied.
-Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
+pass, including IRQ4 at every re-arm instruction. Physical IPL visibility and bounded caller scheduling now compute bus-phase
+delivery and instruction completion tails; retained busy-spin gaps execute
+from computed CPU state. External handler/ISR resumptions and sub-write
+frontiers remain supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
@@ -453,8 +454,13 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       Directed IRQ4 exercises every re-arm instruction. Physical IPL visibility,
       external handler/ISR resumptions and unported caller contexts remain
       supplied; results and uncovered paths are in `ENGINE_NOTES.md`.
-- [ ] Independently schedule physical IRQ visibility, handler/caller and ISR
-      resumptions, then progress publication and sub execution without
+- [x] Physical IRQ visibility and bounded caller scheduling: bus-phase yields,
+      instruction completion tails, generated timer/VBLANK IPL and chronological
+      ADC completion are checked against MAME. Wait sampling gaps execute from
+      computed CPU state. Counts, mutation evidence and external execution
+      frontiers are in `ENGINE_NOTES.md`; this is not a full host scheduler.
+- [ ] Independently schedule handler/caller and ISR resumptions, then
+      progress publication and sub execution without
       captured operand frontiers.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU

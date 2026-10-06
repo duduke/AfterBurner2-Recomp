@@ -5,7 +5,18 @@ local space=main.spaces.program
 local board=manager.machine.devices[":mainpcb"]
 local timer=emu.item(assert(board.items["0/m_timer_irq_state"]))
 local blank=emu.item(assert(board.items["0/m_vblank_irq_state"]))
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2CALL1")
+local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2CALL2")
+-- Sparse board/CPU visibility transcript. Previous completed main bus phase is
+-- an explicit boundary across omitted/unported instruction graphs. Retain every
+-- bounded caller phase, hardware access and scanline-adjacent observation.
+local visibility=assert(io.open(os.getenv("AB2_ORACLE_OUT")..".visibility","wb"))
+visibility:write("AB2VIS02")
+local previous_end=0
+local previous_pc,previous_opcode,previous_source,previous_fetch=0,0,0,false
+local opcodes={}
+local visibility_records=0
+local mux=emu.item(assert(board.items["0/m_pc_0"]))
+local ports=manager.machine.ioport.ports
 local guard=false
 local active,pending,entry
 local frames,records,irqs,spins,pubspins,cuts=0,0,0,0,0,0
@@ -28,9 +39,30 @@ end
 local function event(w,p,a,d,m)
  return string.pack(">I8I4I4I2I2BB",ns(),p,a,d,m,w and 1 or 0,level())
 end
+local visibility_inputs
+local function visibility_record(kind,p,a,d,m,t)
+ if not visibility_inputs or kind==2 then
+  local values={};for i=0,7 do local port=ports[":mainpcb:ADC"..i];values[#values+1]=string.char(port and port:read() or 0x10)end
+  visibility_inputs=table.concat(values)
+ end
+ visibility:write(string.pack(">I8I8I4I4I2I2BBB",t,previous_end,p,a,d,m,kind,level(),mux:read(0)),visibility_inputs,string.pack(">I2I2B",p~=previous_pc and previous_fetch and previous_opcode or 0,previous_source,previous_fetch and 1 or 0))
+ visibility_records=visibility_records+1
+end
 local function access(w,a,d,m)
  if guard then return end
  local p=main.state.CURPC.value
+ local t=ns()
+ local phase=t%64000
+ local hardware=(a>=0xe8000 and a<0xec000) or (a>=0x130000 and a<0x140000) or a==0x140004
+ if sizes[p] or hardware or phase<1000 or phase>=63000 then
+  visibility_record(w and 1 or 0,p,a,d,m,t)
+ end
+ previous_end=t+320
+ previous_pc=p
+ if not opcodes[p] then guard=true;opcodes[p]=space:read_u16(p);guard=false end
+ previous_opcode=opcodes[p]
+ previous_source=(previous_opcode>>12==14 and previous_opcode&0x20~=0) and (main.state["D"..(previous_opcode>>9&7)].value&0xffff) or 0
+ previous_fetch=not w and a>=p+4 and a<=p+10
  if entry then
   if w or a<0x80 then entry.events[#entry.events+1]=event(w,p,a,d,m)end
   if not w and a==entry.target+2 then
@@ -98,6 +130,7 @@ local function fixture(k)
   local saved={pc=main.state.CURPC.value,sr=main.state.SR.value,ssp=main.state.SP.value,usp=main.state.USP.value,d={},a={}}
   for i=0,7 do saved.d[i]=main.state["D"..i].value end
   for i=0,6 do saved.a[i]=main.state["A"..i].value end
+  out:write(string.char(3)) -- explicit scheduler context cut
   if active or pending then cuts=cuts+1 end;active=nil;pending=nil
   space:write_u16(0x3ffd00,0x46fc);space:write_u16(0x3ffd02,0x2300)
   space:write_u16(0x3ffd04,0x4eb9);space:write_u32(0x3ffd06,dispatcher and 0x14594 or 0x14856)
@@ -115,7 +148,8 @@ local function fixture(k)
   guard=false
   emu.wait(0.002)
   assert(not entry and (main.state.SR.value&0x700)~=0x400 and (main.state.SR.value&0x700)~=0x600,"fixture ended during IRQ service")
-  guard=true;if active or pending then cuts=cuts+1 end;active=nil;pending=nil
+  guard=true;out:write(string.char(3)) -- fixture restore cuts the CPU schedule
+  if active or pending then cuts=cuts+1 end;active=nil;pending=nil
   for i=0,7 do main.state["D"..i].value=saved.d[i]end
   for i=0,6 do main.state["A"..i].value=saved.a[i]end
   main.state.SP.value=saved.ssp;main.state.USP.value=saved.usp;main.state.PC.value=0x3ffd40
@@ -125,8 +159,10 @@ local function fixture(k)
 end
 caller_frames=emu.add_machine_frame_notifier(function()
  frames=frames+1
+ visibility_record(2,0,0,0,0,ns())
  if directed and frames>=32 and frames%4==0 then fixture(frames//4)end
  if frames>=tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then
+  visibility:close();print(string.format("captured %d CPU visibility observations",visibility_records))
   out:close();print(string.format("captured %d caller instructions, %d IRQ entries (%d fixture cuts, %d unfinished instructions, %d unfinished entries)",records,irqs,cuts,active and 1 or 0,entry and 1 or 0));manager.machine:exit()
  end
 end)

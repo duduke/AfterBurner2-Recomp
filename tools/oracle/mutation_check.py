@@ -198,6 +198,17 @@ for name,old,new in [
                   "tests/oracle_caller.cpp", "caller_directed",
                   ["src/main/engine/omainirqcallee.cpp", *common]))
 
+for name,old,new in [
+    ("visibilityearly", "std::max(board.now(), std::min(ns, end))", "std::max(board.now(), ns)"),
+    ("visibilityphase", "std::max(board.now(), std::min(ns, end))", "std::max(board.now(), std::min(ns, end + 80))"),
+]:
+    cases.append((name,"src/main/hwmath/xboard_cpu_visibility.hpp",old,new,
+                  "tests/oracle_cpu_visibility.cpp","caller_directed",[]))
+
+cases.append(("visibilitytail","src/main/hwmath/m68000_completion.hpp",
+              "return (size==2 ? 4 : 2)+2*count", "return 0",
+              "tests/oracle_cpu_visibility.cpp","caller",[]))
+
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}
@@ -222,10 +233,14 @@ for name, source, old, new, test, capture, dependencies in cases:
     subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2",
                     *command, "-o", str(binary)], check=True)
     with log_path.open("w") as log:
-        result = subprocess.run([str(binary), "build/oracle/" + capture + ".bin"],
+        result = subprocess.run([str(binary), "build/oracle/" + capture + (".bin.visibility" if name.startswith("visibility") else ".bin")],
                                 stdout=log, stderr=subprocess.STDOUT)
     summary = [line for line in log_path.read_text().splitlines() if " identical, " in line and " different," in line]
     differences = [line for line in summary if ", 0 different," not in line]
-    if result.returncode != 1 or not differences:
+    schedule_errors = [line for line in log_path.read_text().splitlines()
+                       if any(message in line for message in [
+                           "unrecorded IRQ inside sampling gap", "missing scheduled poll",
+                           "scheduled wait overshot caller boundary", "wait left bounded graph"])]
+    if result.returncode != 1 or not (differences or schedule_errors):
         raise RuntimeError(f"{name}: mutation did not produce a differential failure; see {log_path}")
-    print(f"{name}: rejected — {differences[-1]}", flush=True)
+    print(f"{name}: rejected — {(differences or schedule_errors)[-1]}", flush=True)

@@ -222,3 +222,16 @@ remain supplied; this does not independently schedule the host. In particular,
 MAME can deliver a pending scanline edge after a CPU's reported bus timestamp.
 The exact counts and limits are in `ENGINE_NOTES.md`. These ports remain
 outside `OEngine`; the native Stage 1 producers are still active.
+
+
+The physical visibility continuation generates IPL at CPU bus-phase and
+instruction-completion yields, including scanline timers deferred across
+internal clocks. A bounded caller scheduler carries computed registers,
+SR/SP, PC, time and selected IRQ into exception entry. Omitted re-arm and
+publication busy spins execute from computed state and compare every bus
+phase. Captured IPL is an assertion rather than a poll input; ADC results
+are also checked against the board clock. Initial contexts, external handler/
+ISR returns, unported main execution frontiers and sub progress remain supplied.
+This does not establish the independently scheduled paired gameplay host.
+Native Stage 1 controls, objects, request adapter and sound cues remain active.
+Exact counts, mutation evidence and limits are in `ENGINE_NOTES.md`.

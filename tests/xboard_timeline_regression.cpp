@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include "hwmath/xboard_timeline.hpp"
+#include "hwmath/xboard_cpu_visibility.hpp"
 
 void check(bool condition) {
     if(!condition) throw std::runtime_error("X-Board timeline regression failed");
@@ -49,5 +49,26 @@ int main() {
     board.advance_before(blank+64000);check(board.vblank() && board.main_irq_level()==4);
     board.advance(blank+64000);check(!board.vblank() && board.main_irq_level()==0 && board.sub_irq_level()==0);
     board.advance(blank+XBoardTimeline::FRAME_NS);check(board.vblank());
+    // Internal clocks overrun the line-223 deadline before the next bus.
+    // The bus sees old IPL; the following bus sees the delivered timer.
+    CompareTimer5250 physical;
+    XBoardTimeline delivery(physical,0);
+    XBoardCpuVisibility cpu(delivery);
+    const uint64_t edge=223*XBoardTimeline::LINE_NS;
+    cpu.resume(edge-160);
+    check(cpu.before_bus(edge+160)==0 && !delivery.vblank());
+    cpu.complete_bus(edge+160);
+    check(cpu.before_bus(edge+480)==4 && delivery.vblank());
+    // A completed register shift yields after its internal tail even when
+    // its final prefetch ended before the hardware deadline.
+    CompareTimer5250 tail_timer;XBoardTimeline tail_board(tail_timer,0);
+    XBoardCpuVisibility tail_cpu(tail_board);
+    tail_cpu.resume(edge-160,0xee80); // ASR.L #7: 18 completion clocks
+    check(tail_cpu.before_bus(edge+1280)==4);
+    // A phase ending exactly at the clear deadline yields before the next
+    // access at that timestamp; no arbitrary extra IRQ delay is added.
+    cpu.resume(edge+XBoardTimeline::LINE_NS);
+    check(cpu.before_bus(edge+XBoardTimeline::LINE_NS)==0);
+
     std::cout << "X-Board timeline regression checks passed\n";
 }

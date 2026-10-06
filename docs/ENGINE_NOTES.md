@@ -2672,3 +2672,112 @@ unavailable here, so that build path was not executed. ROM images, disassembly
 and captures remain ignored. Native `OEngine` remains active and Phase 3d is
 incomplete. Next: physical IRQ visibility, external handler/ISR resumptions,
 ADC/publication/sub scheduling and road-raster/compositor pairing.
+
+
+## Physical IRQ visibility and bounded caller scheduling
+
+`hwmath/xboard_cpu_visibility.hpp` models the delivery frontiers in MAME's
+`device_scheduler::timeslice`, `m68000_device::execute_run` and generated
+`m68000-sif/sip` bus phases. The scheduler runs towards a timer deadline;
+the CPU yields after a completed four-clock bus phase or an instruction's
+internal completion tail. A bus access reached after internal clocks cross
+an undelivered scanline still observes the previous IPL. Delivering every
+edge at its ideal timestamp before that access is too early. Conversely,
+ignoring an instruction-completion yield misses timer IRQs after register
+shifts/long arithmetic. Both rules are tested, without an arbitrary delay.
+The existing IRQ-entry completion calculation is shared unchanged in
+`hwmath/m68000_completion.hpp`. A frame notifier is an external scheduler
+boundary; an older bus frontier cannot roll its delivered board time back.
+
+`capture_caller.lua` now emits `AB2CALL2` with explicit directed fixture
+start/restore markers. Its `AB2VIS02` sidecar retains every bounded caller
+bus phase, timer/ADC/mux accesses, scanline-adjacent transactions and frame
+input changes. It records the preceding completed bus phase, and previous
+opcode/shift source when crossing an instruction-completion frontier. ROM
+opcode context stays in the ignored capture, not a source table. These
+frontiers and hardware transactions outside the bounded caller graph are
+**supplied external execution boundaries**. The board generates scanlines,
+EXCK, timer IRQ, ADC deadlines and IPL from reset. Captured physical IPL and
+ADC reads are assertions, never substitutes for generated values. Analog
+inputs are sampled at the existing gameplay frame notifier; sub-frame host
+input changes are outside this fixture.
+
+`engine/omaincallerschedule.hpp` advances the verified instruction graph
+from its own registers, PC, SR/SP and time. It keeps the selected interrupt
+latched and enters the exception from computed completion/return state;
+user-mode SSP remains an explicit input. `oracle_caller.cpp` uses generated
+physical IPL for every poll and carries computed state across consecutive
+instructions. It executes omitted `$14856/$1485C` and `$B676/$B67C` busy
+spins up to the next retained assertion. Every generated bus transaction,
+including prefetches and its previous-phase frontier, is compared against
+the sidecar. Omitted spins are no longer supplied CPU contexts or times.
+
+An external ISR can return into BGE before a retained status read. In the
+directed `$8000` fixture IRQ4 changes the wait word to `$7FFF`; carrying RAM
+from before that unported ISR produced twelve retained boundary failures
+and 1,192 differing omitted-spin bus assertions. The replay now supplies the
+first resumed wait operand once when the external boundary has not yet
+established it, then carries it through all subsequent spins. These supplied
+operands are counted explicitly; they are not skips or an independently
+executed ISR. Within each scheduled caller segment, main-produced writes remain protected
+from replacement.
+
+| Capture, 600 frames each | Physical observations identical / captured | Independently executed omitted wait instructions | Omitted wait bus assertions identical / predicted | Retained instruction/IRQ records identical / captured | Skipped |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Natural | 16,121,180 / 16,121,180 | 4,642,412 | 13,927,870 / 13,927,870 | 467,278 / 467,278 | 0 |
+| Directed | 26,159,256 / 26,159,256 | 8,060,892 | 24,183,570 / 24,183,570 | 310,974 / 310,974 | 0 |
+
+Combined: **42,280,436/42,280,436 physical observations and
+38,111,440/38,111,440 omitted-wait bus assertions identical, zero differences,
+zero skips**. The bounded caller schedule computes 12,703,304 additional
+wait instructions. Retained instructions/IRQ entries remain
+778,252/778,252 and retained bus events 2,181,954/2,181,954, with zero skips.
+Consecutive caller boundaries now match 734,677/734,677, including boundaries
+reached through computed sampling gaps. There are 19,895 delayed-scanline
+observations, 14,677 observed completion-tail contexts, 4,626 ADC reads,
+3,515 IRQ2/1,005 IRQ4/24 IRQ6 entries and 6,334 directed masked polls.
+The natural schedule supplies 481 first-resume wait operands and the directed
+schedule supplies 79, **560 explicit external operands in total**. Directed
+resets have 284 explicit context markers; the original 181 in-flight
+fixture cuts remain outside the retained-record denominator. Both captures
+finish with zero unfinished instructions or IRQ entries.
+
+Coverage retains IRQ4 after all eight re-arm instructions, both dispatcher
+active branches and publication outcomes, user/supervisor stacks and combined
+IRQ6. The physical probes additionally cover timer assertions and clears,
+VBLANK assertion/clear and ADC completion under deferred CPU delivery.
+External handler/ISR resumptions, initial contexts, main program/game-flow
+transcripts, previous bus/opcode/source frontiers across unported instruction
+graphs, physical input bytes, sub writes and compositor feedback remain
+supplied. Arbitrary opcode tails, mask-writing and nested ISR execution,
+trace/NMI, unexercised service-button paths and independent main/sub execution
+are not established. The native Stage 1 host remains active; this is a bounded
+scheduling checkpoint, not full Phase 3d acceptance or whole-credit equality.
+
+Commands:
+
+```bash
+make oracle-capture-caller
+make oracle-cpu-visibility
+make oracle-caller
+python3 tools/oracle/mutation_check.py visibilityearly visibilityphase visibilitytail callerrearm callerreturn callerpoll callercarry
+```
+
+Three new temporary-source mutations fail: ideal-time delivery (two physical
+mismatches before the incorrectly advanced clock regresses at a frame notifier),
+a one-clock delivery shift (284 directed physical mismatches), and removed
+shift completion tails (71 natural physical mismatches). The existing caller
+re-arm/return/poll/carry mutations also fail, including a computed schedule
+boundary failure for the shifted poll. Shadow headers, mutation binaries,
+logs, ROM-derived opcode context and captures remain ignored under `build/`.
+
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Existing
+oracle differences remain zero with their previously documented race skips;
+Stage 1 audio RMS remains 903.949. Make and CMake register the visibility
+oracle; CMake is unavailable on this host, so that build path was not run.
+ROM data, captures, opcode context and mutation artifacts remain ignored.
+Native `OEngine` remains active. Next: establish external handler/ISR
+resumptions, input producer cadence and sub progress across these bounded
+caller segments, then extend paired road/video/sound host acceptance.

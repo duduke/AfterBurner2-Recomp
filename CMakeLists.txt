@@ -285,4 +285,11 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
 
+    add_executable(oracle_cpu_visibility tests/oracle_cpu_visibility.cpp)
+    target_include_directories(oracle_cpu_visibility PRIVATE src/main)
+    foreach(CAPTURE caller caller_directed)
+        add_test(NAME oracle_visibility_${CAPTURE} COMMAND oracle_cpu_visibility build/oracle/${CAPTURE}.bin.visibility)
+        set_tests_properties(oracle_visibility_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
+
 endif()

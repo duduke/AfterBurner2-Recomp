@@ -428,10 +428,19 @@ oracle-capture-caller:
 	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller.bin 600 30
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_directed.bin 600 30
 
-oracle-caller:
+oracle-caller: oracle-cpu-visibility
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_caller.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_caller
 	./build/oracle_caller build/oracle/caller.bin
 	./build/oracle_caller build/oracle/caller_directed.bin
 
 .PHONY: oracle-capture-caller oracle-caller
+
+# CPU bus-phase delivery, independent physical IPL/ADC assertions.
+oracle-cpu-visibility:
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_cpu_visibility.cpp -o build/oracle_cpu_visibility
+	./build/oracle_cpu_visibility build/oracle/caller.bin.visibility
+	./build/oracle_cpu_visibility build/oracle/caller_directed.bin.visibility
+
+.PHONY: oracle-cpu-visibility
