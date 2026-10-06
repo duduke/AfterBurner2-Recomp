@@ -423,7 +423,16 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       Seven mutations fail. Coverage and remaining boundaries are
       in `ENGINE_NOTES.md`; complex callee clocks/state, sub blit operands and
       interrupted caller contexts remain supplied. IRQ4 timing is not complete.
-- [ ] Remove remaining IRQ4 palette/scenery/reload/HUD timing boundaries,
+- [x] IRQ4 road-palette callee timing: `$13BB6/$13BCC/$13BFA` now compute
+      bus phases, runtime ROM reads, register effects and returns. 2,553/2,553
+      road-palette calls match within 1,728/1,728 IRQ4 envelopes and
+      2,950,710/2,950,710 predicted bus events, zero skips. Three mutations
+      fail; natural, directed and selector/word-wrap endpoint coverage is
+      recorded in `ENGINE_NOTES.md`. Delivered in
+      [PR #18](https://github.com/duduke/AfterBurner2-Recomp/pull/18).
+      Other callee timing remains supplied.
+- [ ] Remove remaining IRQ4 palette/scenery/reload/HUD timing boundaries
+      (`$14A86/$13F92/$1329E/$16C8A/$18444/$13E5C`),
       verify re-arm/dispatcher instruction scheduling across IRQs, then progress
       publication and sub execution without captured operand frontiers.
 - [ ] Player jet: flight model and compound parts (`$016892`,

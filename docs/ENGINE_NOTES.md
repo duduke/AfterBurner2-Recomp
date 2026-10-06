@@ -2309,3 +2309,75 @@ stay ignored. Native `OEngine` remains active and Phase 3d is incomplete.
 Next: independently check the remaining IRQ4 callee cycles, then IRQ service
 within the re-arm/caller stream and publication/sub progress, retaining the
 explicit stage/credit and road-raster/compositor boundaries.
+
+## IRQ4 road-palette timing continuation
+
+`codex/irq4-road-palette-timing` removes three supplied callee timing/state
+boundaries from `OMainIrqService`: `$13BB6` copies a full road palette bank,
+`$13BCC` copies a byte-selected four-long palette into one of eight masked
+destination banks, and `$13BFA` doubles the word stage index, writes one road
+color, then repeats that color across 64 words. The timed translations follow
+the ROM instructions and the local MAME m68000 bus/cycle implementation.
+They preserve D0/D1 word and byte widths, signed indexed addresses, 14-clock
+ASL.W #4 and 12-clock indexed LEA, high/low memory MOVE.L ordering, each
+postincrement, taken/terminal DBF cycles and RTS stack/prefetch phases.
+The repeated-color loop performs every original source read rather than
+reusing the first value. Colors remain runtime ROM operands.
+
+`AB2IRQ42` adds those ROM operand reads to the earlier envelope capture;
+regenerate the three older IRQ4 datasets with `make oracle-capture-irq4-service`.
+For the operand MOVE instructions, Lua excludes only the p+4 instruction
+prefetch. The test rejects any executed operand that aliases that excluded
+address. Every road-callee data/stack event is now in the predicted-event
+denominator, and its entry/exit registers and times are computed and compared.
+No captured callee post-state or elapsed duration is used for these entries.
+Other callees still supply their own transcripts/durations without resetting
+the predicted caller clock.
+
+| Fresh IRQ4 capture | Identical / recorded envelopes | Identical / predicted bus events | Full / partial / repeated road calls | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| Natural (600 frames) | 597 / 597 | 1,039,702 / 1,039,702 | 4 / 0 / 2 | 0 |
+| Directed (900 frames) | 897 / 897 | 1,667,210 / 1,667,210 | 673 / 673 / 673 | 0 |
+| Directed edges (120 frames) | 117 / 117 | 121,899 / 121,899 | 88 / 88 / 88 | 0 |
+| Road endpoints (120 frames) | 117 / 117 | 121,899 / 121,899 | 88 / 88 / 88 | 0 |
+
+Combined: **1,728/1,728 envelopes, 2,950,710/2,950,710 predicted bus
+events and 2,553/2,553 road-callee calls identical, zero differences and
+zero race skips**. Each capture excludes one unfinished shutdown service,
+outside these denominators. The larger directed fixture selects 225 source
+bytes (`$00..$E0`), all eight destination banks, and stage words 0..24/$FFFF.
+The additional endpoint fixture selects source bytes `$00/$01/$FE/$FF`,
+destination bytes `$F8..$FF` (proving the low-three-bit mask), and stage
+words 0/24/$FFFF/$8000 (signed negative indexing and doubling wrap).
+Full-bank fixtures use eight aligned ROM source pointers. These are directed
+RAM operand fixtures, not evidence of natural stage/spawn selection.
+
+Coverage limits: partial-bank calls have directed coverage only; source
+selectors `$E1..$FD`, other stage words and arbitrary full-bank source
+pointers are unexercised. Nested interrupts, operand/prefetch aliasing and
+general interrupted caller execution remain outside this bounded oracle.
+The remaining timed callee boundaries are
+`$14A86/$13F92/$1329E/$16C8A/$18444/$13E5C`; game-flow callers
+`$17146/$14990/$C6F8/$E2DA`, sub-produced blit operands, physical input and
+interrupted instruction contexts remain supplied. Independent IRQ/caller,
+ADC/publication/sub scheduling, road-raster pairing and native host retirement
+are unchanged; Phase 3d remains incomplete.
+
+Three temporary-source constant mutations fail against the directed edge
+capture: the full-bank DBF initializer `$1F->$20` changes 88/117 envelope
+register results; the source selector shift timing `14->12` changes
+89,275/121,899 bus events; adding two to the doubled stage index changes
+8,645/121,899 events. The mutation runner leaves the original source intact.
+
+```bash
+make oracle-capture-irq4-service
+make oracle-irq4-service
+python3 tools/oracle/mutation_check.py irq4roadcount irq4roadshift irq4roadstage
+```
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Existing
+oracle checks have zero new differences; their previously documented input
+race skips remain. Stage 1 audio RMS is still 903.949. The CMake endpoint
+test is registered but not executed because CMake is unavailable. ROM images,
+captures, disassembly output and mutation artifacts remain ignored.

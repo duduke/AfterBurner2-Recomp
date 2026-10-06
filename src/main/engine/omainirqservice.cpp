@@ -160,7 +160,7 @@ OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t
         pc=p;idle(absolute_long?8:2);sp-=4;
         const uint32_t ret=p+(absolute_long?6:4);
         write16(sp,ret>>16);write16(sp+2,ret);idle(absolute_long?4:8);
-        if(target==0x1495c || target==0x148be || target==0x148b8 || target==0x147e8 || target==0xb7c2 || target==0xb7d2)
+        if(target==0x1495c || target==0x148be || target==0x148b8 || target==0x147e8 || target==0xb7c2 || target==0xb7d2 || target==0x13bb6 || target==0x13bcc || target==0x13bfa)
             { if(frame_leaf(target,r,sp)!=ret)throw std::runtime_error("corrupt IRQ4 leaf return stack"); }
         else {
             if(!boundary)throw std::runtime_error("IRQ4 callee timing boundary required");
@@ -265,6 +265,58 @@ uint32_t OMainIrqService::frame_leaf(uint32_t entry,OMainObjects::Registers& r,u
             pc=0xb7f2;word(r.d[0],r.d[0]-1);idle(i==count?14:10);
         }
         retpc=0xb7f6;
+    } else if(entry==0x13bb6) {
+        // $13BB6..$13BCA: full road bank, 32 postincrement longs.
+        pc=0x13bb6;r.a[0]=0x123800;idle(12);
+        pc=0x13bbc;idle(4);r.a[1]=read32(0xffff9142);idle(4);
+        pc=0x13bc0;word(r.d[0],0x1f);idle(8);
+        for(unsigned i=0;i<32;++i) {
+            pc=0x13bc4;const auto v=read32(r.a[1]);r.a[1]+=4;
+            write16(r.a[0],v>>16);write16(r.a[0]+2,v);r.a[0]+=4;idle(4);
+            pc=0x13bc6;word(r.d[0],r.d[0]-1);idle(i==31?14:10);
+        }
+        retpc=0x13bca;
+    } else if(entry==0x13bcc) {
+        // $13BCC..$13BEE: byte selectors, word masks/shifts, signed ADDA.
+        pc=0x13bcc;r.a[1]=0x30cf4;idle(12);
+        pc=0x13bd2;idle(4);byte(r.d[0],read8(0xffff9115));idle(4);
+        pc=0x13bd6;word(r.d[0],r.d[0]&0xff);idle(8);
+        pc=0x13bda;word(r.d[0],r.d[0]<<4);idle(14);
+        pc=0x13bdc;r.a[1]+=int16_t(r.d[0]);idle(8);
+        pc=0x13bde;r.a[0]=0x123800;idle(12);
+        pc=0x13be4;idle(4);byte(r.d[0],read8(0xffff9114));idle(4);
+        pc=0x13be8;word(r.d[0],r.d[0]&7);idle(8);
+        pc=0x13bec;word(r.d[0],r.d[0]<<4);idle(14);
+        pc=0x13bee;r.a[0]+=int16_t(r.d[0]);idle(8);
+        // $13BF0..$13BF6: MOVE.L reads high/low, writes high/low,
+        // then prefetches. ROM colors are runtime operands, not transcripts.
+        for(unsigned i=0;i<4;++i) {
+            pc=0x13bf0+2*i;const auto v=read32(r.a[1]);r.a[1]+=4;
+            write16(r.a[0],v>>16);write16(r.a[0]+2,v);r.a[0]+=4;idle(4);
+        }
+        retpc=0x13bf8;
+    } else if(entry==0x13bfa) {
+        // $13BFA..$13C24: doubled word stage index, indexed LEA (12
+        // clocks), one road color, then the repeated road bank.
+        pc=0x13bfa;idle(8);word(r.d[1],read16(0x29c060));idle(4);
+        pc=0x13c00;word(r.d[1],r.d[1]+r.d[1]);idle(4);
+        pc=0x13c02;r.a[0]=0x12387c;idle(12);
+        pc=0x13c08;r.a[1]=0x30d54;idle(12);
+        pc=0x13c0e;r.a[1]+=int16_t(r.d[1]);idle(12);
+        pc=0x13c12;const auto color=read16(r.a[1]);write16(r.a[0],color);r.a[0]+=2;idle(4);
+        pc=0x13c14;r.a[0]=0x123dc0;idle(12);
+        pc=0x13c1a;r.a[1]=0x30d54;idle(12);
+        pc=0x13c20;r.a[1]+=int16_t(r.d[1]);idle(12);
+        pc=0x13c24;word(r.d[0],7);idle(8);
+        for(unsigned i=0;i<8;++i) {
+            // $13C28..$13C36: eight separate (A1) reads per DBF,
+            // even though the source address is unchanged.
+            for(unsigned j=0;j<8;++j) {
+                pc=0x13c28+2*j;const auto v=read16(r.a[1]);write16(r.a[0],v);r.a[0]+=2;idle(4);
+            }
+            pc=0x13c38;word(r.d[0],r.d[0]-1);idle(i==7?14:10);
+        }
+        retpc=0x13c3c;
     } else if(entry==0x1495c) {
         // $1495C/$14966 memory-to-memory MOVE.B, then NOT/MOVE.
         pc=0x1495c;idle(8);auto old=read8(0x29c074);idle(4);write8(0x29c075,old);idle(8);

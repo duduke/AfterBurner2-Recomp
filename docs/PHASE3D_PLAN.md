@@ -6,9 +6,11 @@ checkpoint history live in [ENGINE_NOTES.md](ENGINE_NOTES.md); completion
 items live in [ROADMAP.md](ROADMAP.md). Read the roadmap's "Working on the
 remaining tasks" before changing code.
 
-The latest checkpoint, [PR #17](https://github.com/duduke/AfterBurner2-Recomp/pull/17),
-is merged on `main` as `ec3bbaa` (implementation `20e9fed`). Start the next
-implementation continuation from updated `main` on a new `codex/` branch.
+The latest checkpoint, [PR #18](https://github.com/duduke/AfterBurner2-Recomp/pull/18),
+adds independently checked IRQ4 road-palette timing on top of PR #17's
+bounded IRQ4/re-arm work. Start the next implementation continuation from
+updated `main` on a new `codex/` branch; the next callee timing boundaries
+are `$14A86/$13F92/$1329E/$16C8A/$18444/$13E5C`.
 
 ## Scope and current status
 
@@ -35,7 +37,7 @@ The current host/timing evidence is:
 | Bounded IRQ2/IRQ6 service | 9,439/9,439 calls; 474,024/474,024 predicted bus events; zero skips | Interrupted instruction boundary/context; bounded opcode and mask coverage |
 | Directed object composition | 480/480 dispatch windows; 53,404 callbacks; 128/128 additional entry calls | IPL7 fixture isolates composition; unported callers remain transcripts |
 | Natural IRQ/shared-input and paired composition | 120/120 separate and 122/122 paired complete dispatchers; 244/244 VBLANK windows; 240/240 RGB frames; zero skips | Captured IRQ frontiers, sub-produced operands and compositor feedback |
-| Bounded IRQ4 and re-arm timing | 1,611/1,611 envelopes; 2,611,132/2,611,132 predicted bus events; 16,349/16,349 uninterrupted wait steps; seven mutations rejected | Complex callee clocks/state and interrupted caller contexts; six IRQ-overlapped wait attempts excluded |
+| Bounded IRQ4, road-palette and re-arm timing | 1,728/1,728 envelopes; 2,950,710/2,950,710 predicted bus events; 2,553/2,553 road-palette calls; 16,349/16,349 uninterrupted wait steps | Remaining complex callee clocks/state and interrupted caller contexts; six IRQ-overlapped wait attempts excluded |
 
 The shared-input checkpoint supersedes earlier IRQ4 race exclusions. Complete
 `$B676` waits/publication now execute at captured IRQ frontiers; they do not
@@ -46,11 +48,16 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
 
 ## 1. Finish IRQ4 timing and the caller schedule — next work
 
+- [x] Independently check `$13BB6/$13BCC/$13BFA` road-palette cycles,
+  operand reads, writes and entry/exit registers. Natural, directed and
+  endpoint captures pass with zero skips; three constant mutations fail.
+  See the road-palette continuation in `ENGINE_NOTES.md` for coverage limits.
 - [ ] Replace the remaining palette/scenery/reload/HUD timing boundaries with
   independently checked callee cycles:
-  `$14A86/$13F92/$13BCC/$13BB6/$13BFA/$1329E/$16C8A/$18444/$13E5C`.
-  The wrapper and six callee entries (buttons, timers, bookkeeping, service
-  edge, normal blit and interpolated blit) already compute their bus phases.
+  `$14A86/$13F92/$1329E/$16C8A/$18444/$13E5C`.
+  The wrapper, six earlier callee entries (buttons, timers, bookkeeping,
+  service edge, normal blit and interpolated blit), and road-palette entries
+  `$13BB6/$13BCC/$13BFA` now compute their bus phases.
   External callee durations are added to predicted time; never reset the
   caller clock to a captured timestamp.
 - [ ] Check IRQ entry within `$14856` re-arm and the dispatcher caller
