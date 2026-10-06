@@ -6,9 +6,11 @@ checkpoint history live in [ENGINE_NOTES.md](ENGINE_NOTES.md); completion
 items live in [ROADMAP.md](ROADMAP.md). Read the roadmap's "Working on the
 remaining tasks" before changing code.
 
-The latest checkpoint, [PR #17](https://github.com/duduke/AfterBurner2-Recomp/pull/17),
-is merged on `main` as `ec3bbaa` (implementation `20e9fed`). Start the next
-implementation continuation from updated `main` on a new `codex/` branch.
+The latest checkpoint, [PR #18](https://github.com/duduke/AfterBurner2-Recomp/pull/18),
+adds independently checked IRQ4 road-palette timing on top of PR #17's
+bounded IRQ4/re-arm work. Start the next implementation continuation from
+updated `main` on a new `codex/` branch; the next callee timing boundaries
+are `$14A86/$13F92/$1329E/$16C8A/$18444/$13E5C`.
 
 ## Scope and current status
 
