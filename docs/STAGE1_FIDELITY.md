@@ -204,7 +204,11 @@ selected small callees and both sprite blits with predicted CPU bus phases,
 plus an uninterrupted `$14856` wait/re-arm oracle. Road-palette
 `$13BB6/$13BCC/$13BFA` and palette-cycle `$1329E` now also predict their
 operand/return phases; the latter has directed coverage only. The remaining
-`$14A86/$13F92/$16C8A/$18444/$13E5C` callee state/durations, sub-produced blit operands and interrupted caller contexts
+palette/reload/HUD/scenery/transition graphs now compute their own cycles,
+registers and bus accesses too: 18,769/18,769 calls to those six entries match
+within 3,519/3,519 IRQ4 envelopes, with 8,099,444/8,099,444 predicted bus events
+and zero skips. Game-flow caller state/durations, sub-owned write frontiers,
+physical inputs, sub-produced blit operands and interrupted caller contexts
 remain external. No independent IRQ/caller/sub scheduler has been established,
 and these timing ports are not wired into `OEngine`. Native Stage 1 controls,
 objects, request adapter and sound cues remain active; Phase 3d is incomplete.

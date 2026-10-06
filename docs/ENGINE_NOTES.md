@@ -2448,3 +2448,115 @@ oracles have no new differences; previously documented input race skips
 remain. Stage 1 audio RMS remains 903.949. CMake registers the new endpoint
 test but is unavailable here, so that path was not executed. ROM images,
 captures, disassembly and mutation artifacts remain ignored.
+
+## IRQ4 remaining callee timing continuation
+
+`codex/irq4-remaining-callee-timing` replaces the supplied state/duration
+boundaries for `$14A86/$13F92/$16C8A/$18444/$13E5C`. The earlier `$1329E`
+translation remains computed and is checked again in every directed dataset.
+`omainirqcallee.inc` expands 863 address-labelled ROM instructions into C++
+control flow and typed bus/ALU operations in `omainirqcallee.cpp`; there is
+no runtime opcode decoder or embedded palette/tile/animation table. Unknown
+instruction addresses throw. Runtime operands include both main and sub ROM.
+
+The callee graphs include fade trigger/capture/upload and DAC-channel decay;
+airframe/flame/weapon animation and `$142DC/$14324/$14424` blend/upload;
+`$B84C` sound enqueue, `$CFC4` missile HUD and `$D062/$D090` decimal conversion;
+scenery event records, scroll/palette scripts, `$1866C/$18902` tile upload,
+`$1871A/$18798` visibility and segmented display, `$13A74` tile clear; and
+`$13E5C` quarter-rate transition completion. They compute instruction widths,
+signed word indexing, preserved register upper words, unsigned underflow,
+NZVC branches, short/word branch and DBF/DBEQ phases, memory CLR/RMW reads,
+MOVE.L ordering, nested subroutine stacks, MOVEM dummy reads and RTS clocks.
+MULU timing depends on the multiplier's set bits; DIVU timing follows its
+restoring-division steps. Register BCHG/BSET low-half timing is 10 clocks,
+which the directed fade/blend checks distinguish from 12. No instruction in
+these graphs consumes X; the envelope's RTE restores the captured saved SR.
+Outgoing callee CCR is not separately captured or exposed by this API.
+
+`AB2IRQ46` extends the operand capture to these graphs. Instruction extensions
+and prefetches remain clock phases; the capture excludes each operand
+instruction's extension/prefetch address window. The replay rejects any
+operand alias within a conservative ten-byte window after its instruction.
+All callee data/stack events enter the verified denominator; entry/exit
+D0..D7/A0..A6, clocks and return stack are computed and compared. No captured
+post-state or duration is consumed for any of the six requested entries.
+Unported game-flow durations still add to predicted caller time, never reset it.
+
+Scenery reads sub-produced roll/pitch/history values during its execution.
+The capture now records actual sub write lanes at main operand frontiers,
+including operands inside the still-external game-flow calls. The replay
+supplies those writes, preserving main-owned bit 0 when sub `$000458` sets
+mutex bit 1. This is a **supplied visibility/order boundary**, not independent
+sub CPU scheduling. Ordering solely by the CPUs' reported timestamps failed
+seven cycle-endpoint envelopes: MAME's scheduler can execute one CPU ahead
+of the other, so a sub write's timestamp alone does not determine its
+visibility to a main read. No main-produced read value is replaced in these
+callee graphs. Physical buttons and sub-produced blit count/list operands
+retain their previous explicit contracts. Regenerate older IRQ4 captures.
+
+| IRQ4 capture | Identical / recorded envelopes | Identical / predicted bus events | Skipped |
+| --- | ---: | ---: | ---: |
+| Natural, 600 frames | 597 / 597 | 1,127,594 / 1,127,594 | 0 |
+| Directed, 900 frames | 897 / 897 | 1,822,833 / 1,822,833 | 0 |
+| Directed edges, 120 frames | 117 / 117 | 138,810 / 138,810 | 0 |
+| Road endpoints, 120 frames | 117 / 117 | 138,810 / 138,810 | 0 |
+| Cycle endpoints, 600 frames | 597 / 597 | 1,050,305 / 1,050,305 | 0 |
+| Callee endpoints, 600 frames | 597 / 597 | 2,264,579 / 2,264,579 | 0 |
+| Scenery endpoints, 600 frames | 597 / 597 | 1,556,513 / 1,556,513 | 0 |
+
+Combined: **3,519/3,519 envelopes, 8,099,444/8,099,444 predicted bus events,
+16,576/16,576 newly computed callee calls and 2,193/2,193 palette-cycle
+calls identical, zero differences and zero skips**. Thus all six requested
+entries account for 18,769/18,769 checked calls. Each capture excludes one
+unfinished shutdown service outside these denominators. All seven runs use
+fresh config/NVRAM; directed values are RAM fixtures, not natural stage-flow
+or producer-cadence evidence.
+
+Coverage includes all eight fade upload banks and channel masks, triggered
+and continuation capture banks, inactive fade/animation, blend preparation
+and accumulation/completion, flame phases and negative throttle, animation
+phase 30/31, transition upload variants and quarter-rate completion; reload
+request priority, negative/zero/positive delay, exhaustion, 21 HUD entries,
+decimal tens/hundreds, sound disable and queue wrap. Scenery fixtures exercise
+valid ROM event records 0..15 (including invalid-selector returns at 11/12),
+all scroll dispatch modes, timer underflow, palette scripts, byte and word tile
+lists, tile clearing, view initialization/removal, segmented displays and
+word-sized scroll arithmetic. The segmented display fixture derives its
+length bound from the ROM header. Natural coverage is much narrower: most
+active fade/blend/reload and scenery transitions are directed only.
+
+Remaining coverage limits: arbitrary animation pointer selectors, fade
+control words outside the documented fixture banks, all channel/color and
+throttle combinations, arbitrary event-script pointers and malformed or
+out-of-range segmented-display counts are unverified. An exploratory
+out-of-range strip fixture underflowed DBF into 65,536 clears and crossed
+nested IRQ6; that exploratory dataset is excluded from acceptance. Nested
+interrupts, instruction-completion/mask boundaries and interrupted caller
+execution remain unverified. Only the graph's used instruction forms are
+supported; the instruction guard is not a general main CPU interpreter.
+`$17146/$14990/$C6F8/$E2DA`, physical input, sub write visibility/frontiers,
+sub-produced blit operands and interrupted contexts remain supplied.
+Independent IRQ/caller/ADC/publication/sub scheduling, road-raster pairing
+and native Stage 1 retirement remain Phase 3d work.
+
+Eight temporary-source mutations fail: fade capture count `$3F->$3E`, flame
+shift `4->3`, reload sound `$9B->$9A`, scenery blank `$00200020->$00210021`,
+transition threshold `$20->$21`, and the earlier cycle shift/mask/unsigned
+branch mutations. The reload mutation changes 18 bus events; the scenery
+blank mutation changes 294,912. Shadow include files and mutated executables
+stay under ignored `build/oracle/mutations`; original sources remain intact.
+
+```bash
+make oracle-capture-irq4-service
+make oracle-irq4-service
+python3 tools/oracle/mutation_check.py irq4fadecount irq4animateshift irq4reloadsound irq4sceneryblank irq4transitionend irq4cycleshift irq4cyclemask irq4cyclebranch
+```
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the full
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Existing
+oracle differences remain zero, with their previously documented race skips.
+Stage 1 audio RMS remains 903.949. CMake registers both new endpoint tests
+but is unavailable here, so that build path was not executed. ROM images,
+captures, disassembly and mutation artifacts remain ignored. These timing
+ports remain outside the active native `OEngine`; Phase 3d is incomplete.
