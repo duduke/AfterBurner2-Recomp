@@ -124,7 +124,7 @@ for name,old,new in [
                   "tests/oracle_board.cpp","board_endpoints",[]))
 
 # CPU service clocks must change outputs without changing the captured inputs.
-service_dependencies = common
+service_dependencies = common + ["src/main/engine/omainirqcallee.cpp"]
 for name,old,new in [
     ("serviceentry", "idle(6);write16(sp-2,c.return_pc)", "idle(8);write16(sp-2,c.return_pc)"),
     ("servicevpa", "sync=cycles-mod+(mod<7 ? 10 : 20)", "sync=cycles-mod+10"),
@@ -155,7 +155,20 @@ for name,old,new,capture,test in [
     ("waitbranch", "idle(8); // Short conditional", "idle(10); // Short conditional", "logic_wait_directed", "tests/oracle_logic_wait.cpp"),
     ("waitrearm", "write16(0x2a3c00,1)", "write16(0x2a3c00,2)", "logic_wait_directed", "tests/oracle_logic_wait.cpp"),
 ]:
-    cases.append((name,"src/main/engine/omainirqservice.cpp",old,new,test,capture,common))
+    cases.append((name,"src/main/engine/omainirqservice.cpp",old,new,test,capture,service_dependencies))
+
+# Each newly timed callee has a literal instruction mutation; the shadow
+# include leaves the source tree and runtime ROM/capture inputs unchanged.
+for name,old,new in [
+    ("irq4fadecount", "move(2,{I,0,0x3f},{D,0},false); pc=0x14b14", "move(2,{I,0,0x3e},{D,0},false); pc=0x14b14"),
+    ("irq4animateshift", "shift(ASR,2,{I,0,0x4},0); pc=0x1406e", "shift(ASR,2,{I,0,0x3},0); pc=0x1406e"),
+    ("irq4reloadsound", "move(2,{I,0,0x9b},{D,0},false); pc=0x16d00", "move(2,{I,0,0x9a},{D,0},false); pc=0x16d00"),
+    ("irq4sceneryblank", "move(4,{I,0,0x200020},{D,0},false); pc=0x13a84", "move(4,{I,0,0x210021},{D,0},false); pc=0x13a84"),
+    ("irq4transitionend", "alu(CMP,2,{I,0,0x20},{W,0,0xffff8c2a},true,false)", "alu(CMP,2,{I,0,0x21},{W,0,0xffff8c2a},true,false)"),
+]:
+    cases.append((name,"src/main/engine/omainirqcallee.inc",old,new,
+                  "tests/oracle_irq4_service.cpp","irq4_service_callee_endpoints",
+                  common+["src/main/engine/omainirqservice.cpp","src/main/engine/omainirqcallee.cpp"]))
 
 # Natural IRQ, linked output and continuous-ring acceptance sensitivity.
 acceptance = handlers + ["src/main/engine/omainadc.cpp", "src/main/engine/omainframe.cpp", "src/main/engine/omainpalette.cpp", "src/main/engine/oscenery.cpp"]
@@ -187,7 +200,7 @@ for name, source, old, new, test, capture, dependencies in cases:
         raise RuntimeError(f"{name}: mutation anchor changed; inspect the port")
     variant, binary, log_path = root / (name + ".cpp"), root / name, root / (name + ".log")
     variant.write_text(text.replace(old, new))
-    if source.endswith(".hpp"):
+    if source.endswith((".hpp", ".inc")):
         include = root / name / Path(source).parent.name
         # Keep the executable separate from the shadow include directory.
         binary = root / (name + "_test")

@@ -42,7 +42,7 @@ add_executable(afterburner2
     src/main/engine/subbus.cpp
     src/main/engine/mainbus.cpp
     src/main/engine/omainadc.cpp
-    src/main/engine/omainirqservice.cpp
+    src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp
     src/main/engine/oscenery.cpp
     src/main/engine/ostagesetup.cpp
     src/main/engine/osubroad.cpp
@@ -156,7 +156,7 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
     add_executable(oracle_irq_service tests/oracle_irq_service.cpp
-        src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp
+        src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp
         src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
     target_include_directories(oracle_irq_service PRIVATE src/main)
     foreach(CAPTURE service service_endpoints service_directed)
@@ -268,11 +268,11 @@ endif()
 if(BUILD_TESTING AND ORACLE_TESTS)
     foreach(PORT irq4_service logic_wait)
         add_executable(oracle_${PORT} tests/oracle_${PORT}.cpp
-            src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp
+            src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp
             src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
         target_include_directories(oracle_${PORT} PRIVATE src/main)
     endforeach()
-    foreach(CAPTURE irq4_service irq4_service_directed irq4_service_edges irq4_service_road_endpoints irq4_service_cycle_endpoints)
+    foreach(CAPTURE irq4_service irq4_service_directed irq4_service_edges irq4_service_road_endpoints irq4_service_cycle_endpoints irq4_service_callee_endpoints irq4_service_scenery_endpoints)
         add_test(NAME oracle_${CAPTURE} COMMAND oracle_irq4_service build/oracle/${CAPTURE}.bin)
         set_tests_properties(oracle_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()

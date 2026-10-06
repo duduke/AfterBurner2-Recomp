@@ -23,7 +23,7 @@ SRCS = \
 	src/main/engine/oengine.cpp
 
 # Verified road/scenery and shared bus; ADC awaits the flight/input port.
-SRCS += src/main/engine/omainhost.cpp src/main/engine/omainirqservice.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
+SRCS += src/main/engine/omainhost.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
@@ -319,7 +319,7 @@ oracle-capture-service:
 
 oracle-irq-service:
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_irq_service.cpp src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_irq_service
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_irq_service.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_irq_service
 	./build/oracle_irq_service build/oracle/service.bin
 	./build/oracle_irq_service build/oracle/service_endpoints.bin
 	./build/oracle_irq_service build/oracle/service_directed.bin
@@ -395,15 +395,19 @@ oracle-capture-irq4-service:
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_edges.bin 120 15
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_ROAD_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_road_endpoints.bin 120 15
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_CYCLE_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_cycle_endpoints.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_CALLEE_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_callee_endpoints.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_SCENERY_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_scenery_endpoints.bin 600 30
 
 oracle-irq4-service:
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_irq4_service.cpp src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_irq4_service
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_irq4_service.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_irq4_service
 	./build/oracle_irq4_service build/oracle/irq4_service.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_directed.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_edges.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_road_endpoints.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_cycle_endpoints.bin
+	./build/oracle_irq4_service build/oracle/irq4_service_callee_endpoints.bin
+	./build/oracle_irq4_service build/oracle/irq4_service_scenery_endpoints.bin
 
 oracle-capture-logic-wait:
 	@mkdir -p build/oracle
@@ -412,7 +416,7 @@ oracle-capture-logic-wait:
 
 oracle-logic-wait:
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_logic_wait.cpp src/main/engine/omainirqservice.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_logic_wait
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_logic_wait.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_logic_wait
 	./build/oracle_logic_wait build/oracle/logic_wait.bin
 	./build/oracle_logic_wait build/oracle/logic_wait_directed.bin
 

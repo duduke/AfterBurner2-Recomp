@@ -162,6 +162,9 @@ OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t
         write16(sp,ret>>16);write16(sp+2,ret);idle(absolute_long?4:8);
         if(target==0x1495c || target==0x148be || target==0x148b8 || target==0x147e8 || target==0xb7c2 || target==0xb7d2 || target==0x13bb6 || target==0x13bcc || target==0x13bfa || target==0x1329e)
             { if(frame_leaf(target,r,sp)!=ret)throw std::runtime_error("corrupt IRQ4 leaf return stack"); }
+        else if(target==0x14a86 || target==0x13f92 || target==0x16c8a || target==0x18444 || target==0x13e5c) {
+            if(frame_complex(target,r,sp)!=ret)throw std::runtime_error("corrupt IRQ4 callee return stack");
+        }
         else {
             if(!boundary)throw std::runtime_error("IRQ4 callee timing boundary required");
             const unsigned cycles=boundary(target,r,sp,ns);

@@ -6,11 +6,12 @@ checkpoint history live in [ENGINE_NOTES.md](ENGINE_NOTES.md); completion
 items live in [ROADMAP.md](ROADMAP.md). Read the roadmap's "Working on the
 remaining tasks" before changing code.
 
-The latest checkpoint, [PR #18](https://github.com/duduke/AfterBurner2-Recomp/pull/18),
-adds independently checked IRQ4 road-palette timing on top of PR #17's
-bounded IRQ4/re-arm work. Start the next implementation continuation from
-updated `main` on a new `codex/` branch; the current continuation removes `$1329E` palette-cycle timing. The next
-callee timing boundaries are `$14A86/$13F92/$16C8A/$18444/$13E5C`.
+The continuation on `codex/irq4-remaining-callee-timing` computes the remaining
+`$14A86/$13F92/$16C8A/$18444/$13E5C` callee graphs, alongside the previously
+checked `$1329E`. All seven current IRQ4 datasets pass: 3,519/3,519 envelopes,
+8,099,444/8,099,444 predicted bus events and 18,769/18,769 calls to these six
+entries, zero skips. The next boundary is IRQ entry within `$14856` re-arm
+and the interrupted dispatcher/caller stream; Phase 3d remains incomplete.
 
 ## Scope and current status
 
@@ -37,7 +38,7 @@ The current host/timing evidence is:
 | Bounded IRQ2/IRQ6 service | 9,439/9,439 calls; 474,024/474,024 predicted bus events; zero skips | Interrupted instruction boundary/context; bounded opcode and mask coverage |
 | Directed object composition | 480/480 dispatch windows; 53,404 callbacks; 128/128 additional entry calls | IPL7 fixture isolates composition; unported callers remain transcripts |
 | Natural IRQ/shared-input and paired composition | 120/120 separate and 122/122 paired complete dispatchers; 244/244 VBLANK windows; 240/240 RGB frames; zero skips | Captured IRQ frontiers, sub-produced operands and compositor feedback |
-| Bounded IRQ4, road/cycle palette and re-arm timing | 2,325/2,325 envelopes; 3,475,316/3,475,316 predicted bus events; 1,297/1,297 palette-cycle calls; 16,349/16,349 uninterrupted wait steps | Remaining complex callee clocks/state and interrupted caller contexts; six IRQ-overlapped wait attempts excluded |
+| Bounded IRQ4, complete selected callee graphs and re-arm timing | 3,519/3,519 envelopes; 8,099,444/8,099,444 predicted bus events; 18,769/18,769 fade/animation/cycle/reload/scenery/transition calls; 16,349/16,349 uninterrupted wait steps | Game-flow caller transcripts, sub-owned write frontiers and interrupted contexts; six IRQ-overlapped wait attempts excluded |
 
 The shared-input checkpoint supersedes earlier IRQ4 race exclusions. Complete
 `$B676` waits/publication now execute at captured IRQ frontiers; they do not
@@ -55,14 +56,14 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
 - [x] Independently check `$1329E` palette-cycle timing, including unsigned
   selector branches, phase word masking/wrap and hardware/fade destinations.
   See the palette-cycle continuation in `ENGINE_NOTES.md` for counts and limits.
-- [ ] Replace the remaining palette/scenery/reload/HUD timing boundaries with
-  independently checked callee cycles:
-  `$14A86/$13F92/$16C8A/$18444/$13E5C`.
-  The wrapper, six earlier callee entries (buttons, timers, bookkeeping,
-  service edge, normal blit and interpolated blit), and road-palette entries
-  `$13BB6/$13BCC/$13BFA`, plus palette-cycle `$1329E`, now compute their bus phases.
-  External callee durations are added to predicted time; never reset the
-  caller clock to a captured timestamp.
+- [x] Replace palette/scenery/reload/HUD timing boundaries with independently
+  checked callee cycles: `$14A86/$13F92/$1329E/$16C8A/$18444/$13E5C`.
+  The palette blend/upload, sound ring/decimal HUD, scenery scripts/tile
+  helpers and returns compute their own bus phases and register effects.
+  Natural, directed and endpoint captures pass; eight constant mutations fail.
+  Coverage and supplied sub-write frontiers are explicit in `ENGINE_NOTES.md`.
+  Only the unported game-flow callers still supply state and durations;
+  their durations add to predicted time without resetting the caller clock.
 - [ ] Check IRQ entry within `$14856` re-arm and the dispatcher caller
   instruction stream. Uninterrupted wait steps do not prove that schedule.
   Retain explicit limits for instruction completion tails, mask transitions,

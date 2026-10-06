@@ -100,8 +100,8 @@ PR #14 is merged. Natural IRQ2 interleaving and conditional paired
 player/weapon/video/sound acceptance now pass at supplied caller boundaries.
 IRQ4/shared-input composition and publication waits now pass without race
 skips. Bounded IRQ4 wrapper/selected-callee and uninterrupted re-arm timing
-now pass; remaining IRQ4 callee timing and the interrupted caller schedule
-are still supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
+now pass; the selected IRQ4 callee graphs now compute their own timing. The interrupted
+caller schedule and sub-write frontiers remain supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
@@ -437,9 +437,13 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       2,325/2,325 envelopes and 3,475,316/3,475,316 predicted bus events
       identical, zero skips. Three mutations fail. Natural gameplay does
       not call this entry; directed coverage and limits are in `ENGINE_NOTES.md`.
-- [ ] Remove remaining IRQ4 palette/scenery/reload/HUD timing boundaries
-      (`$14A86/$13F92/$16C8A/$18444/$13E5C`),
-      verify re-arm/dispatcher instruction scheduling across IRQs, then progress
+- [x] Remaining IRQ4 palette/scenery/reload/HUD callee timing:
+      `$14A86/$13F92/$16C8A/$18444/$13E5C` and their helper graphs compute
+      bus phases, ROM operands, registers and returns. Alongside `$1329E`,
+      18,769/18,769 calls match in 3,519/3,519 envelopes and
+      8,099,444/8,099,444 predicted bus events, zero skips. Eight mutations
+      fail; coverage and supplied sub-write frontiers are in `ENGINE_NOTES.md`.
+- [ ] Verify re-arm/dispatcher instruction scheduling across IRQs, then progress
       publication and sub execution without captured operand frontiers.
 - [ ] Player jet: flight model and compound parts (`$016892`,
       `$01653A`-`$01657A`), feeding the bank/pitch targets the sub CPU
