@@ -201,8 +201,10 @@ use native Stage 1 controls, objects, adapter and sound cues.
 
 The bounded IRQ4 timing checkpoint adds the actual interrupt wrapper,
 selected small callees and both sprite blits with predicted CPU bus phases,
-plus an uninterrupted `$14856` wait/re-arm oracle. Complex IRQ4 routine
-state/durations, sub-produced blit operands and interrupted caller contexts
+plus an uninterrupted `$14856` wait/re-arm oracle. Road-palette
+`$13BB6/$13BCC/$13BFA` and palette-cycle `$1329E` now also predict their
+operand/return phases; the latter has directed coverage only. The remaining
+`$14A86/$13F92/$16C8A/$18444/$13E5C` callee state/durations, sub-produced blit operands and interrupted caller contexts
 remain external. No independent IRQ/caller/sub scheduler has been established,
 and these timing ports are not wired into `OEngine`. Native Stage 1 controls,
 objects, request adapter and sound cues remain active; Phase 3d is incomplete.

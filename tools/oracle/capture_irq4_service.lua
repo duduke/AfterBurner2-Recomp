@@ -4,7 +4,7 @@ local space=main.spaces.program
 local board=manager.machine.devices[":mainpcb"]
 local timer=emu.item(assert(board.items["0/m_timer_irq_state"]))
 local blank=emu.item(assert(board.items["0/m_vblank_irq_state"]))
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2IRQ42")
+local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2IRQ43")
 local guard,active,last,hook=false,false,nil,nil
 local events,hooks,pre={},{},nil
 local frame,calls,dropped=0,0,0
@@ -52,6 +52,14 @@ local function access(w,a,d,m)
     space:write_u8(0x3f9114,0xf8|(road_case&7))
     space:write_u16(0x29c060,({0,24,0xffff,0x8000})[road_case%4+1])
    end
+   if os.getenv("AB2_ORACLE_IRQ4_CYCLE_ENDPOINTS")=="1" then
+    -- Cross unsigned selector boundaries, phase masking/word wrap and
+    -- both hardware/fade destinations. Earlier fade executes normally.
+    space:write_u16(0x29c09c,({0x11,0x12,0x16,0x17,0x10,0xffff,0,0x8000})[road_case%8+1])
+    space:write_u16(0x3f9146,({0,1,0x0f,0x10,0x1f,0x20,0x7fff,0x8000,0xffff})[(road_case//8)%9+1])
+    space:write_u8(0xcdd07,0);space:write_u16(0xcdd02,0)
+    space:write_u16(0xcdd00,0);space:write_u8(0xcdd05,(road_case//72)%2==0 and 0 or 2)
+   end
    space:write_u8(0x3f8b6f,calls%8==3 and (space:read_u8(0x3f8b6f)&~2) or (space:read_u8(0x3f8b6f)|2))
    space:write_u16(0x3f8174,59);space:write_u16(0x3f881c,59);space:write_u16(0x3f880a,1)
    guard=false
@@ -67,11 +75,11 @@ local function access(w,a,d,m)
   end
   -- Data/stack and vector transactions are included. ROM instruction
   -- fetches are represented by clocks. External callees remain transcripts.
-  -- Include road-palette ROM operands. These MOVE instructions have no
+  -- Include road/cycle palette ROM operands. These MOVE instructions have no
   -- extensions; their prefetch is at p+4. Data ranges in these fixtures
   -- are disjoint from the instruction stream (also asserted by the test).
-  local road_read=(p==0x13bc4 or (p>=0x13bf0 and p<=0x13bf6) or p==0x13c12 or (p>=0x13c28 and p<=0x13c36)) and a~=p+4
-  if w or a>=0x80000 or a==0x70 or a==0x72 or road_read then
+  local palette_read=(p==0x13bc4 or (p>=0x13bf0 and p<=0x13bf6) or p==0x13c12 or (p>=0x13c28 and p<=0x13c36) or (p>=0x132da and p<=0x132e6) or (p>=0x13310 and p<=0x1331c)) and a~=p+4
+  if w or a>=0x80000 or a==0x70 or a==0x72 or palette_read then
    local e=string.pack(">I8I4I4I2I2B",ns(),p,a,d,m,w and 1 or 0)
    if hook then hook.events[#hook.events+1]=e else events[#events+1]=e end
   end

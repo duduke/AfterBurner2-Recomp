@@ -431,8 +431,14 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       recorded in `ENGINE_NOTES.md`. Delivered in
       [PR #18](https://github.com/duduke/AfterBurner2-Recomp/pull/18).
       Other callee timing remains supplied.
+- [x] IRQ4 palette-cycle callee timing: `$1329E` computes unsigned selector
+      branches, phase shifts/masks, runtime ROM transfers, fade/hardware
+      destinations and register/return timing. 1,297/1,297 calls within
+      2,325/2,325 envelopes and 3,475,316/3,475,316 predicted bus events
+      identical, zero skips. Three mutations fail. Natural gameplay does
+      not call this entry; directed coverage and limits are in `ENGINE_NOTES.md`.
 - [ ] Remove remaining IRQ4 palette/scenery/reload/HUD timing boundaries
-      (`$14A86/$13F92/$1329E/$16C8A/$18444/$13E5C`),
+      (`$14A86/$13F92/$16C8A/$18444/$13E5C`),
       verify re-arm/dispatcher instruction scheduling across IRQs, then progress
       publication and sub execution without captured operand frontiers.
 - [ ] Player jet: flight model and compound parts (`$016892`,

@@ -2381,3 +2381,70 @@ oracle checks have zero new differences; their previously documented input
 race skips remain. Stage 1 audio RMS is still 903.949. The CMake endpoint
 test is registered but not executed because CMake is unavailable. ROM images,
 captures, disassembly output and mutation artifacts remain ignored.
+
+
+## IRQ4 palette-cycle timing continuation
+
+`codex/irq4-palette-cycle-timing` removes the supplied `$1329E` callee
+state/duration from `OMainIrqService`. The translation follows main ROM
+`$1329E..$1331E` instruction by instruction: word subtraction by `$11`,
+zero return, unsigned comparison against 6, phase ASL.W #3/#1 and masking,
+signed ADDA.W, and seven postincrement MOVE.L transfers from runtime ROM.
+The destination is hardware palette `$121E82` or fade RAM `$CDAB0`, selected
+by the live `$CDD05` byte. It computes both branch widths, operand bus
+phases, high/low word order, preserved upper D0 word, A0/A1 increments,
+RTS stack reads and entry/exit clocks/registers. No captured cycle-callee
+post-state or duration is consumed; remaining external durations still add
+to the predicted caller clock without resetting it.
+
+`AB2IRQ43` includes ROM source reads at `$132DA..$132E6/$13310..$1331C`
+in the IRQ4 capture and verified-event denominator. As with the road
+transfers, Lua excludes only the p+4 instruction prefetch; the test rejects
+an executed operand alias at that address. Regenerate older IRQ4 captures.
+
+| IRQ4 capture | Identical / envelopes | Identical / predicted bus events | Palette-cycle calls | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| Natural (600 frames) | 597 / 597 | 1,039,702 / 1,039,702 | 0 | 0 |
+| Directed (900 frames) | 897 / 897 | 1,689,419 / 1,689,419 | 673 | 0 |
+| Directed edges (120 frames) | 117 / 117 | 124,803 / 124,803 | 88 | 0 |
+| Road endpoints (120 frames) | 117 / 117 | 124,803 / 124,803 | 88 | 0 |
+| Cycle endpoints (600 frames) | 597 / 597 | 496,589 / 496,589 | 448 | 0 |
+
+Combined: **2,325/2,325 envelopes, 3,475,316/3,475,316 predicted bus events
+and 1,297/1,297 palette-cycle calls identical, zero differences, zero skips**.
+Each run excludes one unfinished shutdown service outside these denominators.
+The natural gameplay capture never requests `$1329E`; all new callee evidence
+is directed. Existing directed runs execute only the ordinary hardware path.
+The cycle endpoint fixture executes 57 zero exits, 277 ordinary transfers and
+114 alternate transfers, including 189 fade destinations. It crosses selector
+words `$11/$12/$16/$17/$10/$FFFF/0/$8000` and phase words
+`0/1/$F/$10/$1F/$20/$7FFF/$8000/$FFFF`, covering unsigned branch boundaries,
+phase masks and word wrap. The earlier fade routine executes normally from
+directed fade-bank/request state; its own timing remains supplied.
+
+Coverage limits: selectors/phase words beyond these fixtures, natural cycle
+requests, nested interrupts and general interrupted caller execution remain
+unverified. `$14A86/$13F92/$16C8A/$18444/$13E5C` are remaining callee timing
+boundaries. Game-flow callers `$17146/$14990/$C6F8/$E2DA`, physical input,
+sub-produced blit operands and interrupted CPU contexts remain supplied.
+Independent IRQ/caller, ADC/publication/sub scheduling, road-raster pairing
+and native Stage 1 retirement are unchanged; Phase 3d remains incomplete.
+
+Three temporary-source mutations fail against the endpoint capture:
+ordinary shift timing `12->10` changes 191,909/496,589 bus events;
+phase masks `$1E0/$3E0->$1C0/$3C0` change 3,132/496,589 events;
+unsigned selector threshold `6->5` changes 17,873/496,589 events.
+Original source is left intact by the mutation runner.
+
+```bash
+make oracle-capture-irq4-service
+make oracle-irq4-service
+python3 tools/oracle/mutation_check.py irq4cycleshift irq4cyclemask irq4cyclebranch
+```
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Existing
+oracles have no new differences; previously documented input race skips
+remain. Stage 1 audio RMS remains 903.949. CMake registers the new endpoint
+test but is unavailable here, so that path was not executed. ROM images,
+captures, disassembly and mutation artifacts remain ignored.

@@ -3,7 +3,7 @@
 #include "engine/omainobjects.hpp"
 
 // Bounded 12.5 MHz 68000 service port: selected IRQ2/IRQ4/IRQ6 exception entry,
-// main ROM $1461C/$1466C/$14674, selected frame/road-palette leaves, the $B7F8
+// main ROM $1461C/$1466C/$14674, selected frame/road/cycle palette leaves, the $B7F8
 // consumer and MOVEM/JSR/RTS/RTE bus phases. Complex IRQ4 callees
 // retain explicit timing/state boundaries.
 // The interrupted instruction's completion boundary and latched level are
