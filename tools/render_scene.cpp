@@ -28,10 +28,7 @@ int main(int argc, char** argv)
     OEngine engine;
     engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length, roms.subcpu.rom, roms.subcpu.length);
     Screen screen(320, 224, palette, road, sprites, tiles);
-    // This visual fixture supplies a real arcade bank target independently
-    // of the still-native player controls. The input bridge is Phase 3d.
-    if (direction=="right") engine.arcade_bus().write16(0x29c0ce,0x00b0);
-    if (direction=="left") engine.arcade_bus().write16(0x29c0ce,0xff50);
+    // Road attitude is driven through the arcade input and ADC pipeline.
     const int ticks = argc == 4 ? std::stoi(argv[3]) : 240;
     for (int i = 0; i < ticks; ++i)
     {

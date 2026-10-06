@@ -2781,3 +2781,27 @@ ROM data, captures, opcode context and mutation artifacts remain ignored.
 Native `OEngine` remains active. Next: establish external handler/ISR
 resumptions, input producer cadence and sub progress across these bounded
 caller segments, then extend paired road/video/sound host acceptance.
+
+## Host input & ADC conversion wiring (`OEngine`)
+
+Host input from SDL and test harnesses is wired into the arcade hardware bus and ported 68000 input/ADC routines:
+- **Digital buttons**: Mapped to `bus->io[1].input` at `$150001` (active-low; bit 4 = vulcan cannon, bit 5 = missile).
+- **ADC multiplexer & read**: CXD1095 I/O port C output latch (`(bus->io[0].latch[2] >> 2) & 7`) selects the ADC channel. Reading `bus->endpoints.adc_read` returns the selected channel's analog sample:
+  - Channel 0: Stick X (neutral `$80`, right clamped to `$DB`, left to `$25`).
+  - Channel 1: Stick Y (neutral `$80`, climb clamped to `$C0`, dive to `$40`).
+  - Channel 2: Throttle (neutral/mid `$80`, afterburner `$B0`, idle `$40`).
+- **ADC sampling**: On every frame tick, `main_adc_sample(*bus)` samples all 6 ADC channels into arcade RAM.
+- **Button & Flight Logic Execution**:
+  - `OMainObjects::initialize` sets up object slot 1 (`A5 = $FFFFA040`, `A6 = $000E4000`).
+  - Display frame buttons update every 60 Hz display tick at `$29c074`.
+  - On 30 Hz logic frames (`phase.logic`), `OMainInput::buttons(*bus, input_regs)` (`$14976`) executes, updating current logic buttons at `$29c076` and previous logic buttons at `$29c077`.
+  - Next, `OMainInput::update(*bus, input_regs)` (`$B0AC`) runs, reading the sampled ADC values and computing flight attitude:
+    - Shared bank target `$29c0ce` (e.g. `$007F` for full right bank, negative for left bank)
+    - Shared pitch target `$29c0d0`
+    - Shared throttle `$29c0d2`
+- **Pairing with Road**:
+  - `OSubRoad::frame` reads `$09c0ce` (alias of `$29c0ce`) and `$09c0d0` on each display frame, naturally computing banked road scanlines. `tests/stage1_integration.cpp` and `tools/render_scene.cpp` now drive road banking purely through `OEngine::handle_input` rather than artificial bus pokes.
+- **Verification**:
+  - `tests/engine_regression.cpp` tests active-low button states, 60 Hz display vs 30 Hz logic button persistence, ADC channel clamping, and neutral release.
+  - `tests/stage1_integration.cpp` verifies natural stick bank/neutral/climb response in shared RAM and road scanline generation.
+

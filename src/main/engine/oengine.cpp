@@ -24,6 +24,38 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
         road.read_road_control();
     };
     bus->endpoints.road_control = [&road](uint8_t value) { road.write_road_control(value); };
+    bus->io[1].input = [this](unsigned port) -> uint8_t {
+        if (port == 0) {
+            uint8_t b = 0xff;
+            if (vulcan) b &= ~0x10;
+            if (missile) b &= ~0x20;
+            return b;
+        }
+        return 0xff;
+    };
+    bus->io[0].direction[2] = 0; // Port C output (ADC mux)
+    bus->io[0].output = [this](unsigned port, uint8_t data, uint8_t) {
+        if (port == 2) adc_mux = data;
+    };
+    bus->endpoints.adc_read = [this]() -> uint8_t {
+        const unsigned channel = (bus->io[0].latch[2] >> 2) & 7;
+        switch (channel) {
+        case 0: return raw_axis_x;
+        case 1: return raw_axis_y;
+        case 2: return raw_throttle;
+        default: return 0x80;
+        }
+    };
+    bus->endpoints.adc_write = [](uint8_t) {};
+
+    input_regs = {};
+    input_regs.a[5] = 0xffffa040;
+    input_regs.a[6] = 0x000e4000;
+    if (maincpu_rom && maincpu_len) {
+        OMainObjects::initialize(*bus, input_regs);
+    }
+    input_regs.a[5] = 0xffffa040;
+    input_regs.a[6] = 0x000e4000;
 
     stage_setup.run(*bus,0x13972);
     stage_setup.run(*bus,0x18918);
@@ -77,11 +109,24 @@ void OEngine::handle_input(int stick_x,int stick_y,bool fire_vulcan,bool fire_mi
 {
     this->stick_x=stick_x;this->stick_y=stick_y;this->throttle=throttle;
     vulcan=fire_vulcan;missile=fire_missile;
+
+    if (stick_x == 0) raw_axis_x = 0x80;
+    else if (stick_x > 0) raw_axis_x = static_cast<uint8_t>(std::min(0x80 + stick_x * 0x60, 0xdb));
+    else raw_axis_x = static_cast<uint8_t>(std::max(0x80 + stick_x * 0x60, 0x25));
+
+    if (stick_y == 0) raw_axis_y = 0x80;
+    else if (stick_y > 0) raw_axis_y = static_cast<uint8_t>(std::min(0x80 + stick_y * 0x40, 0xc0));
+    else raw_axis_y = static_cast<uint8_t>(std::max(0x80 + stick_y * 0x40, 0x40));
+
+    if (throttle >= 2) raw_throttle = 0xb0;
+    else if (throttle == 0) raw_throttle = 0x40;
+    else raw_throttle = 0x80;
 }
 
 void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
 {
     ++frame_count;
+    for (int i = 0; i < 6; ++i) main_adc_sample(*bus);
     auto phase=frame_engine.interrupt(*bus,[&](uint32_t entry) {
         switch(entry) {
         case 0x18444: scenery_engine.stage_events(*bus);break;
@@ -98,6 +143,11 @@ void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
         }
     });
     if(phase.logic && !phase.service_redirect) {
+        input_regs.a[5] = 0xffffa040;
+        input_regs.a[6] = 0x000e4000;
+        OMainInput::buttons(*bus, input_regs);
+        OMainInput::update(*bus, input_regs);
+
         // $000556 waits for the negative logic-phase counter. $000640 then
         // consumes the previous published requests, after the ISR's mutex.
         road_engine.service_requests(bus->sub);

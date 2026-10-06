@@ -91,9 +91,11 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   transcripts, sub-produced blit operands and hidden renderer feedback remain
   inputs. Advancing an arbitrary frame clock would invent IRQ latency and
   operand ordering.
-- [ ] Pair `OSubRoad` raster outputs with the computed bank/pitch/altitude
-  targets and the compositor. Captured road raster, tile/palette inputs and
-  hidden renderer feedback remain separate acceptance boundaries.
+- [x] Pair `OSubRoad` raster outputs with the computed bank/pitch/altitude
+  targets and the compositor. Host input through ADC drives `$B0AC/$14976`,
+  updating `$29c0ce/$29c0d0/$29c0d2` which naturally banks `OSubRoad`. Captured
+  road raster, tile/palette inputs and hidden renderer feedback remain separate
+  acceptance boundaries.
 
 Keep `$17146/$14990/$C6F8/$E2DA` as explicit game-flow caller boundaries until
 their own ports pass. The sampler's actual order remains acknowledgement,

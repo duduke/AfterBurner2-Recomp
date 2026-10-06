@@ -31,11 +31,19 @@ int main()
     {
         const int stick = tick > 600 && tick < 720 ? 1 : tick > 900 && tick < 1020 ? -1 : 0;
         engine.handle_input(stick, 0, true, true, 1);
-        // Road attitude comes from the arcade bus, pending the player port
-        // in 3d. Exercise that boundary directly with the ROM's $B0 bank
-        // threshold rather than converting the native camera's degrees.
-        if (tick==601) engine.arcade_bus().write16(0x29c0ce,0x00b0);
+        // Road attitude comes from the arcade bus and is driven naturally
+        // by the ported input and ADC pipeline.
         engine.tick(palette, road, sprites, tiles);
+        if (tick == 650) {
+            require(engine.arcade_bus().read16(0x29c0ce) == 0x007f, "Right stick must bank aircraft right ($7F)");
+            require((engine.arcade_bus().read8(0x29c076) & 0x30) == 0x30, "Vulcan and missile buttons must register in arcade RAM");
+        }
+        if (tick == 800) {
+            require(engine.arcade_bus().read16(0x29c0ce) == 0, "Neutral stick must return bank target to zero");
+        }
+        if (tick == 950) {
+            require(int16_t(engine.arcade_bus().read16(0x29c0ce)) < 0, "Left stick must bank aircraft left");
+        }
         if (tick == 360 || tick == 700)
         {
             screen.render_frame(tick == 360 ? level.data() : banked.data());

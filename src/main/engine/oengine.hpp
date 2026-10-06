@@ -14,6 +14,9 @@
 #include "engine/omainpalette.hpp"
 #include "engine/omainframe.hpp"
 #include "engine/osubsprites.hpp"
+#include "engine/omainobjects.hpp"
+#include "engine/omaininput.hpp"
+#include "engine/omainadc.hpp"
 
 // Master Engine Coordinator.
 // Verified video/scheduling ports share MainBus. Native object producers and HUD remain native until milestone 3d.
@@ -51,4 +54,7 @@ private:
     bool vulcan{},missile{};
     OHud hud_engine;
     uint32_t frame_count{0};
+    OMainObjects::Registers input_regs{};
+    uint8_t adc_mux{0};
+    uint8_t raw_axis_x{0x80}, raw_axis_y{0x80}, raw_throttle{0x80};
 };

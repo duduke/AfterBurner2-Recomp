@@ -97,8 +97,44 @@ void publication_wait()
           "The signed BGT wait must publish negative counters");
 }
 
+void host_input_adc()
+{
+    HWPalette p(8192); HWRoad r(0x1700, 0x1720, 0x1780, -166);
+    HWSprites s; HWTiles t; OEngine e;
+    e.init(p, r, s, t, nullptr, 0);
+
+    // Initial neutral state: all buttons released (0xFF at 0x150001)
+    check((e.arcade_bus().read8(0x150001) & 0x30) == 0x30, "Buttons at 0x150001 must be active-low 1 when released");
+
+    // Press Vulcan and Missile:
+    e.handle_input(0, 0, true, true, 1);
+    check((e.arcade_bus().read8(0x150001) & 0x30) == 0, "Buttons at 0x150001 must be 0 when pressed");
+
+    // Run 2 ticks so both display (60 Hz) and logic (30 Hz) phases execute:
+    e.tick(p, r, s, t);
+    e.tick(p, r, s, t);
+    check((e.arcade_bus().read8(0x29c074) & 0x30) == 0x30, "Display-frame buttons at 0x29c074 must reflect active buttons");
+    check((e.arcade_bus().read8(0x29c076) & 0x30) == 0x30, "Logic-frame buttons at 0x29c076 must reflect active buttons");
+
+    // Release buttons:
+    e.handle_input(0, 0, false, false, 1);
+    check((e.arcade_bus().read8(0x150001) & 0x30) == 0x30, "Buttons at 0x150001 must return to released");
+    e.tick(p, r, s, t);
+    e.tick(p, r, s, t);
+    check((e.arcade_bus().read8(0x29c076) & 0x30) == 0, "0x29c076 must clear released buttons");
+    check((e.arcade_bus().read8(0x29c077) & 0x30) == 0x30, "0x29c077 must retain previous logic buttons");
+
+    // ADC sampling:
+    // With stick_x = 1, stick_y = -1, throttle = 2:
+    e.handle_input(1, -1, false, false, 2);
+    e.tick(p, r, s, t);
+    check(e.arcade_bus().read8(0xffff8892) == 0xdb, "ADC channel 0 (Stick X) must be clamped to 0xDB");
+    check(e.arcade_bus().read8(0xffff8893) == 0x40, "ADC channel 1 (Stick Y dive) must be 0x40");
+    check(e.arcade_bus().read8(0xffff8894) == 0xb0, "ADC channel 2 (Throttle afterburner) must be 0xB0");
+}
+
 int main()
 {
-    sprite_scaling(); palette_colors(); release_stick(); publication_wait();
+    sprite_scaling(); palette_colors(); release_stick(); publication_wait(); host_input_adc();
     std::cout << "Engine regression checks passed\n";
 }
