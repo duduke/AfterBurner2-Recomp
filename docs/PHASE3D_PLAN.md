@@ -1,152 +1,152 @@
 # Phase 3d — objects, input and flight
 
-Phase 3c supplies shared arcade RAM, the main interrupt/caller handshake,
-30 Hz object scheduling, ROM palette routines, request publication, the
-sub CPU sprite transform and normal/interpolated hardware blits. This phase
-replaces `OLevelObjs`, its temporary request adapter and native sound cues.
-Credit/stage dispatch, scoring/lives flow and attract/service UI stay explicit
-3e boundaries until their own ports are verified.
+Phase 3d is **not complete**. This is the current implementation and
+continuation plan. Detailed oracle results, mutation evidence, commands and
+checkpoint history live in [ENGINE_NOTES.md](ENGINE_NOTES.md); completion
+items live in [ROADMAP.md](ROADMAP.md). Read the roadmap's "Working on the
+remaining tasks" before changing code.
 
-## 1. Object dispatcher and record layout
+The latest checkpoint, [PR #17](https://github.com/duduke/AfterBurner2-Recomp/pull/17),
+is merged on `main` as `ec3bbaa` (implementation `20e9fed`). Start the next
+implementation continuation from updated `main` on a new `codex/` branch.
 
-Walk the actual dispatch loop and initializer (`$009FC0..$00DF40` table,
-254 records of 64 bytes; initializer `$01488E`). Enumerate handler pointers
-from ROM at runtime. Capture each selected handler's entry registers, complete
-object/shared RAM inputs, CPU-owned write sets, math-chip registers and I/O.
-Handle active/free slots, compound attachments and handler transitions before
-routing a player object through the new scheduler. Do not reinterpret the
-native `OEntry` C++ struct as arcade memory.
+## Scope and current status
 
-## 2. Input, RNG and compound player
+Phase 3c supplies shared arcade RAM, the interrupt/caller handshake, 30 Hz
+object scheduling, palette routines, request publication, the sub CPU sprite
+transform and normal/interpolated hardware blits. Phase 3d replaces
+`OLevelObjs`, native flight/weapon rules, the sprite-coordinate/history
+adapter and hand-picked sound cues once the verified replacements pass host
+acceptance. `OEngine` still uses the native Stage 1 host; keep those producers
+and their adapter until acceptance passes.
 
-Connect the verified `$014626..$01465A` ADC sampler at its actual caller and
-conversion boundary. Verify raw ADC lanes, button edges and the mapping into
-arcade input bytes with neutral, both endpoints, release, throttle and simultaneous
-button captures. Map and port the original RNG before any dependent handler.
+Independent routine checks cover the dispatcher/initializer, RNG, input
+mapping, live flight/recovery and compound parts, player weapons/projectiles,
+reload/HUD, projection/explosion/ground effects, scaled collision, pre-lives
+damage and companion graphs, enemy missile/tracking/burst/debris graphs,
+carrier/horizon handlers and independent refuel mechanics. These checks do
+not establish independently scheduled gameplay or a complete credit.
 
-Translate player `$016892` and `$01653A..$01657A`, including fuselage, exhaust
-and weapon-pod attachments. Keep attitude/scale math on the real math chips;
-compare the bank/pitch/altitude outputs consumed by `OSubRoad`, as well as
-request records and the per-object scaled sizes at shared `$7800`. Remove
-native flight and the coordinate/depth/history adapter only after those
-comparisons pass. Preserve 30 Hz logic and the sub CPU's two-frame handshake.
+The current host/timing evidence is:
 
-## 3. Weapons and missile/HUD/audio boundary
+| Verified checkpoint | Evidence | Remaining inputs or limits |
+| --- | --- | --- |
+| Comparator/input and physical board | Combined ADC/timer/sound caller, axis/button endpoints, scanline/EXCK/VBLANK and ADC deadlines | Main CPU caller boundaries and producer cadence |
+| Bounded IRQ2/IRQ6 service | 9,439/9,439 calls; 474,024/474,024 predicted bus events; zero skips | Interrupted instruction boundary/context; bounded opcode and mask coverage |
+| Directed object composition | 480/480 dispatch windows; 53,404 callbacks; 128/128 additional entry calls | IPL7 fixture isolates composition; unported callers remain transcripts |
+| Natural IRQ/shared-input and paired composition | 120/120 separate and 122/122 paired complete dispatchers; 244/244 VBLANK windows; 240/240 RGB frames; zero skips | Captured IRQ frontiers, sub-produced operands and compositor feedback |
+| Bounded IRQ4 and re-arm timing | 1,611/1,611 envelopes; 2,611,132/2,611,132 predicted bus events; 16,349/16,349 uninterrupted wait steps; seven mutations rejected | Complex callee clocks/state and interrupted caller contexts; six IRQ-overlapped wait attempts excluded |
 
-Port `$0154B8..$015638` and the currently explicit `$016C8A` interrupt hook.
-Capture held/released fire, launch sides, cooldown/reload, exhaustion, targeting,
-projectile removal and attachment changes. Compare actual sound-latch command
-order/timing, HUD writes and sprite requests. Retire native weapon rules and
-hand-picked sound events as these ports replace them.
+The shared-input checkpoint supersedes earlier IRQ4 race exclusions. Complete
+`$B676` waits/publication now execute at captured IRQ frontiers; they do not
+independently schedule IRQ or sub CPU progress. Sub-write lane provenance
+supplies only sub-produced lanes and preserves computed main values.
+Back-to-back IRQ returns share the first resumed operand frontier. The
+continuous sound ring also passes, but sound caller timestamps remain supplied.
 
-## 4. Enemy handlers, projection and collisions
+## 1. Finish IRQ4 timing and the caller schedule — next work
 
-Map the remaining handler table, starting with `$0088C2`, `$008AF2`, `$0091C0`
-and their runtime transitions (`$009626` is player recovery). Translate
-projection and per-object state changes
-using runtime ROM tables and the verified RNG. Stage/spawn dispatch remains
-3e; use clearly labelled directed object fixtures to exercise handlers whose
-natural spawn conditions are not ported yet.
+- [ ] Replace the remaining palette/scenery/reload/HUD timing boundaries with
+  independently checked callee cycles:
+  `$14A86/$13F92/$13BCC/$13BB6/$13BFA/$1329E/$16C8A/$18444/$13E5C`.
+  The wrapper and six callee entries (buttons, timers, bookkeeping, service
+  edge, normal blit and interpolated blit) already compute their bus phases.
+  External callee durations are added to predicted time; never reset the
+  caller clock to a captured timestamp.
+- [ ] Check IRQ entry within `$14856` re-arm and the dispatcher caller
+  instruction stream. Uninterrupted wait steps do not prove that schedule.
+  Retain explicit limits for instruction completion tails, mask transitions,
+  nested ISRs and unexercised service-button branches.
+- [ ] Independently schedule ADC results, publication waits and sub progress.
+  Current IRQ contexts/frontiers, physical input bytes, unknown caller
+  transcripts, sub-produced blit operands and hidden renderer feedback remain
+  inputs. Advancing an arbitrary frame clock would invent IRQ latency and
+  operand ordering.
+- [ ] Pair `OSubRoad` raster outputs with the computed bank/pitch/altitude
+  targets and the compositor. Captured road raster, tile/palette inputs and
+  hidden renderer feedback remain separate acceptance boundaries.
 
-Trace collision callers and their use of scaled sizes before translating
-damage, explosions, object deletion and life-loss requests. Compare complete
-write sets and emitted commands. Leave unported score/lives/stage transitions
-as named 3e callbacks rather than native substitutes.
+Keep `$17146/$14990/$C6F8/$E2DA` as explicit game-flow caller boundaries until
+their own ports pass. The sampler's actual order remains acknowledgement,
+previous ADC result, mux/start, then `$B7F8`. Preserve the 64 us scanline and
+80 ns main CPU cycle clocks, frame-notifier ordering and chronological ADC
+completion. Physical MAME axis limits are X `$20..$E0`, reversed Y `$40..$C0`,
+and throttle `$00..$FF`; retain neutral, endpoint, release and simultaneous
+weapon-button coverage when connecting host controls.
 
-## Acceptance and delivery
+## 2. Connect verified objects, flight, weapons and sound
 
-For every routine, compare MAME before-state replay against its own RAM writes
-and I/O, report N/M identical with input-race skips, prove a deliberate constant
-mutation fails, and list unexercised paths. Include both natural gameplay and
-directed endpoint/transition captures; neither substitutes for a full credit.
+- [ ] Route verified handlers through the original dispatcher and actual host
+  callers. Preserve 254 × 64-byte records, live active/handler reads and
+  runtime ROM templates/handler pointers. Do not reinterpret native `OEntry`
+  as arcade RAM or use dispatcher transcripts as independent handler oracles.
+- [ ] Connect live `$9810/$98C0`, shadow/exhaust, recovery `$9626/$964C` and
+  sequence `$1653A..$1657A/$1678E`. The live fuselage is slot 131 at `$C0C0`;
+  sequence compounds use a different base. Keep word/long arithmetic widths
+  and the real multiplier/divider chips; retain `$C5A8`'s verified RNG contract.
+- [ ] Compare every compound object record, previous position, emitted request,
+  shared bank/pitch/altitude target and the sub CPU's `$7800` scaled-size table.
+  Preserve 30 Hz logic and the original two-display-frame sub handshake.
+- [ ] Connect verified weapon, projectile, reload and HUD routines at their
+  actual callers. Retain held/released fire, launch-side, cooldown/reload,
+  exhaustion, targeting, removal and attachment-transition checks.
+- [ ] Connect sound-ring producers and the timer consumer at their actual
+  callers. Verify command order and latch timing before removing native sound
+  events; routine ring equality does not establish producer cadence.
 
-Add a paired 30/60 Hz player/weapon check covering ADC input, object records,
-road targets, both sprite lists, draw/latch events and resulting video. Re-run
-`make test`, `make verify-stage1`, `make oracle-test` and a headless launch.
-Update `ROADMAP.md`, `ENGINE_NOTES.md` and the fidelity notes, remove replaced
-native code, then commit and deliver a separate PR. Whole-credit RAM/video and
-waveform equality remain 3f/audio acceptance work.
+Each handler's independent capture contract includes complete object/shared
+RAM, D0..D7/A0..A6, main/sub math-chip state, IO1 input and ordered CPU-owned
+RAM/I/O writes. Preserve that contract during wiring, record other-CPU writes
+to actual read inputs, exclude active stacks and reject unrelated main writes.
 
-Dispatcher/initializer, RNG, sequence compound setup/hiding and sound-ring
-foundations and the remaining independent handler graphs now have oracle
-checks. The comparator IRQ caller now has a combined ADC/timer/sound oracle
-and physical endpoint/button mapping checks. Independently scheduled host
-ADC/IRQ, sound producers' cadence and paired player/weapon acceptance remain
-pending. Phase 3d remains incomplete; resume at
-[PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md). The dispatcher establishes
-traversal/callback contracts only. Each actual handler still needs its complete
-entry RAM, math-chip/I/O inputs and independent execution oracle before wiring.
+## 3. Preserve coverage limits and Phase 3e boundaries
 
-The user authorized merging the remaining handler-graph checkpoint,
-[PR #11](https://github.com/duduke/AfterBurner2-Recomp/pull/11), before host
-acceptance. Continue that acceptance in a separate PR; do not retire the
-native object adapter or mark Phase 3d complete based on this checkpoint.
+- Damage `$E662`, intact/breakup `$E8D0/$E94E` states 0..6, fuselage `$F640`
+  and their trajectory/projection/debris/attitude graph pass directed checks.
+  Natural controller entries cover states 0..4 and end with a state-5 request;
+  natural breakup and complete death/recovery remain unchecked. States 7..11,
+  `$137E2`'s glyph branch, lives/HUD `$EC78/$CF46` and credit/continue flow
+  remain unverified boundaries. The current port throws at state 7's caller.
+- The `$E662` companion graph through `$FB08/$FFBE/$FB16/$FB9C` and its
+  emitted animation/allocation/removal paths is checked. `$E7DA/$FBD4` have
+  NOP/NOP/RTS checks; `$FBC4/$10310` resets only the ROM-defined emission pool,
+  with no lives, HUD or credit callee.
+- Carrier `$10348..$10E68` and horizon `$10E6A..$10FFE` have separate checks.
+  `$10E6A` is a fifteen-segment horizon strip, not an enemy formation. The
+  carrier's selector increment/HUD request does not implement general stage
+  progression. Special player `$11116/$1112C` remains gated by the selector/
+  sequence flag, pending its Phase 3e caller contract.
+- Tracking/retarget `$1586C/$158A8/$1592A`, all sixteen `$15968` launch
+  directions, bursts `$15C62..$15D36`, impact/debris through `$160A6` and the
+  `$153E0..$156CE` missile/shadow/trail graph have routine checks. Natural
+  coverage does not establish all stage/spawn combinations or a whole credit.
+- World `$8946`, explosion setup `$90AC`, gate explosions
+  `$9366/$93A0/$94B8`, projectile-hit `$8C1C` and marking `$9046` are checked.
+  Four hit/scoring paths stop before `$E542`; score flow remains Phase 3e.
+- Refuel mechanics/setup/parts have independent checks. Controller `$16236`
+  starts with `$E224`; its subsequent stage-flow remains Phase 3e.
+- Stage scripts, formations, spawn dispatch, scoring/lives, credit/continue
+  and attract/service UI remain explicit Phase 3e boundaries. Never supply
+  native substitutes for unported behavior. Use labelled directed fixtures
+  where natural spawn callers are not yet ported.
 
-The board timing continuation adds an independently generated scanline,
-EXCK/VBLANK and ADC timeline, with 669,845/669,845 MAME probe events identical
-and three mutations rejected. CPU bus timestamps are still external inputs;
-Full main-program CPU execution, gameplay wiring and paired acceptance
-remain pending; the bounded service extension follows below. See the
-continuation plan's board-timeline entry before changing `OEngine`.
+## 4. Acceptance and delivery
 
-The CPU service timing extension now checks IRQ2/IRQ6 exception entry,
-E-clock IACK, the sampler/consumer and stack/return bus phases with predicted
-CPU timestamps: 9,439/9,439 calls and 474,024/474,024 bus events identical,
-0 skipped. Seven mutations fail. The unported main instruction's final bus
-boundary and entry context remain external inputs; this is not full CPU
-execution or gameplay wiring. Complete paired acceptance before retirement.
-
-
-The host-composition checkpoint is merged in
-[PR #14](https://github.com/duduke/AfterBurner2-Recomp/pull/14)
-(implementation `363bce4`, merge `a8849a4`). Continue from updated `main`
-on a new `codex/` branch. Host object composition now has a common verified
-entry router and a directed IPL7 dispatcher fixture on live gameplay records. Its 480/480 windows match,
-executing 53,404 verified callbacks, with 128/128 isolated `$9D34/$B628` entry
-calls and four mutations rejected. Explicitly unported caller transcripts
-remain inputs; masked fixture traversal does not verify natural host cadence,
-IRQ interleaving or paired video/sound acceptance. Continue the remaining
-host boundaries in `PHASE3D_CONTINUATION.md`; keep Phase 3d incomplete.
-
-
-The conditional natural IRQ and paired acceptance checkpoint adds 120/120
-identical early dispatcher prefixes (324 IRQ2 services) and 116/123 later
-prefixes (381 IRQ2 services in accepted windows, seven sub-input races).
-All seven IRQ4-overlapped prefixes are raced and remain unverified. Composed
-VBLANK matches 160/246 windows with 86 actual read-input races skipped.
-Computed player/weapon requests and road targets feed the sub sprite port;
-both hardware lists/draw triggers and RGB match 226/240 paired frames
-(113 normal, 113 interpolated; 14 raced-producer frames skipped).
-A continuous ring matches 1,259/1,259 sound calls and 256 latch writes with
-zero external ring writes. Eight mutations fail. `$B676` now executes in the
-host router, including its ready A0 contract and named wait/yield boundary.
-
-These checks supply captured IRQ frontiers/registers, ADC results, unported
-callers, sub size/blit/mutex operands and hidden renderer feedback. Sound
-caller timestamps and road/tile/palette compositor inputs remain supplied.
-They establish conditional composition, not independently scheduled gameplay
-or waveform equality. Native `OLevelObjs`, controls, adapter and sound cues
-remain active in `OEngine`; Phase 3d is incomplete. The next work is IRQ4
-and shared-input timing, independently progressed publication waits/callers,
-road-raster pairing and remaining stage/credit boundaries. Detailed evidence
-and commands are in `ENGINE_NOTES.md`.
-
-
-The IRQ4/shared-memory continuation extends the paired run through complete
-natural dispatch and `$B676` waits/publication: 122/122 dispatchers, 244/244
-VBLANK windows and 240/240 paired frames match, zero differences/skips and no
-excluded dispatcher. It supplies sub-write provenance at chronological operand
-boundaries, and handles back-to-back IRQ returns before the resumed operand.
-Publication progress is verified at captured frontiers. Independent CPU and
-caller timing, road-raster pairing and native retirement remain outstanding;
-see the updated continuation and engine notes. Phase 3d remains incomplete.
-
-
-The bounded IRQ4 timing continuation computes the interrupt envelope and six
-callee entries (buttons, timers, bookkeeping, service edge, normal blit and
-interpolated blit), including stack transactions and the service-mode return.
-Uninterrupted `$14856` spin/re-arm steps have a separate timing oracle. Complex
-IRQ4 callee durations/state, sub blit operands and interrupted caller boundaries
-remain supplied. Continue removing those boundaries; this does not complete
-independent host scheduling or authorize native retirement. See the latest
-continuation and engine notes.
+- [ ] Extend the conditional paired 30/60 Hz player/weapon check to the
+  independently scheduled host: ADC input, object records, five shared road
+  targets, scaled sizes, normal/interpolated lists, draw/sound-latch events and
+  rendered RGB. Supplied caller/sub/compositor inputs must remain visible in
+  the reported claim until their producers are independently verified.
+- [ ] For every new port, report identical/captured/skipped counts and reasons,
+  compare CPU-owned write sets and I/O against MAME, prove a deliberate
+  constant mutation fails and list unexercised paths in `ENGINE_NOTES.md`.
+  Include natural gameplay and directed endpoint/transition captures.
+- [ ] Remove native objects, flight, weapon rules, coordinate/history adapter
+  and replaced sound cues only after all replacements pass host acceptance.
+- [ ] Run `make test`, `make verify-stage1`, `make oracle-test` and a headless
+  launch. Update the roadmap, engine notes and fidelity boundaries, then
+  commit and deliver the remaining Phase 3d work in a separate PR. ROMs,
+  disassembly output and captures remain ignored.
+- [ ] Mark Phase 3d complete only when every acceptance item passes; then draft
+  the Phase 3e stage/game-flow plan. Whole-credit RAM/video equality remains
+  Phase 3f; waveform equality remains audio acceptance work.

@@ -996,7 +996,7 @@ producer entries `$00B840/$00B84C` and timer-interrupt consumer `$00B7F8`.
 They are built and independently verified, but **not wired into OEngine**:
 untranslated live handlers still prevent replacement of `OLevelObjs` and
 its sprite adapter. No new gameplay/flight or sound-cadence equivalence is
-claimed. See [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
+claimed. See [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 
 The initializer reads the count and template pointers from `$01C176` at
 runtime, copies 32 words per record, then overwrites byte +20 with its slot
@@ -1078,7 +1078,7 @@ The four directed dispatcher cases do not exercise every handler transition.
 SR output flags and full interrupt timing remain outside this oracle.
 
 This foundation checkpoint predates the independent handler ports described
-below. The remaining 3d work is tracked in `PHASE3D_CONTINUATION.md`; Phase 3e
+below. The remaining 3d work is tracked in `PHASE3D_PLAN.md`; Phase 3e
 has not started.
 
 
@@ -1514,7 +1514,7 @@ merging this checkpoint before Phase 3d host acceptance is complete. Combined
 new-graph results are 7,409/7,424 identical, zero differences, 15 sub-input
 races skipped; all ten new mutations are rejected. Resume with the input/IRQ
 caller, host integration, sound cadence and paired player/weapon acceptance
-in `PHASE3D_CONTINUATION.md`. These ports remain unwired.
+in `PHASE3D_PLAN.md`. These ports remain unwired.
 
 `OMainSequence` translates carrier `$10348..$10E68`: pool initialization,
 selector wait, all sixteen runtime controller states, speed/pitch goals,

@@ -101,8 +101,7 @@ player/weapon/video/sound acceptance now pass at supplied caller boundaries.
 IRQ4/shared-input composition and publication waits now pass without race
 skips. Bounded IRQ4 wrapper/selected-callee and uninterrupted re-arm timing
 now pass; remaining IRQ4 callee timing and the interrupted caller schedule
-are still supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Continue host acceptance in
-[PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md), following
+are still supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
@@ -337,8 +336,7 @@ Full boundaries/coverage are in `ENGINE_NOTES.md`. Next: [PHASE3D_PLAN.md](PHASE
 
 **3d. Objects and flight (retires `olevelobjs`)**
 
-Implementation plan: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
-Continuation: [PHASE3D_CONTINUATION.md](PHASE3D_CONTINUATION.md).
+Implementation and continuation plan: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
 Independent input, live-flight, compound-part, projectile, reload/HUD, world
 effect and enemy-missile routine checks now pass. Host wiring, remaining
 stage/credit caller boundaries and independent sound/input scheduling
