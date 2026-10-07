@@ -7,6 +7,7 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
                   const uint8_t* maincpu_rom, uint32_t maincpu_len,
                   const uint8_t* subcpu_rom, uint32_t subcpu_len)
 {
+    main_io.reset();
     memory = {};
     bus = std::make_unique<MainBus>(maincpu_rom,maincpu_len,subcpu_rom,subcpu_len,memory);
     bus->endpoints.video_write = [&palette,&tiles,&sprites](uint32_t address,uint16_t value) {
@@ -24,49 +25,8 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
         road.read_road_control();
     };
     bus->endpoints.road_control = [&road](uint8_t value) { road.write_road_control(value); };
-    bus->io[1].input = [this](unsigned port) -> uint8_t {
-        if (port == 0) {
-            uint8_t b = 0xff;
-            if (vulcan) b &= ~0x10;
-            if (missile) b &= ~0x20;
-            return b;
-        }
-        return 0xff;
-    };
-    bus->io[0].direction[2] = 0; // Port C output (ADC mux)
-    bus->io[0].output = [this](unsigned port, uint8_t data, uint8_t) {
-        if (port == 2) adc_mux = data;
-    };
-    bus->endpoints.adc_read = [this]() -> uint8_t {
-        const unsigned channel = (bus->io[0].latch[2] >> 2) & 7;
-        switch (channel) {
-        case 0: return raw_axis_x;
-        case 1: return raw_axis_y;
-        case 2: return raw_throttle;
-        default: return 0x80;
-        }
-    };
-    bus->endpoints.adc_write = [](uint8_t) {};
 
-    input_regs = {};
-    input_regs.a[5] = 0xffffa040;
-    input_regs.a[6] = 0x000e4000;
-    if (maincpu_rom && maincpu_len) {
-        OMainObjects::initialize(*bus, input_regs);
-    }
-    input_regs.a[5] = 0xffffa040;
-    input_regs.a[6] = 0x000e4000;
-
-    sound_commands.clear();
-    bus->compare_timer.sound_command = [this](uint8_t cmd) {
-        sound_commands.push_back(cmd);
-    };
-    // $00D16E: enable the arcade sound queue at $8902 and initialize ring pointers
-    bus->write8(0xffff8902, 0xff);
-    bus->write16(0xffff8900, 0);
-    bus->write8(0xffff8906, 0);
-    bus->write16(0xffff8908, 0);
-    bus->write16(0xffff890a, 0);
+    main_io = std::make_unique<OMainIO>(*bus);
 
     stage_setup.run(*bus,0x13972);
     stage_setup.run(*bus,0x18918);
@@ -120,24 +80,12 @@ void OEngine::handle_input(int stick_x,int stick_y,bool fire_vulcan,bool fire_mi
 {
     this->stick_x=stick_x;this->stick_y=stick_y;this->throttle=throttle;
     vulcan=fire_vulcan;missile=fire_missile;
-
-    if (stick_x == 0) raw_axis_x = 0x80;
-    else if (stick_x > 0) raw_axis_x = static_cast<uint8_t>(std::min(0x80 + stick_x * 0x60, 0xdb));
-    else raw_axis_x = static_cast<uint8_t>(std::max(0x80 + stick_x * 0x60, 0x25));
-
-    if (stick_y == 0) raw_axis_y = 0x80;
-    else if (stick_y > 0) raw_axis_y = static_cast<uint8_t>(std::min(0x80 + stick_y * 0x40, 0xc0));
-    else raw_axis_y = static_cast<uint8_t>(std::max(0x80 + stick_y * 0x40, 0x40));
-
-    if (throttle >= 2) raw_throttle = 0xb0;
-    else if (throttle == 0) raw_throttle = 0x40;
-    else raw_throttle = 0x80;
+    main_io->handle_input(stick_x,stick_y,fire_vulcan,fire_missile,throttle);
 }
 
 void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
 {
     ++frame_count;
-    for (int i = 0; i < 6; ++i) main_compare_interrupt(*bus, input_regs);
     auto phase=frame_engine.interrupt(*bus,[&](uint32_t entry) {
         switch(entry) {
         case 0x18444: scenery_engine.stage_events(*bus);break;
@@ -148,17 +96,12 @@ void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)
         case 0x148b8: frame_engine.bookkeeping(*bus);break;
         case 0x147e8: frame_engine.service_edge(*bus);break;
         case 0x14990: case 0xe2da: break; // ROM RTS-only callees
-        case 0x16c8a: OMainWeapons::reload(*bus, input_regs); break;
+        case 0x16c8a: break; // 3d missile/audio/HUD sequencer boundary
         case 0x17146: case 0xc6f8: break; // 3e attract/credit boundaries
         default: palette_engine.run(*bus,entry);break;
         }
     });
     if(phase.logic && !phase.service_redirect) {
-        input_regs.a[5] = 0xffffa040;
-        input_regs.a[6] = 0x000e4000;
-        OMainInput::buttons(*bus, input_regs);
-        OMainInput::update(*bus, input_regs);
-
         // $000556 waits for the negative logic-phase counter. $000640 then
         // consumes the previous published requests, after the ISR's mutex.
         road_engine.service_requests(bus->sub);

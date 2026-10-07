@@ -1,4 +1,5 @@
-// Execute the complete comparator IRQ against a continuous MAME hardware
+// Exercise the production OMainIO endpoints installed by OEngine, executing
+// the complete comparator IRQ against a continuous MAME hardware
 // timeline. Only external inputs and bus timestamps are replayed; ADC results,
 // timer state, sample writes and sound commands are computed by the port.
 #include <algorithm>
@@ -10,7 +11,7 @@
 #include <tuple>
 #include <vector>
 #include "engine/omainadc.hpp"
-#include "hwmath/xboard_timeline.hpp"
+#include "engine/omainio.hpp"
 
 namespace {
 uint64_t number(std::ifstream& f,unsigned n) {
@@ -53,13 +54,11 @@ int main(int argc,char** argv) try {
     uint64_t now=0;
     MainBus::Memory memory;
     MainBus bus(nullptr,0,nullptr,0,memory);
-    XBoardTimeline board(bus.compare_timer);
+    OMainIO hardware(bus);
+    auto& board=hardware.board;
     auto& adc=board.adc;
-    uint8_t mux=0;std::array<uint8_t,8> inputs{};inputs.fill(0x10);
-    adc.analog=[&] { return inputs[(mux>>2)&7]; };
-    bus.endpoints.adc_read=[&] { return adc.read(now); };
-    bus.endpoints.adc_write=[&](uint8_t) { adc.write(now); };
-    bus.io[0].output=[&](unsigned p,uint8_t d,uint8_t) { if(p==2) mux=d; };
+    std::array<uint8_t,8> inputs{};inputs.fill(0x10);
+    hardware.set_inputs(inputs);
     unsigned events=0,event_identical=0,event_failed=0,calls=0,identical=0,failed=0,skipped=0;
     unsigned sound=0,conversions=0,slots[6]={};
     unsigned raw[3][256]={};
@@ -74,10 +73,11 @@ int main(int argc,char** argv) try {
         now=e.ns;
         if(adc.busy() && adc.deadline()<=now) ++conversions;
         if(e.kind==5) board.advance_before(now); else board.advance(now);
-        bool equal=bus.compare_timer.state().irq==bool(e.irq) && mux==e.mux;
+        bool equal=bus.compare_timer.state().irq==bool(e.irq) && hardware.selected_mux()==e.mux;
         if(e.kind==1) equal &= adc.value()==e.result && (adc.value()&e.mask)==(e.data&e.mask);
         if(e.kind==5) { inputs=e.inputs;seen_frame=true; }
         else if(inputs!=e.inputs) { if(seen_frame) equal=false; inputs=e.inputs; }
+        hardware.set_inputs(inputs);
         ++events;
         if(equal) ++event_identical;
         else {
@@ -90,7 +90,7 @@ int main(int argc,char** argv) try {
         switch(e.kind) {
         case 1: adc.read(now);break;
         case 2: if(e.mask&255) adc.write(now);break;
-        case 3: if(e.mask&255) mux=e.data;break;
+        case 3: if(e.mask&255) bus.io[0].output(2,e.data,0xff);break;
         case 4: bus.compare_timer.write(e.address>>1,e.data,e.mask);break;
         default: break;
         }
@@ -99,7 +99,7 @@ int main(int argc,char** argv) try {
         Event e=event(f);
         if(e.kind==6) {
             if(active) throw std::runtime_error("nested IRQ capture");
-            prepare(e);pre=registers(f);bytes(f,before.data(),before.size());
+            prepare(e);hardware.take_sound_commands();pre=registers(f);bytes(f,before.data(),before.size());
             bus.io[0].write(6,number(f,1));bus.io[0].write(7,number(f,1));
             pending.clear();active=true;
         } else if(e.kind==7) {
@@ -142,7 +142,12 @@ int main(int argc,char** argv) try {
                 throw std::runtime_error("IRQ omitted a captured I/O transaction");
             }
             prepare(e);
-            bool equal=io_equal && writes==expected && pre.d==post.d && pre.a==post.a;
+            std::vector<uint8_t> expected_commands;
+            for(const auto& transaction:pending)
+                if(transaction.kind==4 && ((transaction.address>>1)&15)==11)
+                    expected_commands.push_back(transaction.data&255);
+            bool equal=io_equal && writes==expected && pre.d==post.d && pre.a==post.a
+                && hardware.take_sound_commands()==expected_commands;
             std::array<uint8_t,0x8000> marked{};
             for(auto [a,d,m]:expected) {
                 if(a+1>=marked.size()) throw std::runtime_error("IRQ wrote outside work RAM");

@@ -28,6 +28,13 @@ adapter and hand-picked sound cues once the verified replacements pass host
 acceptance. `OEngine` still uses the native Stage 1 host; keep those producers
 and their adapter until acceptance passes.
 
+`OMainIO` now installs the timed ADC/mux, active-low digital input and sound-latch
+endpoints in `OEngine`. The same production callbacks pass the IRQ and directed
+ADC oracles. Native `tick()` supplies no CPU clock or interrupt boundary: it does
+not call the sampler, input handler or reload producer. Their live wiring remains
+pending independent scheduling; see the PR #21 review continuation in
+[ENGINE_NOTES.md](ENGINE_NOTES.md).
+
 Independent routine checks cover the dispatcher/initializer, RNG, input
 mapping, live flight/recovery and compound parts, player weapons/projectiles,
 reload/HUD, projection/explosion/ground effects, scaled collision, pre-lives
@@ -91,11 +98,9 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   transcripts, sub-produced blit operands and hidden renderer feedback remain
   inputs. Advancing an arbitrary frame clock would invent IRQ latency and
   operand ordering.
-- [x] Pair `OSubRoad` raster outputs with the computed bank/pitch/altitude
-  targets and the compositor. Host input through ADC drives `$B0AC/$14976`,
-  updating `$29c0ce/$29c0d0/$29c0d2` which naturally banks `OSubRoad`. Captured
-  road raster, tile/palette inputs and hidden renderer feedback remain separate
-  acceptance boundaries.
+- [ ] Pair `OSubRoad` raster outputs with the computed bank/pitch/altitude
+  targets and the compositor. Captured road raster, tile/palette inputs and
+  hidden renderer feedback remain separate acceptance boundaries.
 
 Keep `$17146/$14990/$C6F8/$E2DA` as explicit game-flow caller boundaries until
 their own ports pass. The sampler's actual order remains acknowledgement,
@@ -121,12 +126,9 @@ weapon-button coverage when connecting host controls.
 - [ ] Connect verified weapon, projectile, reload and HUD routines at their
   actual callers. Retain held/released fire, launch-side, cooldown/reload,
   exhaustion, targeting, removal and attachment-transition checks.
-- [x] Connect sound-ring producers and the timer consumer at their actual
-  callers. Comparator IRQ drains the 64-byte ring through `$00B7F8`, writing
-  the 315-5250 sound latch at `$0E8017`. Display IRQ runs `$016C8A` missile
-  reload, enqueuing reload sound `$9B` into the ring and updating the HUD.
-  Sound commands route to `ArcadeAudio` alongside native cues; native event
-  removal remains pending full object acceptance.
+- [ ] Connect sound-ring producers and the timer consumer at their actual
+  callers. Verify command order and latch timing before removing native sound
+  events; routine ring equality does not establish producer cadence.
 
 Each handler's independent capture contract includes complete object/shared
 RAM, D0..D7/A0..A6, main/sub math-chip state, IO1 input and ordered CPU-owned

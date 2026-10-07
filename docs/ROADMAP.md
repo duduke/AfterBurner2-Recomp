@@ -359,13 +359,13 @@ player/weapon acceptance remain pending.
       `$A000` to `$DF40` (preceded by the `$9FC0` sentinel), runtime templates,
       live active/handler reads and register contracts. Oracle-verified;
       not wired into the game while handlers remain unported.
-- [x] Input read: stick X/Y and throttle through the ADC, buttons, and
+- [ ] Input read: stick X/Y and throttle through the ADC, buttons, and
       their mapping to the arcade's input bytes. `$B0AC/$14976` and observable
-      ADC timing pass routine checks. The complete `$1461C` IRQ caller matches
-      7,058/7,058 calls and 45,176/45,176 continuous hardware events, 0 skipped;
-      physical axis endpoints and button edges have 720/720 separate mapping checks.
-      Host input is wired into `OEngine` to feed arcade ADC and digital I/O, driving
-      attitude targets `$29c0ce/$29c0d0/$29c0d2` and `OSubRoad`.
+      ADC timing pass routine checks. The complete `$1461C` IRQ caller now
+      matches 7,058/7,058 calls and 45,176/45,176 continuous hardware events,
+      0 skipped; physical axis endpoints and button edges have 720/720
+      separate mapping checks. Physical endpoints are now installed through
+      `OMainIO`; host CPU/IRQ scheduling and conversion-to-flight wiring remain.
 - [x] Comparator IRQ caller: acknowledgement, six-channel sampler and sound
       consumer checked together against MAME, including 946 sound-latch writes
       across ordinary and endpoint runs. All three mutations fail. Bus timestamps
@@ -499,10 +499,9 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       waiting/animation/removal, projection and attitude callees are verified;
       `$E662/$E8D0/$E94E` states 0..6 now pass directed and bounded gameplay
       checks. Companion emission/animation/pool-reset routines are now checked;
-- [x] Main → sound commands from the ported code: wired comparator IRQ consumer
-      `$00B7F8` and sound latch `$0E8017`, queue initialization at `$0D16E`,
-      and reload producer `$016C8A` enqueuing `$9B`. Ported commands route
-      from `OEngine::take_sound_commands()` to `ArcadeAudio` alongside native cues.
+      lives/HUD flow remains an explicit 3e boundary.
+- [ ] Main → sound commands from the ported code instead of the
+      reconstruction's hand-picked cues
 
 **3e. Stages and game flow**
 

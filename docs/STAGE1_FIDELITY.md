@@ -36,11 +36,9 @@ Phase 3b replaced the native terrain projection, sea-sprite sampling,
 canopy/shore patches and speed-gauge fill with verified road/scenery ports.
 Road scanlines, tile uploads and ground palettes now reach the hardware
 compositor through `MainBus`. The host selects ordinary flight (`$10`);
-the full credit/stage dispatcher is still pending 3e. Host input now feeds
-arcade ADC and digital I/O through `OEngine`, driving the 30 Hz logic input
-update (`$B0AC/$14976`) and shared attitude targets (`$29c0ce/$29c0d0/$29c0d2`),
-which naturally bank and pitch `OSubRoad`. Integration tests and visual fixtures
-exercise this path directly via host stick inputs without artificial bus pokes.
+the full credit/stage dispatcher is still pending 3e. Until the exact player
+port in 3d supplies shared attitude targets, the native stick does not bank
+or pitch this road. The integration test sets arcade targets directly.
 
 Phase 3c replaced native depth sorting, hardware descriptor encoding and
 palette timing. `OMainFrame` preserves both interrupt branches, pointer swaps,
@@ -66,14 +64,14 @@ and timer/mux timelines also match MAME. Damage controllers through state 6,
 fuselage animation and debris match 1,792/1,792 directed and 120/120 ordinary gameplay
 MAME calls, with no skips. Damage companion, carrier/horizon, enemy tracking/burst/debris and remaining
 world handler graphs now have separate routine checks. Refuel stage-flow and
-a natural death sequence remain unverified. Object handlers remain unwired to
-gameplay pending paired player/weapon acceptance, but host input and ADC conversion
-are now wired to `OMainInput` in `OEngine` and naturally drive arcade RAM and road attitude.
-The 68000 sound ring (`$890C`), comparator IRQ consumer (`$00B7F8`), hardware latch (`$0E8017`),
-and display IRQ reload producer (`$016C8A`) are now wired into `OEngine`, delivering ported
-sound commands to `ArcadeAudio`. `OLevelObjs`, its request adapter and remaining native sound
-cues coexist with ported sound until full handler acceptance passes.
-This foundation does not change the native combat experience.
+a natural death sequence remain unverified. These ports remain unwired until
+the actual host ADC/IRQ caller and paired player/weapon acceptance pass.
+`OLevelObjs`, its request adapter and native sound cues therefore remain.
+The host now installs the verified timed ADC/mux, digital input and sound-latch
+callbacks through `OMainIO`. Advancing physical time remains explicit; native
+frame ticks do not manufacture sampler, flight or reload calls. Routine replay
+checks use these same endpoint callbacks with supplied CPU bus timestamps.
+This foundation does not change the native flight or combat experience.
 
 Formation cadence/trajectories, aiming, projectile motion, hitboxes, scoring
 and the 3,600-logic-tick duration remain native rules. Original fighter art is
@@ -103,8 +101,8 @@ make render-scene
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
 ```
 
-The right/left visual fixtures supply stick input directly to `OEngine`,
-which naturally drives arcade ADC and road attitude through the ported input pipeline.
+The right/left visual fixtures set an arcade bank target directly, separately
+from native controls, to exercise the hardware road path.
 
 For memory checks, compile the integration suite with
 `-fsanitize=address,undefined -fno-omit-frame-pointer` and run from the root.

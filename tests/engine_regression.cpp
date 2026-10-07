@@ -99,116 +99,63 @@ void publication_wait()
 
 void host_input_adc()
 {
-    HWPalette p(8192); HWRoad r(0x1700, 0x1720, 0x1780, -166);
-    HWSprites s; HWTiles t; OEngine e;
-    e.init(p, r, s, t, nullptr, 0);
+    HWPalette p(8192); HWRoad r(0x1700,0x1720,0x1780,-166);
+    HWSprites sprites; HWTiles tiles; OEngine e;
+    e.init(p,r,sprites,tiles,nullptr,0);
+    auto& bus=e.arcade_bus();
+    auto& board=e.arcade_io().board;
+    bus.io[0].direction[2]=0; // Explicit fixture for reset's ADC output direction.
+    e.handle_input(1,-1,true,true,2);
+    check((bus.read8(0x150001)&0x30)==0,"Host weapon buttons must be active low");
+    check(bus.read8(0x130001)==0,"ADC must retain reset result before conversion");
+    bus.write8(0x140005,0); bus.write8(0x130001,0);
+    board.advance(59199);
+    check(bus.read8(0x130001)==0,"ADC read before deadline must retain previous result");
+    bus.write8(0x130001,0); // Busy writes must not restart conversion.
+    board.advance(59200);
+    check(bus.read8(0x130001)==0xe0,"ADC must preserve physical X endpoint after completion");
+    uint64_t ns=59200;
+    auto sample=[&](unsigned channel) {
+        bus.write8(0x140005,channel<<2);bus.write8(0x130001,0);
+        ns+=59200;board.advance(ns);return bus.read8(0x130001);
+    };
+    check(sample(1)==0xc0,"Up must use the reversed physical Y endpoint");
+    check(sample(2)==0xff,"Throttle must retain physical high endpoint");
+    check(sample(3)==0x80 && sample(4)==0x80 && sample(5)==0x10,
+          "Motor feedback and unconnected ADC channels must match board defaults");
+    e.handle_input(-1,1,false,false,0);
+    check(sample(0)==0x20 && sample(1)==0x40 && sample(2)==0,
+          "Physical low endpoints must survive conversion without gameplay clamping");
+    // Conversion samples the lane at completion, not at its start.
+    bus.write8(0x140005,0);bus.write8(0x130001,0);
+    e.handle_input(0,0,false,false,1);
+    ns+=59200;board.advance(ns);
+    check(bus.read8(0x130001)==0x80,"Input release during conversion must be sampled at completion");
+    check((bus.read8(0x150001)&0x30)==0x30,"Released buttons must be active low ones");
+    bus.write8(0xe8017,0x90);bus.write8(0xe8017,0x40);
+    check(e.take_sound_commands()==std::vector<uint8_t>({0x90,0x40}),
+          "Sound latch callback must preserve command order");
+    check(e.take_sound_commands().empty(),"Draining commands must empty the callback buffer");
 
-    // Initial neutral state: all buttons released (0xFF at 0x150001)
-    check((e.arcade_bus().read8(0x150001) & 0x30) == 0x30, "Buttons at 0x150001 must be active-low 1 when released");
-
-    // Press Vulcan and Missile:
-    e.handle_input(0, 0, true, true, 1);
-    check((e.arcade_bus().read8(0x150001) & 0x30) == 0, "Buttons at 0x150001 must be 0 when pressed");
-
-    // Run 2 ticks so both display (60 Hz) and logic (30 Hz) phases execute:
-    e.tick(p, r, s, t);
-    e.tick(p, r, s, t);
-    check((e.arcade_bus().read8(0x29c074) & 0x30) == 0x30, "Display-frame buttons at 0x29c074 must reflect active buttons");
-    check((e.arcade_bus().read8(0x29c076) & 0x30) == 0x30, "Logic-frame buttons at 0x29c076 must reflect active buttons");
-
-    // Release buttons:
-    e.handle_input(0, 0, false, false, 1);
-    check((e.arcade_bus().read8(0x150001) & 0x30) == 0x30, "Buttons at 0x150001 must return to released");
-    e.tick(p, r, s, t);
-    e.tick(p, r, s, t);
-    check((e.arcade_bus().read8(0x29c076) & 0x30) == 0, "0x29c076 must clear released buttons");
-    check((e.arcade_bus().read8(0x29c077) & 0x30) == 0x30, "0x29c077 must retain previous logic buttons");
-
-    // ADC sampling:
-    // With stick_x = 1, stick_y = -1, throttle = 2:
-    e.handle_input(1, -1, false, false, 2);
-    e.tick(p, r, s, t);
-    check(e.arcade_bus().read8(0xffff8892) == 0xdb, "ADC channel 0 (Stick X) must be clamped to 0xDB");
-    check(e.arcade_bus().read8(0xffff8893) == 0x40, "ADC channel 1 (Stick Y dive) must be 0x40");
-    check(e.arcade_bus().read8(0xffff8894) == 0xb0, "ADC channel 2 (Throttle afterburner) must be 0xB0");
-}
-
-void sound_queue_and_reload()
-{
-    HWPalette p(8192); HWRoad r(0x1700, 0x1720, 0x1780, -166);
-    HWSprites s; HWTiles t; OEngine e;
-    e.init(p, r, s, t, nullptr, 0);
-
-    // 1. Initial state: sound queue enabled at $8902 ($0D16E)
-    check(e.arcade_bus().read8(0xffff8902) == 0xff, "Sound queue at 0xffff8902 must be enabled ($FF)");
-    check(e.arcade_bus().read8(0xffff8906) == 0, "Sound queue count at 0xffff8906 must be 0 initially");
-    check(e.arcade_bus().read16(0xffff8908) == 0, "Sound queue write pointer at 0xffff8908 must be 0 initially");
-    check(e.arcade_bus().read16(0xffff890a) == 0, "Sound queue read pointer at 0xffff890a must be 0 initially");
-
-    // 2. Enqueue sound command 0x90 (vulcan) via OMainSound::enqueue ($00B84C)
-    OMainObjects::Registers reg{};
-    reg.d[0] = 0x90;
-    OMainSound::enqueue(e.arcade_bus(), reg, true);
-    check(e.arcade_bus().read8(0xffff8906) == 1, "Sound queue count must increment to 1");
-    check(e.arcade_bus().read16(0xffff8908) == 1, "Sound queue write pointer must advance to 1");
-    check(e.arcade_bus().read8(0xffff890c) == 0x90, "First ring slot at 0xffff890c must contain 0x90");
-
-    // Enqueue second command 0x40 (missile)
-    reg.d[0] = 0x40;
-    OMainSound::enqueue(e.arcade_bus(), reg, true);
-    check(e.arcade_bus().read8(0xffff8906) == 2, "Sound queue count must increment to 2");
-    check(e.arcade_bus().read16(0xffff8908) == 2, "Sound queue write pointer must advance to 2");
-    check(e.arcade_bus().read8(0xffff890d) == 0x40, "Second ring slot at 0xffff890d must contain 0x40");
-
-    // 3. Tick the engine: main_compare_interrupt runs 6 times per frame,
-    // stepping phase 0xffff8900. On odd phases with count > 0, OMainSound::consume
-    // consumes the command and writes to $0E8017 (compare_timer register 11).
-    e.tick(p, r, s, t);
-    auto cmds = e.take_sound_commands();
-    check(cmds.size() == 2, "Engine tick must drain both queued sound commands via compare_timer latch");
-    check(cmds[0] == 0x90 && cmds[1] == 0x40, "Sound commands must be received in FIFO order (0x90, 0x40)");
-    check(e.arcade_bus().read8(0xffff8906) == 0, "Sound queue count must return to 0 after consumption");
-    check(e.arcade_bus().read16(0xffff890a) == 2, "Sound queue read pointer must advance to 2");
-
-    // take_sound_commands() must clear the internal buffer
-    check(e.take_sound_commands().empty(), "take_sound_commands must clear internal queue");
-
-    // 4. Test disabled queue ($8902 == 0):
-    e.arcade_bus().write8(0xffff8902, 0);
-    reg.d[0] = 0x91;
-    OMainSound::enqueue(e.arcade_bus(), reg, true);
-    check(e.arcade_bus().read8(0xffff8906) == 0, "Disabled sound queue must reject enqueue");
-    check(e.arcade_bus().read16(0xffff8908) == 0, "Disabled sound queue must reset write pointer");
-    // While disabled, consume resets read pointer ($00B836):
-    e.tick(p, r, s, t);
-    check(e.arcade_bus().read16(0xffff890a) == 0, "Disabled sound consumer must reset read pointer");
-    e.arcade_bus().write8(0xffff8902, 0xff); // Re-enable
-
-    // 5. Test missile reload at $16C8A:
-    // Set deficit = 5, active reload flag $90FF = $FF, countdown $9103 = 0, missiles = 10
-    e.arcade_bus().write16(0xffff9100, 5);  // deficit = 5
-    e.arcade_bus().write8(0xffff90ff, 0xff); // reload in progress
-    e.arcade_bus().write8(0xffff9103, 0);   // countdown
-    e.arcade_bus().write16(0xffff8d66, 10); // current missiles
-
-    // Advance ticks until reload executes at $16C8A, enqueues $9B, and drains to compare_timer:
-    std::vector<uint8_t> reload_cmds;
-    for (int i = 0; i < 10; ++i) {
-        e.tick(p, r, s, t);
-        auto c = e.take_sound_commands();
-        if (!c.empty()) {
-            reload_cmds = std::move(c);
-            break;
-        }
-    }
-    check(!reload_cmds.empty() && reload_cmds.front() == 0x9b,
-          "Missile reload at $16C8A must enqueue reload sound 0x9B and emit to latch");
-    check(e.arcade_bus().read16(0xffff8d66) == 11, "Missile reload must increment missile count to 11");
-    check(e.arcade_bus().read16(0xffff9100) == 4, "Missile reload must decrement deficit to 4");
+    // Native frame ticks provide no CPU boundaries: they must not manufacture
+    // comparator service, input-handler execution or reload production.
+    bus.write8(0xffff8902,0xff);bus.write8(0xffff8906,1);
+    bus.write8(0xffff890c,0x9b);bus.write8(0xffff90ff,0xff);
+    bus.write16(0xffff9100,5);bus.write16(0xffff8d66,10);
+    const auto time=board.now();
+    e.tick(p,r,sprites,tiles);e.tick(p,r,sprites,tiles);
+    check(board.now()==time && bus.read16(0xffff8900)==0 &&
+          bus.read8(0xffff8906)==1 && bus.read16(0xffff8d66)==10 &&
+          bus.read8(0xffff9103)==0 && e.take_sound_commands().empty(),
+          "Native ticks must not guess arcade input/IRQ/reload cadence");
+    e.init(p,r,sprites,tiles,nullptr,0);
+    check(e.arcade_io().board.now()==0 && e.arcade_bus().read8(0x130001)==0 &&
+          (e.arcade_bus().read8(0x150001)&0x30)==0x30 && e.take_sound_commands().empty(),
+          "Restart must reset physical endpoints and conversion state");
 }
 
 int main()
 {
-    sprite_scaling(); palette_colors(); release_stick(); publication_wait(); host_input_adc(); sound_queue_and_reload();
+    sprite_scaling(); palette_colors(); release_stick(); publication_wait(); host_input_adc();
     std::cout << "Engine regression checks passed\n";
 }
