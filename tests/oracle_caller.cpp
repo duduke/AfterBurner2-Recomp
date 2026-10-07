@@ -54,10 +54,18 @@ int main(int argc,char** argv)try{
  const bool snapshots=linked_irq4||!memcmp(magic,"AB2CALL9",8);
  const bool closure=snapshots||!memcmp(magic,"AB2CALL8",8);
  const bool successors=closure||!memcmp(magic,"AB2CALL7",8);
- bool require_taken=false,require_closed=false,require_follower=false,require_ready=false,require_worldinit=false,require_publication_init=false,require_allirq=false,require_ready_path=false,require_clear=false,require_trail=false,require_trail_path=false;const char* baseline_path=nullptr;
+ bool require_companion=false,require_companion_path=false,require_flight=false,require_flight_path=false,require_input=false,require_input_path=false,require_soundproducer_path=false,require_soundproducer=false,require_taken=false,require_closed=false,require_follower=false,require_ready=false,require_worldinit=false,require_publication_init=false,require_allirq=false,require_ready_path=false,require_clear=false,require_trail=false,require_trail_path=false;const char* baseline_path=nullptr;
  for(int i=2;i<argc;++i){
   const std::string arg=argv[i];
-  if(arg=="--require-taken")require_taken=true;
+  if(arg=="--require-companion")require_companion=true;
+  else if(arg=="--require-companion-path")require_companion_path=true;
+  else if(arg=="--require-flight")require_flight=true;
+  else if(arg=="--require-flight-path")require_flight_path=true;
+  else if(arg=="--require-input")require_input=true;
+  else if(arg=="--require-input-path")require_input_path=true;
+  else if(arg=="--require-soundproducer-path")require_soundproducer_path=true;
+  else if(arg=="--require-soundproducer")require_soundproducer=true;
+  else if(arg=="--require-taken")require_taken=true;
   else if(arg=="--require-closed")require_closed=true;
   else if(arg=="--require-follower")require_follower=true;
   else if(arg=="--require-ready")require_ready=true;
@@ -84,9 +92,12 @@ int main(int argc,char** argv)try{
  CpuVisibilityCapture visibility((std::string(argc>1?argv[1]:"build/oracle/caller.bin")+".visibility").c_str());
  visibility.report();
  if(visibility.failed)throw std::runtime_error("physical visibility mismatch");
+ std::unique_ptr<OMainIO> physical_input;
+ if(visibility.physical_buttons)physical_input=std::make_unique<OMainIO>(bus);
  OMainCallerSchedule scheduled;OMainIrqService::Instruction last{};bool have=false,expected_pending=false;
  unsigned calls=0,entries=0,failed=0,total=0,bad=0,chains=0,chain_bad=0,polls=0,masked=0,computed_frontiers=0,frontier_bad=0,levels[7]={};
  std::map<uint32_t,unsigned> coverage,irqcoverage,external_return_pcs;
+ unsigned computed_raw_input_reads=0,fixture_raw_input_reads=0,external_raw_input_reads=0;
  unsigned sprite_cursor_frontiers=0;
  std::map<uint32_t,uint8_t> owned,sprite_owned_hidden;
  auto clear_owned=[&](){owned.clear();sprite_owned_hidden.clear();};
@@ -128,6 +139,16 @@ int main(int argc,char** argv)try{
  unsigned services=0,service_bad=0,service_events=0,service_event_bad=0,resumptions=0,service2=0,service6=0,user_returns=0,adc_inputs=0,external_returns=0;
  unsigned graph_exits=0;std::map<uint32_t,unsigned> graph_exit_pcs;
  std::map<uint32_t,std::array<unsigned,2>> trail_branches;
+ std::map<uint32_t,std::array<unsigned,2>> companion_branches;
+ std::set<unsigned> companion_counts;
+ std::map<uint32_t,std::set<unsigned>> companion_bytes,companion_banks,companion_counters,companion_rows;
+ std::map<uint32_t,std::set<unsigned>> companion_tables;
+ std::map<uint32_t,std::array<unsigned,2>> flight_branches;
+ std::set<unsigned> flight_slew[2],flight_counts,flight_rolls;
+ std::map<uint32_t,std::array<unsigned,2>> input_branches;
+ std::set<unsigned> input_axis[3],input_accum[2],physical_button_values;
+ std::map<uint32_t,std::array<unsigned,2>> producer_branches;
+ std::set<unsigned> producer_indices,producer_counts,producer_commands;
  bool ready_bits[2]{};unsigned ready_taken=0,ready_untaken=0;
  std::set<uint16_t> follower_stages;std::set<uint8_t> follower_ages;
  unsigned autonomous=0,autonomous_events=0,autonomous_bad=0,cuts=0,resume_operands=0;
@@ -180,11 +201,13 @@ int main(int argc,char** argv)try{
     prior_phase_end=now+320;
    }};
    trace.before_access=[&](bool w,uint32_t a,uint16_t m){
-    apply_sub();if(w||cursor>=capture.events.size())return;const auto& e=capture.events[cursor];if(e.a!=a||e.m!=m)return;
+    apply_sub();
+    if(physical_input&&a==0x150000)physical_input->set_buttons(visibility.buttons_at(now));
+    if(w||cursor>=capture.events.size())return;const auto& e=capture.events[cursor];if(e.a!=a||e.m!=m)return;
     if(scheduled.current_pc()==0xb7e2||(scheduled.current_pc()>=0xb7ea&&scheduled.current_pc()<=0xb7f0)){
      const auto o=MainBus::memory_offset(a);if(o<MainBus::SHARED||o>=MainBus::TILE)throw std::runtime_error("invalid linked IRQ4 blit input");
      memory.bytes[o]=e.d>>8;memory.bytes[o+1]=e.d;
-    }else if(a==0x150000)bus.io[1].input=[v=uint8_t(e.d)](unsigned p){return p==0?v:uint8_t(0xff);};
+    }else if(a==0x150000&&!physical_input)bus.io[1].input=[v=uint8_t(e.d)](unsigned p){return p==0?v:uint8_t(0xff);};
    };
    bus.trace=&trace;
    const auto result=scheduled.finish(bus,[&](uint64_t t){now=t;},[&](uint64_t t){
@@ -320,11 +343,32 @@ int main(int argc,char** argv)try{
     c.registers=last.state.registers;c.sr=last.state.sr;
     c.supervisor_sp=last.state.sp;c.boundary_ns=last.state.ns;
    }else {clear_owned();wait_operand_known=false;service_return_pending=false;}
+   if(const auto* instruction=main_input_instruction(c.interrupted_pc);instruction&&instruction->branch){
+    ++input_branches[c.interrupted_pc][next!=c.interrupted_pc+instruction->branch];
+   }
+   if(const auto* instruction=main_flight_instruction(c.interrupted_pc);instruction&&instruction->branch)
+    ++flight_branches[c.interrupted_pc][next!=c.interrupted_pc+instruction->branch];
+   if(const auto* instruction=main_companion_instruction(c.interrupted_pc);instruction&&instruction->branch)
+    ++companion_branches[c.interrupted_pc][next!=c.interrupted_pc+instruction->branch];
+   if(c.interrupted_pc==0xaf64||c.interrupted_pc==0xaff4)companion_bytes[c.interrupted_pc].insert(uint8_t(c.registers.d[0]));
+   if(c.interrupted_pc==0xaf72||c.interrupted_pc==0xb002)companion_banks[c.interrupted_pc].insert(uint16_t(c.registers.d[0]));
+   if(c.interrupted_pc==0xaf4c||c.interrupted_pc==0xafdc||c.interrupted_pc==0xb06c)
+    for(const auto& e:expected)if(!e.w&&e.a==0x3f8d78)companion_counters[c.interrupted_pc].insert(e.d);
+   if(c.interrupted_pc==0xafa2||c.interrupted_pc==0xb032)companion_rows[c.interrupted_pc].insert(uint16_t(c.registers.d[1]));
+   if(c.interrupted_pc==0xafa2||c.interrupted_pc==0xb032)companion_tables[c.interrupted_pc].insert(c.registers.a[1]);
+   if(c.interrupted_pc==0xb62e&&c.registers.a[5]==0x3ff400)companion_counts.insert(uint16_t(c.registers.d[0]));
+   if(c.interrupted_pc==0x9938)flight_slew[0].insert(uint16_t(c.registers.d[0]));
+   if(c.interrupted_pc==0x9960)flight_slew[1].insert(uint16_t(c.registers.d[0]));
+   if(c.interrupted_pc==0x9bae)flight_rolls.insert(uint16_t(c.registers.d[0])&255);
+   if(c.interrupted_pc==0xb62e&&c.registers.a[5]==0x3ffc00)flight_counts.insert(uint16_t(c.registers.d[0]));
    switch(c.interrupted_pc){
+   case 0xb850:++producer_branches[c.interrupted_pc][next==0xb87c];break;
+   case 0xb85c:++producer_branches[c.interrupted_pc][next==0xb884];break;
    case 0xab06:case 0xabca:case 0xabd2:case 0xac36:++trail_branches[c.interrupted_pc][next==0xae32];break;
    case 0xab28:++trail_branches[c.interrupted_pc][next==0xab44];break;
    case 0xac2a:++trail_branches[c.interrupted_pc][next==0xac4a];break;
    }
+   if(c.interrupted_pc==0xb868){producer_indices.insert(uint16_t(c.registers.d[1]));producer_commands.insert(uint8_t(c.registers.d[0]));}
    if(c.interrupted_pc==0xc090){if(next==0xc098)++ready_taken;else ++ready_untaken;}
    expected_pending=irq!=0;
    ++calls;++coverage[c.interrupted_pc];
@@ -366,8 +410,18 @@ int main(int argc,char** argv)try{
     auto phase=visibility.find(now);
     if(!phase)throw std::runtime_error("missing physical bus observation at PC "+std::to_string(scheduled.current_pc())+" time "+std::to_string(now)+" address "+std::to_string(a));
     if(phase_end){++computed_frontiers;if(phase_end!=phase->previous_end){++frontier_bad;ok=false;}}
+    if(physical_input){physical_input->set_buttons(phase->buttons);if(c.interrupted_pc==0x14980&&a==0x150000)physical_button_values.insert(phase->buttons&0x30);}
+    if(main_input_instruction(c.interrupted_pc)&&cursor<expected.size()&&!w){
+     const auto data=expected[cursor].d;
+     if(a>=0x3f8892&&a<=0x3f8894){
+      if(m&0xff00)input_axis[a-0x3f8892].insert(data>>8);
+      if(m&255&&a+1<=0x3f8894)input_axis[a+1-0x3f8892].insert(data&255);
+     }
+     if((c.interrupted_pc==0xb10c||c.interrupted_pc==0xb1dc)&&a==((c.registers.a[5]+(c.interrupted_pc==0xb10c?24:28))&0x3ffffe))input_accum[c.interrupted_pc==0xb1dc].insert(data);
+    }
     phase_end=now+4*OMainIrqService::CYCLE_NS;
    }
+   if(kind==1&&!w&&c.interrupted_pc==0xb876&&a==0x3f8906&&cursor<expected.size())producer_counts.insert(expected[cursor].d>>8);
    if(kind==1&&!w&&c.interrupted_pc==0xc088&&a==0x29c200&&cursor<expected.size())ready_bits[bool(expected[cursor].d&0x100)]=true;
    if(kind==1&&!w&&c.interrupted_pc==0x7bce&&a==0x29c09c&&cursor<expected.size())follower_stages.insert(expected[cursor].d);
    if(kind==1&&!w&&c.interrupted_pc==0x7bf4&&a==((c.registers.a[5]+21)&0x3ffffe)&&cursor<expected.size())follower_ages.insert(expected[cursor].d&255);
@@ -375,7 +429,19 @@ int main(int argc,char** argv)try{
    if(w||kind!=1||cursor>=expected.size())return;
    const auto& e=expected[cursor];if(e.w||e.a!=a||e.m!=m)return;
    auto o=MainBus::memory_offset(a);if(o==MainBus::UNMAPPED)return;
-   auto lane=[&](uint32_t i,uint8_t value){auto it=owned.find(i);if(retained_wait){if(memory.bytes[i]!=value){ok=false;std::cerr<<"Retained wait operand mismatch at "<<now<<'\n';}}else if(it!=owned.end()){if(it->second!=value){ok=false;std::cerr<<"Owned lane mismatch address="<<std::hex<<a<<" offset="<<i<<" owned="<<unsigned(it->second)<<" expected="<<unsigned(value)<<std::dec<<" ns="<<now<<'\n';}}else memory.bytes[i]=value;};
+   const bool raw_input=visibility.physical_buttons&&main_input_instruction(c.interrupted_pc)&&a>=0x3f8892&&a<=0x3f8896;
+   const bool fixture_input=raw_input&&c.registers.a[5]==0x3ffc00;
+   const auto* raw_phase=raw_input?visibility.find(now):nullptr;
+   if(fixture_input)++fixture_raw_input_reads;
+   auto lane=[&](uint32_t i,uint8_t value){
+    if(raw_input&&!fixture_input){
+     const unsigned offset=i-MainBus::memory_offset(0x3f8892);
+     if(raw_phase&&offset<6&&(raw_phase->sample_mask&(1u<<offset))){
+      ++computed_raw_input_reads;memory.bytes[i]=raw_phase->sampled[offset];
+      if(memory.bytes[i]!=value){ok=false;std::cerr<<"Computed input sample mismatch at "<<now<<'\n';}return;
+     }else ++external_raw_input_reads;
+    }
+    auto it=owned.find(i);if(retained_wait){if(memory.bytes[i]!=value){ok=false;std::cerr<<"Retained wait operand mismatch at "<<now<<'\n';}}else if(it!=owned.end()){if(it->second!=value){ok=false;std::cerr<<"Owned lane mismatch address="<<std::hex<<a<<" offset="<<i<<" owned="<<unsigned(it->second)<<" expected="<<unsigned(value)<<std::dec<<" ns="<<now<<'\n';}}else memory.bytes[i]=value;};
    if(m&0xff00)lane(o,e.d>>8);if(m&255)lane(o+1,e.d);
    if(a==0x2a3c00)wait_operand_known=true;
   };
@@ -411,6 +477,7 @@ int main(int argc,char** argv)try{
  std::cout<<"Internal completion selections: "<<internal_polls-internal_poll_bad<<" of "<<internal_polls<<" identical, "<<internal_poll_bad<<" different, 0 skipped\n";
  if(baseline_count)std::cout<<"Prior unported return boundaries: "<<baseline_passed<<" of "<<baseline_count<<" identical, "<<baseline_bad<<" different, "<<baseline.size()<<" missing, 0 skipped\n";
  std::cout<<"RTE selections: "<<selections-selection_bad<<" of "<<selections<<" identical, "<<selection_bad<<" different, 0 skipped; "<<back_to_back<<" immediate exceptions\n";
+ if(visibility.physical_buttons)std::cout<<"Input sample reads: "<<computed_raw_input_reads<<" computed, "<<fixture_raw_input_reads<<" directed raw-input fixtures, "<<external_raw_input_reads<<" initial/external producer lanes; physical buttons use OMainIO\n";
  std::cout<<"Linked IRQ services: "<<services-service_bad<<" of "<<services<<" identical, "<<service_bad<<" different, 0 skipped; "<<service_events-service_event_bad<<" of "<<service_events<<" bus events identical, "<<service_event_bad<<" different; "<<resumptions<<" resumed caller boundaries, "<<external_returns<<" unported post-RTE boundaries; "<<graph_exits<<" explicit unported graph exits; IRQ2/IRQ6="<<service2<<'/'<<service6<<" user/supervisor returns="<<user_returns<<'/'<<services-user_returns<<"; "<<services<<" supplied shared-RAM snapshots, "<<adc_inputs<<" computed ADC results, 0 supplied ADC results\n";
  std::cout<<"Independently scheduled wait instructions: "<<autonomous<<" instructions, "<<autonomous_events-autonomous_bad<<" of "<<autonomous_events<<" bus assertions identical, "<<autonomous_bad<<" different, 0 skipped; "<<cuts<<" explicit fixture cuts, "<<resume_operands<<" supplied first-resume operands\n";
  if(service_expected)throw std::runtime_error("unfinished linked caller service");
@@ -434,6 +501,97 @@ int main(int argc,char** argv)try{
  }
  for(auto [p,n]:graph_exit_pcs)std::cout<<"Unported graph exit PC "<<std::hex<<p<<std::dec<<": "<<n<<" boundaries\n";
  if(linked_irq4)std::cout<<"Linked IRQ4 services: "<<services4-service4_bad<<" of "<<services4<<" identical, "<<service4_bad<<" different, 0 skipped; "<<bus4-bus4_bad<<" of "<<bus4<<" bus events identical, "<<bus4_bad<<" different; "<<sub4<<" supplied sub writes; "<<sprite_cursor_frontiers<<" published video cursor byte frontiers\n";
+ if(require_companion||require_companion_path){
+  unsigned observed=0;
+  for(const auto& i:main_companion_instructions){
+   observed+=coverage[i.pc]!=0;
+   if(graph_exit_pcs[i.pc]||external_return_pcs[i.pc])throw std::runtime_error("companion graph remains external at "+std::to_string(i.pc));
+   if(require_companion&&!coverage[i.pc])throw std::runtime_error("missing companion instruction at "+std::to_string(i.pc));
+  }
+  for(const auto& i:main_companion_return_instructions){
+   if(require_companion&&(!coverage[i.pc]||graph_exit_pcs[i.pc]||external_return_pcs[i.pc]))throw std::runtime_error("missing companion returned-instruction continuation");
+   std::cout<<"Companion return "<<std::hex<<i.pc<<std::dec<<": "<<coverage[i.pc]<<" observations\n";
+  }
+  for(uint32_t p:{0x9c9e,0xaf3c,0xafcc})if(!coverage[p])throw std::runtime_error("missing natural shadow/exhaust update entry");
+  if(require_companion){
+   for(const auto& i:main_companion_instructions)if(i.branch&&i.pc!=0x9d1c&&i.pc!=0xaeb0&&i.pc!=0xaf7a&&i.pc!=0xaf98&&i.pc!=0xafc8&&i.pc!=0xb00a&&i.pc!=0xb028&&i.pc!=0xb058){
+    const auto& n=companion_branches[i.pc];std::cout<<"Companion branch "<<std::hex<<i.pc<<std::dec<<" taken/untaken="<<n[1]<<'/'<<n[0]<<'\n';
+    if(!n[0]||!n[1])throw std::runtime_error("missing companion branch direction at "+std::to_string(i.pc));
+   }
+   for(uint32_t p:{0xaf64,0xaff4})for(unsigned v:{0,0x7f,0x80,0xfe,0xff})if(!companion_bytes[p].count(v))throw std::runtime_error("missing companion byte arithmetic endpoint");
+   for(uint32_t p:{0xaf72,0xb002})for(unsigned v:{0xfffb,0xffff,0,1,5})if(!companion_banks[p].count(v))throw std::runtime_error("missing companion bank endpoint");
+   for(uint32_t p:{0xaf4c,0xafdc,0xb06c})for(unsigned v:{0,1,2,0x8000,0xffff})if(!companion_counters[p].count(v))throw std::runtime_error("missing companion signed lifetime endpoint");
+   for(uint32_t p:{0xafa2,0xb032})for(unsigned v:{0,4,8,12})if(!companion_rows[p].count(v))throw std::runtime_error("missing companion pitch row");
+   for(unsigned v:{0,0xbf,0xc0,0xc1})if(!companion_counts.count(v))throw std::runtime_error("missing companion append capacity endpoint");
+   for(uint32_t p:{0xafa2,0xb032})for(unsigned v:{0x29018,0x2939c})if(!companion_tables[p].count(v))throw std::runtime_error("missing companion runtime table choice");
+  }
+  std::cout<<"Companion coverage: "<<observed<<'/'<<main_companion_instructions.size()<<" PCs; "<<coverage[0x9c9e]<<" shadows, "<<coverage[0xaf3c]<<" primary exhausts, "<<coverage[0xafcc]<<" sibling exhausts, "<<coverage[0xb05c]<<" tails\n";
+ }
+ if(require_flight||require_flight_path){
+  unsigned observed=0;
+  for(const auto& i:main_flight_instructions){
+   observed+=coverage[i.pc]!=0;
+   if(graph_exit_pcs[i.pc]||external_return_pcs[i.pc])throw std::runtime_error("flight graph remains external at "+std::to_string(i.pc));
+   if(require_flight&&!coverage[i.pc])throw std::runtime_error("missing flight instruction at "+std::to_string(i.pc));
+  }
+  unsigned returned_observed=0;
+  for(const auto& i:main_flight_return_instructions){
+   returned_observed+=coverage[i.pc]!=0;
+   if(require_flight&&(!coverage[i.pc]||graph_exit_pcs[i.pc]||external_return_pcs[i.pc]))throw std::runtime_error("missing flight returned-instruction continuation");
+  }
+  std::cout<<"Flight returned-instruction continuations: "<<returned_observed<<'/'<<main_flight_return_instructions.size()<<" PCs observed\n";
+  for(uint32_t p:{0x98c0,0x9ae0,0x9ae2,0x9c1e})if(!coverage[p])throw std::runtime_error("missing flight entry/projection/return");
+  if(require_flight){
+   for(const auto& i:main_flight_instructions)if(i.branch&&i.pc!=0x98f6&&i.pc!=0x9942&&i.pc!=0x996a&&i.pc!=0x99a6&&i.pc!=0x99f2&&i.pc!=0x9a2e){
+    const auto& n=flight_branches[i.pc];std::cout<<"Flight branch "<<std::hex<<i.pc<<std::dec<<" taken/untaken="<<n[1]<<'/'<<n[0]<<'\n';
+    if(!n[0]||!n[1])throw std::runtime_error("missing flight branch direction at "+std::to_string(i.pc));
+   }
+   for(unsigned axis=0;axis<2;++axis)for(unsigned v:{0xfffb,0xfffc,0xfffd,0,3,4,5})if(!flight_slew[axis].count(v))throw std::runtime_error("missing flight slew endpoint");
+   for(unsigned v:{0,0xbf,0xc0,0xc1})if(!flight_counts.count(v))throw std::runtime_error("missing flight append capacity endpoint");
+   for(unsigned v:{0,0x40,0x80,0xc0,0xff})if(!flight_rolls.count(v))throw std::runtime_error("missing flight rotation quadrant");
+   for(uint32_t p:{0xb628,0xb62e,0xb632,0xb636,0xb638,0xb63e,0xb640,0xb642,0xb644,0xb646,0xb648,0xb64a,0xb64e,0xb654})if(!coverage[p])throw std::runtime_error("missing flight append instruction");
+   if(!branch_taken||!branch_untaken)throw std::runtime_error("missing flight append branch direction");
+  }
+  std::cout<<"Flight coverage: "<<observed<<'/'<<main_flight_instructions.size()<<" PCs; "<<coverage[0x98c0]<<" update entries, "<<coverage[0x9ae2]<<" projections; timed player/append execution\n";
+ }
+ if(require_input||require_input_path){
+  if(!visibility.physical_buttons||!computed_raw_input_reads)throw std::runtime_error("missing computed input producers");
+  unsigned observed=0;
+  for(const auto& i:main_input_instructions){
+   observed+=coverage[i.pc]!=0;
+   if(graph_exit_pcs[i.pc]||external_return_pcs[i.pc])throw std::runtime_error("input graph remains external at "+std::to_string(i.pc));
+   // Debug-mode front end is disabled by the production ROM word $B0AA.
+   const bool debug=i.pc>=0xb2c0&&i.pc<=0xb2da;
+   if(require_input&&!debug&&!coverage[i.pc])throw std::runtime_error("missing input instruction at "+std::to_string(i.pc));
+  }
+  for(uint32_t p:{0xb0ac,0xb368,0x14976,0x1498e,0xd0de})if(!coverage[p])throw std::runtime_error("missing input caller entry/return");
+  if(require_input){
+   for(const auto& i:main_input_instructions)if(i.branch&&i.pc!=0xb0da&&i.pc!=0xb0ee&&i.pc!=0xb150&&i.pc!=0xb182&&i.pc!=0xb1aa&&i.pc!=0xb1be&&i.pc!=0xb220&&i.pc!=0xb282&&i.pc!=0xb318&&i.pc!=0xb352&&i.pc!=0xb2bc&&i.pc!=0xb364&&!(i.pc>=0xb2c0&&i.pc<=0xb2da)){
+    const auto& n=input_branches[i.pc];std::cout<<"Input branch "<<std::hex<<i.pc<<std::dec<<" taken/untaken="<<n[1]<<'/'<<n[0]<<'\n';
+    if(!n[0]||!n[1])throw std::runtime_error("missing input branch direction at "+std::to_string(i.pc));
+   }
+   for(unsigned v:{0,0x30,0x10,0x20})if(!physical_button_values.count(v))throw std::runtime_error("missing physical weapon button combination");
+   for(unsigned v:{0x20,0x80,0xe0})if(!input_axis[0].count(v))throw std::runtime_error("missing X endpoint");
+   for(unsigned v:{0x40,0x80,0xc0})if(!input_axis[1].count(v))throw std::runtime_error("missing Y endpoint");
+   for(unsigned v:{0,0x80,0xff})if(!input_axis[2].count(v))throw std::runtime_error("missing throttle endpoint");
+   for(unsigned axis=0;axis<2;++axis)for(unsigned v:{0,1,2,3,0xffff,0xfffe,0xfffd})if(!input_accum[axis].count(v))throw std::runtime_error("missing input deadband accumulator endpoint");
+  }
+  std::cout<<"Input coverage: "<<observed<<'/'<<main_input_instructions.size()<<" PCs; "<<coverage[0xb0ac]<<" axis entries, "<<coverage[0x14976]<<" button entries; computed input-to-target execution\n";
+ }
+ if(require_soundproducer||require_soundproducer_path){
+  for(uint32_t p:{0xb84c,0xb850,0xb854,0xb85c,0xb860,0xb864,0xb868,0xb86c,0xb86e,0xb872,0xb876,0xb87a,0xb87c,0xb880,0xb884})
+   if((require_soundproducer||(p!=0xb87c&&p!=0xb880))&&!coverage[p])throw std::runtime_error("missing sound producer instruction at "+std::to_string(p));
+  for(auto [p,n]:graph_exit_pcs)if(p>=0xb84c&&p<=0xb884&&n)throw std::runtime_error("sound producer remains external");
+  if(require_soundproducer){
+   for(uint32_t p:{0xb850,0xb85c})if(!producer_branches[p][0]||!producer_branches[p][1])throw std::runtime_error("missing sound producer branch direction");
+   if(!coverage[0xd0da]||graph_exit_pcs[0xd0da]||external_return_pcs[0xd0da])throw std::runtime_error("missing computed directed counter return");
+   for(unsigned index:{62,63})if(!producer_indices.count(index))throw std::runtime_error("missing sound producer wrap endpoint");
+   for(unsigned count:{0,0x7f,0xff})if(!producer_counts.count(count))throw std::runtime_error("missing sound producer count endpoint");
+   for(unsigned command:{0,0x7f,0x80,0xff})if(!producer_commands.count(command))throw std::runtime_error("missing sound producer command endpoint");
+  }
+  unsigned producer_pcs=0;for(auto [p,n]:coverage)if(p>=0xb84c&&p<=0xb884&&n)++producer_pcs;
+  std::cout<<"Sound producer coverage: "<<producer_pcs<<"/15 PCs; "<<coverage[0xb84c]<<" entries, "<<coverage[0xb87a]+coverage[0xb884]<<" returns; disabled branch taken/untaken="<<producer_branches[0xb850][1]<<'/'<<producer_branches[0xb850][0]<<" stage-one branch taken/untaken="<<producer_branches[0xb85c][1]<<'/'<<producer_branches[0xb85c][0]<<"; "<<coverage[0xd0da]<<" computed counter increments\n";
+ }
  if(require_trail||require_trail_path){
   if(!coverage[0xaaee])throw std::runtime_error("missing trail entry");
   if(require_trail)for(uint32_t p:{0xaaee,0xaaf4,0xaafa,0xaafe,0xab02,0xab04,0xab06,0xab0a,0xab0e,0xab12,0xab1a,0xab1e,0xab22,0xab28,0xab2c,0xab30,0xab34,0xab36,0xab3a,0xab3e,0xab42,0xab44,0xab48,0xab4a,0xab4c,0xab52,0xab56,0xab58,0xab5c,0xab64,0xab68,0xab6a,0xab6e,0xab76,0xab7c,0xab80,0xab84,0xab8a,0xab8e,0xab96,0xab9a,0xab9c,0xab9e,0xaba0,0xaba2,0xaba6,0xabaa,0xabae,0xabb2,0xabb8,0xabbc,0xabbe,0xabc2,0xabc4,0xabc8,0xabca,0xabce,0xabd0,0xabd2,0xabd6,0xabde,0xabe4,0xabe8,0xabec,0xabf2,0xabf6,0xabfe,0xac02,0xac04,0xac06,0xac08,0xac0c,0xac10,0xac14,0xac1a,0xac1e,0xac20,0xac24,0xac26,0xac28,0xac2a,0xac2e,0xac30,0xac34,0xac36,0xac3a,0xac3e,0xac42,0xac46,0xac4a,0xae32,0xae36,0xae3a,0xae3e,0xae42,0xae44,0xae46,0xae48,0xae4e})

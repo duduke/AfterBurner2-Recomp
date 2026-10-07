@@ -128,10 +128,29 @@ provenance distinguishes verified producers, unported callers and initial
 values. Sequence initializer/prepare/hide and RNG now route through `OMainHost`.
 The bounded caller now joins IRQ2/4/6 and closes `$C082/$C098`, world
 initialization, sprite clears and the newly exposed `$AAEE` trail graph.
-The final 600-frame capture matches 2,700,760/2,700,760 instruction/IRQ records
-with zero differences/skips and zero unported post-RTE boundaries. Its 8,024
-explicit other-graph exits and supplied sub/video/input producer frontiers
-still prevent whole-host scheduling closure.
+The subsequent sound/input checkpoints match 2,727,071/2,727,071 natural
+instruction/IRQ records, zero differences/skips and zero unported post-RTE
+boundaries. Timed `$14976/$B0AC` now consumes production ADC samples and physical
+buttons at supplied frontiers. The combined capture reports 8,237 external
+exit events (the earlier inventory had 8,024); these are boundary occurrences,
+not unique instructions remaining. Supplied caller/sub/video producer frontiers
+still prevent whole-host scheduling closure. Timed live flight/projection
+`$98C0..$9C32` and its append successors now match 2,763,360/2,763,360 natural
+instruction/IRQ records. Directed gates cover all 232 flight PCs plus five
+exposed return instructions; natural exit events fall to 7,809. Next extend
+caller/sub publication progress before whole-host paired road/player acceptance.
+Timed shadow/exhaust `$9C34..$9D2A/$AE8C..$B0A8` adds 179 bounded
+instruction PCs. The combined natural capture matches 2,773,349/2,773,349
+records, with zero skips and post-RTE holes; external exit events fall to
+6,693. Directed gates cover all 179 PCs, all 17 conditional branches and
+the additional `$77AC` RTS; seven mutations are rejected. See the companion
+continuation in `ENGINE_NOTES.md` for coverage and limits.
+The sub publication waits/release now compute eight instruction PCs and
+retain computed main handshake values. The natural 600-frame sub replay
+matches 6,305,996/6,305,996 instructions and 15,895,267/15,895,267 phases,
+with zero different/skipped accepted records. Cross-CPU delivery order,
+main writer times and sub IRQ/callee frontiers remain inputs; timed sub
+call/return, sprite and road progress remain next.
 The runtime template inventory still identifies seven unported initial handlers.
 Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
@@ -563,6 +582,29 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       directions of all six trail branches. Preserve sprite ownership
       through hardware bank swaps, with renderer cursor words explicit.
       See `ENGINE_NOTES.md` for oracle results and producer limits.
+- [x] Compute the sound-ring producer `$B84C..$B884` instruction/bus/IRQ
+      timing from supplied caller entry. Directed checks require all 15 PCs,
+      reset/suppression branches, ring wrap and byte count/command endpoints;
+      the exposed `$D0DA` post-RTE counter increment is also computed.
+      Natural/directed producer calls match 252/252, zero skips; four
+      mutations fail. Sound caller cadence remains pending; see
+      `ENGINE_NOTES.md` for capture counts and coverage limits.
+- [x] Compute the bounded button `$14976..$1498E` and axis/target
+      `$B0AC..$B368` instruction graph, including `$D0DE` button call timing.
+      Natural ADC results and mux-selected sample destinations feed the axis
+      reads; physical buttons use `OMainIO`. Directed coverage requires all
+      165 production-reachable PCs, every applicable conditional branch in
+      both directions and axis/deadband/button endpoints. Six ROM-disabled
+      debug PCs remain unverified. See `ENGINE_NOTES.md` for oracle counts,
+      producer boundaries and generated/incremental port workflow.
+- [x] Compute the bounded live-flight/projection graph `$98C0..$9C32`,
+      preserving transitions, slew, flips, runtime tables, hardware math,
+      perspective/rotation, history and calls/tail-jumps to timed `$B628` append.
+      Natural/directed checks match with zero skipped records and post-RTE
+      holes. Directed coverage requires all 232 flight PCs, both directions of
+      all 25 conditional branches, slew/rotation/append endpoints and five
+      exposed returned-instruction continuations. Full dispatcher/sub cadence
+      and paired host acceptance remain pending; see `ENGINE_NOTES.md`.
 - [ ] Independently schedule handler/caller and ISR resumptions, then
       progress publication and sub execution without
       captured operand frontiers.

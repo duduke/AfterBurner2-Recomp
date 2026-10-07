@@ -180,6 +180,46 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   through the 67-PC sprite-clear and 99-PC trail graphs subsequently exposed.
   Require all PCs and both directions of the six trail branches. Track both
   sprite banks while keeping hardware-rendered cursor words explicit.
+- [x] Compute all fifteen sound-ring producer instructions at `$B84C..$B884`
+  from supplied caller entry, including bus phases, CCR, reset/suppression,
+  ring wrap, pending count and RTS. Directed endpoint gates and four mutations
+  cover the producer and the newly exposed `$D0DA` returned counter instruction.
+  Natural/directed producer calls match 252/252, zero skips.
+  Producer caller cadence and arbitrary IRQ overlap remain pending; see the
+  timed sound producer continuation in `ENGINE_NOTES.md`.
+- [x] Compute bounded button/axis-to-target scheduling at `$14976/$B0AC`,
+  including `$D0DE`. Physical button inputs use `OMainIO`; natural raw-axis
+  reads use computed ADC samples and mux destinations. Directed coverage
+  includes 165 production-reachable PCs, both applicable branch directions,
+  axis clamps, signed deadbands, throttle DIP and control override endpoints.
+  Initial lanes, fixture inputs, hardware frontiers and caller cadence remain
+  explicit. Six ROM-disabled debug PCs are unverified. Use targeted short and
+  directed captures first, then the combined natural capture; retain oracle
+  validation per graph. See the timed input continuation in `ENGINE_NOTES.md`.
+- [x] Compute bounded live flight/projection `$98C0..$9C32` through the
+  already timed `$B628` append graph, including hardware math, table/flip,
+  slew/history and transition paths. Directed gates require all 232 flight
+  PCs, both directions of all 25 conditional branches, endpoints and five
+  extra returned instructions. Natural 600-frame execution matches
+  2,763,360/2,763,360 records, zero skips and post-RTE holes; exit events fall
+  to 7,809. Caller/sub/publication cadence and paired host road acceptance
+  remain supplied. See the timed flight continuation in `ENGINE_NOTES.md`.
+- [x] Compute bounded shadow/exhaust `$9C34..$9D2A/$AE8C..$B0A8`
+  through the existing append graph. Directed gates require all 179 PCs,
+  both directions of all 17 conditional branches, byte/lifetime/bank/table
+  endpoints and the extra `$77AC` RTS continuation. Natural 600-frame
+  execution matches 2,773,349/2,773,349 records, zero skips and post-RTE
+  holes; exit events fall to 6,693. Safe wait-only fixture injection avoids
+  resuming partially completed stack instructions. Caller/sub/publication
+  cadence remains supplied; see the companion continuation in `ENGINE_NOTES.md`.
+- [x] Compute the eight sub publication wait/release instructions
+  `$452/$456/$458/$556/$55A/$55C/$640/$646`, including ordered bus phases,
+  CCR and RTS. Both signed waits consume retained two-CPU signal state;
+  main RMW values are latched at checked read frontiers and writes computed.
+  All PCs, branch directions and separate signed endpoint sets pass MAME;
+  natural 600-frame execution matches 6,305,996/6,305,996 instructions.
+  Shared-bus delivery order, main writer times and sub IRQ/callee entries
+  remain supplied; see the sub publication continuation in `ENGINE_NOTES.md`.
 - [ ] Finish independent scheduling across caller/ISR resumptions, ADC input
   producers, publication wait boundaries and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller
