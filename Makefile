@@ -212,7 +212,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
+oracle-test: oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -465,3 +465,15 @@ oracle-caller-service: oracle-caller
 	./build/oracle_caller build/oracle/caller_service_edges.bin
 
 .PHONY: oracle-capture-caller-service oracle-caller-service
+
+# RTE mask restoration and physical IPL selection, including immediate entry.
+oracle-capture-caller-return:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_return.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_return_edges.bin 120 15
+
+oracle-caller-return: oracle-caller
+	./build/oracle_caller build/oracle/caller_return.bin
+	./build/oracle_caller build/oracle/caller_return_edges.bin
+
+.PHONY: oracle-capture-caller-return oracle-caller-return

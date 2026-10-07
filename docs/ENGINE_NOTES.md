@@ -3011,3 +3011,89 @@ captures and their physical visibility checks; CMake is unavailable on this
 host, so that build path was not run. No ROM data or captures are tracked.
 Next: independently establish IRQ4/unported handler resumptions and post-RTE
 exception selection, producer cadence and sub progress before live host wiring.
+
+
+## Phase 3d continuation: RTE selection and immediate exception entry
+
+`OMainIrqService` now exposes the IRQ2/IRQ6 RTE selection phase at the final
+return prefetch, four clocks before the computed return boundary. The bounded
+`$1466A/$14672` port restores SR after the third stack read, advances the first
+return prefetch, then samples physical IPL against the restored mask. This
+ordering follows MAME's `m68000` RTE microcode; captured IRQ bytes remain
+assertions, not selection inputs.
+
+`OMainCallerSchedule` retains the computed supervisor stack as well as USP.
+A selected immediate exception cannot execute a caller instruction first; entry
+uses the computed return PC, SR, registers, clock and SSP. MAME attributes these
+bus accesses to the RTE CURPC until another instruction executes. Using the
+returned instruction PC gives correct writes/times but incorrect trace PCs.
+IRQ4 execution/return remains an external boundary after the computed entry.
+
+The opt-in `AB2CALL4` capture (`AB2_ORACLE_CALLER_RETURN=1`, with linked service
+capture enabled) retains RTE physical visibility phases and asserts whether the
+first post-RTE access starts an exception. Immediate entries use the existing
+ordered exception write/vector-read comparator. The service entry RAM/ADC inputs
+and first-resume wait operands retain their existing supplied-input labels.
+Older capture formats and targets remain supported.
+
+| Dataset | Services and RTE selections identical / captured | Handler bus events identical / captured | Immediate exception entries identical / captured | Unported returned-instruction boundaries | Skipped |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Natural gameplay, 600 frames | 1,330 / 1,330 | 58,919 / 58,919 | 14 / 14 | 12 | 0 |
+| Directed boot/caller fixture, 120 frames | 343 / 343 | 15,140 / 15,140 | 3 / 3 | 0 | 0 |
+
+Combined: **1,673/1,673 services and selections, 74,059/74,059 handler bus
+events and 17/17 immediate exception entries identical, zero differences,
+zero skips**. The previous 29 supplied post-RTE intervals are reduced to 12
+unported returned-instruction boundaries; they are explicit boundaries, not
+skipped service records. The existing 1,644 computed caller resumptions remain.
+The captures include 1,656 IRQ2 and 17 IRQ6 services, 1,670 user-mode and three
+supervisor-mode returns. Natural input delivers coin/start and gameplay controls;
+the directed fixture covers boot/caller timing rather than live axis endpoints.
+
+The combined captures also pass 514,823/514,823 retained caller/entry records,
+1,466,401/1,466,401 retained bus events and 477,697/477,697 consecutive caller
+boundaries. Omitted busy spins execute 6,142,730 computed instructions with
+18,427,992/18,427,992 bus assertions. Physical visibility matches
+20,387,341/20,387,341 observations. Supplied inputs remain 1,673 shared-RAM
+snapshots, 1,656 preceding ADC results and 2,028 first-resume wait operands;
+44 explicit fixture markers and 27 in-flight fixture cuts retain their previous
+meaning. Both captures finish without unfinished instructions or entries.
+
+Three temporary-header mutations return oracle status 1: `rtemask` uses the
+handler's old mask and misses immediate IRQ4 selection; `rtefrontier` shifts the
+selection timestamp by one 80 ns cycle and fails all 343 directed selection
+assertions; `rtecurpc` substitutes the returned instruction PC and fails all 15
+bus events across the three directed immediate entries. Pristine headers are
+never overwritten; mutation artifacts and captures remain ignored under `build/`.
+
+Commands:
+
+```sh
+make oracle-capture-caller-return
+make oracle-caller-return
+python3 tools/oracle/mutation_check.py rtemask rtefrontier rtecurpc
+make test
+make verify-stage1
+make -j4 oracle-test
+make -j4
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
+```
+
+**Limits:** this is bounded IRQ2/IRQ6 return selection, not a full CPU scheduler.
+IRQ4 returns/redirection, nested/unported ISR graphs, the 12 returned-instruction
+boundaries, physical input producer cadence, sound-ring producers, initial
+contexts, first-resume shared operands, sub-write frontiers and renderer feedback
+remain supplied or unverified. Immediate-entry captures exercise the pending
+IRQ4 path; they do not establish every IRQ level/mask combination, level-seven
+NMI, trace exceptions or an IPL edge between the two RTE return prefetches.
+Native Stage 1 remains active; Phase 3d remains incomplete.
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Existing
+oracle differences remain zero with their documented race skips; Stage 1 audio
+RMS remains 903.949. Make and CMake register the new captures and physical
+visibility checks. CMake is unavailable on this host, so that build path was
+not run. No ROM data, disassembly output or captures are tracked.
+
+Next: establish IRQ4 and unported handler resumptions, then input/publication/sub
+producer progress before independent host wiring and paired road/video acceptance.
