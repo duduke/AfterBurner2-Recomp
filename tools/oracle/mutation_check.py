@@ -203,11 +203,11 @@ for name,old,new in [
     ("visibilityphase", "std::max(board.now(), std::min(ns, end))", "std::max(board.now(), std::min(ns, end + 80))"),
 ]:
     cases.append((name,"src/main/hwmath/xboard_cpu_visibility.hpp",old,new,
-                  "tests/oracle_cpu_visibility.cpp","caller_directed",[]))
+                  "tests/oracle_cpu_visibility.cpp","caller_directed",irq_common))
 
 cases.append(("visibilitytail","src/main/hwmath/m68000_completion.hpp",
               "return (size==2 ? 4 : 2)+2*count", "return 0",
-              "tests/oracle_cpu_visibility.cpp","caller",[]))
+              "tests/oracle_cpu_visibility.cpp","caller",irq_common))
 
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 cases.append(("callerresumesr", "src/main/engine/omaincallerschedule.hpp",
@@ -234,6 +234,69 @@ for name,old,new in [
                   "tests/oracle_caller.cpp","caller_return_edges",
                   ["src/main/engine/omainirqservice.cpp", "src/main/engine/omainirqcallee.cpp", *common]))
 
+# Continuous production input producers must affect the linked CPU sampler.
+for name,source,old,new in [
+    ("calleradclane", "src/main/engine/omainio.hpp", "inputs[(mux>>2)&7]", "inputs[((mux>>2)+1)&7]"),
+    ("calleradcclock", "src/main/engine/omainio.hpp", "transaction_ns.value_or(board.now())", "transaction_ns.value_or(board.now())+1000000000"),
+]:
+    cases.append((name,source,old,new,"tests/oracle_caller.cpp","caller_return_edges",
+                  ["src/main/engine/omainirqservice.cpp", "src/main/engine/omainirqcallee.cpp", *common]))
+
+cases.append(("hostsequenceinit", "src/main/engine/omainhost.cpp",
+              "OMainObjects::player_initialize(bus,r)", "OMainObjects::player_prepare(bus,r)",
+              "tests/oracle_objects.cpp", "object_calls_directed", handler_dependencies("src/main/engine/omainhost.cpp")))
+cases.append(("pairedroadcenter", "src/main/engine/osubroad.cpp",
+              "ROAD0_SCROLL_CENTER = 0x0ec4e0", "ROAD0_SCROLL_CENTER = 0x0ec4e2",
+              "tests/oracle_video.cpp", "paired_road",
+              ["src/main/romloader.cpp", "src/main/roms.cpp", "src/main/engine/subbus.cpp",
+               "src/main/engine/mainbus.cpp", "src/main/engine/omainsprites.cpp", "src/main/engine/osubsprites.cpp",
+               "src/main/hwvideo/hwroad.cpp", "src/main/hwvideo/hwsprites.cpp", "src/main/hwvideo/hwtiles.cpp",
+               "src/main/hwvideo/hwpalette.cpp", "src/main/hwvideo/screen.cpp"]))
+for name,source,old,new,test,capture in [
+    ("closureramprefetch", "src/main/engine/omainirqservice.cpp",
+     "if((returnpc&0x3fffff)>=0x80000)read16(returnpc);else idle(4)", "idle(4)", "tests/oracle_caller.cpp", "caller_closure_directed"),
+    ("closuredepth", "src/main/engine/omainirqservice.cpp",
+     "const auto value=read16(r.a[5]+36)", "const auto value=read16(r.a[5]+38)", "tests/oracle_caller.cpp", "caller_closure"),
+    ("closureshift", "src/main/engine/omainirqservice.cpp",
+     "for(unsigned i=0;i<4;++i) {\n            carry=value&0x8000", "for(unsigned i=0;i<3;++i) {\n            carry=value&0x8000", "tests/oracle_caller.cpp", "caller_closure"),
+    ("closurepoll", "src/main/engine/omainirqservice.cpp",
+     "latch();idle(2);next=pc+2;break;\n    }\n    // $8B06", "idle(2);latch();next=pc+2;break;\n    }\n    // $8B06", "tests/oracle_caller.cpp", "caller_closure"),
+    ("closurecarry", "src/main/engine/omainirqservice.cpp",
+     "subtract?old<source:uint64_t(old)+source>0xffffffff", "false", "tests/oracle_caller.cpp", "caller_closure"),
+    ("closureprojection", "src/main/engine/omainirqservice.cpp",
+     "pc==0x8b64?0x29c092:0x29c090", "pc==0x8b64?0x29c090:0x29c090", "tests/oracle_caller.cpp", "caller_closure"),
+    ("closureclip", "src/main/engine/omainirqservice.cpp",
+     "case 0x8bb0:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x9556,4)", "case 0x8bb0:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x955a,4)", "tests/oracle_caller.cpp", "caller_closure"),
+    ("closurerelease", "src/main/engine/omainirqservice.cpp",
+     "write8(r.a[5],old&~0x40)", "write8(r.a[5],old&~0x80)", "tests/oracle_caller.cpp", "caller_closure"),
+    ("successorsuboperand", "src/main/engine/omainirqservice.cpp",
+     "const auto old=read16(r.a[5]+36)", "const auto old=read16(r.a[5]+38)", "tests/oracle_caller.cpp", "caller_successors"),
+    ("successorbranch", "src/main/engine/omainirqservice.cpp",
+     "case 0xb632:branch(bool(sr&8)==bool(sr&2),0xb654,4)",
+     "case 0xb632:branch(bool(sr&8)==bool(sr&2),0xb656,4)", "tests/oracle_caller.cpp", "caller_successors_directed"),
+    ("returnedaltitude", "src/main/engine/omainirqservice.cpp",
+     "const auto value=read16(0x29c0aa)", "const auto value=read16(0x29c0a8)", "tests/oracle_caller.cpp", "caller_words"),
+    ("returnedcompare", "src/main/engine/omainirqservice.cpp",
+     "constexpr uint16_t limit=0xc0", "constexpr uint16_t limit=0", "tests/oracle_caller.cpp", "caller_words"),
+    ("returnedcopy", "src/main/engine/omainirqservice.cpp",
+     "write16(r.a[5]+8,value>>16);write16(r.a[5]+10,value)",
+     "write16(r.a[5]+12,value>>16);write16(r.a[5]+14,value)", "tests/oracle_caller.cpp", "caller_steps"),
+    ("returnedbsr", "src/main/engine/omainirqservice.cpp",
+     "write16(sp+2,0x5c02)", "write16(sp+2,0x5c04)", "tests/oracle_caller.cpp", "caller_steps"),
+    ("irq4returnusp", "src/main/engine/omaincallerschedule.hpp",
+     "result.sp=user_sp;", "result.sp=user_sp+2;", "tests/oracle_irq4_service.cpp", "irq4_return_edges"),
+    ("irq4returnmask", "src/main/engine/omaincallerschedule.hpp",
+     "eligible(level,sr)?level:0", "eligible(level,current.state.sr)?level:0", "tests/oracle_irq4_service.cpp", "irq4_return_edges"),
+    ("irq4returnphase", "src/main/engine/omaincallerschedule.hpp",
+     "selection=ns;auto level=physical(ns)", "selection=ns;auto level=physical(ns+80)", "tests/oracle_irq4_service.cpp", "irq4_return_edges"),
+]:
+    deps=["src/main/engine/omainirqcallee.cpp", *common]
+    if source.endswith(".hpp"):deps+=["src/main/engine/omainirqservice.cpp"]
+    cases.append((name,source,old,new,test,capture,deps))
+# Object initializer checks now execute through the full production router.
+cases = [(name,source,old,new,test,capture,handler_dependencies(source) if test=="tests/oracle_objects.cpp" else dependencies)
+         for name,source,old,new,test,capture,dependencies in cases]
+
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}
     if requested-known: raise RuntimeError("unknown mutations: "+", ".join(sorted(requested-known)))
@@ -257,15 +320,25 @@ for name, source, old, new, test, capture, dependencies in cases:
     subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2",
                     *command, "-o", str(binary)], check=True)
     with log_path.open("w") as log:
-        result = subprocess.run([str(binary), "build/oracle/" + capture + (".bin.visibility" if name.startswith("visibility") else ".bin")],
+        args = [str(binary), "build/oracle/" + capture + (".bin.visibility" if name.startswith("visibility") else ".bin")]
+        if capture == "caller_successors_directed": args += ["--require-taken"]
+        if name.startswith("irq4return"): args += ["build/oracle/" + capture + ".bin.returns"]
+        if test == "tests/oracle_video.cpp": args += ["0", "build/oracle/paired_road_requests.bin"]
+        result = subprocess.run(args,
                                 stdout=log, stderr=subprocess.STDOUT)
     summary = [line for line in log_path.read_text().splitlines() if " identical, " in line and " different," in line]
     differences = [line for line in summary if ", 0 different," not in line]
+    # A changed branch or completion time can leave the bounded transcript
+    # before aggregate summaries are printed. Keep the explicit failed bus/
+    # state assertions as differential evidence, never a bare generic error.
+    assertion_differences = [line for line in log_path.read_text().splitlines()
+                            if line.startswith(("Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch"))]
     schedule_errors = [line for line in log_path.read_text().splitlines()
                        if any(message in line for message in [
                            "unrecorded IRQ inside sampling gap", "missing scheduled poll",
                            "scheduled wait overshot caller boundary", "wait left bounded graph",
-                           "RTE selection mismatch"])]
-    if result.returncode != 1 or not (differences or schedule_errors):
+                           "RTE selection mismatch", "missing physical bus observation at PC",
+                           "missing RTE physical selection phase", "missing internal completion poll", "caller has no selected IRQ"])]
+    if result.returncode != 1 or not (differences or assertion_differences or schedule_errors):
         raise RuntimeError(f"{name}: mutation did not produce a differential failure; see {log_path}")
-    print(f"{name}: rejected — {(differences or schedule_errors)[-1]}", flush=True)
+    print(f"{name}: rejected — {(differences or assertion_differences or schedule_errors)[-1]}", flush=True)

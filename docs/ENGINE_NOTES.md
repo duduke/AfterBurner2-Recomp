@@ -3097,3 +3097,531 @@ not run. No ROM data, disassembly output or captures are tracked.
 
 Next: establish IRQ4 and unported handler resumptions, then input/publication/sub
 producer progress before independent host wiring and paired road/video acceptance.
+
+## Phase 3d continuation: production ADC producer at bounded caller services
+
+`OMainIO::before_bus` connects the previously checked CPU visibility model
+to the production physical endpoints. It delivers pending board events at the
+previous completed bus/instruction frontier while retaining the actual bus
+transaction timestamp. ADC reads observe delivered conversion state; ADC
+strobes start at the transaction timestamp. An internal CPU overrun can make
+these times different. Call `before_bus` before every timed transaction; existing
+direct board-clock users retain their previous behavior when this API is unused.
+The ROM-free bus regression checks the conversion deadline and the old/new
+result on either side of the delivery frontier.
+
+`CpuVisibilityCapture` now uses production `OMainIO` ADC/mux endpoints
+throughout the continuous physical timeline and retains its computed conversion
+result at ADC read phases. The linked caller's ADC callback reads that computed
+result at its predicted access timestamp. It no longer reads the expected
+handler event's data. Expected ADC bytes remain assertions in both physical
+and handler bus comparisons. No new ROM routine or capture format was added.
+
+| Dataset | Linked services identical / captured | Handler bus events identical / captured | Computed ADC reads | Physical observations identical / captured | Skipped |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Natural gameplay, 600 frames (`caller_return`) | 1,330 / 1,330 | 58,919 / 58,919 | 1,316 | 16,132,928 / 16,132,928 | 0 |
+| Directed caller fixture, 120 frames (`caller_return_edges`) | 343 / 343 | 15,140 / 15,140 | 340 | 4,254,413 / 4,254,413 | 0 |
+
+Combined: **1,673/1,673 services, 74,059/74,059 handler bus events and
+20,387,341/20,387,341 physical observations identical, zero skips**. All
+1,656 linked IRQ2 ADC reads use computed conversions, with zero supplied ADC
+result bytes. The existing 1,644 caller resumptions, 1,673 RTE selections and
+17 immediate exception entries still pass. The continuous physical timelines
+also check 2,670 ADC reads, including transactions outside linked services.
+
+Two temporary production-header mutations fail: `calleradclane` changes the
+ADC channel selection by one and produces 60 physical differences in the
+directed capture; `calleradcclock` delays the ADC strobe by one second and
+produces one physical difference. Both exit with status 1. A preliminary
+one-millisecond strobe delay was not rejected by this capture; these observations
+do not pin arbitrary sub-conversion timing shifts. The exact deadline regression
+checks the separate transaction/delivery clock contract. Mutation artifacts and
+captures remain ignored under `build/`; pristine source is not overwritten.
+
+Commands:
+
+```sh
+make oracle-caller-return
+python3 tools/oracle/mutation_check.py calleradclane calleradcclock
+make test
+make verify-stage1
+make -j4 oracle-test
+make -j4
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
+```
+
+**Limits:** the continuous physical producer replay still receives captured
+hardware transaction times, mux/strobe writes and unported completion frontiers.
+Bounded linked handler transactions are independently checked at predicted CPU
+times against that replay; this is conditional composition, not a single
+autonomously scheduled host. External physical input frames, 1,673 shared-RAM
+snapshots, 2,028 first-resume wait operands, 12 returned-instruction boundaries,
+IRQ4/unported handler resumptions, sub-write frontiers and renderer feedback
+remain supplied. Existing independent endpoint checks retain neutral, extremes,
+release and simultaneous weapon coverage; the directed caller fixture does not
+establish live axis endpoint scheduling. Native Stage 1 remains active, and the
+roadmap's complete input wiring item and Phase 3d remain unchecked.
+
+Next: establish IRQ4/unported caller resumptions and independently scheduled
+physical producer/publication/sub progress before live input-to-flight wiring.
+
+Validation: `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test`, `make -j4` and the 180-frame dummy-driver launch pass.
+Existing oracle differences remain zero with their documented race skips;
+paired composition still passes 240/240 rendered frames with zero skips, and
+Stage 1 audio RMS remains 903.949. Make/CMake include the production bus
+dependencies for physical visibility; CMake is unavailable on this host and
+was not run. ROMs and captures remain untracked.
+
+## Phase 3d continuation: sequence routing and conditional road composition
+
+`OMainHost` now routes the independently verified object initializer `$1488E`,
+sequence compound initializer `$16892`, prepare/hide `$16976/$169B2` and RNG
+`$C5A8`. The object oracle calls these through the production entry router;
+its six corpora pass 1,848/1,848 records, zero differences or skips. The
+dispatcher transcript portions retain their original external-handler limits.
+The already routed live fuselage `$9810/$98C0`, shadow/exhaust, recovery,
+sequence handlers, weapon/projectile, reload/HUD and selected enemy/effect
+graphs retain their independent routine checks. This adds entry routing;
+it does not assign new host cadence to those handlers.
+
+`AB2PAIR3` extends the natural paired video capture with the actual road pass
+that produced the displayed buffer: shared/road RAM and sub math state at
+`$466`, shared/road state and CPU-owned write sets at `$530`, other-main
+shared writes during the window and the subsequent `$458/$466` display flip.
+Active stack and sub VBLANK writes are excluded. Each of the five target
+words records its main dispatcher index and producing write ordinal; an
+uncaptured initial word is explicitly marked `$FFFFFFFF`. `AB2REQ04` exports
+the main composition's ordered target writes and verified/external ownership.
+The older request/video formats remain supported.
+
+The first comparison exposed a real ordering boundary at display frame 1086:
+the sub consumer saw bank zero while the published sprite producer retained
+`-$70`. A next-dispatch input handler had written the new target before that
+dispatcher's sprite publication. Per-word write provenance replaces the
+incorrect assumption that the road and displayed sprites share one producer.
+Each consumer word is asserted against its actual producing write; verified
+port outputs are then installed as road inputs. Unported caller writes and
+initial words remain explicitly supplied. The resulting `OSubRoad` shared
+write set and complete raster must equal both its completion state and the
+later displayed road buffer. The hardware compositor consumes this computed
+raster, not the captured display bytes.
+
+Natural gameplay through frame 1264:
+
+- **122/122 complete dispatcher windows identical, zero skips**, executing
+  14,134 verified callbacks and 1,305 explicit unported caller transcripts.
+  Live fuselage/shadow and both exhaust updates have 122 calls each, weapon
+  updates 83, vulcan projectiles 565, and missile/trail handlers remain included.
+- **240/240 road passes identical, zero skips**, including shared/road write
+  sets. The 1,200 target-word consumers use 313 verified handler writes,
+  405 unported caller writes and 482 initial boundaries. These are consumer
+  counts; one producing write may feed more than one road pass.
+- **240/240 RGB frames pixel-identical, zero skips** with 120 normal and
+  120 interpolated sprite lists, their hardware draw triggers and scaled sizes.
+- **244/244 composed VBLANK windows and 1,250/1,250 continuous sound calls
+  identical, zero skips**, with 255 producers, 995 consumers and 255 latches;
+  sound caller times remain supplied.
+
+Two temporary mutations fail with status 1. `hostsequenceinit` routes `$16892`
+to prepare instead of initialization and fails 24 of 168 directed object calls.
+`pairedroadcenter` shifts the port's road raster center by one word and fails
+the paired road write-set comparison. Pristine sources remain unchanged;
+all variants, ROM images and captures remain ignored under `build/`.
+
+### Runtime handler inventory and formation/spawn boundaries
+
+`tools/handler_inventory.py` reads `$1C176` and its template pointers from the
+user's ROMs, and inventories the current production router without executing
+handlers. Initial templates: **254 records, 12 distinct pointers; 18 routed
+records, 229 empty and seven unported records**. Empty templates can become
+active later; this is not a dynamic handler coverage claim. Slot 131 is the
+live fuselage initializer, slot 130 the weapon initializer, slot 1 input and
+slots 236..250 the fifteen horizon segments, not an enemy formation.
+
+The seven unported initial handlers are:
+
+| Initial slot | Template entry | Observed later entry / boundary |
+| ---: | --- | --- |
+| 0 | `$D0D2` | Sets handler `$D0DA`, then falls through; remains unported |
+| 2 | `$804A` | Clears record +32, calls `$8898`, installs/falls through `$805A` |
+| 97 | `$6838` | Calls `$6CF8`, installs/falls through `$6844` |
+| 120 | `$425E` | Calls `$49AE`, initializes record fields, installs/falls through `$427C` |
+| 251 | `$13236` | Unported caller; no inferred implementation |
+| 252 | `$B66E` | Installs/falls through `$B676`; initializer remains outside the checked entry route |
+| 253 | `$18E8A` | Unported stage-flow caller |
+
+The natural dispatcher additionally reaches `$6D18/$71E4`; directed captures
+also encounter `$6252/$6466/$64D4/$65EC/$65FA/$7BB6`. Formation/spawn dispatch,
+dynamic activation, stage/credit/scoring and those callers require their own
+instruction ports and independent captures. They cannot be replaced by native
+formations or inferred from the known horizon/effect/enemy handlers.
+
+Commands:
+
+```sh
+python3 tools/handler_inventory.py > build/oracle/handler_inventory.log
+make oracle-capture-paired-road
+make oracle-paired-road
+python3 tools/oracle/mutation_check.py hostsequenceinit pairedroadcenter
+make test
+make verify-stage1
+make -j4 oracle-test
+make -j4
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
+```
+
+**Limits:** conditional consumer/flip composition retains IRQ/caller frontiers,
+sub-state snapshots, unported and initial target producers, road control and
+tile/palette/renderer feedback. Sequence initialization/recovery and weapon
+transitions retain their independent directed checks; this natural slice does
+not exercise every transition, formation, spawn, stage or a whole credit.
+No native flight, objects, weapons, HUD or sound cues were removed. Live
+`OEngine` scheduling and Phase 3d remain incomplete.
+
+Validation: the build, `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test` including the new paired-road target, both new mutation
+checks and a 180-frame dummy-driver launch pass. Existing oracle differences
+remain zero with their documented race skips; Stage 1 audio RMS remains
+903.949. Make and CMake register the new composition tests; CMake is unavailable
+on this host and was not run. No ROM data or captures are tracked.
+
+
+### IRQ4 RTE and the twelve returned-instruction boundaries
+
+`OMainCallerSchedule` now finishes the existing timed IRQ4 envelope, including
+both `$147C6` and the service redirect `$147E6`, through the same restored-SR
+selection used by IRQ2/6. Selection occurs between the two return prefetches,
+320 ns before completion. It retains the supervisor stack and initial USP,
+restores the active user stack, and retains RTE's CURPC for immediate exception
+entry. A supervisor context that might return to user mode must supply its
+initial USP; unknown USP is an error. IRQ4's four unported game-flow callbacks
+remain explicit duration/state boundaries, rather than being silently omitted.
+The caller oracle now keeps the same scheduler through consecutive instructions
+and omitted spins instead of resetting SSP/USP at every assertion.
+
+The original CALL4 corpus's twelve unknown returned instructions were seven
+at `$8AF2`, plus one each at `$88C2`, `$B628`, `$15BFE`, `$7BB6`, and `$14EE2`.
+These six instructions now execute with their ROM bus phases, flags, registers
+and stack effects. CALL5 adds a distinct kind-7 graph-exit marker: after the
+ported instruction, an unknown successor remains a declared boundary. This
+avoids presenting a port of one instruction as a port of the whole handler.
+The six added PCs execute 49,973 times (1,267 / 19,420 / 28,419 / 22 / 155 /
+690 respectively), all identical, zero skips. All twelve original RTE-to-first-
+instruction links carry computed state. Extended coverage exposes fourteen
+additional unknown returned instructions: `$8AF8` nine times and `$B62E` five.
+
+The new natural caller capture checks 517,281/517,281 instruction/entry records,
+1,599,569/1,599,569 bus events, 456,096/456,096 consecutive boundaries,
+1,345/1,345 IRQ2/6 services and restored-mask selections, and 59,564/59,564
+handler events; zero skips. It executes 4,796,639 omitted wait instructions,
+with 14,389,792 matching bus assertions. Physical visibility matches all
+16,387,881 observations. Its explicit inputs still include 1,345 shared-RAM
+snapshots, 1,681 first-resume wait operands and 58,824 unported graph exits.
+ADC values are computed by production `OMainIO` (1,330 results); physical
+transactions outside the bounded graph remain capture inputs.
+
+IRQ4 return acceptance uses the production scheduler to compute entry,
+handler envelope, RTE and any immediately selected exception entry. The
+`AB2RTE42` sidecar records initial USP, physical IPL at the final RTE prefetch,
+actual active stack/prefetched PC, the selected next exception and its bus
+transactions. MAME exposes return PC + 2 during that final prefetch. Initial
+interrupted-instruction completion, physical IPL, game-flow callbacks and
+sub-owned writes are still supplied. This is conditional scheduling acceptance,
+not an independently advancing main/sub host. Natural/directed counts are
+597/597 and 117/117 IRQ4 returns, zero skips, including one `$1A130`/`$0700`
+redirect. Immediate exception entries match 166/166 contexts and 830/830
+bus phases, zero skips. Both corpora return to user mode; supervisor returns and a redirect
+from an originally supervisor caller remain uncovered.
+
+Reproduce with `make oracle-capture-scheduling-returns` and
+`make oracle-scheduling-returns`. The new checks are included in Make/CMake
+oracle suites. Run `python3 tools/oracle/mutation_check.py returnedcopy
+returnedbsr irq4returnusp irq4returnmask irq4returnphase`: changed copy
+addresses, BSR return PC, USP, restored mask and selection phase must fail.
+Captures, sidecars and logs remain ignored under `build/oracle`.
+
+**Independent CPU scheduling is still incomplete.** The remaining work is:
+
+- Port timing and interrupted resumptions through the object-handler graphs,
+  including the next `$8B02/$B636` successors, rather than resetting
+  at graph exits.
+- Port `$17146/$14990/$C6F8/$E2DA` IRQ4 callees with independently captured
+  instruction timing/state, including their nested interrupt behavior.
+- Port sub CPU caller, IRQ, road and sprite instruction timing. Existing
+  `OSubRoad`/`OSubSprites` routine checks verify values, not write times.
+- Advance both CPUs at verified yield boundaries against the production
+  physical timeline; replace supplied sub write frontiers, first-resume wait
+  operands, publication-wait progress and blit producer operands.
+
+Native Stage 1 remains active. None of these remaining dependencies is replaced
+with estimated durations or an arbitrary frame clock.
+
+Validation for this continuation: `make test`, `make verify-stage1` (audio RMS
+903.949), full `make -j4 oracle-test`, and `git diff --check` pass. The five
+mutations above fail; the immediate-entry mask mutation rejects 15/15 directed
+entries. New scheduling checks have zero skips; older standalone sprite and
+scenery tests retain their documented input-race skips. CMake test registration
+was updated, but CMake is unavailable in this environment and was not run.
+
+
+### Fourteen returned-word boundaries: $8AF8 and $B62E
+
+All fourteen CALL5 unknown returns are now computed: `$8AF8` nine times and
+`$B62E` five. `$8AF8` executes `MOVE.W ($29C0AA).L,D1` in four bus phases
+(16 clocks), preserving D1's upper word and X while replacing NZVC. `$B62E`
+executes `CMPI.W #$C0,D0` in two prefetch phases (8 clocks), preserving D0
+and X while computing word subtraction N/Z/V/unsigned-borrow flags. ROM
+addresses and bus sequencing are checked against the ROM disassembly and
+MAME's `move_w_adr32_dd` / `cmpi_w_imm16_ds` microcode. Both select physical
+IPL before the final prefetch and run in the existing caller scheduler.
+
+`AB2CALL6` adds these two instruction PCs to the capture and continuous
+physical visibility checks. The oracle can also read the prior CALL5 corpus
+as a baseline: each old unknown return must appear at the same PC/time in the
+new run, with identical computed RTE registers/SR/active stack, followed by
+matching instruction execution. Baseline state is an assertion, never a
+scheduler or instruction input. A missing, reseeded or different boundary
+fails the check. Result: **14/14 identical, 0 missing, 0 skipped**.
+
+The natural 600-frame capture verifies `$8AF8` 19,420/19,420 times and `$B62E`
+28,419/28,419 times; zero skips. Two IRQ entries occur at `$8AF8` and eight
+at `$B62E`. Aggregate acceptance is 565,130/565,130 instruction/entry records,
+1,734,137/1,734,137 bus events, 503,934/503,934 consecutive boundaries,
+1,355/1,355 linked IRQ services/selections and 60,027/60,027 handler bus
+transactions. Physical visibility matches 16,518,204/16,518,204 observations;
+zero skips in each new check. All 14 requested resumptions now carry computed
+CPU state; the new corpus has 1,330 linked resumed caller boundaries.
+
+Coverage: the load sees 78 word values, NZVC 0/4 and X clear. The compare
+sees 144 word values, NZVC 9 and both X states (24,024 clear / 4,395 set).
+Negative load values, X-set loads, compare equality/positive-result/overflow
+flag paths remain unexercised by this natural corpus; no claim is made for
+those paths beyond the instruction translation. The existing routine and
+caller checks retain their own directed coverage.
+
+The enlarged captured graph exposes **ten further returned-instruction
+boundaries**, `$8AFE` twice and `$B632` eight times. These successors are not
+the fourteen covered here. Full handler timing and independent CPU scheduling
+remain unfinished. Explicit inputs still include 1,355 shared-RAM snapshots,
+1,681 first-resume wait operands and 58,829 graph exits. The production ADC
+provides 1,340 computed results; external transaction/frontier times and
+sub-CPU progress remain supplied. Native Stage 1 remains active.
+
+Reproduce with `make oracle-capture-caller-words` followed by
+`make oracle-caller-words`. The test compares `caller_words.bin` against
+`caller_steps.bin`; both remain ignored under `build/oracle`. Make/CMake
+oracle suites include the new check and visibility corpus. Mutations
+`python3 tools/oracle/mutation_check.py returnedaltitude returnedcompare`
+change the shared load address and comparison immediate; both must fail.
+
+Validation: `make test`, `make verify-stage1` (audio RMS 903.949), full
+`make -j4 oracle-test`, and `git diff --check` pass. The load-address mutation
+rejects 19,422 bus phases; the compare-immediate mutation rejects 28,427
+instruction/entry records, including eight interrupted comparisons. Source
+mutations run only in ignored temporary copies. CMake registration was updated;
+CMake remains unavailable, so that build path was not run.
+
+
+### Ten successor returns: $8AFE and $B632
+
+All ten CALL6 successor boundaries now execute from computed RTE state:
+`$8AFE` twice and `$B632` eight times. `$8AFE` ports `SUB.W D1,36(A5)`:
+extension prefetch, destination word read, next prefetch, and word write,
+16 clocks total. It replaces X/N/Z/V/C, including borrow and signed overflow,
+without modifying D1 or A5. IRQ selection occurs before the write, as in
+MAME's `sub_w_dd_das` microcode. `$B632` ports `BGE.W $B654`, preserving
+registers/flags and testing N==V: 10 clocks taken, 12 untaken, each with two
+prefetches. ROM addresses and sequencing are independently checked against
+the disassembly and MAME's `bge_rel16` microcode.
+
+`AB2CALL7` extends the instruction/physical-visibility capture. The prior
+CALL6 unknown-return states are assertions only; they cannot seed execution.
+The baseline comparison requires the same PC/time, computed RTE registers,
+SR and active stack, then matching instruction output/bus phases. Natural
+result: **10/10 identical, 0 missing, 0 skipped**. The original fourteen
+returned-word baseline continues to pass in its separate CALL6 check.
+
+Natural 600-frame results: `$8AFE` 19,420/19,420 and `$B632` 28,419/28,419
+instruction executions, zero skips. Aggregate acceptance is 612,976/612,976 instruction/entry records,
+1,868,690/1,868,690 bus phases, 551,773/551,773 consecutive boundaries,
+1,362/1,362 linked IRQ services/selections and 60,343/60,343 handler bus
+transactions. Physical visibility matches 16,648,638/16,648,638 observations;
+zero skips. There are four IRQ entries at `$8AFE` and three at `$B632`, and
+1,340 resumed caller boundaries. All 19,420 subtraction writes are compared
+at their predicted CPU phase. The SUB sees 78 source words and XNZVC 0/$19;
+the natural BGE is untaken 28,419 times with N/V=1/0.
+
+The 120-frame directed capture uses the existing explicit fixture cuts, a
+real `MOVE.W #SR,SR`, and a JSR to the original `$B632`. Taken branches reach
+`$B654`/RTS and return to the fixture; no speculative handler graph executes.
+SR `$2300` and `$231A` exercise N/V=0/0 and 1/1, including retained X. The
+oracle's `--require-taken` check requires both conditions. All 84,625/84,625
+instruction/entry records, 254,657/254,657 bus phases, 261/261 IRQ2 services,
+11,616/11,616 handler transactions and 3,369,113/3,369,113 visibility
+observations match, zero skips. BGE taken/untaken counts are 22/3,032; SUB
+matches 2,438 executions. There are five directed IRQ entries at BGE, 44
+explicit fixture context cuts and 313 supplied first-resume wait operands.
+This fixture has no immediate post-RTE exceptions, so CALL7 acceptance checks
+selection assertions without inheriting the older corpora's nonzero immediate-
+exception coverage requirement. The natural CALL7 corpus retains 15 such
+exceptions; older IRQ2/6/4 tests keep their coverage requirements.
+
+Uncovered paths: SUB flag combinations other than 0/$19 (including zero
+and overflow results), and BGE N/V=0/1. Their
+instruction translations remain in place, but these captures do not verify
+those paths. Shared operand producers and full handler/sub timing remain
+explicit inputs. The natural expansion now exposes seven further returns:
+`$8B02` four times and `$B636` three. Native Stage 1 remains active; independent
+publication and sub progress are still pending.
+
+Reproduce with `make oracle-capture-caller-successors` and
+`make oracle-caller-successors`. Make/CMake oracle suites include the natural
+CALL6 baseline comparison, the taken-branch fixture, and both visibility
+corpora. Captures/logs remain ignored under `build/oracle`. Mutation command:
+`python3 tools/oracle/mutation_check.py successorsuboperand successorbranch`.
+The changed SUB operand displacement fails 38,844 bus comparisons; the
+changed taken branch destination fails 47 directed bus comparisons.
+
+Validation: `make test`, `make verify-stage1` (audio RMS 903.949), full
+`make -j4 oracle-test`, and `git diff --check` pass. Both successor mutations
+fail in ignored temporary copies. The first full-suite attempt found the
+older harness's nonzero immediate-exception requirement inappropriate for
+the new taken-branch fixture (all compared states/phases already matched);
+CALL7 now checks all selection assertions and explicitly requires both taken
+N/V states for that fixture. The full suite was rerun successfully afterward.
+Existing standalone sprite/scenery input-race skips remain unchanged; new
+successor checks have zero skips. CMake test registration is updated, but
+CMake is unavailable in this environment and was not run.
+
+
+### Post-RTE graph closure: seven returns and every further exposed return
+
+The seven CALL7 returns at `$8B02` (four) and `$B636` (three) now execute
+from computed RTE state. Extending the graph exposed another 31 returns;
+all were completed in this continuation rather than left as a new checkpoint:
+
+| Earlier capture | Newly exposed returned PC | Exact computed resumptions |
+| --- | --- | --- |
+| CALL7 successors | `$8B02/$B636` | 7/7 |
+| First extension | `$8B06/$B638` | 9/9 |
+| Publication extension | `$8B0C/$8C1A` | 12/12 |
+| Scale extension | `$8B30` | 4/4 |
+| Sway extension | `$8B64` | 6/6 |
+
+All **38/38 are identical, 0 missing, 0 skipped**. The final 600-frame
+capture also passes each earlier return baseline independently: timestamps,
+registers, SR and active stack are assertions of the computed RTE output,
+not supplied contexts for the newly ported instruction. Both final natural
+and directed corpora have **zero unported post-RTE returns**. The new
+`--require-closed` gate fails if even one such marker remains.
+
+`OMainIrqService::caller_step` adds 97 literal instruction PCs: the remaining
+world projection at `$8B02-$8C1A`, clipping/release at `$9556-$9572`, the
+publication producer at `$B636-$B654`. These translate the ROM's shifts, multiplier/divider accesses, indexed ROM/shared
+lookups, signed clipping, animation payload/flip stores, publication copies,
+count increment and stack returns. Every instruction uses the same operand
+width, bus order, flags and address as MAME. This completes these bounded
+components; it does not replace the other object handlers or time the
+functional `OMainWorld` port as one instantaneous call.
+
+Internal ALU completion needs a distinct CPU boundary. `$B636`'s ASL.W #4
+has one four-clock prefetch followed by ten internal clocks; `$8B06`'s
+ASR.W #5 has twelve internal clocks. Register-source long ADD/SUB and
+ADDA.W complete four clocks after their prefetch. Long ASR adds four internal
+base clocks plus twice its count; word ASR adds two plus twice its count.
+MAME's `nbcr3`, `srrl5` and `roml3` select the interrupt before the final two
+internal clocks, **after** prefetch completion. A physical edge delivered
+when that bus completes must participate in selection. An edge beyond the
+completed bus cannot be delivered inside the uninterrupted internal tail.
+
+The visibility oracle forecasts that delivery through the production
+`XBoardTimeline`/compare timer, rather than reading a captured IPL as an
+input. `irq_at` copies timer/scanline state without advancing the live board
+or invoking callbacks. Regression checks pin delivery exactly at the bus
+boundary, including VBLANK, and ensure forecasting changes no live state.
+The caller oracle additionally checks each internal selection at captured
+instruction-end minus two clocks. Natural/directed selections pass
+322,151/322,151 and 39,438/39,438 respectively, zero skips.
+
+`AB2CALL9` uses MAME's instruction hook to capture the actual CPU state before
+first-bus side effects and after internal ALU completion. Headless, read-only
+debugger breakpoints execute `printf` and resume; they change no registers,
+RAM or ROM. The capture reads the resulting register/SR/stack snapshots,
+never synthesizes expected shift/arithmetic results. Exact earlier timestamps
+and return states still match. Snapshot availability is mandatory for these
+instructions, so a missing hook cannot silently fall back to incomplete
+state. Earlier CALL formats retain their original compatibility checks.
+
+The directed corpus also exposed a supervisor IRQ6 after `$B654`'s RTS,
+returning to the real SR-writing fixture code at `$3FFD0A`, with restored
+SR `$2300` and wrapped supervisor SP zero. The state, entry, RTE and
+immediate selection already matched, but the service's former prefetch-only
+clock advances omitted two mutable RAM instruction reads. RTE now reads RAM
+targets through `MainBus` at its two prefetch phases. The linked caller oracle
+compares both reads directly against MAME. The older `AB2SVC02` protocol
+explicitly excluded its RAM trampoline's instruction reads; its test now
+asserts those two addresses, data words and timestamps separately against
+captured pre-service RAM and the recorded RTE end time: **2/2 identical,
+0 skipped**. Its original data-bus assertions remain intact.
+
+Final results, all with zero differences/skips:
+
+| Assertion | Natural 600 frames | Directed 120 frames |
+| --- | --- | --- |
+| Instruction/IRQ-entry records | 2,391,867/2,391,867 | 302,433/302,433 |
+| Caller bus phases | 7,028,756/7,028,756 | 881,497/881,497 |
+| Consecutive computed boundaries | 2,372,582/2,372,582 | 300,920/300,920 |
+| IRQ services/RTE selections | 1,858/1,858 | 321/321 |
+| Handler bus transactions | 82,930/82,930 | 14,246/14,246 |
+| Physical visibility observations | 21,655,111/21,655,111 | 3,976,979/3,976,979 |
+| Unported post-RTE returns | 0 | 0 |
+
+The natural capture retains 15 immediate exceptions and 1,843 user-mode
+caller resumptions. The directed capture includes one immediate exception,
+one supervisor-mode service return, 320 user returns and 44 explicit fixture
+context cuts. Independently scheduled waits still match 4,796,639 instructions
+and 14,389,792 bus assertions naturally, and 1,007,232 instructions and
+3,021,650 bus assertions in the fixture. First resumed wait operands remain
+supplied 1,681/313 times. ADC results are computed (1,843/320); physical input
+bytes and shared-RAM producer snapshots remain external (1,858/321 snapshots).
+
+Coverage includes every added instruction PC in the natural corpus. All
+three release branches take both paths: `$8B08` 203/19,217, `$8BB0`
+545/18,672 and `$8BB8` 437/18,235 taken/untaken; release runs 1,185 times.
+The publication ASL sees 144 source words, 0..143, and XNZVC 0/$04.
+The variable ASR.W only sees count two, with XNZVC 0/$11. Long ADD sees
+XNZVC 0/$08/$11/$19 and long SUB 0/$11/$19. Other shift counts, overflowing
+ASL sources, long signed-overflow flags and combinations not exercised here
+remain unverified. Taken producer BGE retains N/V=0/0 and 1/1 fixture coverage;
+natural N/V=1/0 is untaken. This is bounded corpus closure, not proof of every
+possible future game state.
+
+Eight deliberate mutations fail: depth operand displacement, ASL count,
+internal selection time, long carry, projection operand address, clip target,
+release bit and RAM return prefetch. Changed paths/timing can leave the bounded
+transcript before aggregate summaries; the mutation runner accepts the
+already-emitted failed bus/state assertions as differential evidence, not a
+bare generic exception. The selection mutation rejects 28,419 instruction
+records; carry rejects 19,716 consecutive boundaries; clip/release reject
+1,090/2,370 bus phases. RAM-prefetch omission rejects the supervisor return.
+All source variants, transcripts and logs remain ignored under `build/oracle`.
+
+Reproduce with `make oracle-capture-caller-closure` and
+`make oracle-caller-closure`; Make/CMake suites register both acceptance
+corpora and their visibility checks. Mutation command:
+`python3 tools/oracle/mutation_check.py closuredepth closureshift closurepoll closurecarry closureprojection closureclip closurerelease closureramprefetch`.
+`make test`, `make verify-stage1` (audio RMS 903.949), full
+`make -j4 oracle-test`, and `git diff --check` pass. The first full-suite run
+identified the older service protocol's explicit RAM-prefetch exclusion;
+its separate assertions were added and the entire suite rerun successfully.
+Existing standalone sprite/scenery input-race skips remain unchanged.
+CMake registration is updated; that build path was not run.
+
+Remaining Phase 3d limits: other handler/caller graphs, IRQ4 game-flow callbacks
+`$17146/$14990/$C6F8/$E2DA`, sub-generated width/animation/input operands,
+publication/sub cadence and independently scheduled paired gameplay remain
+external. The final natural corpus still records 16,413 explicit graph exits
+outside this component (directed 1,010). These are ordinary unported execution
+frontiers, distinct from the now-closed post-RTE markers. Native Stage 1 remains
+active; no captures or ROM data are committed.

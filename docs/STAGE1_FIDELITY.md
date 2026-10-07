@@ -249,3 +249,48 @@ Shared RAM and preceding ADC results remain supplied producer inputs. IRQ4,
 unported returned instructions and back-to-back exception entry remain explicit
 execution boundaries. This scheduler check does not enable live `OEngine`
 flight, weapon, reload or sound producer cadence; native Stage 1 remains active.
+
+The conditional road-pairing continuation now sends main target write-frontier
+outputs through `OSubRoad` and renders its computed raster: 240/240 road passes
+and RGB frames match MAME, zero skips. Target provenance retains 313 verified
+handler writes, 405 unported caller writes and 482 initial values. Sequence
+initializer/prepare/hide and RNG entries now route through `OMainHost`. These
+checks retain caller/sub timing, road-control and tile/palette boundaries;
+they do not enable independently scheduled player/weapon/enemy host execution
+or remove native Stage 1 producers. The runtime template inventory identifies
+seven unported initial handlers; formation/spawn and stage-flow remain explicit
+boundaries.
+
+
+The IRQ4 return continuation now retains computed SSP/USP, restored-mask
+selection and immediate exception entry. The six instruction PCs behind the
+original twelve unknown post-RTE boundaries are ported and independently
+checked (49,973 matching instruction executions). That caller corpus
+exposed fourteen returns at `$8AF8/$B62E`, plus explicit full-handler
+and game-flow boundaries. Sub road/sprite write timing and publication progress
+remain supplied; native Stage 1 has not been replaced by an independent host.
+
+The next returned-word checkpoint covers all fourteen `$8AF8/$B62E` boundaries
+from that corpus: 14/14 exact computed resumptions and 47,839/47,839 instruction
+executions match, zero missing/skipped. Enlarged coverage retains ten successor
+returns at `$8AFE/$B632`. Full handler/callee timing, publication progress and
+independent sub execution remain pending; native Stage 1 is still active.
+
+The successor checkpoint covers all ten `$8AFE/$B632` CALL6 returns:
+10/10 exact computed resumptions, 47,839/47,839 natural instruction executions
+and 22 taken BGE fixtures match, zero skips. That expansion exposed seven
+returns at `$8B02/$B636`, covered by the following continuation. Other
+handler/callee and publication/sub timing boundaries remain. Native Stage 1 remains active.
+
+
+The post-RTE closure continuation ports 97 instruction PCs through world
+projection/release and publication, closing those seven returns and all 31
+further returns exposed while extending the graph. Natural 600-frame and
+directed 120-frame checks match 2,694,300/2,694,300 instruction/entry records
+and 7,910,253/7,910,253 caller bus phases, zero skips. Both corpora require
+zero unported post-RTE returns. Late ALU state comes from real MAME instruction
+snapshots, and native timing includes post-prefetch IRQ selection and RAM
+return prefetches. Other handler/callee graphs, IRQ4 game-flow callbacks,
+shared/sub producers and independent publication/sub cadence remain supplied;
+the 16,413 natural graph exits are explicit boundaries outside this component.
+This does not replace native Stage 1 or complete Phase 3d host scheduling.

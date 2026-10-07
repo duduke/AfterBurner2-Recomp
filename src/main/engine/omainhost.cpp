@@ -20,7 +20,12 @@ bool OMainHost::execute(MainBus& bus, Registers& r, uint32_t entry, const Call& 
     // Route only the independently checked routine entry contracts. Internal
     // branch labels are owned by each port; unknown game-flow entries cannot
     // be silently treated as a handler or replaced with native behaviour.
-    if(entry==0xb628) OMainPlayer::append(bus,r);
+    if(entry==0x1488e) OMainObjects::initialize(bus,r);
+    else if(entry==0x16892) OMainObjects::player_initialize(bus,r);
+    else if(entry==0x16976) OMainObjects::player_prepare(bus,r);
+    else if(entry==0x169b2) OMainObjects::player_hide(bus,r);
+    else if(entry==0xc5a8) OMainObjects::random(bus,r);
+    else if(entry==0xb628) OMainPlayer::append(bus,r);
     else if(entry==0xb676) {
         // $00B676 BGT yields at the actual wait; never replay publication.
         // A supplied boundary may service the pending interrupt, then retry.

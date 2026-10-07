@@ -4,7 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <set>
-#include "engine/omainirqservice.hpp"
+#include "engine/omaincallerschedule.hpp"
 #include "roms.hpp"
 namespace {
 uint64_t num(std::ifstream& f,unsigned n) {uint64_t v=0;while(n--){int c=f.get();if(c<0)throw std::runtime_error("truncated IRQ4 capture");v=v<<8|c;}return v;}
@@ -20,6 +20,10 @@ bool leaf(uint32_t p) {return p==0x1495c||p==0x148be||p==0x148b8||p==0x147e8||p=
 int main(int argc,char** argv) try {
     std::ifstream f(argc>1?argv[1]:"build/oracle/irq4_service.bin",std::ios::binary);
     char magic[8];if(!f.read(magic,8)||memcmp(magic,"AB2IRQ46",8))throw std::runtime_error("invalid IRQ4 capture (regenerate with ROM operand reads)");
+    std::ifstream return_file;
+    if(argc>2){return_file.open(argv[2],std::ios::binary);char header[8];
+        if(!return_file.read(header,8)||memcmp(header,"AB2RTE42",8))throw std::runtime_error("invalid IRQ4 return capture");}
+    unsigned return_calls=0,return_bad=0,immediate=0,user_returns=0,entry_events=0,entry_bad=0,entry_state_bad=0;
     if(!roms.load_aburner2())throw std::runtime_error("ROMs required");
     MainBus::Memory memory;MainBus bus(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,memory);
     unsigned calls=0,identical=0,failed=0,events=0,differences=0,external=0,leaves=0,logic=0,normal=0,overflow=0;
@@ -92,7 +96,11 @@ int main(int argc,char** argv) try {
         c.boundary_ns+=80*OMainIrqService::completion_tail(bus.read16(c.interrupted_pc),source);
         ++phases[(c.boundary_ns/80)%10];
         const auto count=bus.read16(0x2a3c00);if(int16_t(count)<=0)++logic;else ++normal;if(count==0x8000)++overflow;
-        bool ok=true;size_t cursor=0,hcursor=0;OMainIrqService service;
+        bool ok=true;size_t cursor=0,hcursor=0;OMainIrqService service;OMainCallerSchedule schedule;
+        const bool linked=return_file.is_open();
+        uint32_t usp=0,active_sp=0,prefetched_pc=0;uint64_t selection_ns=0;unsigned physical=0;
+        if(linked){usp=num(return_file,4);selection_ns=num(return_file,8);physical=num(return_file,1);active_sp=num(return_file,4);prefetched_pc=num(return_file,4);}
+        auto current_pc=[&](){return linked?schedule.current_pc():service.current_pc();};
         size_t subcursor=0;
         unsigned operand_frontier=0;
         auto apply_sub=[&](){
@@ -110,15 +118,15 @@ int main(int argc,char** argv) try {
         };
         MainBus::Trace trace{nullptr,nullptr,[&](bool w,uint32_t a,uint16_t d,uint16_t m) {
             ++operand_frontier;
-            const auto p=service.current_pc();
+            const auto p=current_pc();
             if(!w&&a==p+4&&(p==0x13bc4||(p>=0x13bf0&&p<=0x13bf6)||p==0x13c12||(p>=0x13c28&&p<=0x13c36)||(p>=0x132da&&p<=0x132e6)||(p>=0x13310&&p<=0x1331c)))
                 throw std::runtime_error("palette operand aliases instruction prefetch excluded by capture");
             // Conservative maximum extension/prefetch window for the new
             // callee graph. Reject operands Lua could mistake for a fetch.
             if(!w&&a>=p+2&&a<=p+10)throw std::runtime_error("callee operand aliases excluded instruction fetch");
             ++events;bool equal=cursor<expected.size();
-            if(equal) {const auto& e=expected[cursor++];equal=e.w==w&&e.ns==now&&e.pc==service.current_pc()&&e.a==a&&e.m==m&&(e.d&m)==(d&m);
-                if(!equal&&differences<20)std::cerr<<std::hex<<"IRQ4 bus pc="<<service.current_pc()<<'/'<<e.pc<<" a="<<a<<'/'<<e.a<<" data="<<(d&m)<<'/'<<(e.d&e.m)<<std::dec<<" time="<<now<<'/'<<e.ns<<'\n';}
+            if(equal) {const auto& e=expected[cursor++];equal=e.w==w&&e.ns==now&&e.pc==current_pc()&&e.a==a&&e.m==m&&(e.d&m)==(d&m);
+                if(!equal&&differences<20)std::cerr<<std::hex<<"IRQ4 bus pc="<<current_pc()<<'/'<<e.pc<<" a="<<a<<'/'<<e.a<<" data="<<(d&m)<<'/'<<(e.d&e.m)<<std::dec<<" time="<<now<<'/'<<e.ns<<'\n';}
             if(!equal){++differences;ok=false;}
         }};
         // Sub-owned write frontiers and physical input are supplied
@@ -128,7 +136,7 @@ int main(int argc,char** argv) try {
             if(w||cursor>=expected.size())return;
             const auto& e=expected[cursor];
             if(e.a!=a||e.m!=m)return;
-            if(service.current_pc()==0xb7e2 || (service.current_pc()>=0xb7ea&&service.current_pc()<=0xb7f0)) {
+            if(current_pc()==0xb7e2 || (current_pc()>=0xb7ea&&current_pc()<=0xb7f0)) {
                 // The sub-produced sorted list/count remains an operand
                 // boundary; main-produced pointer loads are compared.
                 const auto o=MainBus::memory_offset(a);
@@ -159,8 +167,41 @@ int main(int argc,char** argv) try {
             ok &= h.entry==entry&&at==(entering?h.start:h.end)&&same(r,entering?h.pre:h.post);
             if(!entering)++hcursor;
         };
-        bus.trace=&trace;auto result=service.run(bus,c,advance,boundary,observe);bus.trace=nullptr;apply_sub();
-        ok &= operand_frontier==captured_operands&&subcursor==subevents.size()&&cursor==expected.size()&&hcursor==hooks.size()&&result.ns==end&&result.sp==sp&&result.sr==sr&&same(result.registers,post)&&result.pc==(sr==0x700?0x1a130:c.return_pc);
+        bus.trace=&trace;OMainIrqService::Result result;
+        if(linked){
+            // Interrupted instruction completion and physical IPL are still
+            // boundary inputs; the entered handler and returned CPU state are computed.
+            schedule.resume_instruction({{c.registers,c.return_pc,(c.sr&0x2000)?c.supervisor_sp:usp,c.sr,c.boundary_ns},4,0},c.interrupted_pc,usp);
+            schedule.enter(bus,c.supervisor_sp,advance);
+            result=schedule.finish(bus,advance,[&](uint64_t at){
+                if(at!=selection_ns){ok=false;++return_bad;}return physical;
+            },boundary,observe);
+            const auto selected=num(return_file,1);
+            // At the last RTE prefetch MAME exposes return PC + 2.
+            const bool equal=result.sp==active_sp&&result.pc+2==prefetched_pc&&schedule.supervisor_stack()==sp&&schedule.state().irq==selected;
+            if(!equal){ok=false;++return_bad;if(return_bad<6)std::cerr<<std::hex<<"IRQ4 return sp="<<result.sp<<'/'<<active_sp<<" pc="<<result.pc<<'/'<<prefetched_pc<<" SSP="<<schedule.supervisor_stack()<<'/'<<sp<<std::dec<<" IRQ="<<schedule.state().irq<<'/'<<selected<<'\n';}
+            ++return_calls;if(!(sr&0x2000))++user_returns;
+            if(selected){
+                ++immediate;const auto entry_end=num(return_file,8);auto entry_n=num(return_file,4);
+                if(entry_n>10)throw std::runtime_error("invalid IRQ4 immediate entry count");
+                std::vector<Event> entry_expected;while(entry_n--)entry_expected.push_back(event(return_file));
+                const auto entry_sp=num(return_file,4),entry_sr=num(return_file,2);const auto entry_regs=regs(return_file);
+                size_t entry_cursor=0;
+                MainBus::Trace entry_trace{nullptr,nullptr,[&](bool w,uint32_t a,uint16_t d,uint16_t m){
+                    ++entry_events;bool same=entry_cursor<entry_expected.size();
+                    if(same){const auto& e=entry_expected[entry_cursor++];same=e.ns==now&&e.pc==schedule.current_pc()&&e.a==a&&e.m==m&&e.w==w&&(e.d&m)==(d&m);}
+                    if(!same){ok=false;++entry_bad;}
+                }};bus.trace=&entry_trace;
+                if(schedule.state().irq==selected){
+                    const auto entered=schedule.enter(bus,schedule.supervisor_stack(),advance);
+                    const bool same=entry_cursor==entry_expected.size()&&entered.ns==entry_end&&entered.sp==entry_sp&&entered.sr==entry_sr&&::same(entered.registers,entry_regs);
+                    if(!same){ok=false;++entry_state_bad;}
+                }else {ok=false;++entry_state_bad;}
+                bus.trace=&trace;
+            }
+        }else result=service.run(bus,c,advance,boundary,observe);
+        bus.trace=nullptr;apply_sub();
+        ok &= operand_frontier==captured_operands&&subcursor==subevents.size()&&cursor==expected.size()&&hcursor==hooks.size()&&result.ns==end&&(linked?schedule.supervisor_stack():result.sp)==sp&&result.sr==sr&&same(result.registers,post)&&result.pc==(sr==0x700?0x1a130:c.return_pc);
         ++calls;if(ok)++identical;else {++failed;if(failed<8)std::cerr<<"IRQ4 call "<<calls<<" end "<<result.ns<<'/'<<end<<" consumed "<<cursor<<'/'<<expected.size()<<'\n';}
     }
     std::cout<<"IRQ4 service envelope: "<<identical<<" of "<<calls<<" identical, "<<failed<<" different, 0 skipped\nIRQ4 predicted bus events: "<<events-differences<<" of "<<events<<" identical, "<<differences<<" different, 0 skipped\nCoverage: logic="<<logic<<" normal="<<normal<<" signed-overflow="<<overflow<<" timed leaves="<<leaves<<" external callee boundaries="<<external<<"\nEdges: redirects="<<redirects<<" normal/interpolated blits="<<normal_blits<<'/'<<interpolated<<" skipped draw="<<draw_skipped<<" timer rollovers="<<rollovers<<"; E phases";
@@ -172,5 +213,9 @@ int main(int argc,char** argv) try {
     std::cout<<"Palette cycle calls: "<<cycle_calls<<" empty="<<cycle_empty<<" ordinary="<<cycle_ordinary<<" alternate="<<cycle_alternate<<" fade destinations="<<cycle_fade<<" selectors="<<cycle_selectors.size()<<" phase words="<<cycle_phases.size()<<'\n';
     std::cout<<"Computed complex callees:";for(unsigned k=0;k<5;++k)std::cout<<' '<<std::hex<<complex_entries[k]<<std::dec<<'='<<callee_calls[k];std::cout<<" operand/stack PCs="<<callee_pcs.size()<<'\n';
     std::cout<<"Callee paths: fade trigger/capture/upload="<<trigger<<'/'<<capture_bank<<'/'<<fade_upload<<" banks/masks="<<fade_banks.size()<<'/'<<fade_masks.size()<<" blend setup/step operands="<<blend_setup<<'/'<<blend_step<<" reload HUD="<<reload_hud<<" scenery clear/setup/word tiles/view init="<<scenery_clear<<'/'<<scenery_setup<<'/'<<scenery_words<<'/'<<view_init<<" transition completion="<<transition_end<<'\n';
-    return calls&&!failed&&!differences?0:1;
+    if(return_file.is_open()&&return_file.peek()!=std::char_traits<char>::eof())throw std::runtime_error("unconsumed IRQ4 return capture");
+    std::cout<<"Linked IRQ4 RTE: "<<return_calls-return_bad<<" of "<<return_calls<<" identical, "<<return_bad<<" different, 0 skipped; "<<immediate<<" immediate entry assertions; "<<user_returns<<" user returns\n";
+    std::cout<<"IRQ4 immediate entries: "<<immediate-entry_state_bad<<" of "<<immediate<<" identical, "<<entry_state_bad<<" different, 0 skipped\n";
+    std::cout<<"IRQ4 immediate entry bus events: "<<entry_events-entry_bad<<" of "<<entry_events<<" identical, "<<entry_bad<<" different, 0 skipped\n";
+    return calls&&!failed&&!differences&&!return_bad&&!entry_bad&&!entry_state_bad?0:1;
 } catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

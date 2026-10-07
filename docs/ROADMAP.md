@@ -106,11 +106,24 @@ pass, including IRQ4 at every re-arm instruction. Physical IPL visibility and bo
 delivery and instruction completion tails; retained busy-spin gaps execute
 from computed CPU state. PR #22 is merged: bounded IRQ2/IRQ6 returns now carry
 computed CPU state through RTE into caller execution. Immediate post-RTE selection/entry is now computed from restored SR and
-physical IPL. Unported returned instructions, handler/IRQ4 resumptions and
-sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
+physical IPL. IRQ4 RTE/USP and immediate entry now pass 714/714 services;
+the six PCs behind all twelve original returned-instruction boundaries are
+ported. The fourteen subsequent returns at `$8AF8/$B62E` now pass; the ten successors at `$8AFE/$B632` also pass. The seven further returns at
+`$8B02/$B636` and 31 subsequently exposed returns are now closed through the
+world projection/release and publication producer graphs. Both the natural
+600-frame and directed 120-frame corpora have zero unported post-RTE returns.
+Other handler graphs, IRQ4 game-flow callees and sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
 ADC/mux, button and sound-latch endpoints; the fixed frame IRQ loop and
 unverified input/reload calls were removed. Resume at the supplied boundaries and independent
-host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
+host scheduling; native Stage 1 remains active. The caller oracle now takes
+ADC results from the continuous production `OMainIO` timeline rather than
+expected read bytes; hardware transactions/frontiers outside the bounded
+caller remain supplied. Conditional player/weapon-to-road pairing now
+computes displayed rasters and passes 240/240 RGB frames; per-target write
+provenance distinguishes verified producers, unported callers and initial
+values. Sequence initializer/prepare/hide and RNG now route through `OMainHost`.
+The runtime template inventory still identifies seven unported initial handlers.
+Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
@@ -370,7 +383,15 @@ player/weapon acceptance remain pending.
       matches 7,058/7,058 calls and 45,176/45,176 continuous hardware events,
       0 skipped; physical axis endpoints and button edges have 720/720
       separate mapping checks. Physical endpoints are now installed through
-      `OMainIO`; host CPU/IRQ scheduling and conversion-to-flight wiring remain.
+      `OMainIO`; the bounded caller consumes computed conversions. Host CPU/IRQ
+      scheduling and conversion-to-flight wiring remain.
+- [x] Continuous production ADC producer at bounded caller services:
+      `OMainIO` handles CPU bus delivery and ADC transaction time separately.
+      1,656 computed ADC reads feed 1,673/1,673 IRQ2/IRQ6 services and
+      74,059/74,059 bus events, zero skips; 20,387,341/20,387,341 physical
+      observations pass. Two producer mutations fail. Physical inputs and
+      unported hardware transaction/frontier times remain capture boundaries;
+      this does not complete independently scheduled input wiring.
 - [x] Production host I/O endpoints (`OMainIO`, PR #21): shared ADC/mux,
       active-low buttons and ordered sound-command buffering installed in
       `OEngine`. The same production callbacks pass 7,058/7,058 IRQ calls,
@@ -482,6 +503,37 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       entries match, zero skips; three mutations fail. Twelve unported returned
       instructions remain supplied; coverage is in `ENGINE_NOTES.md`. IRQ4 returns,
       producer cadence and sub progress remain supplied.
+- [x] Conditional player/weapon-to-road/compositor pairing: 122/122 complete
+      dispatchers, 240/240 road passes and 240/240 RGB frames match, zero skips.
+      Per-word write frontiers pair targets even before sprite publication;
+      313 target operands come from verified handlers, 405 from unported callers,
+      and 482 from initial boundaries. Sequence initializer/prepare/hide and
+      RNG route through the common host; two new mutations fail. Independent
+      scheduling and live wiring remain pending; see `ENGINE_NOTES.md`.
+- [x] Connect IRQ4 RTE/USP and restored-mask selection to the caller scheduler;
+      port the six PCs behind all twelve original returned-instruction boundaries.
+      Natural/directed IRQ4 returns: 714/714, zero skips; added caller
+      instructions: 49,973/49,973, zero skips. That corpus exposed fourteen
+      returns at `$8AF8/$B62E`, covered by the following checkpoint. Full
+      handler/callee graphs and sub progress remain pending.
+- [x] Complete the fourteen returned-word boundaries at `$8AF8/$B62E`:
+      14/14 exact CALL5 return timestamps resume from computed CPU state,
+      zero missing/skipped; 47,839/47,839 added instruction executions match.
+      Expanded coverage exposes ten successor returns at `$8AFE/$B632`;
+      full handler/callee timing, publication and sub progress remain pending.
+- [x] Complete the ten CALL6 successor returns at `$8AFE/$B632`:
+      10/10 computed resumptions, zero missing/skipped; 47,839/47,839 natural
+      instructions match. Taken BGE fixtures and two failing mutations pass.
+      That expansion exposed seven returns at `$8B02/$B636`, closed below.
+      Other handler/callee timing and independent publication/sub progress
+      remain pending.
+- [x] Close those seven returns and every further exposed return: 38/38
+      exact resumptions across the successive corpora, zero missing/skipped.
+      Port 97 instruction PCs through world projection/release and publication.
+      Natural/directed: 2,694,300/2,694,300 instruction/entry assertions and
+      7,910,253/7,910,253 caller bus phases, zero skips; no unported post-RTE
+      returns remain in either corpus. Preserve real internal-tail CPU state,
+      late IRQ selection and RAM return prefetches. See `ENGINE_NOTES.md`.
 - [ ] Independently schedule handler/caller and ISR resumptions, then
       progress publication and sub execution without
       captured operand frontiers.

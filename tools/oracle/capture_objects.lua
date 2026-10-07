@@ -327,6 +327,10 @@ object_reads=space:install_read_tap(0,0x3fffff,"object_reads",function(a,data,ma
 end)
 object_writes=space:install_write_tap(0,0x3fffff,"object_writes",function(a,data,mask)
  if guard or ab2_capture_guard then return end
+ local target=(a==0x29c0ce or a==0x29c0d0 or a==0x29c0c2 or a==0x29c0c0 or a==0x29c0aa)
+ if target and os.getenv("AB2_ORACLE_PAIRED_ROAD")=="1" then
+  ab2_road_target_sources=ab2_road_target_sources or {};ab2_road_target_sources[a]=nil
+ end
  local p=pc.value
  if not before then
   if p==0x16892 and not host and (not calls or injected) then begin(0x16892)
@@ -351,6 +355,9 @@ object_writes=space:install_write_tap(0,0x3fffff,"object_writes",function(a,data
   local r=registers();r[9]=0xb676;finish(nil,nil,nil,r);return
  end
  ordinal=ordinal+1
+ if target and os.getenv("AB2_ORACLE_PAIRED_ROAD")=="1" and mask==0xffff then
+  ab2_road_target_sources[a]={records,ordinal}
+ end
  local o=offset(a)
  if o and o>=0x7e00 and o<0x8000 then return end
  if p>=0x1461c and p<=0x14816 and (not interleave and (host or not hook)) then

@@ -5,6 +5,11 @@ local board=manager.machine.devices[":mainpcb"]
 local timer=emu.item(assert(board.items["0/m_timer_irq_state"]))
 local blank=emu.item(assert(board.items["0/m_vblank_irq_state"]))
 local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2IRQ46")
+local returns
+if os.getenv("AB2_ORACLE_IRQ4_RETURN")=="1" then
+ returns=assert(io.open(os.getenv("AB2_ORACLE_OUT")..".returns","wb"));returns:write("AB2RTE42")
+end
+local initial_usp,return_pending,return_entry
 local guard,active,last,hook=false,false,nil,nil
 local events,hooks,subevents,pre={},{},{},nil
 local frame,calls,dropped,operand_frontier=0,0,0,0
@@ -72,6 +77,23 @@ end
 local function access(w,a,d,m)
  if guard then return end
  local p=main.state.CURPC.value
+ if return_pending then
+  return_pending=false
+  local irq=w and a==((main.state.SP.value-2)&0x3ffffe) and (main.state.SR.value&0x700)>0x100
+  returns:write(string.char(irq and (main.state.SR.value>>8&7) or 0))
+  if irq then
+   local selected=main.state.SR.value>>8&7
+   return_entry={events={},target=selected==2 and 0x1461c or selected==4 and 0x14674 or 0x1466c}
+  end
+ end
+ if return_entry then
+  if w or a<0x80 then return_entry.events[#return_entry.events+1]=string.pack(">I8I4I4I2I2B",ns(),p,a,d,m,w and 1 or 0)end
+  if not w and a==return_entry.target+2 then
+   returns:write(string.pack(">I8I4",ns()+320,#return_entry.events),table.concat(return_entry.events),
+    string.pack(">I4I2",main.state.SP.value,main.state.SR.value),regs())
+   return_entry=nil
+  end
+ end
  if not active and w and last and blank:read(0)~=0 and main.state.SR.value>>8&7==4 and a==((main.state.SP.value-2)&0x3ffffe) then
   if directed then
    guard=true
@@ -157,6 +179,7 @@ local function access(w,a,d,m)
    space:write_u16(0x3f8174,59);space:write_u16(0x3f881c,59);space:write_u16(0x3f880a,1)
    guard=false
   end
+  initial_usp=main.state.USP.value
   pre=string.pack(">I8I4I4I2I4I2",last.t+320,last.pc,main.state.PC.value,(last.sr&0xffe0)|(main.state.SR.value&31),main.state.SP.value,last.count)..regs()..snapshot()
   active=true;events={};hooks={};subevents={};operand_frontier=0;hook=nil;service_return=main.state.PC.value
  end
@@ -189,6 +212,11 @@ local function access(w,a,d,m)
   if not w and (p==0x147c6 or p==0x147e6) and a==((p==0x147e6 and 0x1a132 or service_return+2)&0x3ffffe) then
    assert(not hook,"unfinished callback")
    out:write(pre,string.pack(">I8I4I4I4",ns()+320,#events,#hooks,#subevents),table.concat(subevents),table.concat(events),table.concat(hooks),regs(),string.pack(">I4I2",main.state.SP.value,main.state.SR.value))
+   if returns then
+    returns:write(string.pack(">I4I8BI4I4",initial_usp,ns(),(timer:read(0)~=0 and 2 or 0)|(blank:read(0)~=0 and 4 or 0),
+     main.state.SR.value&0x2000~=0 and main.state.SP.value or main.state.USP.value,main.state.PC.value))
+    return_pending=true
+   end
    active=false;calls=calls+1
   end
  end
@@ -213,6 +241,10 @@ irq4_frames=emu.add_machine_frame_notifier(function()
  frame=frame+1
  if frame>=tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then
   if active then dropped=dropped+1 end
+  if returns then
+   assert(not return_pending and not return_entry,"unfinished IRQ4 return assertion")
+   returns:close()
+  end
   out:close();print(string.format("captured %d IRQ4 service envelopes through frame %d (%d unfinished)",calls,frame,dropped));manager.machine:exit()
  end
 end)

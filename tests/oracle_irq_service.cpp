@@ -39,7 +39,7 @@ int main(int argc,char** argv) try {
     bus.io[0].output=[&](unsigned p,uint8_t d,uint8_t) { if(p==2)mux=d; };
     unsigned calls=0,identical=0,failed=0,events=0,event_failed=0,hardware=0,hardware_failed=0,level2=0,level6=0;
     unsigned mask_baseline=0,mask_probes=0,pending_masked=0,unmasked=0;
-    unsigned tails=0,reg_shifts=0,frames_seen=0;
+    unsigned tails=0,reg_shifts=0,frames_seen=0,fixture_prefetches=0,fixture_prefetch_bad=0;
     unsigned phase[10]={},slots[6]={},sound=0,disabled=0,even=0,empty=0;
     uint64_t min_cycles=~uint64_t(0),max_cycles=0;
     while(f.peek()!=std::char_traits<char>::eof()) {
@@ -106,8 +106,20 @@ int main(int argc,char** argv) try {
         if(c.level==2)++level2;else ++level6;
         ++phase[(c.boundary_ns/80+10)%10];
         size_t cursor=0,frame_cursor=0;unsigned mismatches=0;
-        OMainIrqService service;
+        OMainIrqService service;unsigned return_prefetches=0;
         MainBus::Trace trace{nullptr,nullptr,[&](bool w,uint32_t a,uint16_t d,uint16_t m) {
+            // AB2SVC02 explicitly omitted the RAM mask trampoline's
+            // instruction fetches. Assert the newly computed RTE reads
+            // separately against its captured pre-service code and end time.
+            if(!w&&(service.current_pc()==0x1466a||service.current_pc()==0x14672)&&a>=0x3ffd00&&a<0x3ffd80){
+                const auto expected_address=(c.return_pc+2*return_prefetches)&0x3fffff;
+                const auto o=MainBus::memory_offset(expected_address);
+                const bool equal=return_prefetches<2&&o<before.size()-1&&a==expected_address&&m==0xffff&&
+                    board.now()==end-640+320*return_prefetches&&d==uint16_t(before[o]<<8|before[o+1]);
+                ++return_prefetches;++fixture_prefetches;
+                if(!equal){++fixture_prefetch_bad;++mismatches;}
+                return;
+            }
             ++events;bool equal=cursor<expected.size();
             if(equal) { const auto& e=expected[cursor++];equal=e.ns==board.now()&&e.address==a&&e.mask==m&&(e.data&m)==(d&m)
                 && e.kind==unsigned(w)&&e.pc==service.current_pc(); }
@@ -131,6 +143,8 @@ int main(int argc,char** argv) try {
         const auto entered=service.enter(bus,c,advance);
         const auto result=service.finish(bus,entered,advance);
         bus.trace=nullptr;
+        const bool fixture_return=(c.return_pc&0x3fffff)>=0x3ffd00&&(c.return_pc&0x3fffff)<0x3ffd80;
+        ok &= return_prefetches==(fixture_return?2u:0u);
         ok &= !mismatches&&cursor==expected.size()&&frame_cursor==frames.size()&&result.ns==end
             && result.registers.d==post.d&&result.registers.a==post.a&&result.pc==c.return_pc&&result.sp==post_sp&&result.sr==post_sr&&OMainIrqService::eligible(c.level,c.sr);
         std::array<uint8_t,0x8000> marked{};
@@ -142,10 +156,11 @@ int main(int argc,char** argv) try {
         ++calls;if(ok)++identical;else {++failed;if(failed<9)std::cerr<<"Service "<<calls<<" pc="<<std::hex<<c.interrupted_pc<<std::dec
             <<" events="<<mismatches<<" end="<<result.ns<<'/'<<end<<'\n';}
     }
+    std::cout<<"RAM fixture return prefetches: "<<fixture_prefetches-fixture_prefetch_bad<<" of "<<fixture_prefetches<<" identical, "<<fixture_prefetch_bad<<" different, 0 skipped\n";
     std::cout<<"CPU service vs arcade: "<<calls<<" calls, "<<identical<<" identical, "<<failed<<" different, 0 skipped\n";
     std::cout<<"Service bus timing: "<<events<<" events, "<<events-event_failed<<" identical, "<<event_failed<<" different, 0 skipped"
         <<"\nService external hardware: "<<hardware<<" events, "<<hardware-hardware_failed<<" identical, "<<hardware_failed<<" different, 0 skipped\nMask coverage: "<<mask_probes<<" probes, "<<pending_masked<<" pending while masked, "<<unmasked<<" serviced after unmask\nCoverage: IRQ2="<<level2<<" IRQ6="<<level6
         <<" cycles="<<min_cycles<<".."<<max_cycles<<" completion tails="<<tails<<" register shifts="<<reg_shifts<<" input frames during service="<<frames_seen<<" latch="<<sound<<" disabled/even/empty="<<disabled<<'/'<<even<<'/'<<empty<<"; E phases";
     for(unsigned i=0;i<10;++i)std::cout<<' '<<i<<'='<<phase[i];std::cout<<"; slots";for(unsigned i=0;i<6;++i)std::cout<<' '<<i<<'='<<slots[i];std::cout<<'\n';
-    return calls&&!failed&&!event_failed&&!hardware_failed?0:1;
+    return calls&&!failed&&!event_failed&&!hardware_failed&&!fixture_prefetch_bad?0:1;
 } catch(const std::exception& e) { std::cerr<<e.what()<<'\n';return 1; }

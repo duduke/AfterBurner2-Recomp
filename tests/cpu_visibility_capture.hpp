@@ -2,19 +2,33 @@
 #include <array>
 #include <fstream>
 #include <vector>
+#include <map>
 #include <algorithm>
 #include <iostream>
 #include <cstring>
-#include "hwmath/xboard_cpu_visibility.hpp"
+#include "engine/omainio.hpp"
 
 // Captured physical levels are assertions only. Generated levels are the
 // caller oracle's Poll inputs; bus/frontier gaps remain labelled boundaries.
 struct CpuVisibilityCapture {
-    struct Phase { uint64_t ns, previous_end; uint32_t pc,address; uint16_t data,mask; unsigned level; bool write; };
+    struct Phase { uint64_t ns, previous_end; uint32_t pc,address; uint16_t data,mask; unsigned level; bool write; uint8_t adc; };
     std::vector<Phase> phases;
     const Phase* find(uint64_t ns) const {
         auto it=std::lower_bound(phases.begin(),phases.end(),ns,[](const Phase& p,uint64_t t){return p.ns<t;});
         return it!=phases.end()&&it->ns==ns?&*it:nullptr;
+    }
+    static bool internal(uint32_t pc) {
+        switch(pc) {
+        case 0xb636:case 0xb63e:case 0x8b06:case 0x8b24:case 0x8b2e:case 0x8b40:case 0x8b5e:
+        case 0x8b76:case 0x8b78:case 0x8b86:case 0x8b88:case 0x8ba8:case 0x8bce:case 0x8bd0:case 0x8bde:case 0x8be0:return true;
+        default:return false;
+        }
+    }
+    std::map<uint64_t,unsigned> completion_levels;
+    unsigned internal_poll(uint64_t prefetch_ns) const {
+        auto it=completion_levels.find(prefetch_ns);
+        if(it==completion_levels.end())throw std::runtime_error("missing internal completion poll");
+        return it->second;
     }
     unsigned records=0,failed=0,delayed=0,adc_reads=0,frames=0,tails=0,levels[7]={};
     static uint64_t number(std::ifstream& f,unsigned n) {
@@ -23,9 +37,9 @@ struct CpuVisibilityCapture {
     explicit CpuVisibilityCapture(const char* path) {
         std::ifstream f(path,std::ios::binary);char magic[8];
         if(!f.read(magic,8)||std::memcmp(magic,"AB2VIS02",8))throw std::runtime_error("invalid CPU visibility capture");
-        CompareTimer5250 timer;XBoardTimeline board(timer);XBoardCpuVisibility cpu(board);
-        std::array<uint8_t,8> inputs{};bool initialized=false;uint8_t mux=0;
-        board.adc.analog=[&]{return inputs[(mux>>2)&7];};
+        MainBus::Memory memory;MainBus bus(nullptr,0,nullptr,0,memory);
+        OMainIO hardware(bus);auto& board=hardware.board;auto& timer=bus.compare_timer;
+        std::array<uint8_t,8> inputs{};bool initialized=false;
         try { while(f.peek()!=std::char_traits<char>::eof()) {
             auto t=number(f,8),end=number(f,8);auto pc=number(f,4),a=number(f,4);
             auto d=number(f,2),m=number(f,2);auto kind=number(f,1),observed=number(f,1),selected=number(f,1);
@@ -33,29 +47,35 @@ struct CpuVisibilityCapture {
             auto opcode=number(f,2),source=number(f,2),fetch=number(f,1);
             if(kind>2||observed>6||observed%2||fetch>1||(opcode&&!fetch))throw std::runtime_error("invalid visibility context");
             if(opcode&&m68000_completion_tail(opcode,source))++tails;
-            if(!initialized){inputs=current;initialized=true;}
+            if(!initialized){inputs=current;hardware.set_inputs(inputs);initialized=true;}
             bool ok=true;
-            if(kind==2){board.advance_before(t);inputs=current;++frames;}
+            if(kind==2){board.advance_before(t);inputs=current;hardware.set_inputs(inputs);++frames;}
             else {
-                cpu.resume(end,opcode,source);cpu.before_bus(t);
+                hardware.before_bus(t,end,opcode,source);
                 // Read taps see the timer acknowledgement's line change.
                 if(kind==0&&a>=0xe8000&&a<0xec000)timer.read(a>>1);
                 if(kind==0&&a>=0x130000&&a<0x140000&&(m&255)){
-                    ++adc_reads;ok &= (board.adc.read(board.now())&m)==(d&m&255);
+                    ++adc_reads;ok &= (bus.endpoints.adc_read()&m)==(d&m&255);
                 }
-                if((pc>=0x1458a&&pc<=0x145b8)||(pc>=0x14856&&pc<=0x14878)||(pc>=0xb676&&pc<=0xb696)||pc==0x1466a||pc==0x14672)
-                    phases.push_back({t,end,uint32_t(pc),uint32_t(a),uint16_t(d),uint16_t(m),board.main_irq_level(),kind==1});
+                if((pc>=0x1458a&&pc<=0x145b8)||(pc>=0x14856&&pc<=0x14878)||(pc>=0xb676&&pc<=0xb696)||pc==0x1466a||pc==0x14672||(pc>=0x8b02&&pc<=0x8c1a)||(pc>=0x9556&&pc<=0x9572)||pc==0x8c1a||(pc>=0xb636&&pc<=0xb654)||pc==0x8afe||pc==0xb632||pc==0x8af8||pc==0xb62e||pc==0x88c2||pc==0x8af2||pc==0x7bb6||pc==0x14ee2||pc==0xb628||pc==0x15bfe||(kind==0&&a>=0x130000&&a<0x140000&&(m&255)))
+                    phases.push_back({t,end,uint32_t(pc),uint32_t(a),uint16_t(d),uint16_t(m),board.main_irq_level(),kind==1,board.adc.value()});
+                // Register shifts and ADDA select at nbcr3/roml3, after
+                // their prefetch. MAME can deliver an edge at the completed
+                // four-clock bus, but cannot yield inside the internal tail.
+                if(internal(pc)) {
+                    completion_levels.emplace(t,board.irq_at(std::max(board.now(),t+320)));
+                }
                 const auto line0=XBoardTimeline::RESET_LINE0_NS;
                 if(t>=line0 && board.next_scanline()<=t)++delayed;
                 ok &= inputs==current;
             }
-            ok &= board.main_irq_level()==observed && mux==selected;
+            ok &= board.main_irq_level()==observed && hardware.selected_mux()==selected;
             if(!ok && ++failed<10)std::cerr<<"Visibility t="<<t<<" frontier="<<end<<" pc="<<std::hex<<pc<<" a="<<a<<std::dec<<" IPL="<<board.main_irq_level()<<'/'<<observed<<'\n';
             ++levels[board.main_irq_level()];++records;
             if(kind==1){
                 if(a>=0xe8000&&a<0xec000)timer.write(a>>1,d,m);
-                else if(a>=0x130000&&a<0x140000&&(m&255))board.adc.write(t);
-                else if(a==0x140004&&(m&255))mux=d;
+                else if(a>=0x130000&&a<0x140000&&(m&255))bus.endpoints.adc_write(d);
+                else if(a==0x140004&&(m&255))bus.io[0].output(2,d,0xff);
             }
         }} catch(...) { report();throw; }
     }

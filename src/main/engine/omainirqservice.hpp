@@ -57,7 +57,7 @@ private:
     LeafObserver observe_leaf;
     uint64_t ns{};
     uint32_t pc{};
-    Result irq4(OMainObjects::Registers, uint32_t, const Boundary&);
+    Result irq4(OMainObjects::Registers, uint32_t, const Boundary&, const ReturnSelection&);
     uint32_t frame_complex(uint32_t, OMainObjects::Registers&, uint32_t);
     uint32_t frame_leaf(uint32_t, OMainObjects::Registers&, uint32_t);
     void idle(unsigned cycles);
