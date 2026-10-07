@@ -105,8 +105,9 @@ Bounded re-arm/dispatcher/publication instruction phases and IRQ entry now
 pass, including IRQ4 at every re-arm instruction. Physical IPL visibility and bounded caller scheduling now compute bus-phase
 delivery and instruction completion tails; retained busy-spin gaps execute
 from computed CPU state. PR #22 is merged: bounded IRQ2/IRQ6 returns now carry
-computed CPU state through RTE into caller execution. Unported handler/IRQ4 resumptions, post-RTE exception
-intervals and sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
+computed CPU state through RTE into caller execution. Immediate post-RTE selection/entry is now computed from restored SR and
+physical IPL. Unported returned instructions, handler/IRQ4 resumptions and
+sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
 ADC/mux, button and sound-latch endpoints; the fixed frame IRQ loop and
 unverified input/reload calls were removed. Resume at the supplied boundaries and independent
 host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
@@ -475,6 +476,12 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       handler and RTE, restoring the retained user stack before caller
       continuation. Natural and directed checks, explicit unported post-RTE
       boundaries and coverage limits are in `ENGINE_NOTES.md`.
+- [x] Bounded IRQ2/IRQ6 RTE interrupt selection and immediate exception entry:
+      restored SR, final-prefetch physical IPL, retained SSP and RTE bus-PC
+      attribution are computed. 1,673/1,673 selections and 17/17 immediate
+      entries match, zero skips; three mutations fail. Twelve unported returned
+      instructions remain supplied; coverage is in `ENGINE_NOTES.md`. IRQ4 returns,
+      producer cadence and sub progress remain supplied.
 - [ ] Independently schedule handler/caller and ISR resumptions, then
       progress publication and sub execution without
       captured operand frontiers.

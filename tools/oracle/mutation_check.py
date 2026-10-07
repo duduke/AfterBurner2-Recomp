@@ -211,8 +211,8 @@ cases.append(("visibilitytail","src/main/hwmath/m68000_completion.hpp",
 
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
 cases.append(("callerresumesr", "src/main/engine/omaincallerschedule.hpp",
-              "current={result,0,0};entered=false;return result;",
-              "result.sr^=1;current={result,0,0};entered=false;return result;",
+              "current={result,selected,selection};entered=false;return result;",
+              "result.sr^=1;current={result,selected,selection};entered=false;return result;",
               "tests/oracle_caller.cpp", "caller_service_edges",
               ["src/main/engine/omainirqservice.cpp", "src/main/engine/omainirqcallee.cpp",
                "src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp",
@@ -224,6 +224,15 @@ cases.append(("callerresumeusp", "src/main/engine/omaincallerschedule.hpp",
               ["src/main/engine/omainirqservice.cpp", "src/main/engine/omainirqcallee.cpp",
                "src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp",
                "src/main/roms.cpp", "src/main/romloader.cpp"]))
+
+for name,old,new in [
+    ("rtemask", "eligible(level,sr)?level:0", "eligible(level,current.state.sr)?level:0"),
+    ("rtefrontier", "selection=ns;auto level=physical(ns)", "selection=ns+80;auto level=physical(ns)"),
+    ("rtecurpc", "completed_pc=service.current_pc()", "completed_pc=result.pc"),
+]:
+    cases.append((name,"src/main/engine/omaincallerschedule.hpp",old,new,
+                  "tests/oracle_caller.cpp","caller_return_edges",
+                  ["src/main/engine/omainirqservice.cpp", "src/main/engine/omainirqcallee.cpp", *common]))
 
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}
@@ -255,7 +264,8 @@ for name, source, old, new, test, capture, dependencies in cases:
     schedule_errors = [line for line in log_path.read_text().splitlines()
                        if any(message in line for message in [
                            "unrecorded IRQ inside sampling gap", "missing scheduled poll",
-                           "scheduled wait overshot caller boundary", "wait left bounded graph"])]
+                           "scheduled wait overshot caller boundary", "wait left bounded graph",
+                           "RTE selection mismatch"])]
     if result.returncode != 1 or not (differences or schedule_errors):
         raise RuntimeError(f"{name}: mutation did not produce a differential failure; see {log_path}")
     print(f"{name}: rejected — {(differences or schedule_errors)[-1]}", flush=True)

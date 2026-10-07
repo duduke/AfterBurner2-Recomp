@@ -16,7 +16,7 @@ std::vector<Event> events(std::ifstream& f){auto n=num(f,4);if(n>200)throw std::
 }
 int main(int argc,char** argv)try{
  std::ifstream f(argc>1?argv[1]:"build/oracle/caller.bin",std::ios::binary);char magic[8];
- if(!f.read(magic,8)||(memcmp(magic,"AB2CALL1",8)&&memcmp(magic,"AB2CALL2",8)&&memcmp(magic,"AB2CALL3",8)))throw std::runtime_error("invalid caller capture");
+ if(!f.read(magic,8)||(memcmp(magic,"AB2CALL1",8)&&memcmp(magic,"AB2CALL2",8)&&memcmp(magic,"AB2CALL3",8)&&memcmp(magic,"AB2CALL4",8)))throw std::runtime_error("invalid caller capture");
  if(!roms.load_aburner2())throw std::runtime_error("ROMs required");
  MainBus::Memory memory;MainBus bus(roms.maincpu.rom,roms.maincpu.length,nullptr,0,memory);
  CpuVisibilityCapture visibility((std::string(argc>1?argv[1]:"build/oracle/caller.bin")+".visibility").c_str());
@@ -27,14 +27,25 @@ int main(int argc,char** argv)try{
  std::map<uint32_t,unsigned> coverage,irqcoverage;
  std::map<uint32_t,uint8_t> owned;
  uint64_t prior_phase_end=0;
- const bool linked=!memcmp(magic,"AB2CALL3",8);
- bool service_expected=false;
+ const bool returns=!memcmp(magic,"AB2CALL4",8);
+ const bool linked=returns||!memcmp(magic,"AB2CALL3",8);
+ unsigned selections=0,selection_bad=0,back_to_back=0;
+ bool service_expected=false,rte_entry_pending=false,selection_expected=false;
  unsigned services=0,service_bad=0,service_events=0,service_event_bad=0,resumptions=0,service2=0,service6=0,user_returns=0,adc_inputs=0,external_returns=0;
  unsigned autonomous=0,autonomous_events=0,autonomous_bad=0,cuts=0,resume_operands=0;
  bool wait_operand_known=false,service_return_pending=false;
  while(f.peek()!=std::char_traits<char>::eof()){
   auto kind=num(f,1);
   if(service_expected&&kind!=4)throw std::runtime_error("missing linked caller service");
+  if(selection_expected&&kind!=6)throw std::runtime_error("missing RTE selection assertion");
+  if(kind==6){
+   if(!returns||!service_return_pending)throw std::runtime_error("RTE selection without service return");
+   selection_expected=false;const unsigned irq=num(f,1);++selections;
+   if(irq!=last.irq||last.poll_ns+320!=last.state.ns){++selection_bad;std::cerr<<"RTE selection mismatch "<<last.irq<<'/'<<irq<<" at "<<last.poll_ns<<'\n';}
+   expected_pending=last.irq!=0;
+   if(expected_pending){++back_to_back;service_return_pending=false;rte_entry_pending=true;}
+   continue;
+  }
   if(kind==4){
    if(!service_expected)throw std::runtime_error("service without computed caller entry");
    service_expected=false;
@@ -63,7 +74,11 @@ int main(int argc,char** argv)try{
     prior_phase_end=now+4*OMainIrqService::CYCLE_NS;
     if(w){const auto o=MainBus::memory_offset(a);if(o!=MainBus::UNMAPPED){if(m&0xff00)owned[o]=d>>8;if(m&255)owned[o+1]=d;}}
    }};bus.trace=&trace;
-   const auto result=scheduled.finish(bus,[&](uint64_t t){now=t;});
+   const auto result=scheduled.finish(bus,[&](uint64_t t){now=t;},returns?OMainIrqService::Poll([&](uint64_t t){
+    const auto* phase=visibility.find(t);
+    if(!phase)throw std::runtime_error("missing RTE physical selection phase");
+    return phase->level;
+   }):OMainIrqService::Poll{});
    bus.trace=nullptr;bus.endpoints.adc_read={};
    ok &= cursor==expected.size()&&result.ns==end&&result.sp==sp&&result.sr==sr&&result.pc==next&&result.registers.d==post.d&&result.registers.a==post.a;
    for(const auto& e:expected)if(e.w){const auto o=MainBus::memory_offset(e.a);if(o<after.size()-1){if(e.m&0xff00)ok &= memory.bytes[o]==after[o];if(e.m&255)ok &= memory.bytes[o+1]==after[o+1];}}
@@ -71,7 +86,7 @@ int main(int argc,char** argv)try{
    if(!(result.sr&0x2000))++user_returns;
    ++services;if(!ok){++service_bad;if(service_bad<6)std::cerr<<"Linked service mismatch end="<<result.ns<<'/'<<end<<" sp="<<std::hex<<result.sp<<'/'<<sp<<std::dec<<'\n';}
    prior_phase_end=result.ns;
-   last={result,0,0};have=true;wait_operand_known=false;service_return_pending=true;continue;
+   last=scheduled.state();have=true;wait_operand_known=false;service_return_pending=true;selection_expected=returns;continue;
   }
   if(kind==5){++external_returns;service_return_pending=false;have=false;owned.clear();wait_operand_known=false;prior_phase_end=0;continue;}
   if(kind==3){service_return_pending=false;have=false;owned.clear();wait_operand_known=false;prior_phase_end=0;++cuts;continue;}OMainIrqService::Context c{};c.interrupted_pc=num(f,4);c.boundary_ns=num(f,8);c.supervisor_sp=num(f,4);
@@ -135,6 +150,10 @@ int main(int argc,char** argv)try{
    // These are outputs of caller_step, never captured completion/return inputs.
    c.return_pc=last.state.pc;c.boundary_ns=last.state.ns;c.sr=last.state.sr;c.registers=last.state.registers;
    if(c.sr&0x2000)ok &= c.supervisor_sp==last.state.sp;
+   if(rte_entry_pending){
+    ok &= c.supervisor_sp==scheduled.supervisor_stack()&&c.interrupted_pc==scheduled.current_pc();
+    c.supervisor_sp=scheduled.supervisor_stack();rte_entry_pending=false;
+   }
    expected_pending=false;
    ++entries;++levels[c.level];++irqcoverage[c.interrupted_pc];next=c.level==2?0x1461c:c.level==4?0x14674:0x1466c;post=c.registers;
   }else throw std::runtime_error("invalid caller record kind");
@@ -180,11 +199,13 @@ int main(int argc,char** argv)try{
   ok &= cursor==expected.size()&&result.ns==end&&result.pc==next&&result.sp==sp&&result.sr==sr&&result.registers.d==post.d&&result.registers.a==post.a;
   if(!ok){++failed;if(failed<10)std::cerr<<std::hex<<"Caller record pc="<<c.interrupted_pc<<" result="<<result.pc<<'/'<<next<<" sr="<<result.sr<<'/'<<sr<<" sp="<<result.sp<<'/'<<sp<<std::dec<<" end="<<result.ns<<'/'<<end<<" events="<<cursor<<'/'<<expected.size()<<" IRQ="<<last.irq<<'/'<<irq<<'\n';}
  }
+ std::cout<<"RTE selections: "<<selections-selection_bad<<" of "<<selections<<" identical, "<<selection_bad<<" different, 0 skipped; "<<back_to_back<<" immediate exceptions\n";
  std::cout<<"Linked IRQ services: "<<services-service_bad<<" of "<<services<<" identical, "<<service_bad<<" different, 0 skipped; "<<service_events-service_event_bad<<" of "<<service_events<<" bus events identical, "<<service_event_bad<<" different; "<<resumptions<<" resumed caller boundaries, "<<external_returns<<" unported post-RTE boundaries; IRQ2/IRQ6="<<service2<<'/'<<service6<<" user/supervisor returns="<<user_returns<<'/'<<services-user_returns<<"; "<<services<<" supplied shared-RAM snapshots, "<<adc_inputs<<" supplied ADC results\n";
  std::cout<<"Independently scheduled wait instructions: "<<autonomous<<" instructions, "<<autonomous_events-autonomous_bad<<" of "<<autonomous_events<<" bus assertions identical, "<<autonomous_bad<<" different, 0 skipped; "<<cuts<<" explicit fixture cuts, "<<resume_operands<<" supplied first-resume operands\n";
  if(service_expected)throw std::runtime_error("unfinished linked caller service");
  if(expected_pending)throw std::runtime_error("unfinished caller IRQ entry");
+ if(selection_expected)throw std::runtime_error("unfinished RTE selection assertion");
  std::cout<<"Caller instructions/IRQ entries: "<<calls+entries-failed<<" of "<<calls+entries<<" identical, "<<failed<<" different, 0 skipped\nCaller bus events: "<<total-bad<<" of "<<total<<" identical, "<<bad<<" different, 0 skipped\nConsecutive caller boundaries: "<<chains-chain_bad<<" of "<<chains<<" identical, "<<chain_bad<<" different, 0 skipped\nCoverage: instructions="<<calls<<" IRQ entries="<<entries<<" polls="<<polls<<" IRQ2="<<levels[2]<<" IRQ4="<<levels[4]<<" IRQ6="<<levels[6]<<" computed phase frontiers="<<computed_frontiers<<" frontier differences="<<frontier_bad<<" masked="<<masked<<'\n';
  for(auto [p,n]:coverage)std::cout<<std::hex<<p<<std::dec<<": "<<n<<" instructions, "<<irqcoverage[p]<<" IRQ entries\n";
- return calls&&entries&&(!linked||(services&&resumptions))&&!failed&&!bad&&!frontier_bad&&!autonomous_bad&&!service_bad&&!service_event_bad?0:1;
+ return calls&&entries&&(!linked||(services&&resumptions))&&!failed&&!bad&&!frontier_bad&&!autonomous_bad&&!service_bad&&!service_event_bad&&!selection_bad&&(!returns||(selections==services&&back_to_back))?0:1;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

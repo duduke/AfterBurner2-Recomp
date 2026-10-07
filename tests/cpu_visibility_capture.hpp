@@ -43,7 +43,7 @@ struct CpuVisibilityCapture {
                 if(kind==0&&a>=0x130000&&a<0x140000&&(m&255)){
                     ++adc_reads;ok &= (board.adc.read(board.now())&m)==(d&m&255);
                 }
-                if((pc>=0x1458a&&pc<=0x145b8)||(pc>=0x14856&&pc<=0x14878)||(pc>=0xb676&&pc<=0xb696))
+                if((pc>=0x1458a&&pc<=0x145b8)||(pc>=0x14856&&pc<=0x14878)||(pc>=0xb676&&pc<=0xb696)||pc==0x1466a||pc==0x14672)
                     phases.push_back({t,end,uint32_t(pc),uint32_t(a),uint16_t(d),uint16_t(m),board.main_irq_level(),kind==1});
                 const auto line0=XBoardTimeline::RESET_LINE0_NS;
                 if(t>=line0 && board.next_scanline()<=t)++delayed;

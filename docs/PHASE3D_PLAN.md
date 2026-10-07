@@ -11,8 +11,11 @@ remaining tasks" before changing code.
 caller IRQ2/IRQ6 entry through the verified handler and RTE, restoring the
 retained user stack before continuing caller state/time. Natural gameplay and
 directed fixtures pass 1,673/1,673 services and 74,059/74,059 handler bus events,
-zero skips, with 1,644 computed caller resumptions. The capture explicitly marks
-29 unported post-RTE intervals, including back-to-back exception entry.
+zero skips, with 1,644 computed caller resumptions. The original capture explicitly marked
+29 supplied post-RTE intervals. The next bounded checkpoint now computes
+immediate exception selection/entry from restored SR and physical IPL;
+unported returned instructions remain supplied. See the RTE-selection
+continuation in `ENGINE_NOTES.md`.
 
 The previously verified IRQ4 callee graphs retain 3,519/3,519 envelopes and
 8,099,444/8,099,444 predicted bus events, zero skips. Physical IPL comes from
@@ -57,6 +60,7 @@ The current host/timing evidence is:
 | Bounded caller instructions and IRQ entry | 778,252/778,252 records; 2,181,954/2,181,954 bus events; 682,233/682,233 caller boundaries; zero skips; IRQ4 at every re-arm PC | Physical IPL visibility, initial contexts, external handler/ISR resumptions and sub progress |
 | Physical IPL and bounded caller schedule | 42,280,436/42,280,436 physical observations; 12,703,304 generated wait instructions; 38,111,440/38,111,440 wait bus assertions; zero skips | External handler/ISR returns and first resumed operands, unported CPU frontiers, initial contexts and sub progress |
 | Bounded caller IRQ2/IRQ6 resumptions | 1,673/1,673 services; 74,059/74,059 handler bus events; 1,644 computed caller resumptions; zero skips | 29 unported post-RTE intervals, shared-RAM/ADC producer state, first-resume wait operands and IRQ4 |
+| Bounded RTE selection and immediate entry | 1,673/1,673 restored-mask selections; 17/17 immediate entries; zero skips; three mutations fail | 12 unported returned-instruction boundaries, IRQ4 returns, producer state/cadence and sub progress |
 | Bounded IRQ4, complete selected callee graphs and re-arm timing | 3,519/3,519 envelopes; 8,099,444/8,099,444 predicted bus events; 18,769/18,769 fade/animation/cycle/reload/scenery/transition calls; 16,349/16,349 uninterrupted wait steps | Game-flow caller transcripts, sub-owned write frontiers and interrupted contexts; six IRQ-overlapped wait attempts excluded |
 
 The shared-input checkpoint supersedes earlier IRQ4 race exclusions. Complete
@@ -102,6 +106,11 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   USP; explicitly mark unported post-RTE intervals, including back-to-back
   exception entry. Shared-RAM/ADC producer state and IRQ4 remain supplied.
   See the caller/IRQ2/IRQ6 resumption checkpoint in `ENGINE_NOTES.md`.
+- [x] Compute IRQ2/IRQ6 RTE selection at the final return prefetch, preserving
+  the restored interrupt mask and supervisor stack into immediate exception
+  entry. MAME retains the RTE bus PC until another instruction executes.
+  Unported returned instructions and IRQ4 returns remain explicit boundaries;
+  counts and mutation evidence are in `ENGINE_NOTES.md`.
 - [ ] Finish independent scheduling across caller/ISR resumptions, ADC input
   producers, publication wait boundaries and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller

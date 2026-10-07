@@ -1,4 +1,5 @@
--- Address-bounded caller/IRQ-entry oracle, optionally linked through IRQ2/6.
+-- Address-bounded caller/IRQ-entry oracle, optionally linked through IRQ2/6
+-- and immediate post-RTE exception selection (AB2_ORACLE_CALLER_RETURN).
 -- Shared RAM/ADC producers and IRQ4 remain external boundaries.
 -- Includes caller prefetches; captures remain ignored.
 local main=manager.machine.devices[":mainpcb:maincpu"]
@@ -7,9 +8,11 @@ local board=manager.machine.devices[":mainpcb"]
 local timer=emu.item(assert(board.items["0/m_timer_irq_state"]))
 local blank=emu.item(assert(board.items["0/m_vblank_irq_state"]))
 local continuation=os.getenv("AB2_ORACLE_CALLER_SERVICE")=="1"
+local return_selection=os.getenv("AB2_ORACLE_CALLER_RETURN")=="1"
+assert(not return_selection or continuation,"RTE selection requires linked services")
 local handler,services,resume_check
 services=0
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write(continuation and "AB2CALL3" or "AB2CALL2")
+local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write(return_selection and "AB2CALL4" or continuation and "AB2CALL3" or "AB2CALL2")
 -- Sparse board/CPU visibility transcript. Previous completed main bus phase is
 -- an explicit boundary across omitted/unported instruction graphs. Retain every
 -- bounded caller phase, hardware access and scanline-adjacent observation.
@@ -63,7 +66,7 @@ local function access(w,a,d,m)
  local t=ns()
  local phase=t%64000
  local hardware=(a>=0xe8000 and a<0xec000) or (a>=0x130000 and a<0x140000) or a==0x140004
- if sizes[p] or hardware or phase<1000 or phase>=63000 then
+ if sizes[p] or (return_selection and (p==0x1466a or p==0x14672)) or hardware or phase<1000 or phase>=63000 then
   visibility_record(w and 1 or 0,p,a,d,m,t)
  end
  previous_end=t+320
@@ -78,14 +81,23 @@ local function access(w,a,d,m)
   if not w and (p==0x1466a or p==0x14672) and a==((handler.returnpc+2)&0x3ffffe) then
    out:write(string.char(4),handler.before,string.pack(">I4",#handler.events),table.concat(handler.events),
     string.pack(">I8I4I2I4",ns()+320,stack(),main.state.SR.value,handler.returnpc),regs(),ram())
-   handler=nil;services=services+1;resume_check=true
+   handler=nil;services=services+1;resume_check={endns=ns()+320,sr=main.state.SR.value,regs=regs()}
   end
   return
  end
  if resume_check then
-  resume_check=false
-  -- Back-to-back exception entry or an unported returned instruction cuts
-  -- the bounded caller graph. Record that execution boundary explicitly.
+  local q=resume_check;resume_check=false
+  local irq=w and a==((main.state.SP.value-2)&0x3ffffe) and (main.state.SR.value&0x700)>0x100
+  if return_selection then
+   out:write(string.char(6,irq and (main.state.SR.value>>8&7) or 0))
+   if irq then
+    entry={pc=p,endns=q.endns,ssp=main.state.SP.value,returnpc=main.state.PC.value,
+     sr=q.sr,regs=q.regs,level=main.state.SR.value>>8&7,events={event(w,p,a,d,m)}}
+    entry.target=entry.level==2 and 0x1461c or entry.level==4 and 0x14674 or 0x1466c
+    return
+   end
+  end
+  -- Unported returned instructions remain explicit execution boundaries.
   if not sizes[p] then out:write(string.char(5))end
  end
  if entry then
