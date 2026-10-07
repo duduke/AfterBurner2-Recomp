@@ -112,7 +112,11 @@ ported. The fourteen subsequent returns at `$8AF8/$B62E` now pass; the ten succe
 `$8B02/$B636` and 31 subsequently exposed returns are now closed through the
 world projection/release and publication producer graphs. Both the natural
 600-frame and directed 120-frame corpora have zero unported post-RTE returns.
-Other handler graphs, IRQ4 game-flow callees and sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
+IRQ4 `$14990/$E2DA` now compute their single-instruction returns, with
+713/713 calls per entry identical and zero skips. IRQ4 `$17146/$C6F8` now
+compute their callee graphs, with 4,830/4,830 envelopes and
+9,567,126/9,567,126 bus events identical, zero skips and no callee transcripts.
+Other handler graphs, physical inputs and sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
 ADC/mux, button and sound-latch endpoints; the fixed frame IRQ loop and
 unverified input/reload calls were removed. Resume at the supplied boundaries and independent
 host scheduling; native Stage 1 remains active. The caller oracle now takes

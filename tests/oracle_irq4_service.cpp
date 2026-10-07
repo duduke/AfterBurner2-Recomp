@@ -15,14 +15,19 @@ struct Event {uint64_t ns;uint32_t pc,a;uint16_t d,m;bool w;};
 Event event(std::ifstream& f) {Event e;e.ns=num(f,8);e.pc=num(f,4);e.a=num(f,4);e.d=num(f,2);e.m=num(f,2);e.w=num(f,1);return e;}
 struct SubEvent {unsigned frontier;Event event;};
 struct Hook {uint32_t entry;uint64_t start,end;OMainObjects::Registers pre,post;std::vector<Event> events;};
-bool leaf(uint32_t p) {return p==0x1495c||p==0x148be||p==0x148b8||p==0x147e8||p==0xb7c2||p==0xb7d2||p==0x13bb6||p==0x13bcc||p==0x13bfa||p==0x1329e||p==0x14a86||p==0x13f92||p==0x16c8a||p==0x18444||p==0x13e5c;}
+bool leaf(uint32_t p) {return p==0x17146||p==0xc6f8||p==0x14990||p==0xe2da||p==0x1495c||p==0x148be||p==0x148b8||p==0x147e8||p==0xb7c2||p==0xb7d2||p==0x13bb6||p==0x13bcc||p==0x13bfa||p==0x1329e||p==0x14a86||p==0x13f92||p==0x16c8a||p==0x18444||p==0x13e5c;}
 }
 int main(int argc,char** argv) try {
     std::ifstream f(argc>1?argv[1]:"build/oracle/irq4_service.bin",std::ios::binary);
     char magic[8];if(!f.read(magic,8)||memcmp(magic,"AB2IRQ46",8))throw std::runtime_error("invalid IRQ4 capture (regenerate with ROM operand reads)");
     std::ifstream return_file;
-    if(argc>2){return_file.open(argv[2],std::ios::binary);char header[8];
+    const bool require_actions=argc>2 && std::strcmp(argv[2],"--require-actions")==0;
+    const bool require_gameflow=argc>2 && std::strcmp(argv[2],"--require-gameflow")==0;
+    const bool require_rts=argc>2 && std::strcmp(argv[2],"--require-rts")==0;
+    if(argc>2 && !require_rts && !require_gameflow && !require_actions){return_file.open(argv[2],std::ios::binary);char header[8];
         if(!return_file.read(header,8)||memcmp(header,"AB2RTE42",8))throw std::runtime_error("invalid IRQ4 return capture");}
+    unsigned rts_calls[2]{};
+    std::set<unsigned> flow_stages,flow_states,coin_selectors;
     unsigned return_calls=0,return_bad=0,immediate=0,user_returns=0,entry_events=0,entry_bad=0,entry_state_bad=0;
     if(!roms.load_aburner2())throw std::runtime_error("ROMs required");
     MainBus::Memory memory;MainBus bus(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,memory);
@@ -37,8 +42,8 @@ int main(int argc,char** argv) try {
     std::set<uint32_t> callee_pcs;
     std::set<unsigned> fade_banks,fade_masks;
     unsigned trigger=0,capture_bank=0,fade_upload=0,blend_setup=0,blend_step=0,reload_hud=0,scenery_clear=0,scenery_setup=0,scenery_words=0,view_init=0,transition_end=0;
-    unsigned callee_calls[5]{};
-    const uint32_t complex_entries[]={0x14a86,0x13f92,0x16c8a,0x18444,0x13e5c};
+    unsigned callee_calls[7]{};
+    const uint32_t complex_entries[]={0x14a86,0x13f92,0x16c8a,0x18444,0x13e5c,0x17146,0xc6f8};
     uint64_t now=0;
     while(f.peek()!=std::char_traits<char>::eof()) {
         OMainIrqService::Context c{};c.level=4;c.boundary_ns=num(f,8);c.interrupted_pc=num(f,4);c.return_pc=num(f,4);c.sr=num(f,2);c.supervisor_sp=num(f,4);
@@ -52,6 +57,13 @@ int main(int argc,char** argv) try {
             Hook h;h.entry=num(f,4);h.start=num(f,8);h.end=num(f,8);auto count=num(f,4);h.pre=regs(f);h.post=regs(f);
             if(count>200000)throw std::runtime_error("invalid IRQ4 callee count");
             for(unsigned j=0;j<count;++j)h.events.push_back(event(f));
+            for(const auto& e:h.events)if(!e.w){
+                if(h.entry==0x17146&&e.pc==0x17146&&e.a==0x29c09c)flow_stages.insert(e.d);
+                if(h.entry==0x17146&&e.pc==0x171cc)flow_states.insert((e.m==0xff00?e.d>>8:e.d)&7);
+                if(h.entry==0xc6f8&&e.pc==0xc7aa)coin_selectors.insert(e.m==0xff00?e.d>>8:e.d&255);
+            }
+            if(h.entry==0x14990)++rts_calls[0];
+            if(h.entry==0xe2da)++rts_calls[1];
             if(h.entry==0xb7c2)++normal_blits;
             if(h.entry==0xb7d2)++interpolated;
             if(h.entry==0x13bb6)++road_full;
@@ -83,8 +95,9 @@ int main(int argc,char** argv) try {
                 if(e.pc==0x184e6)++scenery_setup;if(e.pc==0x186b2)++scenery_words;
                 if(e.pc==0x1871a)++view_init;if(e.pc==0x13e8e)++transition_end;
             }
-            for(unsigned k=0;k<5;++k)if(h.entry==complex_entries[k]){++callee_calls[k];for(const auto& e:h.events)callee_pcs.insert(e.pc);}
-            if(leaf(h.entry)){expected.insert(expected.end(),h.events.begin(),h.events.end());++leaves;}
+            for(unsigned k=0;k<7;++k)if(h.entry==complex_entries[k]){++callee_calls[k];for(const auto& e:h.events)callee_pcs.insert(e.pc);}
+            if(!leaf(h.entry))throw std::runtime_error("unported IRQ4 callee capture");
+            expected.insert(expected.end(),h.events.begin(),h.events.end());++leaves;
             hooks.push_back(std::move(h));
         }
         const auto post=regs(f);const auto sp=num(f,4),sr=num(f,2);
@@ -146,19 +159,6 @@ int main(int argc,char** argv) try {
         };
         auto advance=[&](uint64_t ns){if(ns<now)throw std::runtime_error("nonchronological service clock");now=ns;};
         now=c.boundary_ns;
-        auto boundary=[&](uint32_t entry,OMainObjects::Registers& r,uint32_t stack,uint64_t start) {
-            if(hcursor==hooks.size())throw std::runtime_error("missing IRQ4 callee boundary");
-            const auto& h=hooks[hcursor++];if(calls==0 && (h.entry!=entry||h.start!=start||!same(r,h.pre))) std::cerr<<std::hex<<"Boundary "<<entry<<std::dec<<" start "<<start<<'/'<<h.start<<" regs "<<same(r,h.pre)<<'\n';
-            ok &= h.entry==entry&&h.start==start&&same(r,h.pre);
-            bus.trace=nullptr;
-            ok &= bus.read32(stack)>=0x14674&&bus.read32(stack)<=0x147c2;
-            // Explicit external routine: supplied state/events/duration are
-            // excluded from the verified bus-event denominator.
-            bus.trace=nullptr;
-            for(const auto& e:h.events){apply_sub();if(e.w){advance(start+e.ns-h.start);if(e.m==0xffff)bus.write16(e.a,e.d);else bus.write8(e.a+(e.m==255),e.m==255?e.d:e.d>>8);}++operand_frontier;}apply_sub();
-            bus.trace=&trace;r=h.post;++external;
-            return unsigned((h.end-h.start)/80);
-        };
         auto observe=[&](bool entering,uint32_t entry,const OMainObjects::Registers& r,uint64_t at) {
             if(hcursor>=hooks.size())throw std::runtime_error("missing timed leaf capture");
             const auto& h=hooks[hcursor];
@@ -175,7 +175,7 @@ int main(int argc,char** argv) try {
             schedule.enter(bus,c.supervisor_sp,advance);
             result=schedule.finish(bus,advance,[&](uint64_t at){
                 if(at!=selection_ns){ok=false;++return_bad;}return physical;
-            },boundary,observe);
+            },{},observe);
             const auto selected=num(return_file,1);
             // At the last RTE prefetch MAME exposes return PC + 2.
             const bool equal=result.sp==active_sp&&result.pc+2==prefetched_pc&&schedule.supervisor_stack()==sp&&schedule.state().irq==selected;
@@ -199,23 +199,30 @@ int main(int argc,char** argv) try {
                 }else {ok=false;++entry_state_bad;}
                 bus.trace=&trace;
             }
-        }else result=service.run(bus,c,advance,boundary,observe);
+        }else result=service.run(bus,c,advance,{},observe);
         bus.trace=nullptr;apply_sub();
         ok &= operand_frontier==captured_operands&&subcursor==subevents.size()&&cursor==expected.size()&&hcursor==hooks.size()&&result.ns==end&&(linked?schedule.supervisor_stack():result.sp)==sp&&result.sr==sr&&same(result.registers,post)&&result.pc==(sr==0x700?0x1a130:c.return_pc);
         ++calls;if(ok)++identical;else {++failed;if(failed<8)std::cerr<<"IRQ4 call "<<calls<<" end "<<result.ns<<'/'<<end<<" consumed "<<cursor<<'/'<<expected.size()<<'\n';}
     }
     std::cout<<"IRQ4 service envelope: "<<identical<<" of "<<calls<<" identical, "<<failed<<" different, 0 skipped\nIRQ4 predicted bus events: "<<events-differences<<" of "<<events<<" identical, "<<differences<<" different, 0 skipped\nCoverage: logic="<<logic<<" normal="<<normal<<" signed-overflow="<<overflow<<" timed leaves="<<leaves<<" external callee boundaries="<<external<<"\nEdges: redirects="<<redirects<<" normal/interpolated blits="<<normal_blits<<'/'<<interpolated<<" skipped draw="<<draw_skipped<<" timer rollovers="<<rollovers<<"; E phases";
     for(unsigned i=0;i<10;++i)std::cout<<' '<<i<<'='<<phases[i];std::cout<<'\n';
+    std::cout<<"Computed RTS callees: 14990="<<rts_calls[0]<<" e2da="<<rts_calls[1]<<'\n';
     std::cout<<"Road palette calls: full="<<road_full<<" partial="<<road_partial<<" repeated="<<road_repeat
         <<" source selectors="<<std::count(std::begin(road_sources),std::end(road_sources),true)
         <<" destination banks="<<std::count(std::begin(road_destinations),std::end(road_destinations),true)
         <<" stage operands="<<road_stages.size()<<'\n';
     std::cout<<"Palette cycle calls: "<<cycle_calls<<" empty="<<cycle_empty<<" ordinary="<<cycle_ordinary<<" alternate="<<cycle_alternate<<" fade destinations="<<cycle_fade<<" selectors="<<cycle_selectors.size()<<" phase words="<<cycle_phases.size()<<'\n';
-    std::cout<<"Computed complex callees:";for(unsigned k=0;k<5;++k)std::cout<<' '<<std::hex<<complex_entries[k]<<std::dec<<'='<<callee_calls[k];std::cout<<" operand/stack PCs="<<callee_pcs.size()<<'\n';
+    std::cout<<"Computed complex callees:";for(unsigned k=0;k<7;++k)std::cout<<' '<<std::hex<<complex_entries[k]<<std::dec<<'='<<callee_calls[k];std::cout<<" operand/stack PCs="<<callee_pcs.size()<<'\n';
     std::cout<<"Callee paths: fade trigger/capture/upload="<<trigger<<'/'<<capture_bank<<'/'<<fade_upload<<" banks/masks="<<fade_banks.size()<<'/'<<fade_masks.size()<<" blend setup/step operands="<<blend_setup<<'/'<<blend_step<<" reload HUD="<<reload_hud<<" scenery clear/setup/word tiles/view init="<<scenery_clear<<'/'<<scenery_setup<<'/'<<scenery_words<<'/'<<view_init<<" transition completion="<<transition_end<<'\n';
     if(return_file.is_open()&&return_file.peek()!=std::char_traits<char>::eof())throw std::runtime_error("unconsumed IRQ4 return capture");
     std::cout<<"Linked IRQ4 RTE: "<<return_calls-return_bad<<" of "<<return_calls<<" identical, "<<return_bad<<" different, 0 skipped; "<<immediate<<" immediate entry assertions; "<<user_returns<<" user returns\n";
     std::cout<<"IRQ4 immediate entries: "<<immediate-entry_state_bad<<" of "<<immediate<<" identical, "<<entry_state_bad<<" different, 0 skipped\n";
     std::cout<<"IRQ4 immediate entry bus events: "<<entry_events-entry_bad<<" of "<<entry_events<<" identical, "<<entry_bad<<" different, 0 skipped\n";
+    std::cout<<"Game-flow coverage: stages="<<flow_stages.size()<<" high-score states="<<flow_states.size()<<" coinage selectors="<<coin_selectors.size()<<'\n';
+    if(require_actions && (!flow_stages.count(26) || !flow_stages.count(15) || !flow_stages.count(16) || !flow_stages.count(17) || !flow_stages.count(18) || flow_states.size()!=8 || coin_selectors.size()!=15))
+        throw std::runtime_error("missing game-flow action coverage");
+    if(require_gameflow && (!callee_calls[5] || !callee_calls[6] || !flow_stages.count(3) || !flow_stages.count(26) || flow_states.size()!=8 || coin_selectors.size()!=15))
+        throw std::runtime_error("missing game-flow callee coverage");
+    if(require_rts && (!rts_calls[0] || !rts_calls[1]))throw std::runtime_error("missing RTS callee coverage");
     return calls&&!failed&&!differences&&!return_bad&&!entry_bad&&!entry_state_bad?0:1;
 } catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

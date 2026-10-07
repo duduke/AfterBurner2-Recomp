@@ -414,6 +414,9 @@ oracle-capture-irq4-service:
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_CYCLE_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_cycle_endpoints.bin 600 30
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_CALLEE_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_callee_endpoints.bin 600 30
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_SCENERY_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_scenery_endpoints.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_RTS_CALLEES=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_rts_callees.bin 120 15
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_GAMEFLOW_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_gameflow_endpoints.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_DIRECTED=1 AB2_ORACLE_IRQ4_GAMEFLOW_ACTIONS=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_service_gameflow_actions.bin 600 30
 
 oracle-irq4-service:
 	@mkdir -p build
@@ -425,6 +428,9 @@ oracle-irq4-service:
 	./build/oracle_irq4_service build/oracle/irq4_service_cycle_endpoints.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_callee_endpoints.bin
 	./build/oracle_irq4_service build/oracle/irq4_service_scenery_endpoints.bin
+	./build/oracle_irq4_service build/oracle/irq4_service_rts_callees.bin --require-rts
+	./build/oracle_irq4_service build/oracle/irq4_service_gameflow_endpoints.bin --require-gameflow
+	./build/oracle_irq4_service build/oracle/irq4_service_gameflow_actions.bin --require-actions
 
 oracle-capture-logic-wait:
 	@mkdir -p build/oracle

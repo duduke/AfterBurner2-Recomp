@@ -42,7 +42,7 @@ public:
         auto result=service.enter(bus,c,clock);current={result,0,0};entered=true;return result;
     }
     // All three handlers restore SR before selecting physical IPL. IRQ4
-    // game-flow callbacks remain explicit boundaries until their timing is ported.
+    // callees execute their own bus phases, including game-flow and coin graphs.
     Result finish(MainBus& bus,const OMainIrqService::Clock& clock,
                   const OMainIrqService::Poll& physical = {},
                   const OMainIrqService::Boundary& boundary = {},

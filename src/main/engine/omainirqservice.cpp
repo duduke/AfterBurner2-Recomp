@@ -157,7 +157,7 @@ OMainIrqService::Result OMainIrqService::finish(MainBus& b,const Result& initial
     return {r,returnpc,sp,sr,ns};
 }
 
-OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t sp,const Boundary& boundary,const ReturnSelection& selection) {
+OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t sp,const Boundary&,const ReturnSelection& selection) {
     // $14674/$14798: immediate byte bit RMW, extensions, operand,
     // prefetch and write (24 clocks for absolute.L, 20 for absolute.W).
     auto bit=[&](uint32_t p,uint32_t a,unsigned mask,bool set,bool absolute_long) {
@@ -175,15 +175,13 @@ OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t
         pc=p;idle(absolute_long?8:2);sp-=4;
         const uint32_t ret=p+(absolute_long?6:4);
         write16(sp,ret>>16);write16(sp+2,ret);idle(absolute_long?4:8);
-        if(target==0x1495c || target==0x148be || target==0x148b8 || target==0x147e8 || target==0xb7c2 || target==0xb7d2 || target==0x13bb6 || target==0x13bcc || target==0x13bfa || target==0x1329e)
+        if(target==0x14990 || target==0xe2da || target==0x1495c || target==0x148be || target==0x148b8 || target==0x147e8 || target==0xb7c2 || target==0xb7d2 || target==0x13bb6 || target==0x13bcc || target==0x13bfa || target==0x1329e)
             { if(frame_leaf(target,r,sp)!=ret)throw std::runtime_error("corrupt IRQ4 leaf return stack"); }
-        else if(target==0x14a86 || target==0x13f92 || target==0x16c8a || target==0x18444 || target==0x13e5c) {
+        else if(target==0x17146 || target==0xc6f8 || target==0x14a86 || target==0x13f92 || target==0x16c8a || target==0x18444 || target==0x13e5c) {
             if(frame_complex(target,r,sp)!=ret)throw std::runtime_error("corrupt IRQ4 callee return stack");
         }
         else {
-            if(!boundary)throw std::runtime_error("IRQ4 callee timing boundary required");
-            const unsigned cycles=boundary(target,r,sp,ns);
-            idle(cycles);
+            throw std::runtime_error("unsupported IRQ4 callee");
         }
         sp+=4;
     };
@@ -264,7 +262,18 @@ OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t
 uint32_t OMainIrqService::frame_leaf(uint32_t entry,OMainObjects::Registers& r,uint32_t sp) {
     if(observe_leaf)observe_leaf(true,entry,r,ns);
     uint32_t retpc;
-    if(entry==0xb7c2 || entry==0xb7d2) {
+    if(entry==0x14990) {
+        // $014990: RTS. Both stack words and the eight prefetch clocks
+        // use the caller's computed clock; no game-flow callback executes.
+        pc=0x14990;const auto ret=read32(sp);idle(8);
+        if(observe_leaf)observe_leaf(false,entry,r,ns);
+        return ret;
+    } else if(entry==0xe2da) {
+        // $00E2DA: RTS (the helper at $E2DC is a different entry).
+        pc=0xe2da;const auto ret=read32(sp);idle(8);
+        if(observe_leaf)observe_leaf(false,entry,r,ns);
+        return ret;
+    } else if(entry==0xb7c2 || entry==0xb7d2) {
         // $B7C2/$B7D2..$B7F6: pointer/count loads, four MOVE.L per
         // DBF iteration, including the count+1 terminator descriptor.
         pc=entry;idle(8);r.a[0]=read32(0x2a3c14);idle(4);
@@ -389,7 +398,7 @@ uint32_t OMainIrqService::frame_leaf(uint32_t entry,OMainObjects::Registers& r,u
         if(enabled) {pc=0x148e2;r.a[0]=0xffff8818;idle(8);step(0x148e6);}
         retpc=0x148fa;
     } else if(entry==0x148b8) {
-        pc=0x148b8;idle(4);auto value=read32(0xffff8812)+1;idle(4);
+        pc=0x148b8;idle(4);auto value=read32(0xffff8812)+1;callee_x=value==0;idle(4);
         write16(0xffff8814,value);write16(0xffff8812,value>>16);retpc=0x148bc;
     } else {
         // $147E8..$14816 ordinary/service-button edge; register BTST has

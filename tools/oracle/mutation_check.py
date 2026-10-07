@@ -157,6 +157,13 @@ for name,old,new,capture,test in [
 ]:
     cases.append((name,"src/main/engine/omainirqservice.cpp",old,new,test,capture,service_dependencies))
 
+for name,old,new in [
+    ("irq4rts14990", "pc=0x14990;const auto ret=read32(sp);idle(8)", "pc=0x14990;const auto ret=read32(sp);idle(6)"),
+    ("irq4rtse2da", "pc=0xe2da;const auto ret=read32(sp);idle(8)", "pc=0xe2da;const auto ret=read32(sp);idle(6)"),
+]:
+    cases.append((name,"src/main/engine/omainirqservice.cpp",old,new,
+                  "tests/oracle_irq4_service.cpp","irq4_service_rts_callees",service_dependencies))
+
 # Each newly timed callee has a literal instruction mutation; the shadow
 # include leaves the source tree and runtime ROM/capture inputs unchanged.
 for name,old,new in [
@@ -169,6 +176,27 @@ for name,old,new in [
     cases.append((name,"src/main/engine/omainirqcallee.inc",old,new,
                   "tests/oracle_irq4_service.cpp","irq4_service_callee_endpoints",
                   common+["src/main/engine/omainirqservice.cpp","src/main/engine/omainirqcallee.cpp"]))
+
+# Newly closed game-flow graphs: root selection, decimal credits, lamp and
+# high-score data/timing must each reject their own literal mutation.
+for name,old,new in [
+    ("gameflowstage", "alu(CMP,2,{I,0,3},{L,0,0x29c09c},true,false); pc=0x1714e", "alu(CMP,2,{I,0,4},{L,0,0x29c09c},true,false); pc=0x1714e"),
+    ("gameflowcoin", "moveq({I,0,6},1); pc=0xc726", "moveq({I,0,5},1); pc=0xc726"),
+    ("gameflowrank", "alu(CMP,4,{M,0},{D,0},false,false); pc=0x17616", "alu(CMP,4,{O,0,2},{D,0},false,false); pc=0x17616"),
+    ("gameflowlamp", "move(1,{I,0,6},{O,1,2},false); pc=0xc956", "move(1,{I,0,5},{O,1,2},false); pc=0xc956"),
+]:
+    cases.append((name,"src/main/engine/omainirqgameflow.inc",old,new,
+                  "tests/oracle_irq4_service.cpp","irq4_service_gameflow_endpoints",service_dependencies+["src/main/engine/omainirqservice.cpp"]))
+for name,old,new in [
+    ("gameflowbcd", "if(low>9)result+=6", "if(low>9)result+=5"),
+    ("gameflowshift", "idle((size==4?8:6)+2*count)", "idle((size==4?8:6)+2*count+2)"),
+]:
+    cases.append((name,"src/main/engine/omainirqcallee.cpp",old,new,
+                  "tests/oracle_irq4_service.cpp","irq4_service_gameflow_endpoints",common+["src/main/engine/omainirqservice.cpp"]))
+
+cases.append(("gameflowextend","src/main/engine/omainirqservice.cpp",
+              "callee_x=value==0", "callee_x=false",
+              "tests/oracle_irq4_service.cpp","irq4_service_gameflow_actions",service_dependencies))
 
 # Natural IRQ, linked output and continuous-ring acceptance sensitivity.
 acceptance = handlers + ["src/main/engine/omainadc.cpp", "src/main/engine/omainframe.cpp", "src/main/engine/omainpalette.cpp", "src/main/engine/oscenery.cpp"]
@@ -332,7 +360,7 @@ for name, source, old, new, test, capture, dependencies in cases:
     # before aggregate summaries are printed. Keep the explicit failed bus/
     # state assertions as differential evidence, never a bare generic error.
     assertion_differences = [line for line in log_path.read_text().splitlines()
-                            if line.startswith(("Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch"))]
+                            if line.startswith(("Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch", "IRQ4 bus pc=", "Leaf "))]
     schedule_errors = [line for line in log_path.read_text().splitlines()
                        if any(message in line for message in [
                            "unrecorded IRQ inside sampling gap", "missing scheduled poll",
