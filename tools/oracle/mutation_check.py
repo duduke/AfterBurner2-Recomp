@@ -297,6 +297,30 @@ for name,source,old,new,test,capture in [
      "case 0x8bb0:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x9556,4)", "case 0x8bb0:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x955a,4)", "tests/oracle_caller.cpp", "caller_closure"),
     ("closurerelease", "src/main/engine/omainirqservice.cpp",
      "write8(r.a[5],old&~0x40)", "write8(r.a[5],old&~0x80)", "tests/oracle_caller.cpp", "caller_closure"),
+    ("readybit", "src/main/engine/omainirqservice.cpp",
+     "read8(0x29c200);sr=(sr&~4)|(value&1?0:4)", "read8(0x29c200);sr=(sr&~4)|(value&2?0:4)", "tests/oracle_caller.cpp", "caller_ready_directed"),
+    ("readyreturn", "src/main/engine/omainirqservice.cpp",
+     "write16(sp+2,0xc098)", "write16(sp+2,0xc09a)", "tests/oracle_caller.cpp", "caller_ready_directed"),
+    ("initprojection", "src/main/engine/omainirqservice.cpp",
+     "pc==0x88de?0x29c092:0x29c090", "pc==0x88de?0x29c090:0x29c090", "tests/oracle_caller.cpp", "caller_worldinit_directed"),
+    ("initshift", "src/main/engine/omainirqservice.cpp",
+     "for(unsigned i=0;i<count;++i){carry=value&0x80000000", "for(unsigned i=0;i<count-1;++i){carry=value&0x80000000", "tests/oracle_caller.cpp", "caller_worldinit_directed"),
+    ("traildrift", "src/main/engine/omainirqservice.cpp",
+     "read16(0x29c0c4)", "read16(0x29c0c6)", "tests/oracle_caller.cpp", "caller_trail_directed"),
+    ("trailpool", "src/main/engine/omainirqservice.cpp",
+     "r.a[0]=0xffff8e7f", "r.a[0]=0xffff8e80", "tests/oracle_caller.cpp", "caller_trail_directed"),
+    ("clearstride", "src/main/engine/omainirqservice.cpp",
+     "((pc-base+2)/4)*16", "((pc-base+2)/4)*8", "tests/oracle_caller.cpp", "caller_allirq_trail"),
+    ("clearloop", "src/main/engine/omainirqservice.cpp",
+     "pc==0xb6b4||pc==0xb6ea?0xff:0x1f", "pc==0xb6b4||pc==0xb6ea?0xfe:0x1f", "tests/oracle_caller.cpp", "caller_allirq_trail"),
+    ("linked4return", "src/main/engine/omainirqservice.cpp",
+     "if((ret&0x3fffff)>=0x80000)read16(ret);else idle(4);", "idle(2);if((ret&0x3fffff)>=0x80000)read16(ret);else idle(4);", "tests/oracle_caller.cpp", "caller_allirq_trail"),
+    ("publicationinstall", "src/main/engine/omainirqservice.cpp",
+     "write16(r.a[5]+18,0xb676)", "write16(r.a[5]+18,0xb67c)", "tests/oracle_caller.cpp", "caller_ready"),
+    ("followerstage", "src/main/engine/omainirqservice.cpp",
+     "pc==0x7bce?7:1", "pc==0x7bce?6:1", "tests/oracle_caller.cpp", "caller_follower_directed"),
+    ("followerage", "src/main/engine/omainirqservice.cpp",
+     "read8(r.a[5]+21),value=uint8_t(old-4)", "read8(r.a[5]+21),value=uint8_t(old-3)", "tests/oracle_caller.cpp", "caller_follower_directed"),
     ("successorsuboperand", "src/main/engine/omainirqservice.cpp",
      "const auto old=read16(r.a[5]+36)", "const auto old=read16(r.a[5]+38)", "tests/oracle_caller.cpp", "caller_successors"),
     ("successorbranch", "src/main/engine/omainirqservice.cpp",
@@ -360,13 +384,13 @@ for name, source, old, new, test, capture, dependencies in cases:
     # before aggregate summaries are printed. Keep the explicit failed bus/
     # state assertions as differential evidence, never a bare generic error.
     assertion_differences = [line for line in log_path.read_text().splitlines()
-                            if line.startswith(("Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch", "IRQ4 bus pc=", "Leaf "))]
+                            if line.startswith(("Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch", "Linked IRQ4 bus pc=", "Linked IRQ4 return mismatch", "IRQ4 bus pc=", "Leaf "))]
     schedule_errors = [line for line in log_path.read_text().splitlines()
                        if any(message in line for message in [
                            "unrecorded IRQ inside sampling gap", "missing scheduled poll",
                            "scheduled wait overshot caller boundary", "wait left bounded graph",
                            "RTE selection mismatch", "missing physical bus observation at PC",
-                           "missing RTE physical selection phase", "missing internal completion poll", "caller has no selected IRQ"])]
+                           "missing RTE physical selection phase", "missing IRQ4 RTE visibility", "missing internal completion poll", "caller has no selected IRQ"])]
     if result.returncode != 1 or not (differences or assertion_differences or schedule_errors):
         raise RuntimeError(f"{name}: mutation did not produce a differential failure; see {log_path}")
     print(f"{name}: rejected — {(differences or assertion_differences or schedule_errors)[-1]}", flush=True)

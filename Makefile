@@ -93,6 +93,9 @@ oracle-capture:
 	$(MAKE) oracle-capture-caller-words
 	$(MAKE) oracle-capture-caller-successors
 	$(MAKE) oracle-capture-caller-closure
+	$(MAKE) oracle-capture-caller-follower
+	$(MAKE) oracle-capture-caller-ready
+	$(MAKE) oracle-capture-caller-allirq
 
 # 3d foundations only; leaf and directed calls do not prove player gameplay.
 oracle-capture-objects:
@@ -216,7 +219,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
+oracle-test: oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp $(HANDLER_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -549,3 +552,41 @@ oracle-caller-closure: oracle-caller
 	./build/oracle_caller build/oracle/caller_closure_directed.bin --require-taken --require-closed
 
 .PHONY: oracle-capture-caller-closure oracle-caller-closure
+
+# Timed compound follower through computed sprite producer and return.
+oracle-capture-caller-follower:
+	mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FOLLOWER=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_follower.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_FOLLOWER_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_follower_directed.bin 120 15
+
+oracle-caller-follower: oracle-caller
+	./build/oracle_caller build/oracle/caller_follower.bin --require-closed
+	./build/oracle_caller build/oracle/caller_follower_directed.bin --require-follower --require-closed
+
+.PHONY: oracle-capture-caller-follower oracle-caller-follower
+
+# Closed ready-bit, world initializer and publication-initializer caller graphs.
+oracle-capture-caller-ready:
+	mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_ready.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_READY_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_ready_directed.bin 120 15
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_WORLDINIT_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_worldinit_directed.bin 120 15
+
+oracle-caller-ready: oracle-caller
+	./build/oracle_caller build/oracle/caller_ready.bin --require-ready-path --require-worldinit --require-publication-init --require-closed
+	./build/oracle_caller build/oracle/caller_ready_directed.bin --require-ready --require-closed
+	./build/oracle_caller build/oracle/caller_worldinit_directed.bin --require-worldinit --require-closed
+
+.PHONY: oracle-capture-caller-ready oracle-caller-ready
+
+# Linked IRQ2/4/6, including sprite RAM clear/upload caller continuations.
+oracle-capture-caller-allirq:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_IRQ4=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_allirq_trail.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_TRAIL_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_trail_directed.bin 120 15
+
+oracle-caller-allirq: oracle-caller
+	./build/oracle_caller build/oracle/caller_allirq_trail.bin --require-ready-path --require-worldinit --require-publication-init --require-clear --require-trail-path --require-allirq --require-closed
+	./build/oracle_caller build/oracle/caller_trail_directed.bin --require-trail --require-closed
+
+.PHONY: oracle-capture-caller-allirq oracle-caller-allirq

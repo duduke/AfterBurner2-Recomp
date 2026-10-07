@@ -126,6 +126,12 @@ caller remain supplied. Conditional player/weapon-to-road pairing now
 computes displayed rasters and passes 240/240 RGB frames; per-target write
 provenance distinguishes verified producers, unported callers and initial
 values. Sequence initializer/prepare/hide and RNG now route through `OMainHost`.
+The bounded caller now joins IRQ2/4/6 and closes `$C082/$C098`, world
+initialization, sprite clears and the newly exposed `$AAEE` trail graph.
+The final 600-frame capture matches 2,700,760/2,700,760 instruction/IRQ records
+with zero differences/skips and zero unported post-RTE boundaries. Its 8,024
+explicit other-graph exits and supplied sub/video/input producer frontiers
+still prevent whole-host scheduling closure.
 The runtime template inventory still identifies seven unported initial handlers.
 Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
@@ -538,6 +544,25 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       7,910,253/7,910,253 caller bus phases, zero skips; no unported post-RTE
       returns remain in either corpus. Preserve real internal-tail CPU state,
       late IRQ selection and RAM return prefetches. See `ENGINE_NOTES.md`.
+- [x] Compute the compound-follower `$7BB6..$7C10` instruction continuation,
+      including parent record copies, stage-selected animation, `$B628`
+      publication and the return to the dispatcher. Directed acceptance
+      requires all 19 PCs, three stage selectors and four animation operands;
+      both constant mutations fail. Other handlers and external producers
+      remain scheduling boundaries; see the follower continuation in
+      `ENGINE_NOTES.md`.
+- [x] Compute `$C082..$C098` ready-bit/append/return, the exposed
+      `$88CA..$8944` world initializer, and `$B66E` publication installation.
+      Natural 600-frame and directed branch/projection checks match MAME;
+      five mutations fail. Keep owned caller RAM across linked IRQ2/6.
+      Other graph exits and sub producers remain explicit; see
+      `ENGINE_NOTES.md` for counts and coverage limits.
+- [x] Join IRQ4 service/RTE into the same computed caller scheduler as
+      IRQ2/6. Complete the exposed 67-PC sprite-clear graphs and 99-PC
+      `$AAEE` trail/projection/release graph; require every PC and both
+      directions of all six trail branches. Preserve sprite ownership
+      through hardware bank swaps, with renderer cursor words explicit.
+      See `ENGINE_NOTES.md` for oracle results and producer limits.
 - [ ] Independently schedule handler/caller and ISR resumptions, then
       progress publication and sub execution without
       captured operand frontiers.

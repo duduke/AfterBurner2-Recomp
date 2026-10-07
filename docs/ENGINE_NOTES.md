@@ -3812,3 +3812,187 @@ Final validation: `make test`, `make verify-stage1` (audio RMS 903.949),
 checks and **166/166 identical** immediate entries, zero skips, now without
 callee execution transcripts. Existing standalone input-race skips remain
 unchanged. CMake registration is updated; that build path was not run.
+
+## Timed compound follower `$7BB6..$7C10`
+
+The bounded caller now translates the eighteen instructions after `$7BB6`
+instead of cutting execution at `$7BBC`. The nineteen-PC graph copies the
+parent's previous position and byte/word attributes, compares the stage selector
+against 7 and 1, selects a runtime ROM animation table, updates a positive
+animation byte by four, emits through the already timed `$B628` producer and
+returns through `$7C10` to the dispatcher. Registers, XNZVC, stack, operand
+reads/writes, ROM prefetches, physical interrupt selection and bus timestamps
+come from computed instruction execution. It has no handler execution callback.
+
+Indexed memory-to-memory MOVE.L at `$7C06` takes two internal clocks **before**
+its first extension prefetch, followed by seven bus phases. The initial capture
+incorrectly counted six phases and omitted those leading clocks. Directed MAME
+replay exposed that error; the capture and translation were corrected before
+acceptance. Instruction-hook snapshots pin the entry/exit state, including LEA
+register changes which occur before the first observable prefetch.
+
+`AB2_ORACLE_CALLER_FOLLOWER=1` adds the follower instructions to the existing
+CALL9 capture. `AB2_ORACLE_FOLLOWER_DIRECTED=1` calls the real ROM graph from the
+existing mask-writing fixture, with a labelled scratch parent/follower, stages
+1/7/2, animation bytes 0/4/8/128 and sprite counts 0/192. Scratch object RAM,
+stage and producer count are restored at the explicit fixture cut. These initial
+states do not claim natural spawn cadence. The oracle's `--require-follower`
+gate requires all nineteen PCs and those stage/animation values; the earlier
+closure corpus fails explicitly with `missing follower instruction coverage`.
+
+The directed 120-frame corpus matches **211,030/211,030 instruction/IRQ-entry
+records**, **615,762/615,762 caller bus events**, **209,728/209,728 consecutive
+CPU boundaries**, **330/330 linked IRQ2/IRQ6 services** and
+**14,561/14,561 service bus events**, all **0 different, 0 skipped**. It retains
+zero unported post-RTE returns. All nineteen follower PCs execute; the first
+three also see IRQ4 entries (8/8/6 respectively). Later follower IRQ boundaries,
+positive animation underflow (1..3), every animation-table value, all CCR/input
+combinations and nested IRQs at every PC remain unverified.
+
+Two deliberate constant mutations fail: stage comparison 7→6 produces branch
+state differences, and animation decrement 4→3 produces bus/register differences
+and 39 differing consecutive CPU boundaries. Variants and logs stay ignored
+under `build/oracle`. Reproduce with `make oracle-capture-caller-follower`,
+`make oracle-caller-follower` and
+`python3 tools/oracle/mutation_check.py followerstage followerage`.
+
+The caller report now inventories **unported graph exit PCs** as well as
+unported post-RTE PCs. A zero post-RTE count cannot conceal the remaining
+handler cuts: the directed corpus still has 762 graph exits, including `$88CA`,
+player/input/weapon entries and explicitly restored fixture code. Parent/shared
+operands without a computed producer, physical input frames, first resumed wait
+operands, IRQ4 service resumptions in this caller corpus and sub execution/
+publication progress remain supplied. This is a bounded scheduling checkpoint;
+independent whole-host scheduling remains unchecked and native Stage 1 remains
+active. Make and CMake register both new corpora; ROMs, disassembly and captures
+are not committed.
+
+Fresh natural 600-frame acceptance matches **2,393,888/2,393,888 instruction/
+IRQ-entry records**, **7,036,333/7,036,333 caller bus events**,
+**2,374,913/2,374,913 consecutive CPU boundaries**, **1,858/1,858 linked
+services** and **82,930/82,930 service bus events**, **0 different, 0 skipped**.
+All nineteen follower PCs execute naturally: 155 entries/returns and 40 indexed
+animation updates. The original closure corpus's 16,413 graph exits become
+16,103, closing 310 cuts without changing the 1,858 services or any returned
+CPU boundary. Physical visibility matches 21,662,465/21,662,465 observations.
+The directed run adds IRQ4 entry coverage and enforced selector/byte endpoints.
+
+The next continuation was `$C082/$C098`; its verified port and the subsequently
+exposed initializer are documented below.
+
+Validation: `make test`, `make verify-stage1` (audio RMS 903.949),
+`make -j4 oracle-test`, `make -j4`, a 180-frame headless launch and
+`git diff --check` pass. The new caller corpora have zero skips; existing
+standalone other-CPU input-race skips remain unchanged. CMake test registration
+is updated; that build path was not run. Work remains on the local
+`codex/host-scheduling-follower` branch; this checkpoint does not complete
+independent host scheduling or authorize native retirement.
+
+### Timed shared-ready and world-initializer continuations (2026-10-07)
+
+`OMainIrqService::caller_step` now translates all five instructions at
+`$C082..$C098`: previous-position copy, byte BTST of `$29C200` bit 0,
+conditional `$B628` sprite append, and RTS. The append call computes its
+stack return address `$C098`; returned registers, XNZVC, instruction
+prefetches and interrupt-selection phases are assertions.
+
+Continue the newly exposed `$88CA..$8944` world-initializer graph (32 PCs
+including its already ported `$88C2` entry). Its two projections execute
+real multiplier/divider bus transactions, signed add/subtract, shifts and
+viewport offsets. `$B66E` now installs `$B676` and falls into its computed
+publication wait. These are scalar instruction operands; ROM tables are
+still read at runtime.
+
+The natural 600-frame corpus `caller_ready.bin` passes **2,446,398 of
+2,446,398 instruction/IRQ records**, **7,220,004 of 7,220,004 bus phases**,
+and **2,433,962 of 2,433,962 consecutive boundaries**, all with **0 different,
+0 skipped**. Linked IRQ2/6 services pass **1,874/1,874**, including
+**83,648/83,648** bus events. No unported post-RTE boundary remains within
+that capture contract. Explicit other-graph exits fall from 16,103 to
+**9,548**; this is an inventory of remaining work, not scheduling closure.
+
+Natural ready-bit reads only observe bit 0 set. The directed 120-frame
+`caller_ready_directed.bin` requires all five PCs and both bit/branch states,
+including the no-append path: **210,903/210,903 records** and
+**615,174/615,174 bus phases**, zero differences/skips. The directed world
+initializer corpus requires all 32 PCs and signed projection operands:
+**216,521/216,521 records**, **633,031/633,031 bus phases**, zero differences/skips.
+Mutations `readybit`, `readyreturn`, `initprojection`, `initshift` and
+`publicationinstall` each fail differential assertions.
+
+RAM owned by the main caller and its known publication-wait word now survive
+linked IRQ2/6 entry, service and RTE. Service snapshots assert those lanes;
+they seed only other lanes. This reduces supplied first-resume operands in
+the natural corpus from 1,681 to **474**. It does not make the remaining
+shared-memory producers independent. `$29C200`, other handler graphs,
+and timed sub-CPU progress remain explicit frontiers.
+
+Reproduce with `make oracle-capture-caller-ready`, `make oracle-caller-ready`,
+and `python3 tools/oracle/mutation_check.py readybit readyreturn
+initprojection initshift publicationinstall`. The new captures and ROM
+listings remain ignored under `build/oracle` or temporary directories.
+
+### Linked IRQ4 and subsequent clear/trail graphs (2026-10-07)
+
+The same caller replay now runs IRQ4 through `OMainCallerSchedule::finish`,
+including computed callees, RTE mask/USP restoration, physical selection and
+immediate entry. Format `AB2CAL10` records IRQ4 returns as assertions; a
+companion `.irq4` file from the same MAME run supplies initial/unowned RAM
+and sub-produced sprite/road frontiers. No callee registers or completion
+times drive execution. Reject truncated linked services and selections.
+The two Lua recorders share a snapshot guard; captures close after a complete
+service and caller boundary, instead of dropping an in-flight linked IRQ4.
+
+The newly encountered `$B698..$B7C0` graphs now execute their full and strided
+sprite-RAM clears, sentinel writes, hardware bank flips, publication waits,
+JSRs and returns. Coverage requires all **67 PCs**, including the DBF taken
+and exhausted paths. A later IRQ4 return exposed `$AAEE`; port its complete
+**99-PC** trail-update graph through `$AC4A` and slot-release `$AE32..$AE4E`,
+including growth, ROM curve lookup, both projections, clipping and `$B628`
+publication. Indexed destinations retain their internal address clocks;
+register shifts/long arithmetic retain their completion tails and XNZVC.
+
+The directed 120-frame trail capture passes **310,463/310,463 instruction/IRQ
+records**, **914,356/914,356 bus phases**, and **309,317/309,317 consecutive
+boundaries**, **0 different, 0 skipped**. Its gate requires all 99 PCs and
+both directions of all six branches: taken/untaken `$AB06` 3/19, `$AB28`
+5/14, `$ABCA` 6/13, `$ABD2` 10/3, `$AC2A` 1/2, `$AC36` 1/1. Fixtures use
+scratch objects, signed/extreme scalar inputs and real SR-writing instructions;
+44 initial/restore scheduler cuts are explicit. `traildrift` and `trailpool`
+mutations fail; the refactored shift still rejects `initshift`.
+
+Main-owned sprite RAM follows both hardware banks. A draw write moves ownership
+with the exchanged list; MAME's `sega_xboard_sprite_device::draw` then writes
+word 7 of every rendered record, including hidden records, up to the end marker.
+Those published cursor words are explicitly transferred to the external video
+producer. Every main CPU write, including word 7, remains a bus assertion.
+Other retained bank words remain assertions. The old model falsely treated the
+retired list's cursor bytes as still owned in the new CPU-visible bank.
+This ownership correction adds no fabricated video writeback.
+
+The final natural 600-frame corpus passes **2,700,760/2,700,760 instruction/
+IRQ-entry records**, **7,969,775/7,969,775 caller bus events** and
+**2,690,151/2,690,151 consecutive caller boundaries**, **0 different,
+0 skipped**. IRQ4 matches **535/535 services** and **1,030,226/1,030,226
+bus events**; IRQ2/6 matches **2,049/2,049 services** and **91,510/91,510
+bus events**. All **2,584/2,584 RTE selections**, including 153 immediate
+exceptions, and **22,570,488/22,570,488 physical visibility observations**
+match. There are **zero unported post-RTE boundaries**. The retained wait
+executes 4,798,253 instructions with 14,394,632/14,394,632 bus assertions.
+The 8,024 other-graph exits remain explicit; none is silently skipped.
+Coverage gates require every clear PC and complete natural trail returns.
+`clearstride`, `clearloop` and `linked4return` mutations each fail.
+
+Validation after all ports: `make -j4 test verify-stage1 all`,
+`make -j4 oracle-test`, a 180-frame headless launch and `git diff --check`
+pass. Stage 1 audio RMS remains 903.949. New corpora have zero skips;
+existing standalone race exclusions retain their documented contracts.
+CMake registrations are updated; the CMake build path was not run.
+
+Reproduce with `make oracle-capture-caller-allirq` and `make oracle-caller-allirq`.
+The natural corpus `caller_allirq_trail.bin` includes gameplay coin/start/input
+through 600 frames; `caller_trail_directed.bin` supplies directed clipping and
+release coverage. Both are registered in Make and CMake. Sub writes, physical
+input frames, hardware cursor results, initial contexts and other handler graphs
+remain explicit boundaries: this closes the selected ISR/returned graphs,
+not the whole independently scheduled arcade host.
