@@ -23,7 +23,10 @@ The previously verified IRQ4 callee graphs retain 3,519/3,519 envelopes and
 8,099,444/8,099,444 predicted bus events, zero skips. Physical IPL comes from
 bus-phase delivery and completion-tail clocks; bounded callers and omitted busy
 spins carry computed state/time. IRQ4 RTE/USP and immediate entry now pass
-714/714 services with supplied game-flow/sub boundaries. Unported handler
+714/714 services. The `$17146/$C6F8` continuation closes the IRQ4 callee graph:
+4,830/4,830 envelopes and 9,567,126/9,567,126 bus events match, zero skips,
+without supplied callee execution. Sub-write/input boundaries remain supplied.
+Unported handler
 resumptions, shared-RAM and ADC producer state, first-resume wait operands and sub progress remain
 supplied boundaries. Phase 3d remains incomplete.
 
@@ -70,6 +73,7 @@ The current host/timing evidence is:
 | Bounded RTE selection and immediate entry | 1,673/1,673 restored-mask selections; 17/17 immediate entries; zero skips; three mutations fail | 12 unported returned-instruction boundaries, IRQ4 returns, producer state/cadence and sub progress |
 | Continuous production ADC producer and bounded caller | 1,656 computed ADC reads; 1,673/1,673 services; 74,059/74,059 bus events; 20,387,341/20,387,341 physical observations; zero skips; two mutations fail | External physical input frames, captured hardware transaction/frontier times, shared RAM and IRQ4/unported caller/sub progress |
 | Conditional player/weapon/road/compositor pairing | 122/122 complete dispatchers; 240/240 road passes and RGB frames; zero skips; sequence/RNG entry routing and two mutations checked | 313 verified target writes, 405 unported target writes, 482 initial targets; caller/sub timing, road control and tile/palette feedback remain supplied |
+| Closed IRQ4 game-flow/coin callee graphs | 4,830/4,830 envelopes; 9,567,126/9,567,126 bus events; zero skips; seven mutations fail | Initial CPU contexts, physical input/sub lanes and unexercised instruction/flag combinations; other caller/sub scheduling |
 | Ten successor return boundaries | 10/10 exact CALL6 returns; 47,839/47,839 added natural instructions; 22 taken BGE fixtures; zero skips; two mutations fail | Seven further returns at `$8B02/$B636`, full handler/sub timing and shared producers |
 | Fourteen returned-word boundaries | 14/14 baseline returns; 47,839/47,839 added instructions; zero skips; two mutations fail | Ten successor returns at `$8AFE/$B632`, shared inputs, full handler timing and sub progress |
 | IRQ4 RTE and original twelve returned-instruction boundaries | 714/714 IRQ4 returns; 49,973/49,973 added instructions; zero skips; five mutations fail | Initial interrupted contexts, physical IPL, IRQ4 game-flow/sub frontiers; ten successor returns and full handler graphs |
@@ -97,8 +101,8 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   helpers and returns compute their own bus phases and register effects.
   Natural, directed and endpoint captures pass; eight constant mutations fail.
   Coverage and supplied sub-write frontiers are explicit in `ENGINE_NOTES.md`.
-  Only the unported game-flow callers still supply state and durations;
-  their durations add to predicted time without resetting the caller clock.
+  This earlier checkpoint supplied game-flow caller state/durations; the
+  `$17146/$C6F8` continuation below now closes those callee boundaries.
 - [x] Check bounded IRQ entry within `$14856` re-arm and the dispatcher/
   publication caller instruction stream. Instruction prefetches, operand
   phases, CCR, consecutive caller boundaries and exception entry are checked.
@@ -149,6 +153,18 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   at the completed prefetch. RAM-target RTE prefetches are bus reads too.
   This closes the bounded world/publication component, not the remaining
   handler graphs, IRQ4 game-flow callbacks or sub execution.
+- [x] Compute the IRQ4 `$14990/$E2DA` RTS callees instead of supplying
+  callback registers and durations. Natural and directed captures check
+  713/713 calls per entry, zero skips; both timing mutations fail. These
+  entries are single RTS instructions, distinct from their adjacent helpers.
+  See the RTS-callee continuation in `ENGINE_NOTES.md`.
+- [x] Close the remaining IRQ4 `$17146/$C6F8` callee graphs. Their 1,507
+  added literal instruction PCs compute attract/high-score, coin/credit,
+  lamp, checksum, sound and dependent text/HUD/palette work. All ten service
+  corpora pass 4,830/4,830 envelopes and 9,567,126/9,567,126 bus events,
+  zero skips and no callee transcripts. Directed checks require all eight
+  high-score states and fifteen coinage selectors. Seven mutations fail;
+  coverage limits are listed in `ENGINE_NOTES.md`.
 - [ ] Finish independent scheduling across caller/ISR resumptions, ADC input
   producers, publication wait boundaries and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller
@@ -166,8 +182,9 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   independently scheduled host. The conditional check above computes raster
   bytes, but retains target producer and caller/sub timing boundaries.
 
-Keep `$17146/$14990/$C6F8/$E2DA` as explicit game-flow caller boundaries until
-their own ports pass. The sampler's actual order remains acknowledgement,
+IRQ4 `$17146/$C6F8` now run their checked callee graphs with no execution
+callbacks. Initial CPU contexts, physical input and sub frontiers remain
+explicit boundaries. The sampler's actual order remains acknowledgement,
 previous ADC result, mux/start, then `$B7F8`. Preserve the 64 us scanline and
 80 ns main CPU cycle clocks, frame-notifier ordering and chronological ADC
 completion. Physical MAME axis limits are X `$20..$E0`, reversed Y `$40..$C0`,

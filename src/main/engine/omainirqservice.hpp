@@ -5,7 +5,7 @@
 // Bounded 12.5 MHz 68000 service port: selected IRQ2/IRQ4/IRQ6 exception entry,
 // Main ROM $1461C/$1466C/$14674, frame/road/cycle/fade/animation palettes,
 // reload/HUD/sound, scenery, transitions and MOVEM/JSR/RTS/RTE bus phases.
-// Unported game-flow callers retain explicit timing/state boundaries.
+// IRQ4 game-flow callees compute their instruction timing and bus phases.
 // The interrupted instruction's completion boundary and latched level are
 // caller inputs; this is not an interpreter for the unported main program.
 class OMainIrqService {
@@ -26,9 +26,8 @@ public:
     static unsigned completion_tail(uint16_t opcode, uint16_t shift_source);
     // Board levels 0/2/4/6 only; level-seven NMI is outside this port.
     static bool eligible(unsigned level,uint16_t sr) { return level>((sr>>8)&7); }
-    // Unported IRQ4 game-flow callers remain timing/state boundaries. The
-    // callback receives the predicted callee start and actual return stack;
-    // it returns a duration in CPU clocks, never an absolute clock reset.
+    // Legacy callback type retained for caller API compatibility. The closed
+    // IRQ4 callee graph executes without invoking a timing/state boundary.
     using Boundary = std::function<unsigned(uint32_t, OMainObjects::Registers&, uint32_t, uint64_t)>;
     using LeafObserver = std::function<void(bool, uint32_t, const OMainObjects::Registers&, uint64_t)>;
     Result run(MainBus&, const Context&, const Clock&, const Boundary& = {}, const LeafObserver& = {});
@@ -57,6 +56,7 @@ private:
     LeafObserver observe_leaf;
     uint64_t ns{};
     uint32_t pc{};
+    bool callee_x=false;
     Result irq4(OMainObjects::Registers, uint32_t, const Boundary&, const ReturnSelection&);
     uint32_t frame_complex(uint32_t, OMainObjects::Registers&, uint32_t);
     uint32_t frame_leaf(uint32_t, OMainObjects::Registers&, uint32_t);

@@ -3625,3 +3625,190 @@ external. The final natural corpus still records 16,413 explicit graph exits
 outside this component (directed 1,010). These are ordinary unported execution
 frontiers, distinct from the now-closed post-RTE markers. Native Stage 1 remains
 active; no captures or ROM data are committed.
+
+
+## IRQ4 RTS-callee scheduling continuation (`$14990/$E2DA`)
+
+The next bounded independent-scheduling step removes two of the four IRQ4
+callee transcripts. Runtime-ROM disassembly establishes that `$014990` and
+`$00E2DA` are each a single RTS; the routines beginning at `$14992/$E2DC`
+are separate entries and are not executed by these IRQ4 calls. Neither entry
+implements credit, scoring, or other invented game flow.
+
+`OMainIrqService::frame_leaf` now executes their two return-stack word reads
+and eight prefetch clocks (16 clocks total) from the computed caller clock.
+The existing IRQ4 call wrapper verifies the computed return address, advances
+its stack, and continues without consuming callback registers or a supplied
+duration. The leaf observer asserts entry/exit registers and timestamps;
+ordered bus assertions include both stack words and their attribution.
+
+The original directed fixtures intentionally bypass the credit/service
+callbacks, so a new labelled `AB2_ORACLE_IRQ4_RTS_CALLEES=1` fixture keeps
+`$8050` zero except for the existing service redirect. The actual ROM executes
+`$C6F8` normally in MAME; its transcript remains an explicit external boundary
+in the replay. This fixture does not claim independently produced inputs or
+credit flow. `--require-rts` rejects a corpus missing either new entry.
+The existing capture format already includes the return-stack transactions;
+no expected reads or register results were synthesized.
+
+| Corpus | IRQ4 envelopes identical/captured | Predicted bus events identical/captured | Calls per RTS entry |
+| --- | --- | --- | --- |
+| Natural 600-frame capture | 597/597 | 1,129,982/1,129,982 | 597 |
+| Directed RTS 120-frame fixture | 117/117 | 143,218/143,218 | 116 |
+| All eight IRQ4 service corpora | 3,636/3,636 | 8,245,050/8,245,050 | 713 |
+
+All results have **0 skipped, 0 differences**. Both entries have their sole
+instruction exercised: **713/713 identical per entry**. Reducing either
+return's prefetch clocks from eight to six fails: `$14990` rejects 5,568 bus
+assertions and `$E2DA` rejects 4,872. Temporary mutation sources and logs
+remain ignored. Reproduce with `make oracle-capture-irq4-service`,
+`make oracle-irq4-service`, and
+`python3 tools/oracle/mutation_check.py irq4rts14990 irq4rtse2da`.
+
+The larger `$17146/$C6F8` IRQ4 graphs, other caller/handler graphs, first
+resumed publication operands, physical input frames, sub-write frontiers and
+sub-produced blit operands remain supplied. These two returns reduce the
+boundary count; they do not finish the independent-scheduling milestone.
+Native Stage 1 remains active. Make and CMake register the new required corpus;
+CMake itself was not run. Captures and ROM data are not committed.
+
+Validation: `make test`, `make verify-stage1` (audio RMS 903.949), full
+`make -j4 oracle-test`, `make -j4`, a 180-frame headless launch and
+`git diff --check` pass. The full suite also retains 714/714 linked IRQ4
+RTE assertions and 166/166 immediate-entry assertions, zero skips; its
+natural return corpus exercises each new RTS 597 additional times. Existing
+standalone input-race skips remain unchanged. The required-coverage gate was
+also checked against the earlier directed corpus: it fails explicitly with
+`missing RTS callee coverage`, preventing a bypassed callback path from
+silently passing this new acceptance check.
+
+
+## Closed IRQ4 `$17146/$C6F8` callee graphs
+
+This continuation removes the final two IRQ4 execution transcripts. The
+outer IRQ4 service now computes every selected callee's registers, ordered
+bus phases and duration; it never invokes `Boundary`. The legacy callback
+type remains in the caller API, but unsupported targets throw. The oracle
+passes an empty boundary callback and has removed its former callee-write,
+register and duration replay entirely. Expected callee entry/exit state and
+bus events are assertions, not execution inputs.
+
+`omainirqgameflow.inc` adds 1,507 address-labelled instruction translations.
+Static ROM control-flow traversal follows both roots, every direct call and
+branch, and the five indexed branch tables; embedded data is excluded. The
+bounded callee engine has no runtime opcode decoder. ROM strings, coinage,
+font/numeric and palette tables remain `MainBus` reads from the user's ROM.
+The dependency graph covers:
+
+- `$17146`: stage-3 attract/high-score display and stage-26 ranking,
+  insertion, eight entry states, name editing, secret-name transitions,
+  highlighted text, score/time/grade formatting and dependent tile/palette
+  producers, including `$137E2/$13A2C/$13C3E/$1B658` and their reachable
+  helpers. This does not port the callers that select these stages.
+- `$C6F8`: service-credit and both coin edges, fifteen coinage selectors,
+  ordinary/extended BCD credits and saturation, lamp pulse/cooldown, checksum
+  and backup copies, sound requests through `$B840/$B84C`, and the coin
+  path into `$CF46` lives/HUD and the already translated `$D062` formatter.
+  This checks `$CF46` in this coin graph, not every death/lives/credit caller.
+
+The shared instruction helpers now support variable-register BTST, long
+indices, ROL, NEG/NOT, register-mask MOVEM and ABCD/SBCD with X, cumulative Z,
+N/V/C. Coin credit arithmetic inherits computed X from `$148B8`'s long counter
+increment through `$14990`'s RTS. The action fixture retains the real counter-wrap
+case; suppressing that X fails the action corpus. Neither root consumes
+uninitialized NZVC: it establishes those flags before the corresponding
+branches. RTE restores the exception's saved SR as before.
+
+Four timing distinctions exposed by real execution are now explicit:
+predecrement MOVE prefetched before its reversed writes (including memory
+sources); indexed JMP consumes fourteen clocks; register CLR.L consumes six;
+ADDA/SUBA.L immediate consumes sixteen including its extensions. MOVEM keeps
+reversed low/high predecrement stores and the restore's extra word read.
+BCD corrections and cumulative zero follow the 68000 behavior, not host
+integer decimal arithmetic. The natural and directed oracles compare exact
+read/write addresses, masks, values, PCs, timestamps and root register state.
+
+New capture operand lengths include game-flow ROM data reads while excluding
+instruction prefetches. An initial filter erroneously classified RTS return
+prefetches as data; it was corrected before acceptance captures were made.
+The natural baseline retains its earlier CPU state and clocks; its verified
+bus denominator grows because previously external callee reads/writes now
+participate in assertions. No returned instruction or input read is supplied
+from a new callee transcript.
+
+Two labelled 600-frame fixtures complement the original eight service
+corpora. `AB2_ORACLE_IRQ4_GAMEFLOW_ENDPOINTS=1` uses ROM-initialized high-score
+records, rank/text pointers derived from `$17822`, stages 3/26, all eight
+states, BCD limits, physical coin edges and all fifteen coinage selectors.
+`AB2_ORACLE_IRQ4_GAMEFLOW_ACTIONS=1` additionally supplies editing/joystick
+operands, physical fire/service-credit inputs, special-name operands,
+stages 15..18 for the extended-credit HUD path and counter wrap. These are
+explicit initial-state fixtures, not assertions of natural credit or attract
+producer cadence. Their resulting writes come entirely from MAME/ported CPU
+execution. `--require-gameflow` and `--require-actions` enforce the stage,
+state and selector coverage; an inactive entry alone cannot satisfy them.
+
+| Acceptance corpus | Envelopes identical/captured | Bus events identical/captured |
+| --- | --- | --- |
+| Natural 600 frames | 597/597 | 1,142,788/1,142,788 |
+| Game-flow endpoints 600 frames | 597/597 | 681,246/681,246 |
+| Game-flow actions 600 frames | 597/597 | 613,896/613,896 |
+| All ten service corpora | 4,830/4,830 | 9,567,126/9,567,126 |
+
+All are **0 different, 0 skipped**, with **0 supplied callee execution
+boundaries**. `$17146` matches 4,830/4,830 root calls and `$C6F8` matches
+1,907/1,907; the earlier directed service fixtures deliberately bypass the
+credit calls. The separate linked return captures retain computed stack,
+USP, restored-mask selection and immediate exception entry.
+
+Seven deliberate mutations fail: stage selector (36,420 bus differences),
+coin bit (53,782), ranking operand (13,205), lamp duration (296), BCD correction
+(15,032), shift clocks (630,202), and inherited X (1,309). Some mutations
+change the executed branch/event count; the runner requires explicit
+bus/state differences when a changed path exits the graph, never a bare
+exception. Variants and logs remain ignored under `build/oracle`.
+
+Reproduce with `make oracle-capture-irq4-service`,
+`make oracle-irq4-service`, and
+`python3 tools/oracle/mutation_check.py gameflowstage gameflowcoin gameflowrank gameflowlamp gameflowbcd gameflowshift gameflowextend`.
+Make and CMake register both new required corpora. Native Stage 1 remains
+active. This closes the two IRQ4 callee graphs; initial interrupted contexts,
+physical input bytes, first resumed publication operands, other caller/handler
+graphs, sub-produced blit operands and sub-write/progress frontiers still
+prevent claiming an independently scheduled whole host. No ROMs, capture
+bytes or disassembly output are committed.
+
+Coverage accounting commits observed PCs only when the entire IRQ4 envelope
+is emitted; the unfinished trailing window cannot add verified coverage.
+Fresh natural, endpoint and action coverage captures independently replay
+597/597 envelopes each, zero skips, and together execute **1,384/1,507 added
+instruction PCs**. Every added `$C6F8`/dependent coin/HUD instruction and the
+`$137E2/$13A2C/$13C3E/$1B658` helpers is exercised. The remaining **123 PCs**
+are translated but unexercised, grouped here by the path they belong to:
+
+| Unexercised path | Instruction PCs |
+| --- | --- |
+| KEY/HIR name variants | `$173EC/$173F2/$173F8`, `$17444/$17448/$1744E` |
+| Cursor ramp jump entries and first ramp write | `$17558`, `$1756C/$17570/$17574`, `$17578/$1757C/$1757E` |
+| Intermediate performance-grade result | `$176AE/$176B2` |
+| Third/fourth highlighted name characters | `$17994/$17996/$1799A/$1799E`, `$179B0/$179B2/$179B6` |
+| Right-edge name highlight and wrap-to-zero | `$17A26/$17A2A/$17A2E/$17A32`, `$17AF6` |
+| Backspace and final-letter completion | `$17B56/$17B58/$17B5C/$17B5E/$17B60/$17B66/$17B6C/$17B70`, `$17BA0/$17BA6` |
+| Blink timeout and cursor glyph variant | `$17CA0`, `$17D26/$17D2A/$17D30/$17D34` |
+| Six/eight-digit leading-blank formatting branches | 25 PCs within `$17E6E-$17EA6`, 28 within `$17F40-$17F90` |
+| Alternate performance-grade glyph layout | 14 PCs within `$18046-$18074` |
+| Attract scroll alternate clamp/update branches | 7 PCs within `$182A4-$182B6`, 7 within `$183BC-$183CC` |
+
+These counts concern instruction execution, not every condition/CCR/value
+combination: invalid BCD digits, arbitrary corrupted pointers, all long
+arithmetic overflow combinations and nested IRQ6 during every newly translated
+instruction remain unverified. Closure means no callee execution boundary or
+unported reachable instruction is supplied by the acceptance replay; it does
+not mean exhaustive behavior over all possible RAM states.
+
+Final validation: `make test`, `make verify-stage1` (audio RMS 903.949),
+`make -j4 oracle-test`, `make -j4`, a 180-frame headless launch and
+`git diff --check` pass. Linked IRQ4 returns retain **714/714 identical** RTE
+checks and **166/166 identical** immediate entries, zero skips, now without
+callee execution transcripts. Existing standalone input-race skips remain
+unchanged. CMake registration is updated; that build path was not run.
