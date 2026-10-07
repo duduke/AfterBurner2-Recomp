@@ -104,8 +104,8 @@ now pass; the selected IRQ4 callee graphs now compute their own timing.
 Bounded re-arm/dispatcher/publication instruction phases and IRQ entry now
 pass, including IRQ4 at every re-arm instruction. Physical IPL visibility and bounded caller scheduling now compute bus-phase
 delivery and instruction completion tails; retained busy-spin gaps execute
-from computed CPU state. Bounded IRQ2/IRQ6 returns now carry computed CPU state through RTE into
-caller execution. Unported handler/IRQ4 resumptions, post-RTE exception
+from computed CPU state. PR #22 is merged: bounded IRQ2/IRQ6 returns now carry
+computed CPU state through RTE into caller execution. Unported handler/IRQ4 resumptions, post-RTE exception
 intervals and sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
 ADC/mux, button and sound-latch endpoints; the fixed frame IRQ loop and
 unverified input/reload calls were removed. Resume at the supplied boundaries and independent

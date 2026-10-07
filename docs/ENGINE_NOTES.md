@@ -2913,6 +2913,11 @@ scheduling and paired host acceptance remain unchecked in Phase 3d.
 
 ## Phase 3d continuation: caller/IRQ2/IRQ6 resumptions
 
+[PR #22](https://github.com/duduke/AfterBurner2-Recomp/pull/22) merged on
+2026-10-07 as `cecfdd2ba30db443f9e4c52b12e1613cfffa28ab`, containing checkpoint
+commit `147f310`. This is an authorized bounded resumption checkpoint;
+Phase 3d host scheduling and gameplay acceptance remain incomplete.
+
 `OMainIrqService::finish` continues the existing instruction-by-instruction
 handler port from `enter`'s computed registers, PC, SR, supervisor stack and
 80 ns clock. `run` delegates to the same split path. `OMainCallerSchedule`

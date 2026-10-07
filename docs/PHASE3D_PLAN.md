@@ -6,7 +6,8 @@ checkpoint history live in [ENGINE_NOTES.md](ENGINE_NOTES.md); completion
 items live in [ROADMAP.md](ROADMAP.md). Read the roadmap's "Working on the
 remaining tasks" before changing code.
 
-The `codex/phase3d-irq26-resumption` checkpoint carries computed bounded
+[PR #22](https://github.com/duduke/AfterBurner2-Recomp/pull/22) merged on
+2026-10-07. Its `147f310` checkpoint carries computed bounded
 caller IRQ2/IRQ6 entry through the verified handler and RTE, restoring the
 retained user stack before continuing caller state/time. Natural gameplay and
 directed fixtures pass 1,673/1,673 services and 74,059/74,059 handler bus events,

@@ -241,7 +241,8 @@ This does not establish the independently scheduled paired gameplay host.
 Native Stage 1 controls, objects, request adapter and sound cues remain active.
 Exact counts, mutation evidence and limits are in `ENGINE_NOTES.md`.
 
-The caller/IRQ2/IRQ6 resumption checkpoint now carries computed bounded caller
+The caller/IRQ2/IRQ6 resumption checkpoint in merged
+[PR #22](https://github.com/duduke/AfterBurner2-Recomp/pull/22) carries computed bounded caller
 entry through the handler and RTE, including retained USP restoration, and
 continues retained caller instructions and wait sampling gaps from that result.
 Shared RAM and preceding ADC results remain supplied producer inputs. IRQ4,
