@@ -2784,6 +2784,11 @@ caller segments, then extend paired road/video/sound host acceptance.
 
 ## PR #21 review continuation: timed host I/O endpoints
 
+[PR #21](https://github.com/duduke/AfterBurner2-Recomp/pull/21) merged on
+2026-10-07 as `426dd162589fe26f3b201b6aeffe1b09d5284335`, including correction
+commit `de49172`. This checkpoint accepts the production endpoint wiring only;
+Phase 3d host scheduling and gameplay acceptance remain incomplete.
+
 `engine/omainio.hpp` installs the production ADC read/write, CXD1095 Port C
 mux, active-low IO1 weapon-button and 315-5250 sound-command callbacks used by
 `OEngine`. It owns the already verified `XBoardTimeline`/ADC0804 models. A

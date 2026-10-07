@@ -105,7 +105,10 @@ Bounded re-arm/dispatcher/publication instruction phases and IRQ entry now
 pass, including IRQ4 at every re-arm instruction. Physical IPL visibility and bounded caller scheduling now compute bus-phase
 delivery and instruction completion tails; retained busy-spin gaps execute
 from computed CPU state. External handler/ISR resumptions and sub-write
-frontiers remain supplied. Resume at those boundaries and independent host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
+frontiers remain supplied. PR #21 is merged with oracle-checked production
+ADC/mux, button and sound-latch endpoints; the fixed frame IRQ loop and
+unverified input/reload calls were removed. Resume at the supplied boundaries and independent
+host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
 previous, starting with 3a (the main CPU's bus, the 315-5250 chip and a
@@ -366,6 +369,13 @@ player/weapon acceptance remain pending.
       0 skipped; physical axis endpoints and button edges have 720/720
       separate mapping checks. Physical endpoints are now installed through
       `OMainIO`; host CPU/IRQ scheduling and conversion-to-flight wiring remain.
+- [x] Production host I/O endpoints (`OMainIO`, PR #21): shared ADC/mux,
+      active-low buttons and ordered sound-command buffering installed in
+      `OEngine`. The same production callbacks pass 7,058/7,058 IRQ calls,
+      45,176/45,176 hardware events and ordinary/directed ADC checks, zero
+      skips; three endpoint mutations fail. Native ticks do not schedule these
+      ports. Independent IRQ/input/reload cadence and paired host acceptance
+      remain pending; see the PR #21 continuation in `ENGINE_NOTES.md`.
 - [x] Comparator IRQ caller: acknowledgement, six-channel sampler and sound
       consumer checked together against MAME, including 946 sound-latch writes
       across ordinary and endpoint runs. All three mutations fail. Bus timestamps
