@@ -104,8 +104,9 @@ now pass; the selected IRQ4 callee graphs now compute their own timing.
 Bounded re-arm/dispatcher/publication instruction phases and IRQ entry now
 pass, including IRQ4 at every re-arm instruction. Physical IPL visibility and bounded caller scheduling now compute bus-phase
 delivery and instruction completion tails; retained busy-spin gaps execute
-from computed CPU state. External handler/ISR resumptions and sub-write
-frontiers remain supplied. PR #21 is merged with oracle-checked production
+from computed CPU state. Bounded IRQ2/IRQ6 returns now carry computed CPU state through RTE into
+caller execution. Unported handler/IRQ4 resumptions, post-RTE exception
+intervals and sub-write frontiers remain supplied. PR #21 is merged with oracle-checked production
 ADC/mux, button and sound-latch endpoints; the fixed frame IRQ loop and
 unverified input/reload calls were removed. Resume at the supplied boundaries and independent
 host scheduling; native Stage 1 remains active. Follow the current host acceptance plan in
@@ -470,6 +471,10 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       ADC completion are checked against MAME. Wait sampling gaps execute from
       computed CPU state. Counts, mutation evidence and external execution
       frontiers are in `ENGINE_NOTES.md`; this is not a full host scheduler.
+- [x] Carry computed bounded caller IRQ2/IRQ6 entry through the verified
+      handler and RTE, restoring the retained user stack before caller
+      continuation. Natural and directed checks, explicit unported post-RTE
+      boundaries and coverage limits are in `ENGINE_NOTES.md`.
 - [ ] Independently schedule handler/caller and ISR resumptions, then
       progress publication and sub execution without
       captured operand frontiers.

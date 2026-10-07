@@ -128,7 +128,8 @@ int main(int argc,char** argv) try {
             board.advance(ns);
         };
         bus.trace=&trace;
-        const auto result=service.run(bus,c,advance);
+        const auto entered=service.enter(bus,c,advance);
+        const auto result=service.finish(bus,entered,advance);
         bus.trace=nullptr;
         ok &= !mismatches&&cursor==expected.size()&&frame_cursor==frames.size()&&result.ns==end
             && result.registers.d==post.d&&result.registers.a==post.a&&result.pc==c.return_pc&&result.sp==post_sp&&result.sr==post_sr&&OMainIrqService::eligible(c.level,c.sr);

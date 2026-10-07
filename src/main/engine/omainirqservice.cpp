@@ -46,17 +46,25 @@ OMainIrqService::Result OMainIrqService::enter(MainBus& b,const Context& c,const
 OMainIrqService::Result OMainIrqService::run(MainBus& b,const Context& c,const Clock& advance,const Boundary& boundary,const LeafObserver& observer) {
     if((c.level!=2 && c.level!=4 && c.level!=6) || c.boundary_ns%CYCLE_NS || (c.supervisor_sp&1))
         throw std::runtime_error("unsupported 68000 service context");
-    const auto initial=enter(b,c,advance);
+    return finish(b,enter(b,c,advance),advance,boundary,observer);
+}
+
+OMainIrqService::Result OMainIrqService::finish(MainBus& b,const Result& initial,const Clock& advance,const Boundary& boundary,const LeafObserver& observer) {
+    const unsigned level=(initial.sr>>8)&7;
+    const uint32_t target=level==2?0x1461c:level==4?0x14674:level==6?0x1466c:0;
+    if(!target || initial.pc!=target || !(initial.sr&0x2000) || initial.ns%CYCLE_NS || (initial.sp&1))
+        throw std::runtime_error("unsupported entered IRQ context");
+    bus=&b;clock=advance;ns=initial.ns;pc=initial.pc;
     observe_leaf=observer;
     auto r=initial.registers;uint32_t sp=initial.sp;
     const uint32_t entry=initial.pc;
 
-    if(c.level==4) return irq4(r,sp,boundary);
+    if(level==4) return irq4(r,sp,boundary);
 
     // $01461C/$01466C MOVE.W D0,abs.L: two extension/prefetch phases,
     // data write at +8 and final prefetch, 16 clocks total.
     pc=entry;idle(8);write16(0xe8012,r.d[0]);idle(4);
-    if(c.level==2) {
+    if(level==2) {
         // $014622 MOVEM.L: mask/next prefetch, reversed predecrement longs,
         // final prefetch. The low word is written before the high word.
         pc=0x14622;idle(4);
@@ -130,7 +138,7 @@ OMainIrqService::Result OMainIrqService::run(MainBus& b,const Context& c,const C
         read16(sp);idle(4);
     }
     // $01466A/$014672 RTE: SR/PC reads, two return prefetches, 20 clocks.
-    pc=c.level==2 ? 0x1466a : 0x14672;
+    pc=level==2 ? 0x1466a : 0x14672;
     const uint16_t sr=read16(sp);
     const uint32_t returnpc=read32(sp+2);
     sp+=6;idle(8);clock(ns);

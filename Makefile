@@ -212,7 +212,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-caller oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
+oracle-test: oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -452,3 +452,16 @@ oracle-io: oracle-mainirq
 	./build/oracle_adc_timing build/oracle/adc_timing_directed.bin
 
 .PHONY: oracle-io
+
+# Computed caller entry -> bounded IRQ2/IRQ6 -> RTE -> caller resumption.
+# IRQ4 and shared input producers remain explicit boundaries.
+oracle-capture-caller-service:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_service.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_service_edges.bin 120 15
+
+oracle-caller-service: oracle-caller
+	./build/oracle_caller build/oracle/caller_service.bin
+	./build/oracle_caller build/oracle/caller_service_edges.bin
+
+.PHONY: oracle-capture-caller-service oracle-caller-service

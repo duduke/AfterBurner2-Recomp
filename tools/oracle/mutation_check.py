@@ -210,6 +210,21 @@ cases.append(("visibilitytail","src/main/hwmath/m68000_completion.hpp",
               "tests/oracle_cpu_visibility.cpp","caller",[]))
 
 # Optional names rerun changed fixtures without rebuilding unaffected mutations.
+cases.append(("callerresumesr", "src/main/engine/omaincallerschedule.hpp",
+              "current={result,0,0};entered=false;return result;",
+              "result.sr^=1;current={result,0,0};entered=false;return result;",
+              "tests/oracle_caller.cpp", "caller_service_edges",
+              ["src/main/engine/omainirqservice.cpp", "src/main/engine/omainirqcallee.cpp",
+               "src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp",
+               "src/main/roms.cpp", "src/main/romloader.cpp"]))
+
+cases.append(("callerresumeusp", "src/main/engine/omaincallerschedule.hpp",
+              "result.sp=user_sp;", "result.sp=user_sp+2;",
+              "tests/oracle_caller.cpp", "caller_service_edges",
+              ["src/main/engine/omainirqservice.cpp", "src/main/engine/omainirqcallee.cpp",
+               "src/main/engine/mainbus.cpp", "src/main/engine/subbus.cpp",
+               "src/main/roms.cpp", "src/main/romloader.cpp"]))
+
 if len(sys.argv)>1:
     requested=set(sys.argv[1:]); known={c[0] for c in cases}
     if requested-known: raise RuntimeError("unknown mutations: "+", ".join(sorted(requested-known)))

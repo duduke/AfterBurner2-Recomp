@@ -240,3 +240,11 @@ ISR returns, unported main execution frontiers and sub progress remain supplied.
 This does not establish the independently scheduled paired gameplay host.
 Native Stage 1 controls, objects, request adapter and sound cues remain active.
 Exact counts, mutation evidence and limits are in `ENGINE_NOTES.md`.
+
+The caller/IRQ2/IRQ6 resumption checkpoint now carries computed bounded caller
+entry through the handler and RTE, including retained USP restoration, and
+continues retained caller instructions and wait sampling gaps from that result.
+Shared RAM and preceding ADC results remain supplied producer inputs. IRQ4,
+unported returned instructions and back-to-back exception entry remain explicit
+execution boundaries. This scheduler check does not enable live `OEngine`
+flight, weapon, reload or sound producer cadence; native Stage 1 remains active.

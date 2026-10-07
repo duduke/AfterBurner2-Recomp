@@ -2893,6 +2893,7 @@ scheduling and paired host acceptance remain unchecked in Phase 3d.
    make oracle-capture-host-interleave oracle-capture-host-publication
    make oracle-capture-paired oracle-capture-irq4-service
    make oracle-capture-logic-wait oracle-capture-caller
+   make oracle-capture-caller-service
    make test
    make verify-stage1
    make oracle-test
@@ -2908,3 +2909,100 @@ scheduling and paired host acceptance remain unchecked in Phase 3d.
    value is insufficient. Report "N of M identical, K skipped (reasons)",
    uncovered paths and remaining supplied inputs in this document. Check off a
    roadmap milestone only when its own host acceptance has passed.
+
+
+## Phase 3d continuation: caller/IRQ2/IRQ6 resumptions
+
+`OMainIrqService::finish` continues the existing instruction-by-instruction
+handler port from `enter`'s computed registers, PC, SR, supervisor stack and
+80 ns clock. `run` delegates to the same split path. `OMainCallerSchedule`
+now retains the active user stack across exception entry, executes bounded
+IRQ2/IRQ6 through RTE, restores USP when the saved S bit is clear, and carries
+that result into subsequent caller instructions and omitted busy spins.
+The scheduler rejects caller steps while the entered handler is pending and
+keeps IRQ4 returns external: IRQ4 can redirect RTE and needs an independently
+checked game-flow/USP contract.
+
+`capture_caller.lua`'s opt-in `AB2CALL3` records handler bus transactions and
+return assertions without a supplied handler CPU context or duration.
+The replay supplies shared-RAM producer state at handler entry, but checks and
+preserves all six computed exception-frame bytes rather than replacing them.
+It compares ordered CPU-owned handler/stack/I/O writes and reads, the written
+RAM lanes, complete D0..D7/A0..A6, SR, active SP, return PC and time. Handler
+writes stay protected from replacement within a continued caller segment.
+The preceding ADC result is a labelled supplied input; the independent physical
+visibility sidecar still checks that result against the generated ADC timeline.
+The new check does not establish ADC producer cadence or ring initialization.
+
+The first linked replay found an unported boundary hidden by the previous
+context reseeding: another exception can start immediately after RTE, before
+a caller instruction runs. The capture now explicitly marks the first
+post-RTE access outside the bounded caller graph, including an unported returned
+instruction or back-to-back exception entry. These intervals are supplied
+execution boundaries, not skipped service records. Completed RTE return
+prefetches also establish the next caller's previous bus-phase frontier;
+using the final RTE stack read instead produced false frontier differences.
+
+| Dataset | Linked services identical / captured | Handler bus events identical / captured | Computed caller resumptions | Unported post-RTE boundaries | Skipped |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Natural gameplay, 600 frames | 1,330 / 1,330 | 58,919 / 58,919 | 1,304 | 26 | 0 |
+| Directed boot/caller fixture, 120 frames | 343 / 343 | 15,140 / 15,140 | 340 | 3 | 0 |
+
+Combined: **1,673/1,673 services and 74,059/74,059 handler bus events identical,
+zero differences, zero skips**, with 1,644 computed caller resumptions and
+29 explicitly supplied post-RTE intervals. Coverage includes 1,656 IRQ2 and
+17 IRQ6 services, 1,670 user-mode and three supervisor-mode returns. Natural
+inputs deliver coin/start and gameplay controls; the shorter directed dataset
+covers boot and caller fixtures, not live gameplay input endpoints. The
+existing natural/endpoint/directed service datasets separately pass the split
+entry/finish API on **9,439/9,439 calls and 474,024/474,024 bus events**, zero
+skips, retaining their sampler slots, sound ring wrap/disable/empty, mask and
+completion-tail coverage.
+
+The new caller datasets additionally pass 514,806/514,806 retained instruction/
+IRQ records, 1,466,316/1,466,316 retained bus events and 477,697/477,697 consecutive
+caller boundaries. They execute 6,142,730 omitted wait instructions with
+18,427,992/18,427,992 bus assertions and check 20,373,762/20,373,762 physical
+observations, all with zero differences/skips. Supplied inputs remain explicit:
+1,673 shared-RAM entry snapshots, 1,656 preceding ADC results, 2,028 first-resume
+wait operands and 44 directed fixture markers (27 in-flight fixture cuts are
+outside the retained-record denominator). Both captures finish with zero
+unfinished instructions, entries or linked services.
+
+Two temporary-header constant mutations complete with oracle exit status 1:
+flipping the restored SR carry bit fails all 343 directed service returns and
+26 caller boundaries; restoring USP two bytes too high fails 340 service
+returns and 12,916 caller boundaries. Pristine sources are never overwritten;
+mutation headers, executables, logs and captures remain ignored under `build/`.
+
+Commands:
+
+```sh
+make oracle-capture-caller-service
+make oracle-caller-service
+python3 tools/oracle/mutation_check.py callerresumesr callerresumeusp
+make test
+make verify-stage1
+make -j4 oracle-test
+make -j4
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
+```
+
+**Limits:** IRQ4 service/resumption and game-flow callers, nested ISR execution,
+back-to-back exception selection/entry before a caller instruction, arbitrary
+returned instruction graphs, physical input producer changes, ADC/mux actions
+outside the checked services, sound-ring producer state/cadence, sub-write
+frontiers and renderer feedback remain supplied or unverified. First-resume
+shared wait operands are still external inputs even when CPU state/time carries
+across RTE. This is a bounded IRQ2/IRQ6 scheduling checkpoint; it does not wire
+live flight/reload/sound into `OEngine` or complete paired road/video acceptance.
+Native Stage 1 remains active and Phase 3d remains incomplete.
+
+Validation: `make -j4`, `make test`, `make verify-stage1`, the complete
+`make -j4 oracle-test` and a 180-frame dummy-driver launch pass. Existing
+oracle differences remain zero with their previously documented race skips;
+Stage 1 audio RMS remains 903.949. Make and CMake register both new caller
+captures and their physical visibility checks; CMake is unavailable on this
+host, so that build path was not run. No ROM data or captures are tracked.
+Next: independently establish IRQ4/unported handler resumptions and post-RTE
+exception selection, producer cadence and sub progress before live host wiring.

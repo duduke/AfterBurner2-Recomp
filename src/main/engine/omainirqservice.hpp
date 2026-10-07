@@ -32,6 +32,9 @@ public:
     using Boundary = std::function<unsigned(uint32_t, OMainObjects::Registers&, uint32_t, uint64_t)>;
     using LeafObserver = std::function<void(bool, uint32_t, const OMainObjects::Registers&, uint64_t)>;
     Result run(MainBus&, const Context&, const Clock&, const Boundary& = {}, const LeafObserver& = {});
+    // Continue an already entered handler from computed entry outputs. No
+    // second exception entry or captured handler context is consumed.
+    Result finish(MainBus&, const Result&, const Clock&, const Boundary& = {}, const LeafObserver& = {});
     // One uninterrupted $14856 spin iteration, or its ready/re-arm/RTS
     // path (Context.supervisor_sp is the active user/supervisor stack here).
     // Waiting returns PC=$14856 so a scheduler can service an IRQ.
