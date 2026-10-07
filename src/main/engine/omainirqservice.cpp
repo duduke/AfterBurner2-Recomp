@@ -470,6 +470,14 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         sr=(sr&0xfff0)|(value?0:4)|(value&0x8000?8:0)|(overflow?2:0)|(carry?1:0);
         if(x)sr=(sr&~16)|(carry?16:0);
     };
+    auto addsub_byte=[&](uint8_t old,uint8_t source,bool subtract,bool extend) {
+        const auto value=uint8_t(subtract?old-source:old+source);
+        const bool carry=subtract?old<source:unsigned(old)+source>0xff;
+        const bool overflow=((subtract?(old^source):~(old^source))&(old^value)&0x80)!=0;
+        sr=(sr&0xfff0)|(carry?1:0)|(overflow?2:0)|(value?0:4)|(value&0x80?8:0);
+        if(extend)sr=(sr&~16)|(carry?16:0);
+        return value;
+    };
     auto addsub_word=[&](uint16_t old,uint16_t source,bool subtract,bool extend) {
         const auto value=uint16_t(subtract?old-source:old+source);
         const bool carry=subtract?old<source:unsigned(old)+source>0xffff;
@@ -477,6 +485,21 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         sr=(sr&0xfff0)|(carry?1:0)|(overflow?2:0)|(value?0:4)|(value&0x8000?8:0);
         if(extend)sr=(sr&~16)|(carry?16:0);
         return value;
+    };
+    auto addsub_long=[&](uint32_t old,uint32_t source,bool subtract,bool extend) {
+        const auto value=uint32_t(subtract?old-source:old+source);
+        const bool carry=subtract?old<source:uint64_t(old)+source>0xffffffff;
+        const bool overflow=((subtract?(old^source):~(old^source))&(old^value)&0x80000000)!=0;
+        sr=(sr&0xfff0)|(carry?1:0)|(overflow?2:0)|(value?0:4)|(value&0x80000000?8:0);
+        if(extend)sr=(sr&~16)|(carry?16:0);
+        return value;
+    };
+    auto asl_word=[&](unsigned reg,unsigned count) {
+        auto value=uint16_t(r.d[reg]);read16(pc+4);bool carry=false,overflow=false;
+        for(unsigned i=0;i<count;++i){carry=value&0x8000;const auto shifted=uint16_t(value<<1);
+            overflow|=bool((value^shifted)&0x8000);value=shifted;idle(2);}
+        word(r.d[reg],value);sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x8000?8:0);
+        latch();idle(2);next=pc+2;
     };
     auto asr_long=[&](unsigned reg,unsigned count) {
         auto value=r.d[reg];read16(pc+4);bool carry=false;
@@ -503,6 +526,56 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         else {idle(2);if(length==4)read16(pc+4);final(next+2);}
     };
     switch(pc) {
+#include "engine/omaininputschedule.inc"
+#include "engine/omainflightschedule.inc"
+#include "engine/omaincompanionschedule.inc"
+    // $D0DA: ADDQ.W #1,$8B5A, exposed by the directed producer's
+    // restored-mask schedule. The following button call is timed by the input graph.
+    case 0xd0da: {
+        read16(pc+4);const auto old=read16(0xffff8b5a);
+        const auto v=addsub_word(old,1,false,true);read16(pc+6);
+        latch();write16(0xffff8b5a,v);next=pc+4;break;
+    }
+    // $B84C..$B884: sound-ring producer. Keep operand/prefetch ordering
+    // and XNZVC through enqueue, disabled reset and stage-one suppression.
+    case 0xb84c: {
+        read16(pc+4);const auto v=read8(0xffff8902);
+        sr=(sr&0xfff0)|(v?0:4)|(v&0x80?8:0);
+        final(pc+6);next=pc+4;break;
+    }
+    case 0xb850:branch(sr&4,0xb87c,4);break;
+    case 0xb854: {
+        read16(pc+4);read16(pc+6);read16(pc+8);
+        addsub_word(read16(0x29c09c),1,true,false);
+        final(pc+10);next=pc+8;break;
+    }
+    case 0xb85c:branch(sr&4,0xb884,4);break;
+    case 0xb860:read16(pc+4);word(r.d[1],read16(0xffff8908));nz(r.d[1]);final(pc+6);next=pc+4;break;
+    case 0xb864:r.a[0]=0xffff890c;read16(pc+4);final(pc+6);next=pc+4;break;
+    // $B868 indexed byte destination: two internal EA clocks precede
+    // extension prefetch; the final prefetch follows the byte write.
+    case 0xb868: {
+        idle(2);read16(pc+4);const auto v=uint8_t(r.d[0]);
+        sr=(sr&0xfff0)|(v?0:4)|(v&0x80?8:0);
+        write8(r.a[0]+int16_t(r.d[1]),v);final(pc+6);next=pc+4;break;
+    }
+    case 0xb86c:word(r.d[1],addsub_word(r.d[1],1,false,true));final(pc+4);next=pc+2;break;
+    case 0xb86e:read16(pc+4);word(r.d[1],r.d[1]&0x3f);nz(r.d[1]);final(pc+6);next=pc+4;break;
+    case 0xb872:read16(pc+4);nz(r.d[1]);write16(0xffff8908,r.d[1]);final(pc+6);next=pc+4;break;
+    case 0xb876: {
+        read16(pc+4);const auto old=read8(0xffff8906),v=uint8_t(old+1);
+        sr=(sr&0xffe0)|(v?0:4)|(v&0x80?8:0)|(old==0x7f?2:0)|(old==0xff?0x11:0);
+        read16(pc+6);latch();write8(0xffff8906,v);next=pc+4;break;
+    }
+    case 0xb87c: {
+        read16(pc+4);read16(0xffff8908);nz(0);read16(pc+6);
+        latch();write16(0xffff8908,0);next=pc+4;break;
+    }
+    case 0xb880: {
+        read16(pc+4);read8(0xffff8906);sr=(sr&0xfff0)|4;read16(pc+6);
+        latch();write8(0xffff8906,0);next=pc+4;break;
+    }
+    case 0xb87a:case 0xb884:next=read32(sp);sp+=4;read16(next);final(next+2);break;
     // $1458A/$14590: main loop's road pointer and BSR wait caller.
     case 0x1458a:r.a[6]=0xe4000;read16(pc+4);read16(pc+6);final(pc+8);next=pc+6;break;
     case 0x14590:

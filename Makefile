@@ -96,6 +96,13 @@ oracle-capture:
 	$(MAKE) oracle-capture-caller-follower
 	$(MAKE) oracle-capture-caller-ready
 	$(MAKE) oracle-capture-caller-allirq
+	$(MAKE) oracle-capture-caller-soundproducer
+	$(MAKE) oracle-capture-caller-input
+	$(MAKE) oracle-capture-caller-companion
+	$(MAKE) oracle-capture-caller-flight
+	$(MAKE) oracle-capture-subpublication-short
+	$(MAKE) oracle-capture-subpublication-directed
+	$(MAKE) oracle-capture-subpublication-full
 
 # 3d foundations only; leaf and directed calls do not prove player gameplay.
 oracle-capture-objects:
@@ -219,7 +226,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
+oracle-test: oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp $(HANDLER_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -454,9 +461,18 @@ oracle-capture-caller:
 	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller.bin 600 30
 	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_directed.bin 600 30
 
-oracle-caller: oracle-cpu-visibility
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_caller.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_caller
+# Incremental caller build: shared objects and generated include dependencies.
+CALLER_SRCS = tests/oracle_caller.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS)
+CALLER_OBJS = $(addprefix build/oracle_obj/,$(CALLER_SRCS:.cpp=.o))
+-include $(CALLER_OBJS:.o=.d)
+build/oracle_obj/%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -Isrc/main -MMD -MP -c $< -o $@
+
+build/oracle_caller: $(CALLER_OBJS)
+	$(CXX) $(CXXFLAGS) $(CALLER_OBJS) -o $@
+
+oracle-caller: oracle-cpu-visibility build/oracle_caller
 	./build/oracle_caller build/oracle/caller.bin
 	./build/oracle_caller build/oracle/caller_directed.bin
 
@@ -590,3 +606,131 @@ oracle-caller-allirq: oracle-caller
 	./build/oracle_caller build/oracle/caller_trail_directed.bin --require-trail --require-closed
 
 .PHONY: oracle-capture-caller-allirq oracle-caller-allirq
+
+# Timed sound-ring producer; caller entry and hardware frontiers remain explicit.
+oracle-capture-caller-soundproducer:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_IRQ4=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_soundproducer.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_SOUNDPRODUCER_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_soundproducer_directed.bin 120 15
+
+oracle-caller-soundproducer: oracle-caller
+	./build/oracle_caller build/oracle/caller_soundproducer.bin --require-soundproducer-path --require-allirq --require-closed
+	./build/oracle_caller build/oracle/caller_soundproducer_directed.bin --require-soundproducer --require-closed
+
+.PHONY: oracle-capture-caller-soundproducer oracle-caller-soundproducer
+
+# Computed input graph. Short/direct fixtures omit unrelated caller snapshots.
+oracle-capture-caller-input:
+	$(MAKE) oracle-capture-caller-input-short
+	$(MAKE) oracle-capture-caller-input-directed
+	$(MAKE) oracle-capture-caller-input-full
+
+oracle-capture-caller-input-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_INPUT=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_INPUT_ONLY=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_input_short.bin 120 15
+
+oracle-capture-caller-input-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_INPUT=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_INPUT_ONLY=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_INPUT_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_input_directed.bin 200 15
+
+oracle-capture-caller-input-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_INPUT=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_input.bin 600 30
+
+oracle-caller-input: build/oracle_caller
+	./build/oracle_caller build/oracle/caller_input_short.bin --require-input-path --require-closed
+	./build/oracle_caller build/oracle/caller_input_directed.bin --require-input --require-closed
+	./build/oracle_caller build/oracle/caller_input.bin --require-input-path --require-allirq --require-closed
+
+oracle-input-generated-check:
+	@mkdir -p build/oracle
+	python3 tools/build_rom_image.py maincpu build/oracle/input_main.bin
+	python3 tools/generate_input_schedule.py build/oracle/input_main.bin --check
+
+.PHONY: oracle-capture-caller-input oracle-capture-caller-input-short oracle-capture-caller-input-directed oracle-capture-caller-input-full oracle-caller-input oracle-input-generated-check
+
+# Timed live flight and projection, sharing the already timed append graph.
+oracle-capture-caller-flight:
+	$(MAKE) oracle-capture-caller-flight-short
+	$(MAKE) oracle-capture-caller-flight-directed
+	$(MAKE) oracle-capture-caller-flight-full
+
+oracle-capture-caller-flight-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_FLIGHT_ONLY=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_FOLLOWER=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_flight_short.bin 120 15
+
+oracle-capture-caller-flight-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_FLIGHT_ONLY=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_FLIGHT_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_flight_directed.bin 200 15
+
+oracle-capture-caller-flight-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_flight.bin 600 30
+
+oracle-caller-flight: build/oracle_caller
+	./build/oracle_caller build/oracle/caller_flight_short.bin --require-flight-path --require-closed
+	./build/oracle_caller build/oracle/caller_flight_directed.bin --require-flight --require-closed
+	./build/oracle_caller build/oracle/caller_flight.bin --require-flight-path --require-input-path --require-allirq --require-closed
+
+oracle-flight-generated-check:
+	@mkdir -p build/oracle
+	python3 tools/build_rom_image.py maincpu build/oracle/flight_main.bin
+	python3 tools/generate_input_schedule.py build/oracle/flight_main.bin --graph flight --check
+
+
+.PHONY: oracle-capture-caller-flight oracle-capture-caller-flight-short oracle-capture-caller-flight-directed oracle-capture-caller-flight-full oracle-caller-flight oracle-flight-generated-check
+
+# Timed shadow and exhaust, sharing the already timed append graph.
+oracle-capture-caller-companion:
+	$(MAKE) oracle-capture-caller-companion-short
+	$(MAKE) oracle-capture-caller-companion-directed
+	$(MAKE) oracle-capture-caller-companion-full
+
+oracle-capture-caller-companion-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_COMPANION_ONLY=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_FOLLOWER=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_companion_short.bin 120 15
+
+oracle-capture-caller-companion-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_COMPANION_ONLY=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_COMPANION_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_companion_directed.bin 320 15
+
+oracle-capture-caller-companion-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_companion.bin 600 30
+
+oracle-caller-companion: build/oracle_caller
+	./build/oracle_caller build/oracle/caller_companion_short.bin --require-companion-path --require-closed
+	./build/oracle_caller build/oracle/caller_companion_directed.bin --require-companion --require-closed
+	./build/oracle_caller build/oracle/caller_companion.bin --require-companion-path --require-flight-path --require-input-path --require-allirq --require-closed
+
+oracle-companion-generated-check:
+	@mkdir -p build/oracle
+	python3 tools/build_rom_image.py maincpu build/oracle/companion_main.bin
+	python3 tools/generate_input_schedule.py build/oracle/companion_main.bin --graph companion --check
+
+
+.PHONY: oracle-capture-caller-companion oracle-capture-caller-companion-short oracle-capture-caller-companion-directed oracle-capture-caller-companion-full oracle-caller-companion oracle-companion-generated-check
+
+# Bounded sub publication waits and the two-CPU shared signal ledger.
+build/oracle_subpublication: tests/oracle_subpublication.cpp src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/subbus.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subpublication.cpp src/main/engine/osubpublication.cpp $(ORACLE_SRCS) -o $@
+
+oracle-capture-subpublication-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_subpublication.lua build/oracle/subpublication_short.bin 120 15
+
+oracle-capture-subpublication-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_PUBLICATION_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_subpublication.lua build/oracle/subpublication_directed.bin 160 15
+
+oracle-capture-subpublication-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_subpublication.lua build/oracle/subpublication.bin 600 30
+
+oracle-subpublication: build/oracle_subpublication
+	./build/oracle_subpublication build/oracle/subpublication_short.bin
+	./build/oracle_subpublication build/oracle/subpublication_directed.bin --require-endpoints
+	./build/oracle_subpublication build/oracle/subpublication.bin
+
+.PHONY: oracle-capture-subpublication-short oracle-capture-subpublication-directed oracle-capture-subpublication-full oracle-subpublication

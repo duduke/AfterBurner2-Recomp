@@ -305,6 +305,14 @@ for name,source,old,new,test,capture in [
      "pc==0x88de?0x29c092:0x29c090", "pc==0x88de?0x29c090:0x29c090", "tests/oracle_caller.cpp", "caller_worldinit_directed"),
     ("initshift", "src/main/engine/omainirqservice.cpp",
      "for(unsigned i=0;i<count;++i){carry=value&0x80000000", "for(unsigned i=0;i<count-1;++i){carry=value&0x80000000", "tests/oracle_caller.cpp", "caller_worldinit_directed"),
+    ("producercounterreturn", "src/main/engine/omainirqservice.cpp",
+     "old=read16(0xffff8b5a);\n        const auto v=addsub_word(old,1,false,true)", "old=read16(0xffff8b5a);\n        const auto v=addsub_word(old,2,false,true)", "tests/oracle_caller.cpp", "caller_soundproducer_directed"),
+    ("producerwrap", "src/main/engine/omainirqservice.cpp",
+     "word(r.d[1],r.d[1]&0x3f);nz(r.d[1])", "word(r.d[1],r.d[1]&0x1f);nz(r.d[1])", "tests/oracle_caller.cpp", "caller_soundproducer_directed"),
+    ("producerstage", "src/main/engine/omainirqservice.cpp",
+     "addsub_word(read16(0x29c09c),1,true,false)", "addsub_word(read16(0x29c09c),2,true,false)", "tests/oracle_caller.cpp", "caller_soundproducer_directed"),
+    ("producercount", "src/main/engine/omainirqservice.cpp",
+     "old=read8(0xffff8906),v=uint8_t(old+1)", "old=read8(0xffff8906),v=uint8_t(old+2)", "tests/oracle_caller.cpp", "caller_soundproducer_directed"),
     ("traildrift", "src/main/engine/omainirqservice.cpp",
      "read16(0x29c0c4)", "read16(0x29c0c6)", "tests/oracle_caller.cpp", "caller_trail_directed"),
     ("trailpool", "src/main/engine/omainirqservice.cpp",
@@ -345,6 +353,67 @@ for name,source,old,new,test,capture in [
     deps=["src/main/engine/omainirqcallee.cpp", *common]
     if source.endswith(".hpp"):deps+=["src/main/engine/omainirqservice.cpp"]
     cases.append((name,source,old,new,test,capture,deps))
+# Generated input cases are compiled through the same production caller.
+for name,old,new in [
+    ("inputtimeddeadband", "case 0xb116: {\n    read16(0xb11a);\n    const uint32_t operand=0x2;", "case 0xb116: {\n    read16(0xb11a);\n    const uint32_t operand=0x3;"),
+    ("inputtimedresync", "const auto value=old&~0x4;", "const auto value=old&~0x2;"),
+    ("inputtimeddivisor", "const uint32_t value=0x71;", "const uint32_t value=0x72;"),
+    ("inputtimedbuttons", "const auto value=uint8_t(~old);", "const auto value=uint8_t(old);"),
+]:
+    cases.append((name,"src/main/engine/omaininputschedule.inc",old,new,
+                  "tests/oracle_caller.cpp","caller_input_directed",
+                  ["src/main/engine/omainirqservice.cpp","src/main/engine/omainirqcallee.cpp",*common]))
+cases.append(("inputsamplemux","src/main/engine/omainio.hpp",
+              "uint8_t selected_mux() const { return mux; }",
+              "uint8_t selected_mux() const { return mux^4; }",
+              "tests/oracle_caller.cpp","caller_input_short",
+              ["src/main/engine/omainirqservice.cpp","src/main/engine/omainirqcallee.cpp",*common]))
+# Timed flight arithmetic, chip operands, attachment orientation and phases.
+for name,old,new in [
+    ("flighttimedslew", "case 0x9938: {\n    read16(0x993c);\n    const uint32_t operand=0x4;", "case 0x9938: {\n    read16(0x993c);\n    const uint32_t operand=0x5;"),
+    ("flighttimeddivisor", "case 0x99da: {\n    read16(0x99de);\n    const uint32_t value=0x3;", "case 0x99da: {\n    read16(0x99de);\n    const uint32_t value=0x4;"),
+    ("flighttimedproduct", "asr_long(0,7);", "asr_long(0,6);"),
+    ("flighttimedflip", "r.d[2]=(r.d[2]<<16)|(r.d[2]>>16);", "r.d[2]=r.d[2];"),
+    ("flighttimedshift", "case 0x9b7a: {\n    asl_long(0,(r.d[1]&63));", "case 0x9b7a: {\n    asl_long(0,((r.d[1]+1)&63));"),
+]:
+    cases.append((name,"src/main/engine/omainflightschedule.inc",old,new,
+                  "tests/oracle_caller.cpp","caller_flight_directed",
+                  ["src/main/engine/omainirqservice.cpp","src/main/engine/omainirqcallee.cpp",*common]))
+for name,old,new in [
+    ("flightreturnflag", "old&0x2?0:4", "old&0x2?4:0"),
+    ("flightreturnoffset", "read8(r.a[5]+(-2))", "read8(r.a[5]+(-4))"),
+    ("flightreturncopy", "read16(0x60ce);", "read16(0x60d0);"),
+    ("flightreturnworld", "read16(0x7654);", "read16(0x7656);"),
+    ("flightreturndip", "read8(0xffff8070)", "read8(0xffff8071)"),
+]:
+    cases.append((name,"src/main/engine/omainflightschedule.inc",old,new,
+                  "tests/oracle_caller.cpp","caller_flight_directed",
+                  ["src/main/engine/omainirqservice.cpp","src/main/engine/omainirqcallee.cpp",*common]))
+# Timed shadow/exhaust: arithmetic width, strict bank zero, ROM table lane,
+# sprite scale bits, projection shift and prefetch placement.
+for name,old,new in [
+    ("companiontimedbyte", "case 0xaf64: {\n    const uint32_t operand=1;\n    const auto old=uint8_t(r.d[0]);\n    const auto value=addsub_byte", "case 0xaf64: {\n    const uint32_t operand=1;\n    const auto old=uint8_t(r.d[0]);\n    const auto value=addsub_word"),
+    ("companiontimedzero", "branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0xb00e,4);", "branch(bool(sr&8)==bool(sr&2),0xb00e,4);"),
+    ("companiontimedtable", "read32(r.a[1]+(4)+int16_t(r.d[0]))", "read32(r.a[1]+(0)+int16_t(r.d[0]))"),
+    ("companiontimedscale", "case 0xaec4: {\n    read16(0xaec8);\n    const uint32_t operand=0x7f;", "case 0xaec4: {\n    read16(0xaec8);\n    const uint32_t operand=0x7e;"),
+    ("companiontimedshadow", "asr_word(0,8);", "asr_word(0,7);"),
+    ("companiontimedreturn", "case 0x77ac: {\n    next=read32(sp);sp+=4;read16(next);final(next+2);", "case 0x77ac: {\n    next=read32(sp);sp+=2;read16(next);final(next+2);"),
+    ("companiontimedprefetch", "case 0xafa6: {\n    idle(2);\n    read16(0xafaa);", "case 0xafa6: {\n    idle(2);\n    read16(0xafac);"),
+]:
+    cases.append((name,"src/main/engine/omaincompanionschedule.inc",old,new,
+                  "tests/oracle_caller.cpp","caller_companion_directed",
+                  ["src/main/engine/omainirqservice.cpp","src/main/engine/omainirqcallee.cpp",*common]))
+# Sub wait timing and computed cross-CPU publication signal values.
+for name,old,new in [
+    ("subpubzero", "case 0x55a:branch(bool(s.sr&8)==bool(s.sr&2),0x556);", "case 0x55a:branch(!(s.sr&4)&&bool(s.sr&8)==bool(s.sr&2),0x556);"),
+    ("subpubrelease", "v|0x200,0xff00", "v|0x400,0xff00"),
+    ("subpubprefetch", "case 0x452:case 0x556:read(pc+4);", "case 0x452:case 0x556:read(pc+6);"),
+    ("subpubreturn", "s.sp+=4;s.pc=", "s.sp+=2;s.pc="),
+    ("subpubcounter", "operand-1", "operand-2"),
+    ("subpubrearm", "b.write16(0x2a3c00,1);", "b.write16(0x2a3c00,2);"),
+]:
+    cases.append((name,"src/main/engine/osubpublication.cpp",old,new,
+                  "tests/oracle_subpublication.cpp","subpublication_directed",common))
 # Object initializer checks now execute through the full production router.
 cases = [(name,source,old,new,test,capture,handler_dependencies(source) if test=="tests/oracle_objects.cpp" else dependencies)
          for name,source,old,new,test,capture,dependencies in cases]

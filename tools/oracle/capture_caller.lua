@@ -30,7 +30,11 @@ local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write(li
 -- an explicit boundary across omitted/unported instruction graphs. Retain every
 -- bounded caller phase, hardware access and scanline-adjacent observation.
 local visibility=assert(io.open(os.getenv("AB2_ORACLE_OUT")..".visibility","wb"))
-visibility:write("AB2VIS02")
+local inputgraph=os.getenv("AB2_ORACLE_CALLER_INPUT")=="1"
+local inputonly=os.getenv("AB2_ORACLE_INPUT_ONLY")=="1"
+assert(not inputgraph or snapshots,"input graph requires instruction snapshots")
+assert(not inputonly or inputgraph,"input-only capture requires input graph")
+visibility:write(inputgraph and "AB2VIS03" or "AB2VIS02")
 local previous_end=0
 local previous_pc,previous_opcode,previous_source,previous_fetch=0,0,0,false
 local opcodes={}
@@ -268,6 +272,42 @@ if trail then
  sizes[0xae4e]=4
  sizes[0xaaee]=7
 end
+local soundproducer=os.getenv("AB2_ORACLE_CALLER_SOUNDPRODUCER")=="1"
+assert(not soundproducer or snapshots,"sound producer requires instruction snapshots")
+if soundproducer then
+ if os.getenv("AB2_ORACLE_SOUNDPRODUCER_DIRECTED")=="1" then sizes[0xd0da]=4 end
+ for p,n in pairs({[0xb84c]=3,[0xb850]=2,[0xb854]=5,[0xb85c]=2,
+ [0xb860]=3,[0xb864]=2,[0xb868]=3,[0xb86c]=1,[0xb86e]=2,
+ [0xb872]=3,[0xb876]=4,[0xb87a]=4,[0xb87c]=4,[0xb880]=4,[0xb884]=4})do sizes[p]=n end
+end
+local companiongraph=os.getenv("AB2_ORACLE_CALLER_COMPANION")=="1"
+local companiononly=os.getenv("AB2_ORACLE_COMPANION_ONLY")=="1"
+assert(not companiongraph or snapshots,"companion graph requires snapshots")
+local companion_manifest=companiongraph and dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/companion_schedule.lua") or {}
+local flightgraph=os.getenv("AB2_ORACLE_CALLER_FLIGHT")=="1"
+local flightonly=os.getenv("AB2_ORACLE_FLIGHT_ONLY")=="1"
+assert(not flightgraph or snapshots,"flight graph requires snapshots")
+local flight_manifest=flightgraph and dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/flight_schedule.lua") or {}
+local input_manifest=inputgraph and dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/input_schedule.lua") or {}
+local retained_sizes=sizes
+if inputonly or flightonly or companiononly then sizes={} end
+if flightonly or companiononly then
+ for p=0xb628,0xb654,2 do sizes[p]=retained_sizes[p]end
+ for p=0x1458a,0x145b8,2 do sizes[p]=retained_sizes[p]end
+ -- Already timed returns reached by other callers of the shared append graph.
+ sizes[0x8c1a]=4;sizes[0x7c10]=4;sizes[0xac4a]=4
+ sizes[0x8af2]=retained_sizes[0x8af2];sizes[0xd0da]=4
+ for _,range in ipairs({{0x88c2,0x8944},{0x8af8,0x8c1c},{0x7bb6,0x7c10}})do
+  for p=range[1],range[2],2 do if retained_sizes[p]then sizes[p]=retained_sizes[p]end end
+ end
+end
+if companiononly then
+ local returned=dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/flight_schedule.lua")
+ for _,p in ipairs({0x427c,0x5d68,0x60ca,0x7650,0x18e8a})do flight_manifest[p]=returned[p]end
+end
+for p,i in pairs(companion_manifest)do sizes[p]=i.phases end
+for p,i in pairs(flight_manifest)do sizes[p]=i.phases end
+for p,i in pairs(input_manifest)do sizes[p]=i.phases end
 local completion={
  [0xb636]={reg=0,tail=10},[0x8b06]={reg=1,tail=12},[0x8b24]={reg=0,tail=8},[0x8b2e]={reg=1,variable=true},
  [0x8b40]={reg=6,tail=10},[0x8b5e]={reg=6,tail=16},[0x8b76]={reg=0,tail=4},[0x8bce]={reg=0,tail=4},
@@ -292,6 +332,9 @@ if trail then
  completion[0xac06]={reg=0,tail=14}
  completion[0xac24]={reg=1,tail=4}
 end
+for p,i in pairs(companion_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail}end end
+for p,i in pairs(input_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail}end end
+for p,i in pairs(flight_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail,variable=i.variable>0,count=i.variable-1}end end
 local function ns()return math.floor(manager.machine.time:as_double()*1e9+0.5)end
 local function level()return (timer:read(0)~=0 and 2 or 0)|(blank:read(0)~=0 and 4 or 0)end
 local function stack()return main.state.SR.value&0x2000~=0 and main.state.SP.value or main.state.USP.value end
@@ -325,15 +368,22 @@ end
 if snapshots then
  assert(closure,"instruction snapshots require closure capture")
  local addresses=snapshot_addresses
+ for p in pairs(input_manifest)do addresses[p]=true end
+ for p in pairs(flight_manifest)do addresses[p]=true end
+ for p in pairs(companion_manifest)do addresses[p]=true end
+ if flightonly or companiononly then for p in pairs(sizes)do addresses[p]=true end end
+ if not inputonly and not flightonly and not companiononly then
  for p=0x8b02,0x8c1c,2 do addresses[p]=true end
  for p=0xb636,0xb654,2 do addresses[p]=true end
  for p=0x9556,0x9574,2 do addresses[p]=true end
+ if soundproducer then if sizes[0xd0da] then addresses[0xd0da]=true end;for p=0xb84c,0xb884,2 do addresses[p]=true end end
  if follower then for p=0x7bb6,0x7c10,2 do addresses[p]=true end end
  if worldinit then for p=0x88c2,0x8944,2 do addresses[p]=true end end
  if trail then for p=0xaaee,0xac4a,2 do addresses[p]=true end;for p=0xae32,0xae4e,2 do addresses[p]=true end end
  if cleargraph then for p=0xb698,0xb7c0,2 do addresses[p]=true end end
  if ready then addresses[0xb66e]=true end
  if ready then for p=0xc082,0xc098,2 do addresses[p]=true end end
+ end -- legacy caller graph snapshots
  for p in pairs(addresses) do
   local fmt=string.format("AB2 %06X %%04X %%08X",p)
   local args="sr,(sp*((sr & 2000)!=0)+usp*((sr & 2000)==0))"
@@ -361,7 +411,7 @@ local function visibility_record(kind,p,a,d,m,t)
   local values={};for i=0,7 do local port=ports[":mainpcb:ADC"..i];values[#values+1]=string.char(port and port:read() or 0x10)end
   visibility_inputs=table.concat(values)
  end
- visibility:write(string.pack(">I8I8I4I4I2I2BBB",t,previous_end,p,a,d,m,kind,level(),mux:read(0)),visibility_inputs,string.pack(">I2I2B",p~=previous_pc and previous_fetch and previous_opcode or 0,previous_source,previous_fetch and 1 or 0))
+ visibility:write(string.pack(">I8I8I4I4I2I2BBB",t,previous_end,p,a,d,m,kind,level(),mux:read(0)),visibility_inputs,inputgraph and string.char(ports[":mainpcb:IO1PORTA"]:read()&255) or "",string.pack(">I2I2B",p~=previous_pc and previous_fetch and previous_opcode or 0,previous_source,previous_fetch and 1 or 0))
  visibility_records=visibility_records+1
 end
 local closing,finish_companion,companion_idle=false,nil,nil
@@ -378,7 +428,7 @@ local function access(w,a,d,m)
  local t=ns()
  local phase=t%64000
  local hardware=(a>=0xe8000 and a<0xec000) or (a>=0x130000 and a<0x140000) or a==0x140004
- if sizes[p] or (return_selection and (p==0x1466a or p==0x14672 or (linked_irq4 and (p==0x147c6 or p==0x147e6)))) or hardware or phase<1000 or phase>=63000 then
+ if (inputgraph and (p==0x14632 or (w and a>=0x3f8892 and a<=0x3f8896))) or sizes[p] or (return_selection and (p==0x1466a or p==0x14672 or (linked_irq4 and (p==0x147c6 or p==0x147e6)))) or hardware or phase<1000 or phase>=63000 then
   visibility_record(w and 1 or 0,p,a,d,m,t)
  end
  previous_end=t+320
@@ -475,7 +525,11 @@ local function access(w,a,d,m)
   if p==0xb6c0 or p==0xb6f6 or p==0xb754 or p==0xb7a4 then
    if main.state.D0.value&0xffff==0 then n=3 end
   end
-  if p==0xab52 or p==0xac46 then offset=160
+  if input_manifest[p] or flight_manifest[p] or companion_manifest[p] then
+   local i=input_manifest[p] or flight_manifest[p] or companion_manifest[p]
+   offset=i.offset==-1 and (a==p+4 and 320 or 160) or i.offset*80
+  elseif p==0xb868 or p==0xab52 or p==0xac46 then offset=160
+  elseif p==0xb850 or p==0xb85c then offset=a==p+4 and 320 or 160
   elseif p==0xab06 or p==0xab28 or p==0xabca or p==0xabd2 or p==0xac2a or p==0xac36 then offset=a==p+4 and 320 or 160
   elseif p==0xb6c0 or p==0xb6f6 or p==0xb754 or p==0xb7a4 then offset=160
   elseif p==0xb6a4 or p==0xb6e2 or p==0xb710 or p==0xb720 or p==0xb776 or p==0xb7be then
@@ -488,7 +542,7 @@ local function access(w,a,d,m)
   elseif p==0x145b8 or p==0x15bfe or p==0x7bec then offset=160 end
   -- First BSR stack write already exposes decremented SP; LEA d16(A5)
   -- already exposes its new A5. Undo only these entry-phase effects.
-  local sp=stack()+((p==0x14590 or p==0x15bfe or p==0x8c16 or p==0x7c0c or p==0xc094 or p==0xac46) and 4 or 0)
+  local sp=stack()+((p==0x9c92 or p==0x9d26 or p==0xb0a4 or p==0x9ace or p==0x9adc or p==0xd0de or p==0x14590 or p==0x15bfe or p==0x8c16 or p==0x7c0c or p==0xc094 or p==0xac46) and 4 or 0)
   local selected=true
   if p==0x14856 then spins=spins+1 end
   if (p==0x14856 or p==0x1485c) and spins%128~=0 then
@@ -508,7 +562,7 @@ local function access(w,a,d,m)
   active.events[#active.events+1]=event(w,p,a,d,m)
   if #active.events==active.n then
    local tail=completion[p]
-   local extra=tail and (tail.variable and (2+2*(main.state.D0.value&63)) or tail.tail)*80 or p==0xb63e and 320 or 0
+   local extra=tail and (tail.variable and ((tail.tail or 2)+2*(main.state["D"..(tail.count or 0)].value&63)) or tail.tail)*80 or p==0xb63e and 320 or 0
    active.endns=ns()+320+extra;active.sp=stack();active.sr=main.state.SR.value;active.regs=regs(false)
    active.post=string.pack(">I8I4I2",active.endns,stack(),active.sr)..active.regs
    pending=active;active=nil
@@ -521,6 +575,15 @@ dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/gameplay.lua")
 -- Place a real IPL3 instruction and ROM caller before the physical line-223
 -- edge. Vary lead time; no debugger SR setter is used to unmask pending IRQs.
 local directed=os.getenv("AB2_ORACLE_CALLER_DIRECTED")=="1"
+local companion_directed=os.getenv("AB2_ORACLE_COMPANION_DIRECTED")=="1"
+assert(not companion_directed or (directed and companiongraph),"companion fixture requires companion graph")
+local companion_entries={0x9c34,0x9c9e,0xae8c,0xaee4,0xaf08,0xaf3c,0xafcc,0xb05c}
+local flight_directed=os.getenv("AB2_ORACLE_FLIGHT_DIRECTED")=="1"
+assert(not flight_directed or (directed and flightgraph),"flight fixture requires flight graph")
+local input_directed=os.getenv("AB2_ORACLE_INPUT_DIRECTED")=="1"
+assert(not input_directed or (directed and inputgraph),"input fixture requires input graph")
+local soundproducer_directed=os.getenv("AB2_ORACLE_SOUNDPRODUCER_DIRECTED")=="1"
+assert(not soundproducer_directed or (directed and soundproducer),"sound producer fixture requires snapshots")
 local trail_directed=os.getenv("AB2_ORACLE_TRAIL_DIRECTED")=="1"
 assert(not trail_directed or (directed and trail),"trail fixture requires trail graph")
 local worldinit_directed=os.getenv("AB2_ORACLE_WORLDINIT_DIRECTED")=="1"
@@ -531,24 +594,41 @@ local follower_directed=os.getenv("AB2_ORACLE_FOLLOWER_DIRECTED")=="1"
 assert(not follower_directed or (directed and follower),"follower fixture requires directed follower capture")
 local successor_directed=os.getenv("AB2_ORACLE_SUCCESSOR_DIRECTED")=="1"
 assert(not successor_directed or (directed and successors),"successor fixture requires directed CALL7")
+local companion_fixture_index=0
 local function fixture(k)
  local co=coroutine.create(function()
-  local dispatcher=not trail_directed and not worldinit_directed and not ready_directed and not follower_directed and not successor_directed and k%4==3
+  local dispatcher=not companion_directed and not flight_directed and not input_directed and not soundproducer_directed and not trail_directed and not worldinit_directed and not ready_directed and not follower_directed and not successor_directed and k%4==3
   local lead=dispatcher and (20+(k//4)%100*2) or (1+(k%64)*0.24)
   emu.wait((261*64-lead)/1e6)
-  if entry or handler or (main.state.SR.value&0x700)~=0x100 then return end
+  if closing or entry or handler or (main.state.SR.value&0x700)~=0x100 then return end
+  if companion_directed then
+   -- These read/branch wait instructions have no partially completed stack
+   -- effects. Re-entering CURPC at a just-completed RTS would pop twice.
+   local p=main.state.CURPC.value
+   if p~=0xb676 and p~=0xb67c and p~=0x14856 and p~=0x1485c then return end
+   k=companion_fixture_index;companion_fixture_index=k+1
+  end
   guard=true;shared_guard.active=true
   local follower_saved
+  local sound_saved
+  local input_saved
+  local flight_saved
+  local companion_saved
   if trail_directed or follower_directed or ready_directed or worldinit_directed then follower_saved={ram=space:read_range(0x3ffbc0,0x3ffc3f,8),stage=space:read_u16(0x29c09c),count=space:read_u16(0x2a3cf0),ready=space:read_u8(0x29c200)}end
   local saved={pc=main.state.CURPC.value,sr=main.state.SR.value,ssp=main.state.SP.value,usp=main.state.USP.value,d={},a={}}
   for i=0,7 do saved.d[i]=main.state["D"..i].value end
   for i=0,6 do saved.a[i]=main.state["A"..i].value end
   out:write(string.char(3)) -- explicit scheduler context cut
   if active or pending then cuts=cuts+1 end;active=nil;pending=nil;resume_check=false
-  space:write_u16(0x3ffd00,0x46fc);space:write_u16(0x3ffd02,successor_directed and (k%2==0 and 0x2300 or 0x231a) or 0x2300)
-  space:write_u16(0x3ffd04,0x4eb9);space:write_u32(0x3ffd06,trail_directed and 0xaaee or worldinit_directed and 0x88c2 or ready_directed and 0xc082 or follower_directed and 0x7bb6 or successor_directed and 0xb632 or dispatcher and 0x14594 or 0x14856)
+  space:write_u16(0x3ffd00,0x46fc);space:write_u16(0x3ffd02,(companion_directed or flight_directed or input_directed or soundproducer_directed) and 0x2700 or successor_directed and (k%2==0 and 0x2300 or 0x231a) or 0x2300)
+  space:write_u16(0x3ffd04,0x4eb9);space:write_u32(0x3ffd06,companion_directed and companion_entries[k%8+1] or flight_directed and 0x98c0 or input_directed and 0x14976 or soundproducer_directed and 0xb84c or trail_directed and 0xaaee or worldinit_directed and 0x88c2 or ready_directed and 0xc082 or follower_directed and 0x7bb6 or successor_directed and 0xb632 or dispatcher and 0x14594 or 0x14856)
   space:write_u16(0x3ffd0a,0x46fc);space:write_u16(0x3ffd0c,0x2700)
   space:write_u16(0x3ffd0e,0x4e71);space:write_u16(0x3ffd10,0x60fc)
+  if input_directed then
+   space:write_u16(0x3ffd0a,0x4eb9);space:write_u32(0x3ffd0c,0xb0ac)
+   space:write_u16(0x3ffd10,0x46fc);space:write_u16(0x3ffd12,0x2700)
+   space:write_u16(0x3ffd14,0x4e71);space:write_u16(0x3ffd16,0x60fc)
+  end
   space:write_u16(0x3ffd40,0x46fc);space:write_u16(0x3ffd42,saved.sr)
   space:write_u16(0x3ffd44,0x4ef9);space:write_u32(0x3ffd46,saved.pc)
   space:write_u16(0x2a3c00,({0xffff,0xfffe,0x8000})[k%3+1])
@@ -556,6 +636,128 @@ local function fixture(k)
   space:write_u8(0x3f8050,1)
   if dispatcher then
    for i=0,253 do space:write_u8(0x3fa000+64*i,0)end
+  end
+  if companion_directed then
+   -- Initial-state fixture only; the real ROM executes all sprite/table/chip work.
+   companion_saved={}
+   local function set(a,v,size)
+    for i=0,size-1 do if companion_saved[a+i]==nil then companion_saved[a+i]=space:read_u8(a+i)end end
+    if size==1 then space:write_u8(a,v&255)elseif size==2 then space:write_u16(a,v&65535)else space:write_u32(a,v&0xffffffff)end
+   end
+   local n=k//8
+   main.state.A5.value=0x3ff400;main.state.A6.value=0xe4000
+   main.state.D0.value=0x12345678;main.state.D1.value=0x89abcdef
+   for a=0x3ff380,0x3ff4ff do set(a,0,1)end
+   for a=0x3fe800,0x3fe83f do set(a,0,1)end
+   for _,a in ipairs({0x3ff380,0x3ff3c0,0x3ff400})do
+    set(a,0xfcf0,2);set(a+4,0x7fff8000,4);set(a+8,0x12345678,4)
+    set(a+42,({0,0x7fff,0x8000,0xffff})[n%4+1],2)
+    set(a+44,({0xffff,0x8000,0x7fff,0})[n%4+1],2)
+    set(a+46,n%4,2);set(a+48,({0xfffb,0xffff,0,1,5})[n%5+1],2)
+    set(a+58,({0,0x7f,0x80,0xfe,0xff})[n%5+1],1)
+   end
+   local mode=n%12
+   set(0x29c09c,mode==0 and 15 or n%2==0 and 1 or 3,2)
+   set(0x29c200,mode==1 and 0 or 0x10,1)
+   set(0x29c09a,mode==2 and 1 or 0,2)
+   set(0x3f91d0,mode==3 and 0x10 or 0,1)
+   set(0x3f8d78,mode==4 and 0 or mode==5 and 0xffff or mode==6 and 0x8000 or n%2+1,2)
+   set(0x3f8d76,mode==7 and 4 or 0,2)
+   set(0x3f8d4e,({0,0x7fff,0x8000,0xffe0,32})[n%5+1],2)
+   set(0x3f8d46,0x7fff,2);set(0x3f8d48,0x8000,2)
+   local count=({0,0xbf,0xc0,0xc1})[(n//2)%4+1]
+   set(0x2a3cf0,count,2);set(0x2a3c04,0x3fe800-count*16,4)
+  end
+  if flight_directed then
+   -- Explicit initial-state fixture, executed by the real ROM at IPL7.
+   flight_saved={}
+   local function set(a,v,size)
+    for i=0,size-1 do if flight_saved[a+i]==nil then flight_saved[a+i]=space:read_u8(a+i)end end
+    if size==1 then space:write_u8(a,v&255)elseif size==2 then space:write_u16(a,v&65535)else space:write_u32(a,v&0xffffffff)end
+   end
+   main.state.A5.value=0x3ffc00;main.state.A6.value=0xe4000
+   for a=0x3ffc00,0x3ffcff do set(a,0,1)end
+   for a=0x3fe800,0x3fe83f do set(a,0,1)end
+   for a=0x3f9200,0x3f9303 do set(a,0,1)end
+   for a=0x3f8d14,0x3f8d77 do set(a,0,1)end
+   set(0x3ffc00,0x80|((k&1)==0 and 0x10 or 0),1)
+   set(0x3ffc02,0x7f,1);set(0x3ffc03,0xf2,1);set(0x3ffc0c,0x100a0,4);set(0x3ffc14,131,1)
+   set(0x3ffc06,0x70,2);set(0x3ffc1e,0x400,2);set(0x3ffc24,0x1000,2)
+   set(0x3ffc30,({0,32,0xffe0})[(k//7)%3+1],2)
+   local delta={0xfffb,0xfffc,0xfffd,0,3,4,5}
+   set(0x29c0ce,(delta[k%7+1]*4)&0xffff,2)
+   set(0x29c0d0,(delta[(k//7)%7+1]*4)&0xffff,2)
+   set(0x29c0b4,({0,50,0xffce})[(k//3)%3+1],2)
+   set(0x29c096,({0,32,0xffe0,96,0xffa0,256,0xff00})[(k//5)%7+1],2)
+   set(0x29c098,0,2);set(0x29c080,0x70,2);set(0x29c088,0,2);set(0x29c08a,0,2)
+   set(0x29c09e,({0,0x40,0x80,0xc0,0xff})[k%5+1],2)
+   set(0x29c0aa,({0x11f,0x120,0x121,0x21f,0x220,0x221,0x300})[k%7+1],2)
+   set(0x3f8d5a,({0,1,31,32,0xffff})[k%5+1],2)
+   set(0x3f91fe,({0,0xfc,0xfffc})[k%3+1],2)
+   for a=0x3f89da,0x3f89e0,2 do set(a,0,2)end
+   local mode=k<32 and k%10 or 9
+   set(0x3f90fe,mode==0 and 1 or 0,1)
+   set(0x29c09a,mode==1 and 1 or 0,2)
+   set(0x3f8d76,mode==4 and 1 or mode==5 and 0xffff or (mode==9 and (k//8)%2==0)and 5 or 0,2)
+   set(0x3f8d60,(mode==2 or mode==3)and 1 or 0,1)
+   set(0x3f89e3,mode==3 and 1 or 0,1)
+   set(0x29c09c,mode==6 and 15 or 1,2)
+   set(0x29c200,mode==7 and 0 or 0x10,1)
+   set(0x3f91d0,mode==8 and 0x10 or 0,1)
+   local count=({0,0xbf,0xc0,0xc1})[k%4+1]
+   set(0x2a3cf0,count,2);set(0x2a3c04,0x3fe800-count*16,4)
+   for _,a in ipairs({0x29c33a})do set(a,0,2)end
+  end
+  if input_directed then
+   -- Labelled initial raw input/accumulator fixtures; physical button fields
+   -- feed the production endpoint. Natural samples come from the ADC timeline.
+   input_saved={bytes={},buttons={}}
+   local function set(a,v,size)
+    for i=0,size-1 do if input_saved.bytes[a+i]==nil then input_saved.bytes[a+i]=space:read_u8(a+i)end end
+    if size==1 then space:write_u8(a,v&255)elseif size==2 then space:write_u16(a,v&65535)else space:write_u32(a,v&0xffffffff)end
+   end
+   main.state.A5.value=0x3ffc00;main.state.A6.value=0xe4000
+   main.state.D0.value=0x12345678;main.state.D1.value=0x89abcdef
+   for a=0x3ffc00,0x3ffc3f do set(a,0,1)end
+   for a=0x29c076,0x29c077 do set(a,k&0xff,1)end
+   local xs={0,0x20,0x24,0x25,0x26,0x7d,0x7e,0x80,0x82,0x83,0xda,0xdb,0xdc,0xe0,0xfe,0xff}
+   local ys={0,0x3f,0x40,0x41,0x7d,0x7e,0x80,0x82,0x83,0xbf,0xc0,0xc1,0xff}
+   local ts={0,0x3f,0x40,0x41,0x80,0xaf,0xb0,0xb1,0xff}
+   set(0x3f8892,xs[k%#xs+1],1);set(0x3f8893,ys[k%#ys+1],1);set(0x3f8894,ts[k%#ts+1],1)
+   set(0x3ffc16,0x80,2);set(0x3ffc1a,0x80,2)
+   set(0x3ffc18,({0,1,2,3,0xffff,0xfffe,0xfffd,0x7fff,0x8000})[(k//16)%9+1],2)
+   set(0x3ffc1c,({0,1,2,3,0xffff,0xfffe,0xfffd,0x7fff,0x8000})[(k//13)%9+1],2)
+   if k>=128 then
+    set(0x3f8892,0x80,1);set(0x3f8893,0x80,1)
+    set(0x3ffc18,({0,1,2,3,0xffff,0xfffe,0xfffd,0x7fff,0x8000})[k%9+1],2)
+    set(0x3ffc1c,({0,1,2,3,0xffff,0xfffe,0xfffd,0x7fff,0x8000})[k%9+1],2)
+   end
+   local mode=k>=128 and 0 or (k//16)%8
+   set(0x3f91c4,mode==1 and 1 or mode==2 and 3 or 0,1)
+   set(0x3f91c5,({0,0x40,0x80,0xc0,0xff})[k%5+1],1)
+   set(0x3f90fe,mode==3 and 1 or mode==4 and 4 or 0,1)
+   set(0x3f8d36,mode==5 and 1 or 0,1);set(0x3f8d38,(k&1)==0 and 0x8000 or 0x7fff,2)
+   set(0x29c09a,mode==6 and 1 or 0,2)
+   set(0x29c09c,(k//5)%3==0 and 1 or (k//5)%3==1 and 3 or 16,2)
+   set(0x29c0cc,mode==7 and 0x1234 or 0,2)
+   set(0x29c0ce,0x1111,2);set(0x29c0d0,0x2222,2);set(0x29c0d2,0x3333,2)
+   set(0x3f8070,k%2==0 and 4 or 0,1)
+   set(0x3f8820,k%4,2);set(0x3fe000,({0,0x2ee,0x2ef,0x348,0x349})[k%5+1],2)
+   local port=ports[":mainpcb:IO1PORTA"];local previous=port:read()
+   for i,name in ipairs({"Vulcan","Missile"})do
+    local field=port.fields[name]
+    input_saved.buttons[#input_saved.buttons+1]={field,(previous&field.mask)==0 and 1 or 0}
+    field:set_value((k>>(i-1))&1)
+   end
+  end
+  if soundproducer_directed then
+   -- Labelled ring frontier; execute the original producer in MAME.
+   sound_saved={ram=space:read_range(0x3f8902,0x3f894b,8),stage=space:read_u16(0x29c09c)}
+   space:write_u8(0x3f8902,k%4==0 and 0 or 0xff)
+   space:write_u16(0x29c09c,k%4==1 and 1 or 3)
+   space:write_u16(0x3f8908,({0,1,62,63})[k%4+1])
+   space:write_u8(0x3f8906,({0,0x7f,0xff,1})[(k//4)%4+1])
+   main.state.D0.value=({0,0x7f,0x80,0xff})[(k//4)%4+1]
   end
   if follower_directed then
    -- Labelled initial-state fixture: real ROM execution, never a handler replay.
@@ -605,9 +807,20 @@ local function fixture(k)
   main.state.SR.value=saved.sr|0x2000;main.state.PC.value=0x3ffd00
   guard=false;shared_guard.active=false
   emu.wait(0.002)
+  if closing then return end
   assert(not entry and not handler and (main.state.SR.value&0x700)~=0x400 and (main.state.SR.value&0x700)~=0x600,"fixture ended during IRQ service")
   guard=true;shared_guard.active=true;out:write(string.char(3)) -- fixture restore cuts the CPU schedule
   if active or pending then cuts=cuts+1 end;active=nil;pending=nil;resume_check=false
+  if companion_saved then for a,v in pairs(companion_saved)do space:write_u8(a,v)end end
+  if flight_saved then for a,v in pairs(flight_saved)do space:write_u8(a,v)end end
+  if input_saved then
+   for a,v in pairs(input_saved.bytes)do space:write_u8(a,v)end
+   for _,v in ipairs(input_saved.buttons)do v[1]:set_value(v[2])end
+  end
+  if sound_saved then
+   for i=1,#sound_saved.ram do space:write_u8(0x3f8901+i,sound_saved.ram:byte(i))end
+   space:write_u16(0x29c09c,sound_saved.stage)
+  end
   if follower_saved then
    if follower_saved.pool then
     for i=1,#follower_saved.pool do space:write_u8(0x3f8e7e+i,follower_saved.pool:byte(i))end
@@ -628,7 +841,8 @@ end
 caller_frames=emu.add_machine_frame_notifier(function()
  frames=frames+1
  visibility_record(2,0,0,0,0,ns())
- if directed and frames>=32 and frames%4==0 then fixture(frames//4)end
+ if (companion_directed or input_directed or flight_directed) and frames>=32 and frames+2<tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then fixture(frames-32)
+ elseif not companion_directed and not input_directed and not flight_directed and directed and frames>=32 and frames%4==0 then fixture(frames//4)end
  if frames>=tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then
   if linked_irq4 then closing=true else assert(not handler,"unfinished caller service");close_capture()end
  end

@@ -294,3 +294,41 @@ return prefetches. Other handler/callee graphs, IRQ4 game-flow callbacks,
 shared/sub producers and independent publication/sub cadence remain supplied;
 the 16,413 natural graph exits are explicit boundaries outside this component.
 This does not replace native Stage 1 or complete Phase 3d host scheduling.
+
+The timed `$B84C..$B884` sound-ring producer now has a bounded instruction
+check for enqueue, reset, suppression, index wrap and pending-byte overflow.
+Its caller entries remain supplied, so this adds no independently scheduled
+sound cadence to `OEngine`. The directed `$D0DA` counter return is computed;
+other game-flow/physical input/sub frontiers remain explicit. Native Stage 1
+and its sound cues remain active.
+
+The timed `$14976/$B0AC` input graph now computes bounded button, bank,
+pitch and throttle target execution. Natural samples come from the production
+ADC timeline and mux destination; button reads use physical `OMainIO` inputs.
+Caller cadence, ADC transaction/store times, shared inputs and sub progress
+remain supplied. Directed raw-axis and accumulator fixtures are labelled;
+six debug instructions disabled by ROM word `$B0AA` remain unverified. This
+checkpoint does not replace the native Stage 1 input/flight host.
+
+The timed live-flight/projection `$98C0..$9C32` graph now computes bounded
+player state, math-chip results, attachment flips, history/projection writes
+and request appends. Directed coverage includes all 232 PCs and five extra
+returned-instruction continuations, with zero post-RTE holes. Target/caller
+frontiers across unported graphs, sub inputs and publication cadence remain
+supplied. This does not replace native Stage 1 flight or extend the paired
+road/video claim to an independently scheduled whole host.
+
+Timed shadow/exhaust companions `$9C34..$9D2A/$AE8C..$B0A8` now compute
+bounded initialization, previous positions, scale/flip bits, lifetime,
+runtime attachment tables, hardware shadow projection and request appends.
+The natural combined capture matches 2,773,349/2,773,349 instruction/IRQ
+records, zero skips and post-RTE holes. Caller entry/frontiers, sub progress
+and publication cadence remain supplied; native Stage 1 flight is still active.
+
+The bounded sub publication waits/release now compute eight instruction PCs,
+including signed readiness conditions and main mutex waits. Their signal
+ledger retains computed main writes and latched RMW reads; 600 natural frames
+match 6,305,996/6,305,996 instructions and 15,895,267/15,895,267 bus phases.
+Main write times, cross-CPU bus delivery order, sub IRQ/callee entries and
+stack operands remain supplied. Native Stage 1 is still active, and neither
+independent sub road/sprite scheduling nor whole-host gameplay is established.
