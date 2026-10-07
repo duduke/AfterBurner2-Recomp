@@ -67,6 +67,10 @@ world handler graphs now have separate routine checks. Refuel stage-flow and
 a natural death sequence remain unverified. These ports remain unwired until
 the actual host ADC/IRQ caller and paired player/weapon acceptance pass.
 `OLevelObjs`, its request adapter and native sound cues therefore remain.
+The host now installs the verified timed ADC/mux, digital input and sound-latch
+callbacks through `OMainIO`. Advancing physical time remains explicit; native
+frame ticks do not manufacture sampler, flight or reload calls. Routine replay
+checks use these same endpoint callbacks with supplied CPU bus timestamps.
 This foundation does not change the native flight or combat experience.
 
 Formation cadence/trajectories, aiming, projectile motion, hitboxes, scoring

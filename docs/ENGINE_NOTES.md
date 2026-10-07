@@ -2781,3 +2781,125 @@ ROM data, captures, opcode context and mutation artifacts remain ignored.
 Native `OEngine` remains active. Next: establish external handler/ISR
 resumptions, input producer cadence and sub progress across these bounded
 caller segments, then extend paired road/video/sound host acceptance.
+
+## PR #21 review continuation: timed host I/O endpoints
+
+`engine/omainio.hpp` installs the production ADC read/write, CXD1095 Port C
+mux, active-low IO1 weapon-button and 315-5250 sound-command callbacks used by
+`OEngine`. It owns the already verified `XBoardTimeline`/ADC0804 models. A
+caller advances physical time explicitly; conversion writes start the ADC,
+reads retain the preceding result until its 59,200 ns deadline, and busy
+writes do not restart it. Conversion completion samples the selected lane.
+Keyboard input preserves X `$20/$80/$E0`, reversed Y `$C0/$80/$40` for
+Up/neutral/Down, and throttle `$00/$80/$FF`. `$B0AC`, when called at a verified
+CPU boundary, applies its own gameplay clamps. Motor-feedback lanes 3/4
+remain `$80`; absent lanes 5..7 use the driver's fallback `$10`.
+
+The PR's six comparator calls at the start of each display tick were removed.
+The natural endpoint capture has four or five calls per late frame-notifier
+interval; neither a fixed count nor service at an ideal timer edge establishes
+68000 interrupt latency. Native `tick()` does not advance this physical clock,
+run the sampler/input handler or execute reload. Object initialization, sound
+queue activation and the compound-player/register contracts remain with their
+unported host/game-flow callers. Road fixtures again supply labelled arcade
+bank targets. Native weapon sounds and HUD remain active.
+
+`oracle_mainirq.cpp` and `oracle_adc_timing.cpp` now instantiate the same
+`OMainIO` implementation instead of recreating its endpoint lambdas. The IRQ
+check compares ordered CPU-owned RAM/I/O writes, register preservation, ADC
+results/mux/timer IRQ assertions, and the actual buffered sound-command bytes.
+The directed ADC check reads/writes through MainBus and covers pre-deadline
+reads, busy writes and mux changes. ROM-free engine checks additionally verify
+physical endpoint mapping, button release, conversion-time input changes,
+callback order, restart and absence of invented service in native ticks.
+
+| Dataset | Identical/captured | Skipped |
+| --- | --- | --- |
+| `mainirq` + `mainirq_endpoints` calls | 7,058/7,058 | 0 |
+| Their continuous hardware events | 45,176/45,176 | 0 |
+| `adc_timing` events | 15,530/15,530 | 0 |
+| `adc_timing_directed` events | 10,099/10,099 | 0 |
+
+The IRQ datasets include 946 checked sound-command callbacks. Fresh endpoint
+and directed ADC captures under `build/oracle/pr21-review/` reproduce
+3,529/3,529 calls, 22,588/22,588 hardware events and 10,099/10,099 directed
+ADC events, respectively, zero skips. These repeats are not additional path
+coverage. No ROM data or captures are committed.
+
+`tools/oracle/check_io_mutations.py` compiles temporary production-header
+variants and requires a completed oracle with mismatches, rather than accepting
+a compilation failure, crash or missing capture as mutation evidence:
+
+| Temporary mutation | Failed IRQ records | Failed hardware events |
+| --- | --- | --- |
+| Mux shift 2 → 3 | 1,931 | 1,931 |
+| Immediate current-lane ADC read | 5 | 0 |
+| Buffered sound byte XOR 1 | 473 | 0 |
+
+Pristine production sources are never overwritten. Each mutation exits with
+oracle status 1; the original code passes again. `make test`,
+`make verify-stage1`, `make oracle-test` and a 180-frame dummy launch are the
+required final regression checks.
+
+**Limits:** CPU transaction timestamps and physical input changes are supplied
+by MAME. Outside IRQ windows, effective mux writes and timer/ADC transactions
+remain replayed external CPU actions; within IRQ windows the sampler computes
+them and captured I/O directions are caller inputs. Sound-ring producer state
+is supplied at IRQ entry. The checks establish production endpoint behavior
+and command-buffer order, not independent IRQ selection/entry, producer cadence,
+input-to-road/RGB composition or waveform timing. Live flight/reload/sound
+scheduling and paired host acceptance remain unchecked in Phase 3d.
+
+### Oracle instructions for agents continuing this work
+
+1. Read the roadmap's working rules and `PHASE3D_PLAN.md` before editing. Port
+   actual CPU callers instruction by instruction; do not replace the removed
+   six-call loop with another arbitrary frame count or ideal-edge IRQ service.
+   Use the verified board, CPU visibility and bounded IRQ/caller ports, keeping
+   unported resumptions/sub progress explicit until independently checked.
+2. From the repository root, set `MAME` and `ROMPATH` if the defaults in
+   `tools/oracle/capture.sh` are unsuitable. Use the real `aburner2` ROM set and
+   MAME 0.287. The wrapper creates fresh NVRAM/config and rejects incomplete
+   captures and Lua errors. Keep all outputs under ignored `build/oracle/`.
+3. For endpoint-only work, run:
+
+   ```sh
+   make oracle-capture-mainirq
+   tools/oracle/capture.sh tools/oracle/capture_adc_timing.lua build/oracle/adc_timing.bin 900 45
+   AB2_ORACLE_ADC_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_adc_timing.lua build/oracle/adc_timing_directed.bin 600 45
+   make oracle-io
+   python3 tools/oracle/check_io_mutations.py
+   ```
+
+4. Before enabling live scheduling, extend the oracle to execute that production
+   scheduler. Generate matching natural and directed references, including
+   inputs changing near conversion deadlines, masks/IRQ overlap, held/released
+   and simultaneous buttons, ring wrap/disable, and reload transitions. Compare
+   ordered CPU-owned writes, complete registers/chip state, ADC results, mux,
+   IRQ service and sound-latch timestamps. Extend paired checks through shared
+   road targets, raster outputs, sprite lists and rendered RGB. Captured results
+   must be assertions, not injected answers for newly claimed computed behavior.
+5. Bootstrap the existing full reference suite, including supplemental captures
+   not generated by the umbrella target:
+
+   ```sh
+   make oracle-capture
+   make oracle-capture-board oracle-capture-service
+   make oracle-capture-host-interleave oracle-capture-host-publication
+   make oracle-capture-paired oracle-capture-irq4-service
+   make oracle-capture-logic-wait oracle-capture-caller
+   make test
+   make verify-stage1
+   make oracle-test
+   SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
+   ```
+
+   Build the game with `make -j4` before the launch. Retain Lua taps globally,
+   filter writes by CPU/PC, exclude stacks and skip a concurrent-CPU race only
+   when it changed an input the port actually read. Record all other exclusions
+   and supplied boundaries explicitly.
+6. Mutate a production constant or scheduling rule, prove the oracle fails,
+   restore it and rerun pristine checks. Changing only an assertion's expected
+   value is insufficient. Report "N of M identical, K skipped (reasons)",
+   uncovered paths and remaining supplied inputs in this document. Check off a
+   roadmap milestone only when its own host acceptance has passed.

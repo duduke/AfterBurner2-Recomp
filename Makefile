@@ -192,7 +192,7 @@ oracle-handlers:
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_handlers.cpp $(HANDLER_SRCS) -o build/oracle_handlers
 	@for capture in $(HANDLER_CAPTURES); do ./build/oracle_handlers build/oracle/$$capture.bin || exit 1; done
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_adc_timing.cpp -o build/oracle_adc_timing
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_adc_timing.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o build/oracle_adc_timing
 	./build/oracle_adc_timing build/oracle/adc_timing.bin
 	./build/oracle_adc_timing build/oracle/adc_timing_directed.bin
 
@@ -444,3 +444,11 @@ oracle-cpu-visibility:
 	./build/oracle_cpu_visibility build/oracle/caller_directed.bin.visibility
 
 .PHONY: oracle-cpu-visibility
+
+# Production ADC/mux endpoints used by OEngine; CPU bus times remain supplied.
+oracle-io: oracle-mainirq
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_adc_timing.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o build/oracle_adc_timing
+	./build/oracle_adc_timing build/oracle/adc_timing.bin
+	./build/oracle_adc_timing build/oracle/adc_timing_directed.bin
+
+.PHONY: oracle-io

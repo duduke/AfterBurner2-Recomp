@@ -364,7 +364,8 @@ player/weapon acceptance remain pending.
       ADC timing pass routine checks. The complete `$1461C` IRQ caller now
       matches 7,058/7,058 calls and 45,176/45,176 continuous hardware events,
       0 skipped; physical axis endpoints and button edges have 720/720
-      separate mapping checks. Actual host IRQ/conversion wiring remains.
+      separate mapping checks. Physical endpoints are now installed through
+      `OMainIO`; host CPU/IRQ scheduling and conversion-to-flight wiring remain.
 - [x] Comparator IRQ caller: acknowledgement, six-channel sampler and sound
       consumer checked together against MAME, including 946 sound-latch writes
       across ordinary and endpoint runs. All three mutations fail. Bus timestamps

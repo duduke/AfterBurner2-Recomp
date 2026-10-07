@@ -28,6 +28,13 @@ adapter and hand-picked sound cues once the verified replacements pass host
 acceptance. `OEngine` still uses the native Stage 1 host; keep those producers
 and their adapter until acceptance passes.
 
+`OMainIO` now installs the timed ADC/mux, active-low digital input and sound-latch
+endpoints in `OEngine`. The same production callbacks pass the IRQ and directed
+ADC oracles. Native `tick()` supplies no CPU clock or interrupt boundary: it does
+not call the sampler, input handler or reload producer. Their live wiring remains
+pending independent scheduling; see the PR #21 review continuation in
+[ENGINE_NOTES.md](ENGINE_NOTES.md).
+
 Independent routine checks cover the dispatcher/initializer, RNG, input
 mapping, live flight/recovery and compound parts, player weapons/projectiles,
 reload/HUD, projection/explosion/ground effects, scaled collision, pre-lives

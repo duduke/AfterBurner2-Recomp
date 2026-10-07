@@ -7,6 +7,7 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
                   const uint8_t* maincpu_rom, uint32_t maincpu_len,
                   const uint8_t* subcpu_rom, uint32_t subcpu_len)
 {
+    main_io.reset();
     memory = {};
     bus = std::make_unique<MainBus>(maincpu_rom,maincpu_len,subcpu_rom,subcpu_len,memory);
     bus->endpoints.video_write = [&palette,&tiles,&sprites](uint32_t address,uint16_t value) {
@@ -24,6 +25,8 @@ void OEngine::init(HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles
         road.read_road_control();
     };
     bus->endpoints.road_control = [&road](uint8_t value) { road.write_road_control(value); };
+
+    main_io = std::make_unique<OMainIO>(*bus);
 
     stage_setup.run(*bus,0x13972);
     stage_setup.run(*bus,0x18918);
@@ -77,6 +80,7 @@ void OEngine::handle_input(int stick_x,int stick_y,bool fire_vulcan,bool fire_mi
 {
     this->stick_x=stick_x;this->stick_y=stick_y;this->throttle=throttle;
     vulcan=fire_vulcan;missile=fire_missile;
+    main_io->handle_input(stick_x,stick_y,fire_vulcan,fire_missile,throttle);
 }
 
 void OEngine::tick(HWPalette&,HWRoad&,HWSprites&,HWTiles& tiles)

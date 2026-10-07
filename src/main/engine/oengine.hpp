@@ -14,6 +14,7 @@
 #include "engine/omainpalette.hpp"
 #include "engine/omainframe.hpp"
 #include "engine/osubsprites.hpp"
+#include "engine/omainio.hpp"
 
 // Master Engine Coordinator.
 // Verified video/scheduling ports share MainBus. Native object producers and HUD remain native until milestone 3d.
@@ -34,6 +35,9 @@ public:
 
     [[nodiscard]] OLevelObjs& get_objects() { return level_objs; }
     [[nodiscard]] MainBus& arcade_bus() { return *bus; }
+    std::vector<uint8_t> take_sound_commands() { return main_io->take_sound_commands(); }
+    // Explicit physical time only: native tick() does not supply CPU/IRQ timing.
+    OMainIO& arcade_io() { return *main_io; }
 
 private:
     OLevelObjs level_objs;
@@ -51,4 +55,5 @@ private:
     bool vulcan{},missile{};
     OHud hud_engine;
     uint32_t frame_count{0};
+    std::unique_ptr<OMainIO> main_io;
 };

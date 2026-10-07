@@ -97,8 +97,65 @@ void publication_wait()
           "The signed BGT wait must publish negative counters");
 }
 
+void host_input_adc()
+{
+    HWPalette p(8192); HWRoad r(0x1700,0x1720,0x1780,-166);
+    HWSprites sprites; HWTiles tiles; OEngine e;
+    e.init(p,r,sprites,tiles,nullptr,0);
+    auto& bus=e.arcade_bus();
+    auto& board=e.arcade_io().board;
+    bus.io[0].direction[2]=0; // Explicit fixture for reset's ADC output direction.
+    e.handle_input(1,-1,true,true,2);
+    check((bus.read8(0x150001)&0x30)==0,"Host weapon buttons must be active low");
+    check(bus.read8(0x130001)==0,"ADC must retain reset result before conversion");
+    bus.write8(0x140005,0); bus.write8(0x130001,0);
+    board.advance(59199);
+    check(bus.read8(0x130001)==0,"ADC read before deadline must retain previous result");
+    bus.write8(0x130001,0); // Busy writes must not restart conversion.
+    board.advance(59200);
+    check(bus.read8(0x130001)==0xe0,"ADC must preserve physical X endpoint after completion");
+    uint64_t ns=59200;
+    auto sample=[&](unsigned channel) {
+        bus.write8(0x140005,channel<<2);bus.write8(0x130001,0);
+        ns+=59200;board.advance(ns);return bus.read8(0x130001);
+    };
+    check(sample(1)==0xc0,"Up must use the reversed physical Y endpoint");
+    check(sample(2)==0xff,"Throttle must retain physical high endpoint");
+    check(sample(3)==0x80 && sample(4)==0x80 && sample(5)==0x10,
+          "Motor feedback and unconnected ADC channels must match board defaults");
+    e.handle_input(-1,1,false,false,0);
+    check(sample(0)==0x20 && sample(1)==0x40 && sample(2)==0,
+          "Physical low endpoints must survive conversion without gameplay clamping");
+    // Conversion samples the lane at completion, not at its start.
+    bus.write8(0x140005,0);bus.write8(0x130001,0);
+    e.handle_input(0,0,false,false,1);
+    ns+=59200;board.advance(ns);
+    check(bus.read8(0x130001)==0x80,"Input release during conversion must be sampled at completion");
+    check((bus.read8(0x150001)&0x30)==0x30,"Released buttons must be active low ones");
+    bus.write8(0xe8017,0x90);bus.write8(0xe8017,0x40);
+    check(e.take_sound_commands()==std::vector<uint8_t>({0x90,0x40}),
+          "Sound latch callback must preserve command order");
+    check(e.take_sound_commands().empty(),"Draining commands must empty the callback buffer");
+
+    // Native frame ticks provide no CPU boundaries: they must not manufacture
+    // comparator service, input-handler execution or reload production.
+    bus.write8(0xffff8902,0xff);bus.write8(0xffff8906,1);
+    bus.write8(0xffff890c,0x9b);bus.write8(0xffff90ff,0xff);
+    bus.write16(0xffff9100,5);bus.write16(0xffff8d66,10);
+    const auto time=board.now();
+    e.tick(p,r,sprites,tiles);e.tick(p,r,sprites,tiles);
+    check(board.now()==time && bus.read16(0xffff8900)==0 &&
+          bus.read8(0xffff8906)==1 && bus.read16(0xffff8d66)==10 &&
+          bus.read8(0xffff9103)==0 && e.take_sound_commands().empty(),
+          "Native ticks must not guess arcade input/IRQ/reload cadence");
+    e.init(p,r,sprites,tiles,nullptr,0);
+    check(e.arcade_io().board.now()==0 && e.arcade_bus().read8(0x130001)==0 &&
+          (e.arcade_bus().read8(0x150001)&0x30)==0x30 && e.take_sound_commands().empty(),
+          "Restart must reset physical endpoints and conversion state");
+}
+
 int main()
 {
-    sprite_scaling(); palette_colors(); release_stick(); publication_wait();
+    sprite_scaling(); palette_colors(); release_stick(); publication_wait(); host_input_adc();
     std::cout << "Engine regression checks passed\n";
 }
