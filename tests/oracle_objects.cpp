@@ -10,6 +10,7 @@
 #include <vector>
 #include "roms.hpp"
 #include "engine/omainobjects.hpp"
+#include "engine/omainhost.hpp"
 #include "engine/omainsound.hpp"
 
 
@@ -98,11 +99,8 @@ int main(int argc, char** argv) try
         bus.trace=&trace;
         unsigned hook_index=0;
         bool contract=true;
-        if(entry==0x1488e) OMainObjects::initialize(bus,r);
-        else if(entry==0x16892) OMainObjects::player_initialize(bus,r);
-        else if(entry==0x16976) OMainObjects::player_prepare(bus,r);
-        else if(entry==0x169b2) OMainObjects::player_hide(bus,r);
-        else if(entry==0xc5a8) OMainObjects::random(bus,r);
+        if(entry==0x1488e || entry==0x16892 || entry==0x16976 || entry==0x169b2 || entry==0xc5a8)
+            OMainHost::call(bus,r,entry);
         else if(entry==0xb7f8) OMainSound::consume(bus,r);
         else if(entry==0xb840 || entry==0xb84c) OMainSound::enqueue(bus,r,entry==0xb84c);
         else if(entry==0x14594) OMainObjects::dispatch(bus,r,[&](uint32_t target,auto& state) {

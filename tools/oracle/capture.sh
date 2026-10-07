@@ -23,6 +23,11 @@ trap 'rm -rf "$work"' EXIT
 
 # Fresh NVRAM/config every run: boot is deterministic only from a clean state.
 status=0
+# Optional read-only instruction-boundary snapshots for internal ALU tails.
+set --
+if [ "${AB2_ORACLE_CALLER_SNAPSHOTS:-0}" = 1 ]; then
+    set -- -debug -debugger none
+fi
 AB2_ORACLE_OUT=$(cd "$(dirname "$out")" && pwd)/$(basename "$out") \
 AB2_ORACLE_PASSES=$passes \
 AB2_ORACLE_SCRIPT_DIR=$(cd "$(dirname "$script")" && pwd) \
@@ -31,7 +36,7 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
     -video none -sound none -nothrottle -skip_gameinfo -seconds_to_run "$seconds" \
     -nvram_directory "$work/nvram" -cfg_directory "$work/cfg" \
     -snapshot_directory "$work/snap" -diff_directory "$work/diff" \
-    -autoboot_script "$script" >"$work/mame.log" 2>&1 || status=$?
+    "$@" -autoboot_script "$script" >"$work/mame.log" 2>&1 || status=$?
 grep -v -e NSXPC -e hiservices -e 'Connection invalid' -e "doesn't make much sense" "$work/mame.log" || true
 # MAME can exit successfully after a Lua callback failed. A partial capture
 # is not success, and the pipeline must not hide MAME's own exit status.

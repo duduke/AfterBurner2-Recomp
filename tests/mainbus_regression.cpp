@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include "engine/mainbus.hpp"
+#include "engine/omainio.hpp"
 
 #define CHECK(x) do { if (!(x)) { std::cerr << "line " << __LINE__ << ": " << #x << '\n'; std::exit(1); } } while (false)
 
@@ -124,5 +125,22 @@ int main()
         }
     };
     CHECK(bus.read16(0x3f8890)==0x1234);
+    // ADC strobes use transaction time even when CPU internal overrun
+    // delays timer delivery. A read before the delivery frontier crosses
+    // the conversion deadline must return the preceding conversion.
+    {
+        MainBus::Memory input_memory;
+        MainBus input_bus(nullptr,0,nullptr,0,input_memory);
+        OMainIO input(input_bus);
+        input.handle_input(-1,0,false,false,1);
+        input.before_bus(10000,9000);
+        input_bus.write8(0x130001,0);
+        CHECK(input.board.adc.deadline()==69200);
+        input.before_bus(69400,69000);
+        CHECK(input_bus.read8(0x130001)==0);
+        input.before_bus(70000,69720);
+        CHECK(input_bus.read8(0x130001)==0x20);
+        CHECK(!input.board.adc.busy());
+    }
     std::cout << "Main bus/chip regression checks passed\n";
 }

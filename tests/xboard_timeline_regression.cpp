@@ -59,6 +59,16 @@ int main() {
     check(cpu.before_bus(edge+160)==0 && !delivery.vblank());
     cpu.complete_bus(edge+160);
     check(cpu.before_bus(edge+480)==4 && delivery.vblank());
+    // A shift can select an edge delivered at its prefetch completion.
+    // Forecasting must preserve live time/timer state and emit no callbacks.
+    CompareTimer5250 forecast_timer;XBoardTimeline forecast(forecast_timer,0);
+    auto fs=forecast_timer.state();fs.counter=0xfff;forecast_timer.load(fs);
+    unsigned callbacks=0;forecast_timer.irq_line=[&](bool){++callbacks;};
+    check(forecast.irq_at(63999)==0 && forecast.irq_at(64000)==2);
+    check(forecast.now()==0 && forecast_timer.state().counter==0xfff && !forecast_timer.state().irq && callbacks==0);
+    forecast.advance(64000);check(forecast.main_irq_level()==2 && callbacks==1);
+    // VBLANK delivery likewise includes exactly the completed bus deadline.
+    check(delivery.irq_at(edge+XBoardTimeline::LINE_NS)==0 && delivery.vblank());
     // A completed register shift yields after its internal tail even when
     // its final prefetch ended before the hardware deadline.
     CompareTimer5250 tail_timer;XBoardTimeline tail_board(tail_timer,0);

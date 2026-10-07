@@ -1,16 +1,28 @@
 #pragma once
 #include "engine/omainirqservice.hpp"
 #include <stdexcept>
+#include <optional>
 
 // Independently advance the verified caller graph and exception entry from
 // computed CPU state. Poll is a physical board scheduler, not an IRQ transcript.
-// Initial state, unported handler/IRQ4 returns and initial user-mode SSP are
-// explicit boundaries. IRQ2/6 returns retain SSP and may select another IRQ. Unknown instruction PCs remain OMainIrqService errors.
+// Initial state, unported handler progress and initial user-mode SSP are
+// explicit boundaries. Returns retain SSP/USP and may select another IRQ.
+// Unknown instruction PCs remain OMainIrqService errors.
 class OMainCallerSchedule {
 public:
     using Result = OMainIrqService::Result;
     using Instruction = OMainIrqService::Instruction;
-    void resume(const Result& state) { current = {state,0,0}; entered=false;ssp_known=false; }
+    void resume(const Result& state,std::optional<uint32_t> usp = {}) {
+        current = {state,0,0};entered=false;ssp_known=false;
+        usp_known=!(state.sr&0x2000)||usp.has_value();
+        if(usp_known)user_sp=(state.sr&0x2000)?*usp:state.sp;
+    }
+    // Initial unported instruction completion is an explicit boundary; a
+    // chained instruction or RTE must use step()/finish() instead.
+    void resume_instruction(const Instruction& state,uint32_t interrupted_pc,
+                            std::optional<uint32_t> usp = {}) {
+        resume(state.state,usp);current=state;completed_pc=interrupted_pc;
+    }
     const Instruction& state() const { return current; }
     Instruction step(MainBus& bus, const OMainIrqService::Clock& clock,
                      const OMainIrqService::Poll& physical) {
@@ -26,17 +38,18 @@ public:
         if(!current.irq) throw std::runtime_error("caller has no selected IRQ");
         auto c=context();c.interrupted_pc=completed_pc;c.level=current.irq;c.return_pc=current.state.pc;
         if(!(c.sr&0x2000))c.supervisor_sp=ssp_known?returned_ssp:supervisor_sp;
-        user_sp=current.state.sp;
+        if(!(c.sr&0x2000)){user_sp=current.state.sp;usp_known=true;}
         auto result=service.enter(bus,c,clock);current={result,0,0};entered=true;return result;
     }
-    // IRQ2/6 preserve the saved S bit. IRQ4 can redirect RTE and still
-    // needs its external game-flow and supervisor-to-user USP contract.
+    // All three handlers restore SR before selecting physical IPL. IRQ4
+    // game-flow callbacks remain explicit boundaries until their timing is ported.
     Result finish(MainBus& bus,const OMainIrqService::Clock& clock,
-                  const OMainIrqService::Poll& physical = {}) {
+                  const OMainIrqService::Poll& physical = {},
+                  const OMainIrqService::Boundary& boundary = {},
+                  const OMainIrqService::LeafObserver& observer = {}) {
         if(!entered) throw std::runtime_error("caller has no entered handler");
-        if(current.state.pc==0x14674)throw std::runtime_error("caller IRQ4 return remains external");
         unsigned selected=0;uint64_t selection=0;
-        auto result=service.finish(bus,current.state,clock,{}, {},
+        auto result=service.finish(bus,current.state,clock,boundary,observer,
             [&](uint16_t sr,uint64_t ns) {
                 if(!physical)return;
                 selection=ns;auto level=physical(ns);
@@ -49,7 +62,10 @@ public:
         // instruction has not executed or changed the bus attribution.
         completed_pc=service.current_pc();
         // RTE switches back to the USP retained across exception entry.
-        if(!(result.sr&0x2000))result.sp=user_sp;
+        if(!(result.sr&0x2000)){
+            if(!usp_known)throw std::runtime_error("RTE user stack was not initialized");
+            result.sp=user_sp;
+        }
         current={result,selected,selection};entered=false;return result;
     }
     uint32_t supervisor_stack() const { return returned_ssp; }
@@ -58,7 +74,7 @@ private:
     OMainIrqService service;
     Instruction current{};
     uint32_t completed_pc{},user_sp{},returned_ssp{};
-    bool entered=false,ssp_known=false;
+    bool entered=false,ssp_known=false,usp_known=false;
     OMainIrqService::Context context() const {
         OMainIrqService::Context c{};c.registers=current.state.registers;
         c.boundary_ns=current.state.ns;c.interrupted_pc=current.state.pc;

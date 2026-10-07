@@ -3,6 +3,7 @@
 // the general-purpose MAME CPU core is not included.
 #include "engine/omainirqservice.hpp"
 #include <stdexcept>
+#include <string>
 #include "hwmath/m68000_completion.hpp"
 
 namespace {
@@ -60,8 +61,7 @@ OMainIrqService::Result OMainIrqService::finish(MainBus& b,const Result& initial
     const uint32_t entry=initial.pc;
 
     if(level==4) {
-        if(selection) throw std::runtime_error("IRQ4 RTE selection remains external");
-        return irq4(r,sp,boundary);
+        return irq4(r,sp,boundary,selection);
     }
 
     // $01461C/$01466C MOVE.W D0,abs.L: two extension/prefetch phases,
@@ -146,11 +146,18 @@ OMainIrqService::Result OMainIrqService::finish(MainBus& b,const Result& initial
     const uint32_t returnpc=read32(sp+2);
     // MAME rte: restore SR after the final stack read, prefetch the
     // return opcode, then latch IPL before the return-PC+2 prefetch.
-    sp+=6;idle(4);clock(ns);if(selection)selection(sr,ns);idle(4);clock(ns);
+    sp+=6;
+    // ROM program prefetches are outside this service's data-bus transcript.
+    // A RAM return target is mutable bus data and must be read, including
+    // supervisor returns to the directed caller's real SR-writing code.
+    if((returnpc&0x3fffff)>=0x80000)read16(returnpc);else idle(4);
+    clock(ns);if(selection)selection(sr,ns);
+    if(((returnpc+2)&0x3fffff)>=0x80000)read16(returnpc+2);else idle(4);
+    clock(ns);
     return {r,returnpc,sp,sr,ns};
 }
 
-OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t sp,const Boundary& boundary) {
+OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t sp,const Boundary& boundary,const ReturnSelection& selection) {
     // $14674/$14798: immediate byte bit RMW, extensions, operand,
     // prefetch and write (24 clocks for absolute.L, 20 for absolute.W).
     auto bit=[&](uint32_t p,uint32_t a,unsigned mask,bool set,bool absolute_long) {
@@ -250,7 +257,7 @@ OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t
         pc=0x147dc;idle(8);sp-=4;write16(sp,1);write16(sp+2,0xa130);idle(4);
         pc=0x147e2;idle(8);sp-=2;write16(sp,0x700);
     }
-    pc=service<0?0x147e6:0x147c6;const auto sr=read16(sp);const auto ret=read32(sp+2);sp+=6;idle(8);clock(ns);
+    pc=service<0?0x147e6:0x147c6;const auto sr=read16(sp);const auto ret=read32(sp+2);sp+=6;idle(4);clock(ns);if(selection)selection(sr,ns);idle(4);clock(ns);
     return {r,ret,sp,sr,ns};
 }
 
@@ -450,6 +457,20 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         sr=(sr&0xfff0)|(value?0:4)|(value&0x8000?8:0)|(overflow?2:0)|(carry?1:0);
         if(x)sr=(sr&~16)|(carry?16:0);
     };
+    auto addsub_word=[&](uint16_t old,uint16_t source,bool subtract,bool extend) {
+        const auto value=uint16_t(subtract?old-source:old+source);
+        const bool carry=subtract?old<source:unsigned(old)+source>0xffff;
+        const bool overflow=((subtract?(old^source):~(old^source))&(old^value)&0x8000)!=0;
+        sr=(sr&0xfff0)|(carry?1:0)|(overflow?2:0)|(value?0:4)|(value&0x8000?8:0);
+        if(extend)sr=(sr&~16)|(carry?16:0);
+        return value;
+    };
+    auto asr_long=[&](unsigned reg,unsigned count) {
+        auto value=r.d[reg];read16(pc+4);bool carry=false;
+        for(unsigned i=0;i<count;++i){carry=value&1;value=(value>>1)|(value&0x80000000);idle(2);}
+        r.d[reg]=value;sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x80000000?8:0);
+        idle(2);latch();idle(2);next=pc+2;
+    };
     auto branch=[&](bool take,uint32_t target,unsigned length) {
         next=take?target:pc+length;idle(2);
         if(take) {read16(next);final(next+2);}
@@ -501,6 +522,318 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
     }
     case 0x14876:final(pc+4);next=pc+2;break;
     case 0x14878:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // Returned object instructions seen after IRQ2/6 in the natural corpus.
+    // $88C2 installs the live handler; long MOVE sets NZVC, preserves X.
+    case 0x88c2:
+        read16(pc+4);read16(pc+6);read16(pc+8);
+        sr=(sr&0xfff0);write16(r.a[5]+16,0);write16(r.a[5]+18,0x8af2);
+        final(pc+10);next=pc+8;break;
+    // $8AF2/$7BB6/$14EE2 copy a long between displacement operands.
+    case 0x8af2:case 0x7bb6:case 0x14ee2: {
+        read16(pc+4);const auto value=read32(r.a[5]+(pc==0x7bb6?-56:4));
+        read16(pc+6);sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        write16(r.a[5]+8,value>>16);write16(r.a[5]+10,value);final(pc+8);next=pc+6;break;
+    }
+    // $8AF8 MOVE.W abs.L,D1: extension/next-opcode fetches, data,
+    // final prefetch. Preserve the high D1 word and X; replace NZVC.
+    case 0x8af8: {
+        read16(pc+4);read16(pc+6);const auto value=read16(0x29c0aa);
+        word(r.d[1],value);nz(value);final(pc+8);next=pc+6;break;
+    }
+    // $B62E CMPI.W #$C0,D0: two prefetches, eight clocks; D0 and X
+    // are unchanged. SUB flags include unsigned borrow and signed overflow.
+    case 0xb62e: {
+        read16(pc+4);const auto old=uint16_t(r.d[0]);
+        constexpr uint16_t limit=0xc0;
+        const auto value=uint16_t(old-limit);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x8000?8:0)|
+           (((old^limit)&(old^value)&0x8000)?2:0)|(old<limit?1:0);
+        final(pc+6);next=pc+4;break;
+    }
+    // $8AFE SUB.W D1,36(A5): extension, operand, final prefetch,
+    // write. The IRQ selection is before the write; all XNZVC are replaced.
+    case 0x8afe: {
+        read16(pc+4);const auto old=read16(r.a[5]+36);
+        const auto source=uint16_t(r.d[1]),value=uint16_t(old-source);
+        const bool borrow=old<source;
+        sr=(sr&0xffe0)|(borrow?0x11:0)|(value?0:4)|(value&0x8000?8:0)|
+           (((old^source)&(old^value)&0x8000)?2:0);
+        read16(pc+6);latch();write16(r.a[5]+36,value);next=pc+4;break;
+    }
+    // $B632 BGE.W $B654: signed N==V, flags/registers unchanged.
+    // Ten clocks taken, twelve untaken, each with two prefetch phases.
+    case 0xb632:branch(bool(sr&8)==bool(sr&2),0xb654,4);break;
+    // $8B02 MOVE.W 36(A5),D1.
+    case 0x8b02: {
+        read16(pc+4);const auto value=read16(r.a[5]+36);
+        word(r.d[1],value);nz(value);final(pc+6);next=pc+4;break;
+    }
+    // $B636 ASL.W #4,D0. MAME srrw2 prefetch precedes the
+    // four two-clock shifts and nbcr3's final two internal clocks.
+    case 0xb636: {
+        auto value=uint16_t(r.d[0]);nz(value);read16(pc+4);
+        bool carry=false,overflow=false;
+        for(unsigned i=0;i<4;++i) {
+            carry=value&0x8000;const auto shifted=uint16_t(value<<1);
+            overflow |= bool((value^shifted)&0x8000);value=shifted;idle(2);
+        }
+        word(r.d[0],value);
+        sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0)|(overflow?2:0);
+        latch();idle(2);next=pc+2;break;
+    }
+    // $8B06 ASR.W #5,D1; srrw2 prefetch, five shifts, nbcr3.
+    case 0x8b06: {
+        auto value=uint16_t(r.d[1]);nz(value);read16(pc+4);bool carry=false;
+        for(unsigned i=0;i<5;++i) {carry=value&1;value=(value>>1)|(value&0x8000);idle(2);}
+        word(r.d[1],value);sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0);
+        latch();idle(2);next=pc+2;break;
+    }
+    // $8B08 BLT.W $9556; signed N!=V.
+    case 0x8b08:branch(bool(sr&8)!=bool(sr&2),0x9556,4);break;
+    // $8B0C ADDI.W #$20,D1, two prefetches, XNZVC addition.
+    case 0x8b0c: {
+        read16(pc+4);const auto old=uint16_t(r.d[1]),value=uint16_t(old+0x20);
+        const bool carry=unsigned(old)+0x20>0xffff;
+        word(r.d[1],value);sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0)|
+            ((~(old^0x20)&(old^value)&0x8000)?2:0);
+        final(pc+6);next=pc+4;break;
+    }
+    // $8B10 perspective numerator, $8B18 divisor, $8B1C quotient.
+    case 0x8b10:
+        read16(pc+4);read16(pc+6);read16(pc+8);
+        write16(r.a[6],0);write16(r.a[6]+2,0x7fe0);nz(0x7fe0);
+        final(pc+10);next=pc+8;break;
+    case 0x8b18:read16(pc+4);nz(r.d[1]);write16(r.a[6]+20,r.d[1]);final(pc+6);next=pc+4;break;
+    case 0x8b1c: {
+        read16(pc+4);const auto value=read16(r.a[6]+8);word(r.d[0],value);nz(value);final(pc+6);next=pc+4;break;
+    }
+    // $8B20/$8B22 MOVE.W D0,D7/D1, one prefetch, upper word retained.
+    case 0x8b20:case 0x8b22:word(r.d[pc==0x8b20?7:1],r.d[0]);nz(r.d[0]);final(pc+4);next=pc+2;break;
+    // $8B24/#3 and $8B2E/D0 arithmetic right word shifts.
+    case 0x8b24:case 0x8b2e: {
+        const unsigned reg=pc==0x8b24?0:1,count=pc==0x8b24?3:r.d[0]&63;
+        auto value=uint16_t(r.d[reg]);nz(value);read16(pc+4);bool carry=false;
+        for(unsigned i=0;i<count;++i){carry=value&1;value=(value>>1)|(value&0x8000);idle(2);}
+        word(r.d[reg],value);sr=(sr&0xfff0)|(carry?1:0)|(value?0:4)|(value&0x8000?8:0);
+        if(count)sr=(sr&~16)|(carry?16:0);
+        latch();idle(2);next=pc+2;break;
+    }
+    // $8B26 MOVE.B D0,2(A5); $8B2A MOVE.B 21(A5),D0.
+    case 0x8b26: {
+        read16(pc+4);const auto value=uint8_t(r.d[0]);sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        write8(r.a[5]+2,value);final(pc+6);next=pc+4;break;
+    }
+    case 0x8b2a: {
+        read16(pc+4);const auto value=read8(r.a[5]+21);byte(r.d[0],value);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);final(pc+6);next=pc+4;break;
+    }
+    // $8B30/$8B34 pack the object's scale word, with RMW bus order.
+    case 0x8b30: {
+        read16(pc+4);const auto value=uint16_t(read16(r.a[5])&0xfc00);nz(value);
+        read16(pc+6);latch();write16(r.a[5],value);next=pc+4;break;
+    }
+    case 0x8b34: {
+        const auto value=uint16_t(read16(r.a[5])|r.d[1]);nz(value);
+        read16(pc+4);latch();write16(r.a[5],value);next=pc+2;break;
+    }
+    // $8B36 runtime offset pointer; $8B3A/$8B3C the two offset longs.
+    case 0x8b36:read16(pc+4);r.a[0]=read32(r.a[5]+54);final(pc+6);next=pc+4;break;
+    case 0x8b3a:case 0x8b3c: {
+        const auto value=read32(r.a[0]);if(pc==0x8b3a)r.a[0]+=4;
+        r.d[pc==0x8b3a?4:5]=value;sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        final(pc+4);next=pc+2;break;
+    }
+    // $8B3E MOVE.W D7,D6; $8B40 ASR.W #4,D6.
+    case 0x8b3e:word(r.d[6],r.d[7]);nz(r.d[7]);final(pc+4);next=pc+2;break;
+    case 0x8b40: {
+        auto value=uint16_t(r.d[6]);nz(value);read16(pc+4);bool carry=false;
+        for(unsigned i=0;i<4;++i){carry=value&1;value=(value>>1)|(value&0x8000);idle(2);}
+        word(r.d[6],value);sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0);
+        latch();idle(2);next=pc+2;break;
+    }
+    // $8B42 ROM sway-table address; $8B48 indexed byte, $8B4C EXT.W.
+    case 0x8b42:r.a[0]=0x33ed8;read16(pc+4);read16(pc+6);final(pc+8);next=pc+6;break;
+    case 0x8b48: {
+        idle(2);read16(pc+4);const auto value=read8(r.a[0]+int16_t(r.d[6]));byte(r.d[6],value);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);final(pc+6);next=pc+4;break;
+    }
+    case 0x8b4c:word(r.d[6],int8_t(r.d[6]));nz(r.d[6]);final(pc+4);next=pc+2;break;
+    // $8B4E/$8B52 program the multiplier; $8B5A load its product.
+    case 0x8b4e:read16(pc+4);nz(r.d[6]);write16(r.a[6]-0x4000,r.d[6]);final(pc+6);next=pc+4;break;
+    case 0x8b52: {
+        read16(pc+4);read16(pc+6);const auto value=read16(0x29c0c6);
+        read16(pc+8);nz(value);write16(r.a[6]-0x3ffe,value);final(pc+10);next=pc+8;break;
+    }
+    case 0x8b5a: {
+        read16(pc+4);const auto value=read32(r.a[6]-0x3ffc);r.d[6]=value;
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);final(pc+6);next=pc+4;break;
+    }
+    // $8B5E ASR.L #6,D6: two extra long ALU clocks before nbcr3.
+    case 0x8b5e: {
+        auto value=r.d[6];sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        read16(pc+4);bool carry=false;
+        for(unsigned i=0;i<6;++i){carry=value&1;value=(value>>1)|(value&0x80000000);idle(2);}
+        r.d[6]=value;sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x80000000?8:0);
+        idle(2);latch();idle(2);next=pc+2;break;
+    }
+    // $8B60 ADD.W D6,42(A5), extension/read/prefetch/write.
+    case 0x8b60: {
+        read16(pc+4);const auto old=read16(r.a[5]+42),source=uint16_t(r.d[6]),value=uint16_t(old+source);
+        const bool carry=unsigned(old)+source>0xffff;
+        sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0)|
+            ((~(old^source)&(old^value)&0x8000)?2:0);
+        read16(pc+6);latch();write16(r.a[5]+42,value);next=pc+4;break;
+    }
+    // $8B64/$8BBC horizontal/vertical multiplier input.
+    case 0x8b64:case 0x8bbc: {
+        read16(pc+4);read16(pc+6);const auto value=read16(pc==0x8b64?0x29c092:0x29c090);
+        read16(pc+8);nz(value);write16(r.a[6]-0x4000,value);final(pc+10);next=pc+8;break;
+    }
+    // $8B6C/$8BC4 second multiplier word; $8B72/$8B82/$8BCA/$8BDA products.
+    case 0x8b6c:case 0x8bc4: {
+        read16(pc+4);const auto value=read16(r.a[5]+42);read16(pc+6);nz(value);
+        write16(r.a[6]-0x3ffe,value);final(pc+8);next=pc+6;break;
+    }
+    case 0x8b72:case 0x8b82:case 0x8bca:case 0x8bda: {
+        read16(pc+4);r.d[0]=read32(r.a[6]-0x3ffc);
+        sr=(sr&0xfff0)|(r.d[0]?0:4)|(r.d[0]&0x80000000?8:0);final(pc+6);next=pc+4;break;
+    }
+    // $8B76 ADD.L D4,D0 / $8BCE SUB.L D5,D0; roml3 internal completion.
+    case 0x8b76:case 0x8bce: {
+        const auto old=r.d[0],source=r.d[pc==0x8b76?4:5];const bool subtract=pc==0x8bce;
+        const auto value=subtract?old-source:old+source;
+        const bool carry=subtract?old<source:uint64_t(old)+source>0xffffffff;
+        const bool overflow=((subtract?(old^source):~(old^source))&(old^value)&0x80000000)!=0;
+        read16(pc+4);r.d[0]=value;
+        sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x80000000?8:0);
+        idle(2);latch();idle(2);next=pc+2;break;
+    }
+    // $8B78/$8BD0 #7, $8B86/$8BDE #8, $8B88/$8BE0 #2 ASR.L D0.
+    case 0x8b78:case 0x8bd0:asr_long(0,7);break;
+    case 0x8b86:case 0x8bde:asr_long(0,8);break;
+    case 0x8b88:case 0x8be0:asr_long(0,2);break;
+    // $8B7A/$8BD2 and $8B7E/$8BD6 multiplier operands from D0/D7.
+    case 0x8b7a:case 0x8bd2:case 0x8b7e:case 0x8bd6: {
+        const bool second=pc==0x8b7e||pc==0x8bd6;const auto value=uint16_t(r.d[second?7:0]);
+        read16(pc+4);nz(value);write16(r.a[6]-(second?0x3ffe:0x4000),value);final(pc+6);next=pc+4;break;
+    }
+    // $8B8A ADD.W shared X offset / $8BE6 SUB.W shared Y offset.
+    case 0x8b8a:case 0x8be6: {
+        read16(pc+4);read16(pc+6);const auto source=read16(pc==0x8b8a?0x29c08e:0x29c08c);
+        word(r.d[0],addsub_word(r.d[0],source,pc==0x8be6,true));final(pc+8);next=pc+6;break;
+    }
+    // $8B90/$8BEC store projected X/Y; $8B94/$8BF0 runtime table addresses.
+    case 0x8b90:case 0x8bec:read16(pc+4);nz(r.d[0]);write16(r.a[5]+(pc==0x8b90?4:6),r.d[0]);final(pc+6);next=pc+4;break;
+    case 0x8b94:case 0x8bf0:r.a[pc==0x8b94?1:0]=pc==0x8b94?0x2a3800:0x29c0a2;read16(pc+4);read16(pc+6);final(pc+8);next=pc+6;break;
+    // $8B9A/$8BF6 clear index words; $8B9C/$8BF8 load index bytes.
+    case 0x8b9a:case 0x8bf6:word(r.d[pc==0x8b9a?1:0],0);nz(0);final(pc+4);next=pc+2;break;
+    case 0x8b9c:case 0x8bf8: {
+        const unsigned reg=pc==0x8b9c?1:0;read16(pc+4);const auto value=read8(r.a[5]+(reg?20:59));
+        byte(r.d[reg],value);sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);final(pc+6);next=pc+4;break;
+    }
+    // $8BA0/$8BA2 ADD.W D1,D1; $8BA4/$8BFC indexed runtime words.
+    case 0x8ba0:case 0x8ba2:word(r.d[1],addsub_word(r.d[1],r.d[1],false,true));final(pc+4);next=pc+2;break;
+    case 0x8ba4:case 0x8bfc: {
+        idle(2);read16(pc+4);const auto address=pc==0x8ba4?r.a[1]+int16_t(r.d[1]):r.a[0]+int16_t(r.d[0]);
+        const auto value=read16(address);word(r.d[1],value);nz(value);final(pc+6);next=pc+4;break;
+    }
+    // $8BA8 ASR.W #1,D1; $8BAA/$8BE2 add viewport offsets.
+    case 0x8ba8: {
+        auto value=uint16_t(r.d[1]);nz(value);read16(pc+4);const bool carry=value&1;
+        value=(value>>1)|(value&0x8000);idle(2);word(r.d[1],value);
+        sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0);latch();idle(2);next=pc+2;break;
+    }
+    case 0x8baa:case 0x8be2: {
+        const unsigned reg=pc==0x8baa?1:0;read16(pc+4);
+        word(r.d[reg],addsub_word(r.d[reg],reg?0xa0:0x70,false,true));final(pc+6);next=pc+4;break;
+    }
+    // $8BAE/$8BB6 CMP.W D1,D0; $8BB4 NEG.W D1; signed clip branches.
+    case 0x8bae:case 0x8bb6:addsub_word(r.d[0],r.d[1],true,false);final(pc+4);next=pc+2;break;
+    case 0x8bb4:word(r.d[1],addsub_word(0,r.d[1],true,true));final(pc+4);next=pc+2;break;
+    case 0x8bb0:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x9556,4);break;
+    case 0x8bb8:branch((sr&4)||bool(sr&8)!=bool(sr&2),0x9556,4);break;
+    // $8C00/$8C04 indexed animation payload from RAM-owned pointer tables.
+    case 0x8c00:read16(pc+4);r.a[1]=read32(r.a[5]+60);final(pc+6);next=pc+4;break;
+    case 0x8c04: {
+        idle(2);read16(pc+4);const auto value=read32(r.a[1]+int16_t(r.d[1]));read16(pc+6);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        write16(r.a[5]+12,value>>16);write16(r.a[5]+14,value);final(pc+8);next=pc+6;break;
+    }
+    // $8C0A/$8C0E/$8C14 shared flip flags and $8C16 BSR publication.
+    case 0x8c0a: {
+        read16(pc+4);const auto value=uint8_t(read8(r.a[5])&0xcf);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);read16(pc+6);latch();write8(r.a[5],value);next=pc+4;break;
+    }
+    case 0x8c0e: {
+        read16(pc+4);read16(pc+6);const auto value=read8(0x29c0a0);byte(r.d[0],value);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);final(pc+8);next=pc+6;break;
+    }
+    case 0x8c14: {
+        const auto value=uint8_t(read8(r.a[5])|r.d[0]);sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        read16(pc+4);latch();write8(r.a[5],value);next=pc+2;break;
+    }
+    case 0x8c16:idle(2);sp-=4;write16(sp,0);write16(sp+2,0x8c1a);read16(0xb628);final(0xb62a);next=0xb628;break;
+    // $9556..$9572 release a clipped object and return its size slot.
+    case 0x9556:read16(pc+4);read16(r.a[5]+36);nz(0);read16(pc+6);latch();write16(r.a[5]+36,0);next=pc+4;break;
+    case 0x955a: {
+        read16(pc+4);const auto old=read8(r.a[5]);sr=(sr&~4)|(old&0x40?0:4);
+        read16(pc+6);latch();write8(r.a[5],old&~0x40);next=pc+4;break;
+    }
+    case 0x955e: {
+        read16(pc+4);const auto value=uint16_t(read16(r.a[5])&0x7c00);nz(value);
+        read16(pc+6);latch();write16(r.a[5],value);next=pc+4;break;
+    }
+    case 0x9562:r.a[0]=0xffff8d80;read16(pc+4);final(pc+6);next=pc+4;break;
+    case 0x9566: {
+        const auto old=read8(r.a[0]),value=uint8_t(old+1);sr=(sr&0xffe0)|(old==0xff?0x11:0)|(old==0x7f?2:0)|(value?0:4)|(value&0x80?8:0);
+        read16(pc+4);latch();write8(r.a[0],value);next=pc+2;break;
+    }
+    case 0x9568:word(r.d[0],0);nz(0);final(pc+4);next=pc+2;break;
+    case 0x956a: {
+        const auto value=read8(r.a[0]);byte(r.d[0],value);sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        final(pc+4);next=pc+2;break;
+    }
+    case 0x956c: {
+        read16(pc+4);const auto value=read8(r.a[5]+20);idle(2);read16(pc+6);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);write8(r.a[0]+int16_t(r.d[0]),value);final(pc+8);next=pc+6;break;
+    }
+    case 0x9572:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // $8C1A return from the world handler after publication.
+    case 0x8c1a:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // $B638 MOVEA.L abs.L,A0; $B63E ADDA.W D0,A0; $B640 LEA (A5),A1.
+    case 0xb638:read16(pc+4);read16(pc+6);r.a[0]=read32(0x2a3c04);final(pc+8);next=pc+6;break;
+    case 0xb63e:r.a[0]+=int16_t(r.d[0]);read16(pc+4);idle(2);latch();idle(2);next=pc+2;break;
+    case 0xb640:r.a[1]=r.a[5];final(pc+4);next=pc+2;break;
+    // $B642/$B644/$B646/$B648 copy the four publication longs.
+    case 0xb642:case 0xb644:case 0xb646:case 0xb648: {
+        const auto value=read32(r.a[1]);r.a[1]+=4;
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        write16(r.a[0],value>>16);write16(r.a[0]+2,value);
+        if(pc!=0xb648)r.a[0]+=4;
+        final(pc+4);next=pc+2;break;
+    }
+    // $B64A MOVE.B 20(A5),(A0).
+    case 0xb64a: {
+        read16(pc+4);const auto value=read8(r.a[5]+20);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        write8(r.a[0],value);final(pc+6);next=pc+4;break;
+    }
+    // $B64E ADDQ.W #1,abs.L, prefetch selects before final write.
+    case 0xb64e: {
+        read16(pc+4);read16(pc+6);const auto old=read16(0x2a3cf0),value=uint16_t(old+1);
+        arithmetic(old,value,false,true);read16(pc+8);latch();write16(0x2a3cf0,value);next=pc+6;break;
+    }
+    // $B654 producer return, stack and two target prefetch phases.
+    case 0xb654:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // $B628 publication producer count load.
+    case 0xb628: {
+        read16(pc+4);read16(pc+6);const auto value=read16(0x2a3cf0);
+        word(r.d[0],value);nz(value);final(pc+8);next=pc+6;break;
+    }
+    // $15BFE BSR.W into the verified enemy movement graph.
+    case 0x15bfe:
+        idle(2);sp-=4;write16(sp,1);write16(sp+2,0x5c02);
+        read16(0x15750);final(0x15752);next=0x15750;break;
     // $B676..$B696: publication wait and main-owned count/pointer operands.
     case 0xb676:read16(pc+4);read16(pc+6);nz(read16(0x2a3c00));final(pc+8);next=pc+6;break;
     case 0xb67c:branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0xb676,2);break;
@@ -517,7 +850,7 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         read16(pc+4);read16(pc+6);read16(0x2a3cf0);nz(0);read16(pc+8);
         latch();write16(0x2a3cf0,0);next=pc+6;break;
     case 0xb696:next=read32(sp);sp+=4;read16(next);final(next+2);break;
-    default:throw std::runtime_error("unported caller instruction");
+    default:throw std::runtime_error("unported caller instruction at PC "+std::to_string(pc));
     }
     clock(ns);return {{r,next,sp,sr,ns},selected,selection};
 }

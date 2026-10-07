@@ -37,6 +37,15 @@ public:
     // segaxbd_state::update_main_irqs: timer=2, VBLANK=4, together=6.
     unsigned main_irq_level() const { return (timer.state().irq ? 2 : 0) | (blank ? 4 : 0); }
     unsigned sub_irq_level() const { return blank ? 4 : 0; }
+    // Forecast delivery at a completed CPU bus without advancing the live
+    // board past intervening frame observations. Only EXCK/VBLANK affect IPL.
+    unsigned irq_at(uint64_t ns) const {
+        auto copied_timer=timer;
+        copied_timer.irq_line={};copied_timer.nmi_line={};copied_timer.sound_command={};
+        XBoardTimeline copy(copied_timer,next_line);
+        copy.time=time;copy.line=line;copy.blank=blank;
+        copy.advance(ns);return copy.main_irq_level();
+    }
 private:
     void advance_to(uint64_t ns, bool inclusive) {
         if (ns < time) throw std::runtime_error("nonmonotonic X-Board time");

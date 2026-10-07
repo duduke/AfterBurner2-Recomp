@@ -2,20 +2,21 @@
 #include <array>
 #include <utility>
 #include <vector>
+#include <optional>
 #include "engine/mainbus.hpp"
-#include "hwmath/xboard_timeline.hpp"
+#include "hwmath/xboard_cpu_visibility.hpp"
 
 // Physical endpoints from segaxbd.cpp. CPU transaction times and interrupt
 // entry boundaries remain the caller's responsibility; this schedules no CPU.
 // The owner must outlive the bus callbacks and destroy this before the bus.
 class OMainIO {
 public:
-    explicit OMainIO(MainBus& bus) : board(bus.compare_timer) {
+    explicit OMainIO(MainBus& bus) : board(bus.compare_timer), cpu(board) {
         inputs.fill(0x10); // Unconnected ADC ports in the X-Board driver.
         inputs[0]=inputs[1]=inputs[2]=inputs[3]=inputs[4]=0x80; // Motor feedback lanes 3/4.
         board.adc.analog=[this] { return inputs[(mux>>2)&7]; };
         bus.endpoints.adc_read=[this] { return board.adc.read(board.now()); };
-        bus.endpoints.adc_write=[this](uint8_t) { board.adc.write(board.now()); };
+        bus.endpoints.adc_write=[this](uint8_t) { board.adc.write(transaction_ns.value_or(board.now())); };
         bus.io[0].output=[this](unsigned port,uint8_t data,uint8_t) {
             if(port==2) mux=data;
         };
@@ -28,6 +29,16 @@ public:
     }
     OMainIO(const OMainIO&)=delete;
     OMainIO& operator=(const OMainIO&)=delete;
+
+    // CPU completion/bus frontiers deliver pending board events. The ADC
+    // strobe occurs at the transaction time even when delivery still trails
+    // it after an internal CPU overrun. Unported frontiers remain inputs.
+    void before_bus(uint64_t ns,uint64_t previous_phase_end,
+                    uint16_t completed_opcode=0,uint16_t shift_source=0) {
+        cpu.resume(previous_phase_end,completed_opcode,shift_source);
+        cpu.before_bus(ns);
+        transaction_ns=ns;
+    }
 
     // Native host uses three keyboard positions. Preserve physical endpoints;
     // $B0AC applies the gameplay clamps AFTER conversion. Y is reversed:
@@ -50,6 +61,8 @@ public:
     }
     XBoardTimeline board;
 private:
+    XBoardCpuVisibility cpu;
+    std::optional<uint64_t> transaction_ns;
     std::array<uint8_t,8> inputs{};
     uint8_t mux=0,buttons=0xff;
     std::vector<uint8_t> sound_commands;

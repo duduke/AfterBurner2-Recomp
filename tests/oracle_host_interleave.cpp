@@ -3,6 +3,9 @@
 // IRQ contexts/resumed operand frontiers and changing sub size operands are
 // captured inputs. Complete windows also execute the publication wait contract.
 // These checks do not predict arbitrary CPU instruction timing.
+// AB2REQ04 exports ordered road target writes with verified/external ownership
+// for the separately captured sub road consumer; publication targets remain
+// the sprite-transform contract, not a guess about road consumption time.
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -102,7 +105,7 @@ int main(int argc,char** argv) try {
     MainBus::Memory memory;
     constexpr size_t N=MainBus::MEMORY_BYTES;
     std::vector<uint8_t> before(N),after(N),expected(N),other(N),reads(N),writes(N),supplied(N),write_values(N);
-    std::ofstream requests; if(argc>2) { requests.open(argv[2],std::ios::binary);requests.write("AB2REQ03",8); }
+    std::ofstream requests; if(argc>2) { requests.open(argv[2],std::ios::binary);requests.write("AB2REQ04",8); }
     unsigned irq2=0,irq4=0,irq6=0,latches=0,accepted_irq2=0,accepted_irq4=0,accepted_irq6=0,accepted_latches=0;
     unsigned total=0,identical=0,failed=0,skipped=0,executed=0,external=0,reported=0;
     std::map<uint32_t,unsigned> executed_entries,external_entries;
@@ -150,6 +153,12 @@ int main(int argc,char** argv) try {
         std::vector<Event> handler_events,dispatcher_io;
         uint32_t producer_ptr=0,producer_count=0;std::vector<uint8_t> producer_bytes;
         std::vector<std::pair<uint32_t,uint16_t>> producer_targets;
+        struct TargetWrite {unsigned ordinal;uint32_t address;uint16_t data,mask;bool verified;};
+        std::vector<TargetWrite> target_writes;
+        auto target_write=[&](uint32_t a,uint16_t d,uint16_t m,bool verified) {
+            if(a==0x29c0ce || a==0x29c0d0 || a==0x29c0c2 || a==0x29c0c0 || a==0x29c0aa)
+                target_writes.push_back({ordinal,a,uint16_t(d&m),m,verified});
+        };
         bus.io[1].input=[&](unsigned p){ return p==0 ? io : 0xff; };
         MainBus::Trace trace{reads.data(),writes.data(),{}, {}};
         trace.write_values=write_values.data();
@@ -160,6 +169,7 @@ int main(int argc,char** argv) try {
             if(!w) return;
             if(in_irq) return;
             ++ordinal;
+            target_write(a,d,m,true);
             if(inside) handler_events.emplace_back(a,d&m,m);
             else if(MainBus::memory_offset(a)==MainBus::UNMAPPED) dispatcher_io.emplace_back(a,d&m,m);
         };
@@ -273,6 +283,7 @@ int main(int argc,char** argv) try {
             for(const auto& e:h.writes) {
                 while(irq_cursor<interrupts.size() && interrupts[irq_cursor].ordinal==ordinal) service();
                 apply(bus,e);++ordinal;
+                auto [a,d,m]=e;target_write(a,d,m,false);
             }
             while(irq_cursor<interrupts.size() && interrupts[irq_cursor].ordinal==ordinal && interrupts[irq_cursor].owner==cursor) service();
             load_math(bus,h.after);state=h.post;bus.trace=&trace;
@@ -342,6 +353,8 @@ int main(int argc,char** argv) try {
                 for(unsigned i=0;i<count*16;++i) requests.put(complete ? producer_bytes.at(i) : bus.read8(ptr+i));
                 if(complete) {for(auto [a,v]:producer_targets) {put(a);put(v);}}
                 else for(uint32_t a:{0x29c0ceu,0x29c0d0u,0x29c0c2u,0x29c0c0u,0x29c0aau}) { put(a);put(bus.read16(a)); }
+                put(target_writes.size());
+                for(const auto& w:target_writes){put(w.ordinal);put(w.address);put(w.data);put(w.mask);put(w.verified);}
             }
         }
     }

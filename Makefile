@@ -89,6 +89,10 @@ oracle-capture:
 	$(MAKE) oracle-capture-scenery
 	$(MAKE) oracle-capture-road-setup
 	$(MAKE) oracle-capture-host-objects
+	$(MAKE) oracle-capture-scheduling-returns
+	$(MAKE) oracle-capture-caller-words
+	$(MAKE) oracle-capture-caller-successors
+	$(MAKE) oracle-capture-caller-closure
 
 # 3d foundations only; leaf and directed calls do not prove player gameplay.
 oracle-capture-objects:
@@ -197,7 +201,7 @@ oracle-handlers:
 	./build/oracle_adc_timing build/oracle/adc_timing_directed.bin
 
 ORACLE_SRCS = src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp
-VIDEO_SRCS = src/main/romloader.cpp src/main/roms.cpp $(filter src/main/hwvideo/%,$(SRCS)) src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp
+VIDEO_SRCS = src/main/romloader.cpp src/main/roms.cpp $(filter src/main/hwvideo/%,$(SRCS)) src/main/engine/mainbus.cpp src/main/engine/subbus.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/osubroad.cpp
 
 oracle-capture-mainirq:
 	@mkdir -p build/oracle
@@ -212,9 +216,9 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired
+oracle-test: oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_objects
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp $(HANDLER_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
 	./build/oracle_objects build/oracle/objects_gameplay.bin
 	./build/oracle_objects build/oracle/objects_directed.bin
@@ -367,6 +371,19 @@ oracle-paired: oracle-host-interleave oracle-frame-host oracle-sound-stream orac
 
 .PHONY: oracle-capture-paired oracle-paired
 
+# Actual road consumer/flip boundaries paired with computed main targets.
+oracle-capture-paired-road:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INTERLEAVE=1 AB2_ORACLE_INTERLEAVE_PREFIX=1 AB2_ORACLE_PUBLICATION=1 AB2_ORACLE_PAIRED=1 AB2_ORACLE_PAIRED_ROAD=1 AB2_ORACLE_OBJECT_OUT=build/oracle/paired_road_objects.bin AB2_ORACLE_SOUND_OUT=build/oracle/paired_road_sound.bin AB2_ORACLE_FRAME_OUT=build/oracle/paired_road_frame.bin AB2_ORACLE_SKIP=1020 AB2_ORACLE_STRIDE=1 tools/oracle/capture.sh tools/oracle/capture_paired.lua build/oracle/paired_road.bin 240 60
+
+oracle-paired-road: oracle-paired
+	./build/oracle_host_interleave build/oracle/paired_road_objects.bin build/oracle/paired_road_requests.bin
+	./build/oracle_frame_host build/oracle/paired_road_frame.bin
+	./build/oracle_sound_stream build/oracle/paired_road_sound.bin
+	./build/oracle_video build/oracle/paired_road.bin 0 build/oracle/paired_road_requests.bin
+
+.PHONY: oracle-capture-paired-road oracle-paired-road
+
 oracle-frame-host:
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_frame_host.cpp $(INTERLEAVE_SRCS) -o build/oracle_frame_host
 	./build/oracle_frame_host build/oracle/paired_frame.bin
@@ -439,7 +456,7 @@ oracle-caller: oracle-cpu-visibility
 # CPU bus-phase delivery, independent physical IPL/ADC assertions.
 oracle-cpu-visibility:
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_cpu_visibility.cpp -o build/oracle_cpu_visibility
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_cpu_visibility.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o build/oracle_cpu_visibility
 	./build/oracle_cpu_visibility build/oracle/caller.bin.visibility
 	./build/oracle_cpu_visibility build/oracle/caller_directed.bin.visibility
 
@@ -477,3 +494,52 @@ oracle-caller-return: oracle-caller
 	./build/oracle_caller build/oracle/caller_return_edges.bin
 
 .PHONY: oracle-capture-caller-return oracle-caller-return
+
+# IRQ4 RTE stack/mask selection and the six natural returned-instruction PCs.
+oracle-capture-scheduling-returns:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_steps.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_RETURN=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_return.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_IRQ4_RETURN=1 AB2_ORACLE_IRQ4_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_irq4_service.lua build/oracle/irq4_return_edges.bin 120 15
+
+oracle-scheduling-returns: oracle-caller oracle-irq4-service
+	./build/oracle_caller build/oracle/caller_steps.bin
+	./build/oracle_irq4_service build/oracle/irq4_return.bin build/oracle/irq4_return.bin.returns
+	./build/oracle_irq4_service build/oracle/irq4_return_edges.bin build/oracle/irq4_return_edges.bin.returns
+
+.PHONY: oracle-capture-scheduling-returns oracle-scheduling-returns
+
+# The fourteen CALL5 post-RTE boundaries: $8AF8 nine times, $B62E five.
+oracle-capture-caller-words:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_words.bin 600 30
+
+oracle-caller-words: oracle-caller
+	./build/oracle_caller build/oracle/caller_words.bin build/oracle/caller_steps.bin
+
+.PHONY: oracle-capture-caller-words oracle-caller-words
+
+# Ten CALL6 successors: $8AFE twice and $B632 eight times; taken BGE fixtures.
+oracle-capture-caller-successors:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_successors.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_SUCCESSOR_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_successors_directed.bin 120 15
+
+oracle-caller-successors: oracle-caller
+	./build/oracle_caller build/oracle/caller_successors.bin build/oracle/caller_words.bin
+	./build/oracle_caller build/oracle/caller_successors_directed.bin --require-taken
+
+.PHONY: oracle-capture-caller-successors oracle-caller-successors
+
+# Close every returned instruction exposed by the expanded projection and
+# publication graphs; true instruction snapshots include internal ALU tails.
+oracle-capture-caller-closure:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_closure.bin 600 30
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_SUCCESSOR_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_closure_directed.bin 120 15
+
+oracle-caller-closure: oracle-caller
+	./build/oracle_caller build/oracle/caller_closure.bin build/oracle/caller_successors.bin --require-closed
+	./build/oracle_caller build/oracle/caller_closure_directed.bin --require-taken --require-closed
+
+.PHONY: oracle-capture-caller-closure oracle-caller-closure

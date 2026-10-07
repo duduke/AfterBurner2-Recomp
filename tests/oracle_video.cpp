@@ -22,6 +22,7 @@
 #include "roms.hpp"
 #include "engine/omainsprites.hpp"
 #include "engine/osubsprites.hpp"
+#include "engine/osubroad.hpp"
 #include "hwvideo/hwpalette.hpp"
 #include "hwvideo/hwroad.hpp"
 #include "hwvideo/hwsprites.hpp"
@@ -34,10 +35,16 @@ namespace
 
     uint16_t r16(const uint8_t* m, size_t o) { return static_cast<uint16_t>((m[o] << 8) | m[o + 1]); }
 
-    bool pipeline_capture=false,paired_capture=false;
-    struct Producer { bool raced=false;uint32_t pointer=0,count=0;std::vector<uint8_t> bytes;std::array<uint16_t,5> targets; };
+    bool pipeline_capture=false,paired_capture=false,road_capture=false;
+    struct TargetWrite {uint32_t address;uint16_t data,mask;bool verified;};
+    struct Producer { bool raced=false;uint32_t pointer=0,count=0;std::vector<uint8_t> bytes;std::array<uint16_t,5> targets;std::map<uint32_t,TargetWrite> target_writes; };
     std::map<uint32_t,Producer> producers;
     uint32_t u32(std::ifstream& in) { uint8_t b[4];if(!in.read(reinterpret_cast<char*>(b),4)) throw std::runtime_error("truncated paired capture");return (uint32_t(b[0])<<24)|(uint32_t(b[1])<<16)|(b[2]<<8)|b[3]; }
+    void offsets(std::ifstream& in,std::vector<uint8_t>& marks) {
+        std::fill(marks.begin(),marks.end(),0);auto count=u32(in);
+        if(count>marks.size())throw std::runtime_error("invalid road write set");
+        while(count--) {uint8_t b[2];if(!in.read(reinterpret_cast<char*>(b),2))throw std::runtime_error("truncated road write set");marks.at(r16(b,0))=1;}
+    }
     struct Frame
     {
         uint32_t number = 0,entry=0,producer=0;
@@ -47,6 +54,11 @@ namespace
         std::vector<uint8_t> sprites = std::vector<uint8_t>(0x1000);
         std::vector<uint8_t> road = std::vector<uint8_t>(0x1000);
         uint16_t road_control = 0;
+        std::array<std::pair<uint32_t,uint32_t>,5> road_sources{};
+        std::vector<uint8_t> road_shared=std::vector<uint8_t>(0x8000),road_before=std::vector<uint8_t>(0x1000);
+        std::vector<uint8_t> road_after_shared=std::vector<uint8_t>(0x8000),road_after=std::vector<uint8_t>(0x1000);
+        std::vector<uint8_t> road_shared_w=std::vector<uint8_t>(0x8000),road_w=std::vector<uint8_t>(0x1000),road_other=std::vector<uint8_t>(0x8000);
+        std::array<uint8_t,16> road_chips{};
         std::vector<uint8_t> latched = std::vector<uint8_t>(32);
         std::vector<uint8_t> palette = std::vector<uint8_t>(0x4000);
         std::vector<uint8_t> tile_ram = std::vector<uint8_t>(0x10000);
@@ -71,6 +83,13 @@ namespace
             in.read(reinterpret_cast<char*>(f.sub_before.data()),f.sub_before.size());
             in.read(reinterpret_cast<char*>(f.blit_before.data()),f.blit_before.size());
             if(paired_capture) { f.producer=u32(in);in.read(reinterpret_cast<char*>(f.sizes.data()),f.sizes.size()); }
+        }
+        if(road_capture) {
+            for(auto& source:f.road_sources){source.first=u32(in);source.second=u32(in);}
+            for(auto* bytes:{&f.road_shared,&f.road_before})in.read(reinterpret_cast<char*>(bytes->data()),bytes->size());
+            in.read(reinterpret_cast<char*>(f.road_chips.data()),f.road_chips.size());
+            for(auto* bytes:{&f.road_after_shared,&f.road_after})in.read(reinterpret_cast<char*>(bytes->data()),bytes->size());
+            offsets(in,f.road_shared_w);offsets(in,f.road_w);offsets(in,f.road_other);
         }
         if(!in) throw std::runtime_error("truncated video frame");
         f.number = (static_cast<uint32_t>(header[0]) << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
@@ -121,7 +140,8 @@ int main(int argc, char** argv) try
     }
     char magic[8];
     in.read(magic, 8);
-    paired_capture=std::memcmp(magic,"AB2PAIR2",8)==0;
+    road_capture=std::memcmp(magic,"AB2PAIR3",8)==0;
+    paired_capture=road_capture || std::memcmp(magic,"AB2PAIR2",8)==0;
     pipeline_capture=paired_capture || std::memcmp(magic,"AB2PIPE1",8)==0;
     if (!in || (!pipeline_capture && std::memcmp(magic, "AB2VID01", 8) != 0))
     {
@@ -133,7 +153,10 @@ int main(int argc, char** argv) try
 
     if(paired_capture) {
         std::ifstream computed(argc>3 ? argv[3] : "build/oracle/paired_requests.bin",std::ios::binary);char header[8];
-        if(!computed.read(header,8) || std::memcmp(header,"AB2REQ03",8)) {std::cerr<<"missing computed request corpus\n";return 1;}
+        if(!computed.read(header,8))throw std::runtime_error("missing computed request corpus");
+        const bool target_frontiers=std::memcmp(header,"AB2REQ04",8)==0;
+        if(!target_frontiers && std::memcmp(header,"AB2REQ03",8))throw std::runtime_error("invalid computed request corpus");
+        if(road_capture&&!target_frontiers)throw std::runtime_error("road pairing requires target write provenance");
         while(computed.peek()!=std::char_traits<char>::eof()) {
             auto index=u32(computed);auto status=u32(computed);Producer p;
             if(status==1) {p.raced=true;if(!producers.emplace(index,std::move(p)).second) return 1;continue;}
@@ -141,6 +164,11 @@ int main(int argc, char** argv) try
             if(p.count>192) return 1;p.bytes.resize(p.count*16);
             if(!computed.read(reinterpret_cast<char*>(p.bytes.data()),p.bytes.size())) return 1;
             unsigned i=0;for(uint32_t a:{0x29c0ceu,0x29c0d0u,0x29c0c2u,0x29c0c0u,0x29c0aau}) {if(u32(computed)!=a) return 1;p.targets[i++]=u32(computed);}
+            if(target_frontiers) {
+                auto count=u32(computed);if(count>100000)throw std::runtime_error("invalid target write count");
+                while(count--){auto ordinal=u32(computed),a=u32(computed),d=u32(computed),m=u32(computed),verified=u32(computed);
+                    if(d>65535||m>65535||verified>1||!p.target_writes.emplace(ordinal,TargetWrite{a,uint16_t(d),uint16_t(m),bool(verified)}).second)throw std::runtime_error("invalid target write provenance");}
+            }
             if(!producers.emplace(index,std::move(p)).second) return 1;
         }
     }
@@ -160,13 +188,54 @@ int main(int argc, char** argv) try
     long total_mismatched = 0;
     int images = 0;
 
-    unsigned normal=0,interpolated=0,paired_skipped=0,paired_total=0;
+    unsigned normal=0,interpolated=0,paired_skipped=0,paired_total=0,road_passes=0,road_races=0,verified_targets=0,external_targets=0,initial_targets=0;
     while (read(in, f))
     {
         if(paired_capture) {
             ++paired_total;const auto it=producers.find(f.producer);
             if(it==producers.end()) {std::cerr<<"missing paired producer "<<f.producer<<'\n';return 1;}
             if(it->second.raced) {++paired_skipped;continue;}
+        }
+
+        if(road_capture) {
+            bool producer_race=false;
+            for(auto [index,ordinal]:f.road_sources){(void)ordinal;if(index==0xffffffff)continue;const auto it=producers.find(index);
+                if(it==producers.end())throw std::runtime_error("missing road producer");producer_race |= it->second.raced;}
+            if(producer_race){++paired_skipped;continue;}
+            auto shared=f.road_shared,raster=f.road_before;
+            std::vector<uint8_t> reads(0x8000),writes(0x8000),road_writes(0x1000);
+            SubBus sub(roms.subcpu.rom,roms.subcpu.length,shared.data(),raster.data());
+            // The sub can consume next-dispatch inputs before publication.
+            // Select each word's actual producing write, rather than guessing
+            // that it belongs to the displayed sprite list's producer.
+            unsigned i=0;
+            unsigned tested_verified=0,tested_external=0,tested_initial=0;
+            for(uint32_t o:{0xceu,0xd0u,0xc2u,0xc0u,0xaau}) {
+                auto [index,ordinal]=f.road_sources[i++];
+                if(index==0xffffffff){if(ordinal)throw std::runtime_error("invalid initial target boundary");++tested_initial;continue;}
+                const auto& writes=producers.at(index).target_writes;
+                const auto w=writes.find(ordinal);
+                if(w==writes.end()||w->second.address!=0x200000+SubBus::A6+o||w->second.mask!=0xffff)throw std::runtime_error("missing road target write frontier");
+                auto value=w->second.data;
+                if(sub.read16(SubBus::A6+o)!=value)throw std::runtime_error("road consumer target differs on frame "+std::to_string(f.number));
+                w->second.verified?++tested_verified:++tested_external;
+                sub.write16(SubBus::A6+o,value);
+            }
+            const auto* chips=f.road_chips.data();sub.mul.load(r16(chips,0),r16(chips,2));
+            uint16_t div[]={r16(chips,4),r16(chips,6),r16(chips,8),r16(chips,10),r16(chips,12),r16(chips,14)};sub.div.load(div);
+            SubBus::Trace trace{reads.data(),writes.data(),road_writes.data()};sub.trace=&trace;
+            OSubRoad{}.frame(sub);sub.trace=nullptr;
+            bool race=false;for(size_t o=0;o<reads.size();++o)race |= reads[o]&&f.road_other[o];
+            if(race){++road_races;++paired_skipped;continue;}
+            bool same=road_writes==f.road_w&&raster==f.road_after&&raster==f.road;
+            for(size_t o=0;o<0x7f00;++o)same &= writes[o]==f.road_shared_w[o]&&(!writes[o]||shared[o]==f.road_after_shared[o]);
+            if(!same){std::cout<<"Paired computed road: 0 identical, 1 different, 0 skipped\n";throw std::runtime_error("computed road raster/write set differs on frame "+std::to_string(f.number));}
+            ++road_passes;
+            verified_targets+=tested_verified;external_targets+=tested_external;
+            initial_targets+=tested_initial;
+            // Feed the computed raster into the existing hardware swap and
+            // compositor. Captured display RAM was only an assertion above.
+            f.road=std::move(raster);
         }
 
         if(pipeline_capture) {
@@ -235,7 +304,8 @@ int main(int argc, char** argv) try
             write_diff("build/oracle/video_diff_" + std::to_string(f.number) + ".ppm", f, port), ++images;
     }
 
-    if(paired_capture) std::cout<<"Paired player/weapon/sub/video: "<<paired_total-paired_skipped<<'/'<<paired_total<<" checked, "<<paired_skipped<<" skipped (producer shared-input race)\n";
+    if(paired_capture) std::cout<<"Paired player/weapon/sub/video: "<<paired_total-paired_skipped<<'/'<<paired_total<<" checked, "<<paired_skipped<<(road_capture?" skipped (producer or road shared-input race)\n":" skipped (producer shared-input race)\n");
+    if(road_capture)std::cout<<"Paired computed road: "<<road_passes<<" identical, 0 different, "<<road_races<<" skipped (main CPU changed a read input); "<<verified_targets<<" verified target writes, "<<external_targets<<" explicit external target writes, "<<initial_targets<<" initial target boundaries; captured road control, caller/sub frontiers and tile/palette feedback remain inputs\n";
     if(pipeline_capture) std::cout << "Paired pipeline: " << normal << " normal, " << interpolated << " interpolated sprite RAM/draw triggers identical\n";
     if (results.empty())
     {
