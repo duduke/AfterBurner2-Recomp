@@ -4,10 +4,13 @@ local space=main.spaces.program
 local board=manager.machine.devices[":mainpcb"]
 local timer=emu.item(assert(board.items["0/m_timer_irq_state"]))
 local blank=emu.item(assert(board.items["0/m_vblank_irq_state"]))
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2IRQ46")
+local embedded_output,shared_guard=...
+shared_guard=shared_guard or {active=false}
+local output=embedded_output or assert(os.getenv("AB2_ORACLE_OUT"))
+local out=assert(io.open(output,"wb"));out:write("AB2IRQ46")
 local returns
 if os.getenv("AB2_ORACLE_IRQ4_RETURN")=="1" then
- returns=assert(io.open(os.getenv("AB2_ORACLE_OUT")..".returns","wb"));returns:write("AB2RTE42")
+ returns=assert(io.open(output..".returns","wb"));returns:write("AB2RTE42")
 end
 local initial_usp,return_pending,return_entry
 local guard,active,last,hook=false,false,nil,nil
@@ -170,12 +173,12 @@ local function regs()
  return table.concat(r)
 end
 local function snapshot()
- guard=true;local parts={}
+ guard=true;shared_guard.active=true;local parts={}
  for _,r in ipairs({{0x80000,0x83fff},{0xa0000,0xa3fff},{0x280000,0x283fff},{0x2a0000,0x2a3fff},{0xc0000,0xcffff},{0xd0000,0xd0fff},{0x100000,0x100fff},{0x120000,0x123fff},{0x2ec000,0x2ecfff}})do parts[#parts+1]=space:read_range(r[1],r[2],8)end
- guard=false;return table.concat(parts)
+ guard=false;shared_guard.active=false;return table.concat(parts)
 end
 local function access(w,a,d,m)
- if guard then return end
+ if guard or shared_guard.active then return end
  local p=main.state.CURPC.value
  if return_pending then
   return_pending=false
@@ -196,7 +199,7 @@ local function access(w,a,d,m)
  end
  if not active and w and last and blank:read(0)~=0 and main.state.SR.value>>8&7==4 and a==((main.state.SP.value-2)&0x3ffffe) then
   if directed then
-   guard=true
+   guard=true;shared_guard.active=true
    space:write_u16(0x2a3c00,({0,1,0x8000,0xffff})[calls%4+1])
    -- Ordinary directed runs skip credit callbacks; the RTS fixture enters
    -- them while preserving the existing final service redirect.
@@ -338,7 +341,7 @@ local function access(w,a,d,m)
    end
    space:write_u8(0x3f8b6f,calls%8==3 and (space:read_u8(0x3f8b6f)&~2) or (space:read_u8(0x3f8b6f)|2))
    space:write_u16(0x3f8174,59);space:write_u16(0x3f881c,59);space:write_u16(0x3f880a,1)
-   guard=false
+   guard=false;shared_guard.active=false
   end
   initial_usp=main.state.USP.value
   pre=string.pack(">I8I4I4I2I4I2",last.t+320,last.pc,main.state.PC.value,(last.sr&0xffe0)|(main.state.SR.value&31),main.state.SP.value,last.count)..regs()..snapshot()
@@ -384,7 +387,7 @@ local function access(w,a,d,m)
   end
  end
  if not active then
-  guard=true;local op=space:read_u16(p);guard=false
+  guard=true;shared_guard.active=true;local op=space:read_u16(p);guard=false;shared_guard.active=false
   last={t=ns(),pc=p,sr=main.state.SR.value,count=main.state["D"..(op>>9&7)].value&0xffff}
  end
 end
@@ -394,23 +397,25 @@ irq4_writes=space:install_write_tap(0,0x3fffff,"irq4_writes",function(a,d,m)acce
 -- shared/road write lanes; no main read values or callee clocks are supplied.
 local sub=manager.machine.devices[":mainpcb:subcpu"]
 irq4_subwrites=sub.spaces.program:install_write_tap(0x80000,0xeffff,"irq4_subwrites",function(a,d,m)
- if guard or not active then return end
+ if guard or shared_guard.active or not active then return end
  if (a>=0x80000 and a<0xc0000) or (a>=0xec000 and a<0xed000) then
   subevents[#subevents+1]=string.pack(">I4I8I4I4I2I2B",operand_frontier,ns(),sub.state.CURPC.value,a+0x200000,d,m,1)
  end
 end)
-dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/gameplay.lua")
+if not embedded_output then dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/gameplay.lua")end
+local function close_capture()
+ if active then dropped=dropped+1 end
+ if returns then
+  assert(not return_pending and not return_entry,"unfinished IRQ4 return assertion")
+  returns:close()
+ end
+ out:close();local coverage=assert(io.open(output..".gameflow-coverage","w"))
+ local pcs={};for p in pairs(gameflow_pcs)do pcs[#pcs+1]=p end;table.sort(pcs)
+ for _,p in ipairs(pcs)do coverage:write(string.format("%06x\n",p))end;coverage:close()
+ print(string.format("captured %d IRQ4 service envelopes through frame %d (%d unfinished)",calls,frame,dropped))
+end
 irq4_frames=emu.add_machine_frame_notifier(function()
  frame=frame+1
- if frame>=tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then
-  if active then dropped=dropped+1 end
-  if returns then
-   assert(not return_pending and not return_entry,"unfinished IRQ4 return assertion")
-   returns:close()
-  end
-  out:close();local coverage=assert(io.open(os.getenv("AB2_ORACLE_OUT")..".gameflow-coverage","w"))
- local pcs={};for p in pairs(gameflow_pcs) do pcs[#pcs+1]=p end;table.sort(pcs)
- for _,p in ipairs(pcs) do coverage:write(string.format("%06x\n",p)) end;coverage:close()
- print(string.format("captured %d IRQ4 service envelopes through frame %d (%d unfinished)",calls,frame,dropped));manager.machine:exit()
- end
+ if not embedded_output and frame>=limit then close_capture();manager.machine:exit()end
 end)
+return close_capture,function()return not active end

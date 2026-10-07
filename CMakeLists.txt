@@ -310,7 +310,20 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     add_test(NAME oracle_caller_closure_directed COMMAND oracle_caller build/oracle/caller_closure_directed.bin --require-taken --require-closed)
     set_tests_properties(oracle_caller_closure oracle_caller_closure_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
-    foreach(CAPTURE caller caller_directed caller_service caller_service_edges caller_return caller_return_edges caller_steps caller_words caller_successors caller_successors_directed caller_closure caller_closure_directed)
+    add_test(NAME oracle_caller_follower COMMAND oracle_caller build/oracle/caller_follower.bin --require-closed)
+    add_test(NAME oracle_caller_follower_directed COMMAND oracle_caller build/oracle/caller_follower_directed.bin --require-follower --require-closed)
+    set_tests_properties(oracle_caller_follower oracle_caller_follower_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+    add_test(NAME oracle_caller_ready COMMAND oracle_caller build/oracle/caller_ready.bin --require-ready-path --require-worldinit --require-publication-init --require-closed)
+    add_test(NAME oracle_caller_ready_directed COMMAND oracle_caller build/oracle/caller_ready_directed.bin --require-ready --require-closed)
+    add_test(NAME oracle_caller_worldinit_directed COMMAND oracle_caller build/oracle/caller_worldinit_directed.bin --require-worldinit --require-closed)
+    set_tests_properties(oracle_caller_ready oracle_caller_ready_directed oracle_caller_worldinit_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+    add_test(NAME oracle_caller_allirq COMMAND oracle_caller build/oracle/caller_allirq_trail.bin --require-ready-path --require-worldinit --require-publication-init --require-clear --require-trail-path --require-allirq --require-closed)
+    add_test(NAME oracle_caller_trail_directed COMMAND oracle_caller build/oracle/caller_trail_directed.bin --require-trail --require-closed)
+    set_tests_properties(oracle_caller_allirq oracle_caller_trail_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+    foreach(CAPTURE caller_allirq_trail caller_trail_directed caller_ready caller_ready_directed caller_worldinit_directed caller_follower caller_follower_directed caller caller_directed caller_service caller_service_edges caller_return caller_return_edges caller_steps caller_words caller_successors caller_successors_directed caller_closure caller_closure_directed)
         add_test(NAME oracle_visibility_${CAPTURE} COMMAND oracle_cpu_visibility build/oracle/${CAPTURE}.bin.visibility)
         set_tests_properties(oracle_visibility_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()

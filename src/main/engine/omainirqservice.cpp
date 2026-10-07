@@ -255,7 +255,11 @@ OMainIrqService::Result OMainIrqService::irq4(OMainObjects::Registers r,uint32_t
         pc=0x147dc;idle(8);sp-=4;write16(sp,1);write16(sp+2,0xa130);idle(4);
         pc=0x147e2;idle(8);sp-=2;write16(sp,0x700);
     }
-    pc=service<0?0x147e6:0x147c6;const auto sr=read16(sp);const auto ret=read32(sp+2);sp+=6;idle(4);clock(ns);if(selection)selection(sr,ns);idle(4);clock(ns);
+    pc=service<0?0x147e6:0x147c6;const auto sr=read16(sp);const auto ret=read32(sp+2);sp+=6;
+    // IRQ4 RTE has the same mutable RAM return-prefetch contract as IRQ2/6.
+    if((ret&0x3fffff)>=0x80000)read16(ret);else idle(4);
+    clock(ns);if(selection)selection(sr,ns);
+    if(((ret+2)&0x3fffff)>=0x80000)read16(ret+2);else idle(4);clock(ns);
     return {r,ret,sp,sr,ns};
 }
 
@@ -480,6 +484,19 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         r.d[reg]=value;sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x80000000?8:0);
         idle(2);latch();idle(2);next=pc+2;
     };
+    auto asr_word=[&](unsigned reg,unsigned count){
+        auto value=uint16_t(r.d[reg]);read16(pc+4);bool carry=false;
+        for(unsigned i=0;i<count;++i){carry=value&1;value=(value>>1)|(value&0x8000);idle(2);}
+        word(r.d[reg],value);sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0);
+        latch();idle(2);next=pc+2;
+    };
+    auto asl_long=[&](unsigned reg,unsigned count){
+        auto value=r.d[reg];read16(pc+4);bool carry=false,overflow=false;
+        for(unsigned i=0;i<count;++i){carry=value&0x80000000;const auto shifted=value<<1;
+            overflow|=bool((value^shifted)&0x80000000);value=shifted;idle(2);}
+        r.d[reg]=value;sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x80000000?8:0);
+        idle(2);latch();idle(2);next=pc+2;
+    };
     auto branch=[&](bool take,uint32_t target,unsigned length) {
         next=take?target:pc+length;idle(2);
         if(take) {read16(next);final(next+2);}
@@ -537,12 +554,1059 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         read16(pc+4);read16(pc+6);read16(pc+8);
         sr=(sr&0xfff0);write16(r.a[5]+16,0);write16(r.a[5]+18,0x8af2);
         final(pc+10);next=pc+8;break;
-    // $8AF2/$7BB6/$14EE2 copy a long between displacement operands.
-    case 0x8af2:case 0x7bb6:case 0x14ee2: {
+    // $8AF2/$7BB6/$14EE2/$C082 copy a long between displacement operands.
+    case 0x8af2:case 0x7bb6:case 0x14ee2:case 0xc082:case 0xaaee: {
         read16(pc+4);const auto value=read32(r.a[5]+(pc==0x7bb6?-56:4));
         read16(pc+6);sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
         write16(r.a[5]+8,value>>16);write16(r.a[5]+10,value);final(pc+8);next=pc+6;break;
     }
+    // $7BBC..$7C10: compound follower copy, stage animation and publication.
+    // Literal continuation of $7BB6; all operands come from the arcade bus.
+    case 0x7bbc:case 0x7bc2:case 0x7bc8: {
+        read16(pc+4);const unsigned size=pc==0x7bbc?1:2;
+        const int source=pc==0x7bbc?-62:pc==0x7bc2?-60:-58;
+        const unsigned dest=pc==0x7bbc?2:pc==0x7bc2?4:6;
+        const auto value=size==1?read8(r.a[5]+source):read16(r.a[5]+source);
+        read16(pc+6);
+        sr=(sr&0xfff0)|(value?0:4)|(value&(size==1?0x80:0x8000)?8:0);
+        if(size==1)write8(r.a[5]+dest,value);else write16(r.a[5]+dest,value);
+        final(pc+8);next=pc+6;break;
+    }
+    case 0x7bce:case 0x7bda: {
+        read16(pc+4);read16(pc+6);read16(pc+8);
+        addsub_word(read16(0x29c09c),pc==0x7bce?7:1,true,false);
+        final(pc+10);next=pc+8;break;
+    }
+    case 0x7bd6:case 0x7be2:branch(sr&4,0x7bee,4);break;
+    case 0x7be6:case 0x7bee:
+        r.a[0]=pc==0x7be6?0x2753e:0x2755e;
+        read16(pc+4);read16(pc+6);final(pc+8);next=pc+6;break;
+    case 0x7bec:branch(true,0x7bf4,2);break;
+    case 0x7bf4: {
+        read16(pc+4);const auto value=read8(r.a[5]+21);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        final(pc+6);next=pc+4;break;
+    }
+    case 0x7bf8:branch((sr&4)||bool(sr&8)!=bool(sr&2),0x7c0c,4);break;
+    case 0x7bfc: {
+        read16(pc+4);const auto old=read8(r.a[5]+21),value=uint8_t(old-4);
+        sr=(sr&0xffe0)|(old<4?0x11:0)|(value?0:4)|(value&0x80?8:0)|
+            (((old^4)&(old^value)&0x80)?2:0);
+        read16(pc+6);latch();write8(r.a[5]+21,value);next=pc+4;break;
+    }
+    case 0x7c00:word(r.d[0],0);nz(0);final(pc+4);next=pc+2;break;
+    case 0x7c02: {
+        read16(pc+4);const auto value=read8(r.a[5]+21);byte(r.d[0],value);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        final(pc+6);next=pc+4;break;
+    }
+    case 0x7c06: {
+        idle(2);read16(pc+4);const auto value=read32(r.a[0]+int16_t(r.d[0]));
+        read16(pc+6);sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        write16(r.a[5]+12,value>>16);write16(r.a[5]+14,value);
+        final(pc+8);next=pc+6;break;
+    }
+    case 0x7c0c:
+        idle(2);sp-=4;write16(sp,0);write16(sp+2,0x7c10);
+        read16(0xb628);final(0xb62a);next=0xb628;break;
+    case 0x7c10:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // $AAEE..$AC4A and $AE32..$AE4E: trail update, projection, append/release.
+    // $0AAF4: MOVE.W ($0029C0AC).L,D1
+    case 0xaaf4: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c0ac);
+        word(r.d[1],value);
+        nz(r.d[1]);
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0AAFA: SUB.W D1,36(A5)
+    case 0xaafa: {
+        read16(pc+4);
+        const auto old=read16(r.a[5]+(36));
+        const auto value=addsub_word(old,r.d[1],true,true);
+        read16(pc+6);
+        latch();
+        write16(r.a[5]+(36),value);
+        next=pc+4;
+        break;
+    }
+    // $0AAFE: MOVE.W 36(A5),D7
+    case 0xaafe: {
+        read16(pc+4);
+        const auto value=read16(r.a[5]+(36));
+        word(r.d[7],value);
+        nz(r.d[7]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB02: ASR.W #5,D7
+    case 0xab02: {
+        asr_word(7,5);
+        break;
+    }
+    // $0AB04: MOVE.W D7,D1
+    case 0xab04: {
+        word(r.d[1],r.d[7]);
+        nz(r.d[1]);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AB06: BLT $00AE32
+    case 0xab06: {
+        branch(bool(sr&8)!=bool(sr&2),0x00ae32,4);
+        break;
+    }
+    // $0AB0A: ADDI.W #$20,D1
+    case 0xab0a: {
+        read16(pc+4);
+        word(r.d[1],addsub_word(r.d[1],0x20,false,true));
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB0E: MOVE.W D1,4(A6)
+    case 0xab0e: {
+        read16(pc+4);
+        nz(uint16_t(r.d[1]));
+        write16(r.a[6]+(4),r.d[1]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB12: MOVE.L #$1FE0,16(A6)
+    case 0xab12: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=uint32_t(0x1fe0);
+        read16(pc+8);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        write16(r.a[6]+(16),value>>16);
+        write16((r.a[6]+(16))+2,value);
+        final(pc+10);
+        next=pc+8;
+        break;
+    }
+    // $0AB1A: MOVE.W 8(A6),D0
+    case 0xab1a: {
+        read16(pc+4);
+        const auto value=read16(r.a[6]+(8));
+        word(r.d[0],value);
+        nz(r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB1E: MOVE.B D0,2(A5)
+    case 0xab1e: {
+        read16(pc+4);
+        sr=(sr&0xfff0)|(uint8_t(r.d[0])?0:4)|(uint8_t(r.d[0])&0x80?8:0);
+        write8(r.a[5]+(2),r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB22: CMPI.W #$7,50(A5)
+    case 0xab22: {
+        read16(pc+4);
+        read16(pc+6);
+        addsub_word(read16(r.a[5]+(50)),0x7,true,false);
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0AB28: BGT $00AB44
+    case 0xab28: {
+        branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x00ab44,4);
+        break;
+    }
+    // $0AB2C: ADDQ.W #1,50(A5)
+    case 0xab2c: {
+        read16(pc+4);
+        const auto old=read16(r.a[5]+(50)),value=addsub_word(old,1,false,true);
+        read16(pc+6);
+        latch();
+        write16(r.a[5]+(50),value);
+        next=pc+4;
+        break;
+    }
+    // $0AB30: MOVE.W 50(A5),D1
+    case 0xab30: {
+        read16(pc+4);
+        const auto value=read16(r.a[5]+(50));
+        word(r.d[1],value);
+        nz(r.d[1]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB34: ADDQ.W #8,D1
+    case 0xab34: {
+        word(r.d[1],addsub_word(r.d[1],8,false,true));
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AB36: MOVE.W D1,-16384(A6)
+    case 0xab36: {
+        read16(pc+4);
+        nz(uint16_t(r.d[1]));
+        write16(r.a[6]+(-16384),r.d[1]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB3A: MOVE.W D0,-16382(A6)
+    case 0xab3a: {
+        read16(pc+4);
+        nz(uint16_t(r.d[0]));
+        write16(r.a[6]+(-16382),r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB3E: MOVE.L -16380(A6),D0
+    case 0xab3e: {
+        read16(pc+4);
+        const auto value=read32(r.a[6]+(-16380));
+        r.d[0]=value;
+        sr=(sr&0xfff0)|(r.d[0]?0:4)|(r.d[0]&0x80000000?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB42: ASR.W #4,D0
+    case 0xab42: {
+        asr_word(0,4);
+        break;
+    }
+    // $0AB44: MOVE.B D0,1(A5)
+    case 0xab44: {
+        read16(pc+4);
+        sr=(sr&0xfff0)|(uint8_t(r.d[0])?0:4)|(uint8_t(r.d[0])&0x80?8:0);
+        write8(r.a[5]+(1),r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB48: MOVE.W D7,D6
+    case 0xab48: {
+        word(r.d[6],r.d[7]);
+        nz(r.d[6]);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AB4A: ASR.W #2,D6
+    case 0xab4a: {
+        asr_word(6,2);
+        break;
+    }
+    // $0AB4C: LEA ($00033E98).L,A0
+    case 0xab4c: {
+        r.a[0]=0x33e98;
+        read16(pc+4);
+        read16(pc+6);
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0AB52: MOVE.B 0(A0,D6.W),D6
+    case 0xab52: {
+        idle(2);
+        read16(pc+4);
+        const auto value=read8(r.a[0]+int16_t(r.d[6]));
+        byte(r.d[6],value);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB56: EXT.W D6
+    case 0xab56: {
+        word(r.d[6],int8_t(r.d[6]));
+        nz(r.d[6]);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AB58: MOVE.W D6,-16384(A6)
+    case 0xab58: {
+        read16(pc+4);
+        nz(uint16_t(r.d[6]));
+        write16(r.a[6]+(-16384),r.d[6]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB5C: MOVE.W ($0029C0C4).L,-16382(A6)
+    case 0xab5c: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c0c4);
+        read16(pc+8);
+        nz(uint16_t(value));
+        write16(r.a[6]+(-16382),value);
+        final(pc+10);
+        next=pc+8;
+        break;
+    }
+    // $0AB64: MOVE.L -16380(A6),D6
+    case 0xab64: {
+        read16(pc+4);
+        const auto value=read32(r.a[6]+(-16380));
+        r.d[6]=value;
+        sr=(sr&0xfff0)|(r.d[6]?0:4)|(r.d[6]&0x80000000?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB68: ASR.L #6,D6
+    case 0xab68: {
+        asr_long(6,6);
+        break;
+    }
+    // $0AB6A: ADD.W D6,42(A5)
+    case 0xab6a: {
+        read16(pc+4);
+        const auto old=read16(r.a[5]+(42));
+        const auto value=addsub_word(old,r.d[6],false,true);
+        read16(pc+6);
+        latch();
+        write16(r.a[5]+(42),value);
+        next=pc+4;
+        break;
+    }
+    // $0AB6E: MOVE.W ($0029C092).L,-16384(A6)
+    case 0xab6e: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c092);
+        read16(pc+8);
+        nz(uint16_t(value));
+        write16(r.a[6]+(-16384),value);
+        final(pc+10);
+        next=pc+8;
+        break;
+    }
+    // $0AB76: MOVE.W 42(A5),-16382(A6)
+    case 0xab76: {
+        read16(pc+4);
+        const auto value=read16(r.a[5]+(42));
+        read16(pc+6);
+        nz(uint16_t(value));
+        write16(r.a[6]+(-16382),value);
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0AB7C: MOVE.L -16380(A6),D0
+    case 0xab7c: {
+        read16(pc+4);
+        const auto value=read32(r.a[6]+(-16380));
+        r.d[0]=value;
+        sr=(sr&0xfff0)|(r.d[0]?0:4)|(r.d[0]&0x80000000?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB80: MOVE.W 44(A5),D6
+    case 0xab80: {
+        read16(pc+4);
+        const auto value=read16(r.a[5]+(44));
+        word(r.d[6],value);
+        nz(r.d[6]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB84: SUB.W ($0029C080).L,D6
+    case 0xab84: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c080);
+        word(r.d[6],addsub_word(r.d[6],value,true,true));
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0AB8A: MOVE.W D6,-16384(A6)
+    case 0xab8a: {
+        read16(pc+4);
+        nz(uint16_t(r.d[6]));
+        write16(r.a[6]+(-16384),r.d[6]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB8E: MOVE.W ($0029C090).L,-16382(A6)
+    case 0xab8e: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c090);
+        read16(pc+8);
+        nz(uint16_t(value));
+        write16(r.a[6]+(-16382),value);
+        final(pc+10);
+        next=pc+8;
+        break;
+    }
+    // $0AB96: MOVE.L -16380(A6),D6
+    case 0xab96: {
+        read16(pc+4);
+        const auto value=read32(r.a[6]+(-16380));
+        r.d[6]=value;
+        sr=(sr&0xfff0)|(r.d[6]?0:4)|(r.d[6]&0x80000000?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AB9A: ADD.L D6,D0
+    case 0xab9a: {
+        const auto old=r.d[0],source=r.d[6];
+        const bool subtract=false;
+        const auto result=subtract?old-source:old+source;
+        const bool carry=subtract?old<source:uint64_t(source)+old>0xffffffff;
+        const bool overflow=((subtract?(old^source):~(old^source))&(old^result)&0x80000000)!=0;
+        read16(pc+4);
+        r.d[0]=result;
+        sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(result?0:4)|(result&0x80000000?8:0);
+        idle(2);
+        latch();
+        idle(2);
+        next=pc+2;
+        break;
+    }
+    // $0AB9C: ASR.L #7,D0
+    case 0xab9c: {
+        asr_long(0,7);
+        break;
+    }
+    // $0AB9E: ASL.L #5,D0
+    case 0xab9e: {
+        asl_long(0,5);
+        break;
+    }
+    // $0ABA0: MOVE.W D7,D2
+    case 0xaba0: {
+        word(r.d[2],r.d[7]);
+        nz(r.d[2]);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0ABA2: ADDI.W #$20,D2
+    case 0xaba2: {
+        read16(pc+4);
+        word(r.d[2],addsub_word(r.d[2],0x20,false,true));
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABA6: MOVE.W D2,4(A6)
+    case 0xaba6: {
+        read16(pc+4);
+        nz(uint16_t(r.d[2]));
+        write16(r.a[6]+(4),r.d[2]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABAA: MOVE.L D0,16(A6)
+    case 0xabaa: {
+        read16(pc+4);
+        sr=(sr&0xfff0)|(r.d[0]?0:4)|(r.d[0]&0x80000000?8:0);
+        write16(r.a[6]+(16),r.d[0]>>16);
+        write16((r.a[6]+(16))+2,r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABAE: MOVE.W 8(A6),D0
+    case 0xabae: {
+        read16(pc+4);
+        const auto value=read16(r.a[6]+(8));
+        word(r.d[0],value);
+        nz(r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABB2: ADD.W ($0029C08A).L,D0
+    case 0xabb2: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c08a);
+        word(r.d[0],addsub_word(r.d[0],value,false,true));
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0ABB8: MOVE.W D0,4(A5)
+    case 0xabb8: {
+        read16(pc+4);
+        nz(uint16_t(r.d[0]));
+        write16(r.a[5]+(4),r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABBC: CLR.W D1
+    case 0xabbc: {
+        word(r.d[1],0);
+        nz(0);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0ABBE: MOVE.B 1(A5),D1
+    case 0xabbe: {
+        read16(pc+4);
+        const auto value=read8(r.a[5]+(1));
+        byte(r.d[1],value);
+        sr=(sr&0xfff0)|(uint8_t(r.d[1])?0:4)|(uint8_t(r.d[1])&0x80?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABC2: ASR.W #2,D1
+    case 0xabc2: {
+        asr_word(1,2);
+        break;
+    }
+    // $0ABC4: ADDI.W #$A0,D1
+    case 0xabc4: {
+        read16(pc+4);
+        word(r.d[1],addsub_word(r.d[1],0xa0,false,true));
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABC8: CMP.W D1,D0
+    case 0xabc8: {
+        addsub_word(r.d[0],r.d[1],true,false);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0ABCA: BGT $00AE32
+    case 0xabca: {
+        branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x00ae32,4);
+        break;
+    }
+    // $0ABCE: NEG.W D1
+    case 0xabce: {
+        word(r.d[1],addsub_word(0,r.d[1],true,true));
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0ABD0: CMP.W D1,D0
+    case 0xabd0: {
+        addsub_word(r.d[0],r.d[1],true,false);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0ABD2: BLE $00AE32
+    case 0xabd2: {
+        branch((sr&4)||bool(sr&8)!=bool(sr&2),0x00ae32,4);
+        break;
+    }
+    // $0ABD6: MOVE.W ($0029C090).L,-16384(A6)
+    case 0xabd6: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c090);
+        read16(pc+8);
+        nz(uint16_t(value));
+        write16(r.a[6]+(-16384),value);
+        final(pc+10);
+        next=pc+8;
+        break;
+    }
+    // $0ABDE: MOVE.W 42(A5),-16382(A6)
+    case 0xabde: {
+        read16(pc+4);
+        const auto value=read16(r.a[5]+(42));
+        read16(pc+6);
+        nz(uint16_t(value));
+        write16(r.a[6]+(-16382),value);
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0ABE4: MOVE.L -16380(A6),D0
+    case 0xabe4: {
+        read16(pc+4);
+        const auto value=read32(r.a[6]+(-16380));
+        r.d[0]=value;
+        sr=(sr&0xfff0)|(r.d[0]?0:4)|(r.d[0]&0x80000000?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABE8: MOVE.W 44(A5),D6
+    case 0xabe8: {
+        read16(pc+4);
+        const auto value=read16(r.a[5]+(44));
+        word(r.d[6],value);
+        nz(r.d[6]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABEC: SUB.W ($0029C080).L,D6
+    case 0xabec: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c080);
+        word(r.d[6],addsub_word(r.d[6],value,true,true));
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0ABF2: MOVE.W D6,-16384(A6)
+    case 0xabf2: {
+        read16(pc+4);
+        nz(uint16_t(r.d[6]));
+        write16(r.a[6]+(-16384),r.d[6]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0ABF6: MOVE.W ($0029C092).L,-16382(A6)
+    case 0xabf6: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c092);
+        read16(pc+8);
+        nz(uint16_t(value));
+        write16(r.a[6]+(-16382),value);
+        final(pc+10);
+        next=pc+8;
+        break;
+    }
+    // $0ABFE: MOVE.L -16380(A6),D6
+    case 0xabfe: {
+        read16(pc+4);
+        const auto value=read32(r.a[6]+(-16380));
+        r.d[6]=value;
+        sr=(sr&0xfff0)|(r.d[6]?0:4)|(r.d[6]&0x80000000?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC02: SUB.L D6,D0
+    case 0xac02: {
+        const auto old=r.d[0],source=r.d[6];
+        const bool subtract=true;
+        const auto result=subtract?old-source:old+source;
+        const bool carry=subtract?old<source:uint64_t(source)+old>0xffffffff;
+        const bool overflow=((subtract?(old^source):~(old^source))&(old^result)&0x80000000)!=0;
+        read16(pc+4);
+        r.d[0]=result;
+        sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(result?0:4)|(result&0x80000000?8:0);
+        idle(2);
+        latch();
+        idle(2);
+        next=pc+2;
+        break;
+    }
+    // $0AC04: ASR.L #7,D0
+    case 0xac04: {
+        asr_long(0,7);
+        break;
+    }
+    // $0AC06: ASL.L #5,D0
+    case 0xac06: {
+        asl_long(0,5);
+        break;
+    }
+    // $0AC08: MOVE.L D0,16(A6)
+    case 0xac08: {
+        read16(pc+4);
+        sr=(sr&0xfff0)|(r.d[0]?0:4)|(r.d[0]&0x80000000?8:0);
+        write16(r.a[6]+(16),r.d[0]>>16);
+        write16((r.a[6]+(16))+2,r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC0C: MOVE.W 8(A6),D0
+    case 0xac0c: {
+        read16(pc+4);
+        const auto value=read16(r.a[6]+(8));
+        word(r.d[0],value);
+        nz(r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC10: ADDI.W #$70,D0
+    case 0xac10: {
+        read16(pc+4);
+        word(r.d[0],addsub_word(r.d[0],0x70,false,true));
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC14: SUB.W ($0029C088).L,D0
+    case 0xac14: {
+        read16(pc+4);
+        read16(pc+6);
+        const auto value=read16(0x29c088);
+        word(r.d[0],addsub_word(r.d[0],value,true,true));
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0AC1A: MOVE.W D0,6(A5)
+    case 0xac1a: {
+        read16(pc+4);
+        nz(uint16_t(r.d[0]));
+        write16(r.a[5]+(6),r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC1E: CLR.W D1
+    case 0xac1e: {
+        word(r.d[1],0);
+        nz(0);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AC20: MOVE.B 1(A5),D1
+    case 0xac20: {
+        read16(pc+4);
+        const auto value=read8(r.a[5]+(1));
+        byte(r.d[1],value);
+        sr=(sr&0xfff0)|(uint8_t(r.d[1])?0:4)|(uint8_t(r.d[1])&0x80?8:0);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC24: ASR.W #1,D1
+    case 0xac24: {
+        asr_word(1,1);
+        break;
+    }
+    // $0AC26: NEG.W D1
+    case 0xac26: {
+        word(r.d[1],addsub_word(0,r.d[1],true,true));
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AC28: CMP.W D1,D0
+    case 0xac28: {
+        addsub_word(r.d[0],r.d[1],true,false);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AC2A: BLE $00AC4A
+    case 0xac2a: {
+        branch((sr&4)||bool(sr&8)!=bool(sr&2),0x00ac4a,4);
+        break;
+    }
+    // $0AC2E: NEG.W D1
+    case 0xac2e: {
+        word(r.d[1],addsub_word(0,r.d[1],true,true));
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AC30: ADDI.W #$E0,D1
+    case 0xac30: {
+        read16(pc+4);
+        word(r.d[1],addsub_word(r.d[1],0xe0,false,true));
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC34: CMP.W D1,D0
+    case 0xac34: {
+        addsub_word(r.d[0],r.d[1],true,false);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AC36: BGT $00AE32
+    case 0xac36: {
+        branch(!(sr&4)&&bool(sr&8)==bool(sr&2),0x00ae32,4);
+        break;
+    }
+    // $0AC3A: MOVE.W 50(A5),D0
+    case 0xac3a: {
+        read16(pc+4);
+        const auto value=read16(r.a[5]+(50));
+        word(r.d[0],value);
+        nz(r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC3E: ADDI.W #$E8,D0
+    case 0xac3e: {
+        read16(pc+4);
+        word(r.d[0],addsub_word(r.d[0],0xe8,false,true));
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC42: MOVE.B D0,3(A5)
+    case 0xac42: {
+        read16(pc+4);
+        sr=(sr&0xfff0)|(uint8_t(r.d[0])?0:4)|(uint8_t(r.d[0])&0x80?8:0);
+        write8(r.a[5]+(3),r.d[0]);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AC46: BSR $00B628
+    case 0xac46: {
+        idle(2);
+        sp-=4;
+        write16(sp,0);
+        write16(sp+2,0xac4a);
+        read16(0xb628);
+        final(0xb62a);
+        next=0xb628;
+        break;
+    }
+    // $0AC4A: RTS
+    case 0xac4a: {
+        next=read32(sp);
+        sp+=4;
+        read16(next);
+        final(next+2);
+        break;
+    }
+    // $0AE32: CLR.W 36(A5)
+    case 0xae32: {
+        read16(pc+4);
+        read16(r.a[5]+(36));
+        nz(0);
+        read16(pc+6);
+        latch();
+        write16(r.a[5]+(36),0);
+        next=pc+4;
+        break;
+    }
+    // $0AE36: CLR.B 1(A5)
+    case 0xae36: {
+        read16(pc+4);
+        read8(r.a[5]+(1));
+        nz(0);
+        read16(pc+6);
+        latch();
+        write8(r.a[5]+(1),0);
+        next=pc+4;
+        break;
+    }
+    // $0AE3A: BCLR #7,(A5)
+    case 0xae3a: {
+        read16(pc+4);
+        const auto value=read8(r.a[5]);
+        sr=(sr&~4)|(value&128?0:4);
+        read16(pc+6);
+        latch();
+        write8(r.a[5],value&~128);
+        next=pc+4;
+        break;
+    }
+    // $0AE3E: LEA ($8E7F).W,A0
+    case 0xae3e: {
+        r.a[0]=0xffff8e7f;
+        read16(pc+4);
+        final(pc+6);
+        next=pc+4;
+        break;
+    }
+    // $0AE42: ADDQ.B #1,(A0)
+    case 0xae42: {
+        const auto old=read8(r.a[0]),value=uint8_t(old+1);
+        sr=(sr&0xffe0)|(old==0xff?0x11:0)|(old==0x7f?2:0)|(value?0:4)|(value&0x80?8:0);
+        read16(pc+4);
+        latch();
+        write8(r.a[0],value);
+        next=pc+2;
+        break;
+    }
+    // $0AE44: CLR.W D0
+    case 0xae44: {
+        word(r.d[0],0);
+        nz(0);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AE46: MOVE.B (A0),D0
+    case 0xae46: {
+        const auto value=read8(r.a[0]);
+        byte(r.d[0],value);
+        sr=(sr&0xfff0)|(uint8_t(r.d[0])?0:4)|(uint8_t(r.d[0])&0x80?8:0);
+        final(pc+4);
+        next=pc+2;
+        break;
+    }
+    // $0AE48: MOVE.B 20(A5),0(A0,D0.W)
+    case 0xae48: {
+        read16(pc+4);
+        const auto value=read8(r.a[5]+20);
+        idle(2);
+        read16(pc+6);
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80?8:0);
+        write8(r.a[0]+int16_t(r.d[0]),value);
+        final(pc+8);
+        next=pc+6;
+        break;
+    }
+    // $0AE4E: RTS
+    case 0xae4e: {
+        next=read32(sp);
+        sp+=4;
+        read16(next);
+        final(next+2);
+        break;
+    }
+    // $B698..$B7C0: sprite-RAM full/strided clear and publication waits.
+    // Values and loop limits are literal scalar ROM operands; no ROM tables.
+    case 0xb698:case 0xb6d6:case 0xb704:case 0xb714:case 0xb76a:case 0xb7b2:
+        read16(pc+4);read16(0x14856);sp-=4;write16(sp,0);write16(sp+2,pc+6);
+        final(0x14858);next=0x14856;break;
+    case 0xb69e:case 0xb6dc:case 0xb70a:case 0xb71a:case 0xb770:case 0xb7b8:
+        read16(pc+4);read16(pc+6);nz(read16(0x2a3c00));final(pc+8);next=pc+6;break;
+    case 0xb6a4:case 0xb6e2:case 0xb710:case 0xb720:case 0xb776:case 0xb7be:
+        branch(!(sr&4),pc-6,2);break;
+    case 0xb6a6:case 0xb722:
+        r.d[1]=0xc0000000;sr=(sr&0xfff0)|8;read16(pc+4);read16(pc+6);final(pc+8);next=pc+6;break;
+    case 0xb6ac:r.d[2]=0;nz(0);final(pc+4);next=pc+2;break;
+    case 0xb6ae:case 0xb6e4:case 0xb728:case 0xb778:
+        r.a[0]=0x100000;read16(pc+4);read16(pc+6);final(pc+8);next=pc+6;break;
+    case 0xb6b4:case 0xb6ea:case 0xb72e:case 0xb77e:
+        word(r.d[0],pc==0xb6b4||pc==0xb6ea?0xff:0x1f);nz(r.d[0]);
+        read16(pc+4);final(pc+6);next=pc+4;break;
+    case 0xb6b8:case 0xb6ba:case 0xb6bc:case 0xb6be:
+    case 0xb6ee:case 0xb6f0:case 0xb6f2:case 0xb6f4: {
+        const auto value=r.d[pc==0xb6b8||pc==0xb6ee?1:2];
+        write16(r.a[0],value>>16);write16(r.a[0]+2,value);r.a[0]+=4;
+        sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);final(pc+4);next=pc+2;break;
+    }
+    case 0xb732:case 0xb734:case 0xb738:case 0xb73c:case 0xb740:case 0xb744:case 0xb748:case 0xb74c:
+    case 0xb782:case 0xb784:case 0xb788:case 0xb78c:case 0xb790:case 0xb794:case 0xb798:case 0xb79c: {
+        const auto base=pc<0xb782?0xb732u:0xb782u;
+        const unsigned displacement=pc==base?0:((pc-base+2)/4)*16;
+        if(displacement)read16(pc+4);
+        write16(r.a[0]+displacement,r.d[1]>>16);write16(r.a[0]+displacement+2,r.d[1]);
+        sr=(sr&0xfff0)|(r.d[1]?0:4)|(r.d[1]&0x80000000?8:0);
+        final(pc+(displacement?6:4));next=pc+(displacement?4:2);break;
+    }
+    case 0xb750:case 0xb7a0:r.a[0]+=0x80;read16(pc+4);final(pc+6);next=pc+4;break;
+    case 0xb6c0:case 0xb6f6:case 0xb754:case 0xb7a4: {
+        const auto target=pc==0xb6c0?0xb6b8u:pc==0xb6f6?0xb6eeu:pc==0xb754?0xb732u:0xb782u;
+        const auto old=uint16_t(r.d[0]);idle(2);read16(target);word(r.d[0],old-1);
+        if(old){final(target+2);next=target;}
+        else{read16(pc+4);final(pc+6);next=pc+4;}break;
+    }
+    case 0xb6c4:case 0xb6fa:case 0xb758:case 0xb7a8: {
+        const uint32_t value=pc==0xb6c4||pc==0xb758?0x55555555u:0xaaaaaaaau;
+        read16(pc+4);read16(pc+6);read16(pc+8);read16(pc+10);
+        sr=(sr&0xfff0)|(value&0x80000000?8:0);
+        write16(0x1007fc,value>>16);write16(0x1007fe,value);final(pc+12);next=pc+10;break;
+    }
+    case 0xb6ce:case 0xb762:
+        read16(pc+4);read16(pc+6);read16(pc+8);nz(0xffff);
+        write16(0x110000,0xffff);final(pc+10);next=pc+8;break;
+    case 0xb712:case 0xb7c0:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // $B66E installs the publication handler and falls into its checked wait.
+    case 0xb66e:
+        read16(pc+4);read16(pc+6);read16(pc+8);
+        sr=(sr&0xfff0);write16(r.a[5]+16,0);write16(r.a[5]+18,0xb676);
+        final(pc+10);next=pc+8;break;
+    // $C082..$C098: copy previous position, test shared ready bit, append/return.
+    // $C082 shares the literal displacement MOVE above.
+    case 0xc088: {
+        read16(pc+4);read16(pc+6);read16(pc+8);
+        const auto value=read8(0x29c200);sr=(sr&~4)|(value&1?0:4);
+        final(pc+10);next=pc+8;break;
+    }
+    case 0xc090:branch(sr&4,0xc098,4);break;
+    case 0xc094:
+        idle(2);sp-=4;write16(sp,0);write16(sp+2,0xc098);
+        read16(0xb628);final(0xb62a);next=0xb628;break;
+    case 0xc098:next=read32(sp);sp+=4;read16(next);final(next+2);break;
+    // $88CA..$8944: world initializer continuation; actual multiplier/divider buses.
+    case 0x88ca:
+        read16(pc+4);read8(r.a[5]+1);nz(0);read16(pc+6);
+        latch();write8(r.a[5]+1,0);next=pc+4;break;
+    case 0x88ce: {
+        read16(pc+4);read16(pc+6);const auto value=read16(0x29c0c2);
+        read16(pc+8);nz(value);write16(r.a[5]+36,value);final(pc+10);next=pc+8;break;
+    }
+    case 0x88d6:read16(pc+4);r.a[0]=read32(r.a[5]+54);final(pc+6);next=pc+4;break;
+    case 0x88da:case 0x88dc: {
+        const auto value=read32(r.a[0]);if(pc==0x88da)r.a[0]+=4;
+        r.d[pc==0x88da?4:5]=value;sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        final(pc+4);next=pc+2;break;
+    }
+    case 0x88de:case 0x8916: {
+        read16(pc+4);read16(pc+6);const auto value=read16(pc==0x88de?0x29c092:0x29c090);
+        read16(pc+8);nz(value);write16(r.a[6]-0x4000,value);final(pc+10);next=pc+8;break;
+    }
+    case 0x88e6:case 0x891e: {
+        read16(pc+4);const auto value=read16(r.a[5]+42);read16(pc+6);nz(value);
+        write16(r.a[6]-0x3ffe,value);final(pc+8);next=pc+6;break;
+    }
+    case 0x88ec:case 0x8924: {
+        read16(pc+4);r.d[0]=read32(r.a[6]-0x3ffc);
+        sr=(sr&0xfff0)|(r.d[0]?0:4)|(r.d[0]&0x80000000?8:0);final(pc+6);next=pc+4;break;
+    }
+    case 0x88f0:case 0x8928: {
+        const auto old=r.d[0],source=r.d[pc==0x88f0?4:5];const bool subtract=pc==0x8928;
+        const auto value=subtract?old-source:old+source;
+        const bool carry=subtract?old<source:uint64_t(source)+old>0xffffffff;
+        const bool overflow=((subtract?(old^source):~(old^source))&(old^value)&0x80000000)!=0;
+        read16(pc+4);r.d[0]=value;
+        sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x80000000?8:0);
+        idle(2);latch();idle(2);next=pc+2;break;
+    }
+    case 0x88f2:case 0x892a:asr_long(0,7);break;
+    case 0x88f4:case 0x892c:asl_long(0,5);break;
+    case 0x88f6:read16(pc+4);word(r.d[2],read16(r.a[5]+36));nz(r.d[2]);final(pc+6);next=pc+4;break;
+    case 0x88fa: {
+        auto value=uint16_t(r.d[2]);read16(pc+4);bool carry=false;
+        for(unsigned i=0;i<5;++i){carry=value&1;value=(value>>1)|(value&0x8000);idle(2);}
+        word(r.d[2],value);sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0);
+        latch();idle(2);next=pc+2;break;
+    }
+    case 0x88fc:case 0x8936: {
+        read16(pc+4);const unsigned reg=pc==0x88fc?2:0;
+        word(r.d[reg],addsub_word(r.d[reg],pc==0x88fc?0x20:0x70,false,true));
+        final(pc+6);next=pc+4;break;
+    }
+    case 0x8900:case 0x892e: {
+        read16(pc+4);const auto value=r.d[0];sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000?8:0);
+        const auto address=r.a[6]+(pc==0x8900?0:16);
+        write16(address,value>>16);write16(address+2,value);final(pc+6);next=pc+4;break;
+    }
+    case 0x8904:read16(pc+4);nz(r.d[2]);write16(r.a[6]+20,r.d[2]);final(pc+6);next=pc+4;break;
+    case 0x8908:case 0x8932:
+        read16(pc+4);word(r.d[0],read16(r.a[6]+8));nz(r.d[0]);final(pc+6);next=pc+4;break;
+    case 0x890c:case 0x893a: {
+        read16(pc+4);read16(pc+6);const auto source=read16(pc==0x890c?0x29c08e:0x29c08c);
+        word(r.d[0],addsub_word(r.d[0],source,pc==0x893a,true));final(pc+8);next=pc+6;break;
+    }
+    case 0x8912:case 0x8940:
+        read16(pc+4);nz(r.d[0]);write16(r.a[5]+(pc==0x8912?4:6),r.d[0]);final(pc+6);next=pc+4;break;
+    case 0x8944:next=read32(sp);sp+=4;read16(next);final(next+2);break;
     // $8AF8 MOVE.W abs.L,D1: extension/next-opcode fetches, data,
     // final prefetch. Preserve the high D1 word and X; replace NZVC.
     case 0x8af8: {

@@ -165,6 +165,21 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   zero skips and no callee transcripts. Directed checks require all eight
   high-score states and fifteen coinage selectors. Seven mutations fail;
   coverage limits are listed in `ENGINE_NOTES.md`.
+- [x] Compute the `$7BB6..$7C10` compound-follower continuation through
+  animation, `$B628` publication and RTS, instead of cutting after the first
+  instruction. Directed coverage requires all 19 PCs, stage selectors 1/7/2
+  and animation operands 0/4/8/128. This is bounded handler timing; other
+  handler graphs and external producer frontiers remain. See the follower
+  continuation in `ENGINE_NOTES.md`.
+- [x] Compute the shared-ready `$C082..$C098`, world-initializer
+  `$88CA..$8944`, and publication-install `$B66E` continuations. Require
+  both ready-bit branch states and all projection PCs; preserve owned
+  caller RAM across IRQ2/6 instead of reseeding it from service snapshots.
+  Natural and directed captures match; five mutations fail.
+- [x] Link computed IRQ4 service/RTE with the caller scheduler; continue
+  through the 67-PC sprite-clear and 99-PC trail graphs subsequently exposed.
+  Require all PCs and both directions of the six trail branches. Track both
+  sprite banks while keeping hardware-rendered cursor words explicit.
 - [ ] Finish independent scheduling across caller/ISR resumptions, ADC input
   producers, publication wait boundaries and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller

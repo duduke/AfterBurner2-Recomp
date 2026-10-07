@@ -5,6 +5,8 @@
 #include <map>
 #include <vector>
 #include <set>
+#include <memory>
+#include "caller_irq4_capture.hpp"
 #include "engine/omaincallerschedule.hpp"
 #include "roms.hpp"
 #include "cpu_visibility_capture.hpp"
@@ -47,15 +49,25 @@ std::map<ReturnKey,OMainIrqService::Result> return_boundaries(const char* path,b
 }
 int main(int argc,char** argv)try{
  std::ifstream f(argc>1?argv[1]:"build/oracle/caller.bin",std::ios::binary);char magic[8];
- if(!f.read(magic,8)||(memcmp(magic,"AB2CALL1",8)&&memcmp(magic,"AB2CALL2",8)&&memcmp(magic,"AB2CALL3",8)&&memcmp(magic,"AB2CALL4",8)&&memcmp(magic,"AB2CALL5",8)&&memcmp(magic,"AB2CALL6",8)&&memcmp(magic,"AB2CALL7",8)&&memcmp(magic,"AB2CALL8",8)&&memcmp(magic,"AB2CALL9",8)))throw std::runtime_error("invalid caller capture");
- const bool snapshots=!memcmp(magic,"AB2CALL9",8);
+ if(!f.read(magic,8)||(memcmp(magic,"AB2CALL1",8)&&memcmp(magic,"AB2CALL2",8)&&memcmp(magic,"AB2CALL3",8)&&memcmp(magic,"AB2CALL4",8)&&memcmp(magic,"AB2CALL5",8)&&memcmp(magic,"AB2CALL6",8)&&memcmp(magic,"AB2CALL7",8)&&memcmp(magic,"AB2CALL8",8)&&memcmp(magic,"AB2CALL9",8)&&memcmp(magic,"AB2CAL10",8)))throw std::runtime_error("invalid caller capture");
+ const bool linked_irq4=!memcmp(magic,"AB2CAL10",8);
+ const bool snapshots=linked_irq4||!memcmp(magic,"AB2CALL9",8);
  const bool closure=snapshots||!memcmp(magic,"AB2CALL8",8);
  const bool successors=closure||!memcmp(magic,"AB2CALL7",8);
- bool require_taken=false,require_closed=false;const char* baseline_path=nullptr;
+ bool require_taken=false,require_closed=false,require_follower=false,require_ready=false,require_worldinit=false,require_publication_init=false,require_allirq=false,require_ready_path=false,require_clear=false,require_trail=false,require_trail_path=false;const char* baseline_path=nullptr;
  for(int i=2;i<argc;++i){
   const std::string arg=argv[i];
   if(arg=="--require-taken")require_taken=true;
   else if(arg=="--require-closed")require_closed=true;
+  else if(arg=="--require-follower")require_follower=true;
+  else if(arg=="--require-ready")require_ready=true;
+  else if(arg=="--require-worldinit")require_worldinit=true;
+  else if(arg=="--require-publication-init")require_publication_init=true;
+  else if(arg=="--require-trail")require_trail=true;
+  else if(arg=="--require-trail-path")require_trail_path=true;
+  else if(arg=="--require-clear")require_clear=true;
+  else if(arg=="--require-allirq")require_allirq=true;
+  else if(arg=="--require-ready-path")require_ready_path=true;
   else if(!baseline_path)baseline_path=argv[i];
   else throw std::runtime_error("unexpected caller argument");
  }
@@ -64,14 +76,43 @@ int main(int argc,char** argv)try{
  auto baseline=baseline_path?return_boundaries(baseline_path,successors,closure):std::map<ReturnKey,OMainIrqService::Result>{};
  const auto baseline_count=baseline.size();unsigned baseline_passed=0,baseline_bad=0;
  if(!roms.load_aburner2())throw std::runtime_error("ROMs required");
- MainBus::Memory memory;MainBus bus(roms.maincpu.rom,roms.maincpu.length,nullptr,0,memory);
+ MainBus::Memory memory;MainBus bus(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,memory);
+ std::unique_ptr<CallerIrq4Capture> irq4_capture;
+ if(linked_irq4)irq4_capture=std::make_unique<CallerIrq4Capture>(std::string(argv[1])+".irq4",bus);
+ const CallerIrq4Capture::Envelope* irq4_pending=nullptr;
+ unsigned services4=0,bus4=0,bus4_bad=0,service4_bad=0,sub4=0;
  CpuVisibilityCapture visibility((std::string(argc>1?argv[1]:"build/oracle/caller.bin")+".visibility").c_str());
  visibility.report();
  if(visibility.failed)throw std::runtime_error("physical visibility mismatch");
  OMainCallerSchedule scheduled;OMainIrqService::Instruction last{};bool have=false,expected_pending=false;
  unsigned calls=0,entries=0,failed=0,total=0,bad=0,chains=0,chain_bad=0,polls=0,masked=0,computed_frontiers=0,frontier_bad=0,levels[7]={};
  std::map<uint32_t,unsigned> coverage,irqcoverage,external_return_pcs;
- std::map<uint32_t,uint8_t> owned;
+ unsigned sprite_cursor_frontiers=0;
+ std::map<uint32_t,uint8_t> owned,sprite_owned_hidden;
+ auto clear_owned=[&](){owned.clear();sprite_owned_hidden.clear();};
+ auto track_write=[&](uint32_t a,uint16_t d,uint16_t m){
+  const auto o=MainBus::memory_offset(a);
+  if(o!=MainBus::UNMAPPED){if(m&0xff00)owned[o]=d>>8;if(m&255)owned[o+1]=d;}
+  else if(a>=0x110000&&a<0x120000){
+   // The hardware swaps CPU-visible and hidden sprite RAM before this trace.
+   // Ownership follows each bank; retired list bytes cannot own the new bank.
+   std::map<uint32_t,uint8_t> retired;
+   auto first=owned.lower_bound(MainBus::SPRITE),last=owned.lower_bound(MainBus::PALETTE);
+   retired.insert(first,last);owned.erase(first,last);
+   owned.insert(sprite_owned_hidden.begin(),sprite_owned_hidden.end());
+   sprite_owned_hidden=std::move(retired);
+   // MAME sega_xboard_sprite_device::draw initializes/updates word 7 in
+   // every rendered record, including hidden sprites, before the end marker.
+   // Those published cursor words now belong to the external video producer.
+   // CPU writes were asserted above; future cursor values are video inputs.
+   for(size_t i=0;i<memory.sprite_buffer.size();i+=16){
+    if(memory.sprite_buffer[i]&0x80)break;
+    sprite_cursor_frontiers+=sprite_owned_hidden.erase(MainBus::SPRITE+i+14);
+    sprite_cursor_frontiers+=sprite_owned_hidden.erase(MainBus::SPRITE+i+15);
+   }
+   owned[MainBus::SPRITE]=0xff;owned[MainBus::SPRITE+1]=0xff;
+  }
+ };
  uint64_t prior_phase_end=0;
  const bool returned_words=successors||!memcmp(magic,"AB2CALL6",8);
  if(baseline_path&&!returned_words)throw std::runtime_error("return baseline requires CALL6/7");
@@ -85,12 +126,15 @@ int main(int argc,char** argv)try{
  unsigned selections=0,selection_bad=0,back_to_back=0;
  bool service_expected=false,rte_entry_pending=false,selection_expected=false;
  unsigned services=0,service_bad=0,service_events=0,service_event_bad=0,resumptions=0,service2=0,service6=0,user_returns=0,adc_inputs=0,external_returns=0;
- unsigned graph_exits=0;
+ unsigned graph_exits=0;std::map<uint32_t,unsigned> graph_exit_pcs;
+ std::map<uint32_t,std::array<unsigned,2>> trail_branches;
+ bool ready_bits[2]{};unsigned ready_taken=0,ready_untaken=0;
+ std::set<uint16_t> follower_stages;std::set<uint8_t> follower_ages;
  unsigned autonomous=0,autonomous_events=0,autonomous_bad=0,cuts=0,resume_operands=0;
  bool wait_operand_known=false,service_return_pending=false;
  while(f.peek()!=std::char_traits<char>::eof()){
   auto kind=num(f,1);
-  if(service_expected&&kind!=4)throw std::runtime_error("missing linked caller service");
+  if(service_expected&&kind!=4&&kind!=8)throw std::runtime_error("missing linked caller service");
   if(selection_expected&&kind!=6)throw std::runtime_error("missing RTE selection assertion");
   if(kind==6){
    if(!returns||!service_return_pending)throw std::runtime_error("RTE selection without service return");
@@ -100,8 +144,65 @@ int main(int argc,char** argv)try{
    if(expected_pending){++back_to_back;service_return_pending=false;rte_entry_pending=true;}
    continue;
   }
+  if(kind==8){
+   if(!service_expected||!irq4_pending)throw std::runtime_error("IRQ4 return without computed entry");
+   service_expected=false;const auto& capture=*irq4_pending;irq4_pending=nullptr;
+   const auto end=num(f,8),sp=num(f,4),sr=num(f,2),next=num(f,4);const auto post=regs(f);
+   const auto entered=scheduled.state().state;bool ok=true;
+   const auto frame=MainBus::memory_offset(entered.sp);
+   for(size_t i=0;i<capture.memory.size();++i){
+    // The companion snapshot is at the FIRST entry write, before the saved
+    // PC lanes. The entire exception frame has already been computed here.
+    if(frame!=MainBus::UNMAPPED&&i>=frame&&i<frame+6)continue;
+    if(owned.count(i)||(wait_operand_known&&i>=MainBus::memory_offset(0x2a3c00)&&i<MainBus::memory_offset(0x2a3c00)+2)){
+     if(memory.bytes[i]!=capture.memory[i]){ok=false;if(service4_bad<3)std::cerr<<"IRQ4 retained lane "<<std::hex<<i<<std::dec<<'\n';}
+    }else memory.bytes[i]=capture.memory[i];
+   }
+   size_t cursor=0,subcursor=0,hcursor=0;uint64_t now=entered.ns;
+   while(cursor<capture.events.size()&&capture.events[cursor].ns<entered.ns)++cursor;
+   unsigned frontier=cursor;
+   auto apply_sub=[&](){
+    while(subcursor<capture.sub.size()&&capture.sub[subcursor].frontier<=frontier){
+     const auto& e=capture.sub[subcursor++].event;const auto o=MainBus::memory_offset(e.a);
+     if(!((o>=MainBus::SHARED&&o<MainBus::TILE)||(o>=MainBus::ROAD&&o+1<memory.bytes.size())))throw std::runtime_error("invalid linked IRQ4 sub lane");
+     if(e.a==0x29c0d6){
+      if(e.pc!=0x458||e.m!=0xff00)throw std::runtime_error("invalid linked sub mutex write");
+      memory.bytes[o]=(memory.bytes[o]&~2)|((e.d>>8)&2);
+     }else if(e.m&0xff00)memory.bytes[o]=e.d>>8;
+     if(e.m&255)memory.bytes[o+1]=e.d;++sub4;
+    }
+   };
+   MainBus::Trace trace{nullptr,nullptr,[&](bool w,uint32_t a,uint16_t d,uint16_t m){
+    ++frontier;++bus4;bool equal=cursor<capture.events.size();
+    if(equal){const auto& e=capture.events[cursor++];equal=e.ns==now&&e.pc==scheduled.current_pc()&&e.a==a&&e.m==m&&e.w==w&&(e.d&m)==(d&m);}
+    if(!equal){++bus4_bad;ok=false;if(bus4_bad<10)std::cerr<<"Linked IRQ4 bus pc="<<std::hex<<scheduled.current_pc()<<" a="<<a<<std::dec<<" t="<<now<<'\n';}
+    if(w)track_write(a,d,m);
+    prior_phase_end=now+320;
+   }};
+   trace.before_access=[&](bool w,uint32_t a,uint16_t m){
+    apply_sub();if(w||cursor>=capture.events.size())return;const auto& e=capture.events[cursor];if(e.a!=a||e.m!=m)return;
+    if(scheduled.current_pc()==0xb7e2||(scheduled.current_pc()>=0xb7ea&&scheduled.current_pc()<=0xb7f0)){
+     const auto o=MainBus::memory_offset(a);if(o<MainBus::SHARED||o>=MainBus::TILE)throw std::runtime_error("invalid linked IRQ4 blit input");
+     memory.bytes[o]=e.d>>8;memory.bytes[o+1]=e.d;
+    }else if(a==0x150000)bus.io[1].input=[v=uint8_t(e.d)](unsigned p){return p==0?v:uint8_t(0xff);};
+   };
+   bus.trace=&trace;
+   const auto result=scheduled.finish(bus,[&](uint64_t t){now=t;},[&](uint64_t t){
+    const auto* phase=visibility.find(t);if(!phase)throw std::runtime_error("missing IRQ4 RTE visibility");return phase->level;
+   },{},[&](bool entering,uint32_t target,const OMainObjects::Registers& r,uint64_t at){
+    if(hcursor>=capture.hooks.size())throw std::runtime_error("missing linked IRQ4 callee assertion");
+    const auto& h=capture.hooks[hcursor];const auto& expected=entering?h.pre:h.post;
+    if(h.entry!=target||at!=(entering?h.start:h.end)||r.d!=expected.d||r.a!=expected.a)ok=false;
+    if(!entering)++hcursor;
+   });bus.trace=nullptr;apply_sub();
+   ok &= cursor==capture.events.size()&&subcursor==capture.sub.size()&&hcursor==capture.hooks.size()&&
+     result.ns==end&&end==capture.end&&result.sp==sp&&scheduled.supervisor_stack()==capture.sp&&result.sr==sr&&sr==capture.sr&&
+     result.pc==next&&result.registers.d==post.d&&post.d==capture.post.d&&result.registers.a==post.a&&post.a==capture.post.a;
+   ++services4;if(!ok){++service4_bad;std::cerr<<"Linked IRQ4 return mismatch at "<<end<<'\n';}
+   prior_phase_end=result.ns;last=scheduled.state();have=true;service_return_pending=true;selection_expected=true;continue;
+  }
   if(kind==4){
-   if(!service_expected)throw std::runtime_error("service without computed caller entry");
+   if(!service_expected||irq4_pending)throw std::runtime_error("service without computed caller entry");
    service_expected=false;
    // Caller entry is computed. Shared RAM still comes from external
    // producers; exception-frame lanes cannot be reseeded. ADC results come
@@ -116,9 +217,10 @@ int main(int argc,char** argv)try{
     if(frame!=MainBus::UNMAPPED&&i>=frame&&i<frame+6){
      if(memory.bytes[i]!=before[i]){ok=false;std::cerr<<"Service frame lane "<<std::hex<<i<<" got="<<unsigned(memory.bytes[i])<<" expected="<<unsigned(before[i])<<std::dec<<" end="<<end<<'\n';}
     }
-    else memory.bytes[i]=before[i];
+    else if(owned.count(i)||(wait_operand_known&&i>=MainBus::memory_offset(0x2a3c00)&&i<MainBus::memory_offset(0x2a3c00)+2)){
+     if(memory.bytes[i]!=before[i]){ok=false;std::cerr<<"Retained service lane "<<std::hex<<i<<" got="<<unsigned(memory.bytes[i])<<" expected="<<unsigned(before[i])<<std::dec<<" end="<<end<<'\n';}
+    } else memory.bytes[i]=before[i];
    }
-   owned.clear();
    size_t cursor=0;uint64_t now=entered.ns;
    bus.endpoints.adc_read=[&](){
     const auto* phase=visibility.find(now);
@@ -130,7 +232,7 @@ int main(int argc,char** argv)try{
     if(same){const auto& e=expected[cursor++];same=e.ns==now&&e.pc==scheduled.current_pc()&&e.a==a&&e.m==m&&e.w==unsigned(w)&&(e.d&m)==(d&m);}
     if(!same){++service_event_bad;ok=false;}
     prior_phase_end=now+4*OMainIrqService::CYCLE_NS;
-    if(w){const auto o=MainBus::memory_offset(a);if(o!=MainBus::UNMAPPED){if(m&0xff00)owned[o]=d>>8;if(m&255)owned[o+1]=d;}}
+    if(w)track_write(a,d,m);
    }};bus.trace=&trace;
    const auto result=scheduled.finish(bus,[&](uint64_t t){now=t;},returns?OMainIrqService::Poll([&](uint64_t t){
     const auto* phase=visibility.find(t);
@@ -145,11 +247,11 @@ int main(int argc,char** argv)try{
    if(!(result.sr&0x2000))++user_returns;
    ++services;if(!ok){++service_bad;if(service_bad<6)std::cerr<<"Linked service mismatch end="<<result.ns<<'/'<<end<<" sp="<<std::hex<<result.sp<<'/'<<sp<<" sr="<<result.sr<<'/'<<sr<<" pc="<<result.pc<<'/'<<next<<" regs="<<(result.registers.d==post.d&&result.registers.a==post.a)<<std::dec<<'\n';}
    prior_phase_end=result.ns;
-   last=scheduled.state();have=true;wait_operand_known=false;service_return_pending=true;selection_expected=returns;continue;
+   last=scheduled.state();have=true;service_return_pending=true;selection_expected=returns;continue;
   }
-  if(kind==7){if(!returned_steps)throw std::runtime_error("unexpected graph exit");++graph_exits;service_return_pending=false;have=false;owned.clear();wait_operand_known=false;prior_phase_end=0;continue;}
-  if(kind==5){++external_returns;++external_return_pcs[last.state.pc];service_return_pending=false;have=false;owned.clear();wait_operand_known=false;prior_phase_end=0;continue;}
-  if(kind==3){service_return_pending=false;have=false;owned.clear();wait_operand_known=false;prior_phase_end=0;++cuts;continue;}OMainIrqService::Context c{};c.interrupted_pc=num(f,4);c.boundary_ns=num(f,8);c.supervisor_sp=num(f,4);
+  if(kind==7){if(!returned_steps)throw std::runtime_error("unexpected graph exit");++graph_exits;++graph_exit_pcs[last.state.pc];service_return_pending=false;have=false;clear_owned();wait_operand_known=false;prior_phase_end=0;continue;}
+  if(kind==5){++external_returns;++external_return_pcs[last.state.pc];service_return_pending=false;have=false;clear_owned();wait_operand_known=false;prior_phase_end=0;continue;}
+  if(kind==3){service_return_pending=false;have=false;clear_owned();wait_operand_known=false;prior_phase_end=0;++cuts;continue;}OMainIrqService::Context c{};c.interrupted_pc=num(f,4);c.boundary_ns=num(f,8);c.supervisor_sp=num(f,4);
   std::vector<Event> expected;OMainObjects::Registers post;uint64_t end;uint32_t sp,next;uint16_t sr;unsigned irq=0;
   bool ok=true,chain=false,baseline_return=false;
   if(kind==1){if(service_expected)throw std::runtime_error("unfinished linked caller service");
@@ -214,10 +316,16 @@ int main(int argc,char** argv)try{
     if(!same){++chain_bad;ok=false;if(chain_bad<6)std::cerr<<std::hex<<"Caller chain pc="<<c.interrupted_pc<<" previous sr="<<last.state.sr<<" next sr="<<c.sr<<std::dec<<" start="<<c.boundary_ns<<'\n';}
     // Continue from the computed CPU state/time, after asserting the captured
     // boundary. Only unported calls/ISR intervals and fixture cuts reseed
-    // context; linked IRQ2/6 returns and omitted waits carry computed state.
+    // context; linked IRQ2/4/6 returns and omitted waits carry computed state.
     c.registers=last.state.registers;c.sr=last.state.sr;
     c.supervisor_sp=last.state.sp;c.boundary_ns=last.state.ns;
-   }else {owned.clear();wait_operand_known=false;service_return_pending=false;}
+   }else {clear_owned();wait_operand_known=false;service_return_pending=false;}
+   switch(c.interrupted_pc){
+   case 0xab06:case 0xabca:case 0xabd2:case 0xac36:++trail_branches[c.interrupted_pc][next==0xae32];break;
+   case 0xab28:++trail_branches[c.interrupted_pc][next==0xab44];break;
+   case 0xac2a:++trail_branches[c.interrupted_pc][next==0xac4a];break;
+   }
+   if(c.interrupted_pc==0xc090){if(next==0xc098)++ready_taken;else ++ready_untaken;}
    expected_pending=irq!=0;
    ++calls;++coverage[c.interrupted_pc];
    if(c.interrupted_pc==0x8afe){sub_inputs.insert(uint16_t(c.registers.d[1]));sub_flags[sr&31]=true;}
@@ -249,7 +357,7 @@ int main(int argc,char** argv)try{
    if(same){const auto& e=expected[cursor++];same=e.ns==now&&e.pc==scheduled.current_pc()&&e.a==a&&e.m==m&&e.w==unsigned(w)&&(e.d&m)==(d&m);
     if(!same&&bad<10)std::cerr<<std::hex<<"Caller pc="<<c.interrupted_pc<<" a="<<a<<'/'<<e.a<<" d="<<(d&m)<<'/'<<(e.d&m)<<std::dec<<" ns="<<now<<'/'<<e.ns<<'\n';}
    if(!same){++bad;ok=false;}
-   if(kind==1&&w){auto o=MainBus::memory_offset(a);if(o!=MainBus::UNMAPPED){if(m&0xff00)owned[o]=d>>8;if(m&255)owned[o+1]=d;}}
+   if(w)track_write(a,d,m);
   }};
   // Entry contexts and external handler/sub changes remain boundaries. Within
   // consecutive caller instructions, a computed main write cannot be replaced.
@@ -260,12 +368,16 @@ int main(int argc,char** argv)try{
     if(phase_end){++computed_frontiers;if(phase_end!=phase->previous_end){++frontier_bad;ok=false;}}
     phase_end=now+4*OMainIrqService::CYCLE_NS;
    }
-   if(kind==1&&a==0x2a3c00)wait_operand_known=true;
+   if(kind==1&&!w&&c.interrupted_pc==0xc088&&a==0x29c200&&cursor<expected.size())ready_bits[bool(expected[cursor].d&0x100)]=true;
+   if(kind==1&&!w&&c.interrupted_pc==0x7bce&&a==0x29c09c&&cursor<expected.size())follower_stages.insert(expected[cursor].d);
+   if(kind==1&&!w&&c.interrupted_pc==0x7bf4&&a==((c.registers.a[5]+21)&0x3ffffe)&&cursor<expected.size())follower_ages.insert(expected[cursor].d&255);
+   const bool retained_wait=kind==1&&a==0x2a3c00&&wait_operand_known;
    if(w||kind!=1||cursor>=expected.size())return;
    const auto& e=expected[cursor];if(e.w||e.a!=a||e.m!=m)return;
    auto o=MainBus::memory_offset(a);if(o==MainBus::UNMAPPED)return;
-   auto lane=[&](uint32_t i,uint8_t value){auto it=owned.find(i);if(it!=owned.end()){if(it->second!=value){ok=false;std::cerr<<"Owned lane mismatch address="<<std::hex<<a<<" offset="<<i<<" owned="<<unsigned(it->second)<<" expected="<<unsigned(value)<<std::dec<<" ns="<<now<<'\n';}}else memory.bytes[i]=value;};
+   auto lane=[&](uint32_t i,uint8_t value){auto it=owned.find(i);if(retained_wait){if(memory.bytes[i]!=value){ok=false;std::cerr<<"Retained wait operand mismatch at "<<now<<'\n';}}else if(it!=owned.end()){if(it->second!=value){ok=false;std::cerr<<"Owned lane mismatch address="<<std::hex<<a<<" offset="<<i<<" owned="<<unsigned(it->second)<<" expected="<<unsigned(value)<<std::dec<<" ns="<<now<<'\n';}}else memory.bytes[i]=value;};
    if(m&0xff00)lane(o,e.d>>8);if(m&255)lane(o+1,e.d);
+   if(a==0x2a3c00)wait_operand_known=true;
   };
   bus.trace=&trace;
   OMainIrqService::Result result;
@@ -282,13 +394,20 @@ int main(int argc,char** argv)try{
     if(level&&!OMainIrqService::eligible(level,c.sr))++masked;
     return level;
    });result=last.state;have=true;ok &= last.irq==irq;
-  }else{result=scheduled.enter(bus,c.supervisor_sp,[&](uint64_t t){now=t;});service_expected=linked&&c.level!=4;have=false;owned.clear();wait_operand_known=false;}
+  }else{result=scheduled.enter(bus,c.supervisor_sp,[&](uint64_t t){now=t;});service_expected=linked&&(c.level!=4||linked_irq4);
+   if(linked_irq4&&c.level==4){
+    irq4_pending=&irq4_capture->find(c.boundary_ns,c.return_pc);
+    const auto& q=irq4_pending->context;
+    ok &= q.interrupted_pc==c.interrupted_pc&&q.sr==c.sr&&q.registers.d==c.registers.d&&q.registers.a==c.registers.a;
+   }
+   have=false;if(!service_expected){clear_owned();wait_operand_known=false;}}
   prior_phase_end=phase_end;
   bus.trace=nullptr;
   ok &= cursor==expected.size()&&result.ns==end&&result.pc==next&&result.sp==sp&&result.sr==sr&&result.registers.d==post.d&&result.registers.a==post.a;
   if(baseline_return){if(ok)++baseline_passed;else ++baseline_bad;}
   if(!ok){++failed;if(failed<10)std::cerr<<std::hex<<"Caller record pc="<<c.interrupted_pc<<" result="<<result.pc<<'/'<<next<<" sr="<<result.sr<<'/'<<sr<<" sp="<<result.sp<<'/'<<sp<<std::dec<<" end="<<result.ns<<'/'<<end<<" events="<<cursor<<'/'<<expected.size()<<" IRQ="<<last.irq<<'/'<<irq<<'\n';}
  }
+ if(linked_irq4&&(service_expected||selection_expected||expected_pending||rte_entry_pending))throw std::runtime_error("incomplete linked IRQ capture");
  std::cout<<"Internal completion selections: "<<internal_polls-internal_poll_bad<<" of "<<internal_polls<<" identical, "<<internal_poll_bad<<" different, 0 skipped\n";
  if(baseline_count)std::cout<<"Prior unported return boundaries: "<<baseline_passed<<" of "<<baseline_count<<" identical, "<<baseline_bad<<" different, "<<baseline.size()<<" missing, 0 skipped\n";
  std::cout<<"RTE selections: "<<selections-selection_bad<<" of "<<selections<<" identical, "<<selection_bad<<" different, 0 skipped; "<<back_to_back<<" immediate exceptions\n";
@@ -313,7 +432,55 @@ int main(int argc,char** argv)try{
   for(unsigned flags=0;flags<16;++flags)if(word_flags[i][flags])std::cout<<' '<<std::hex<<flags<<std::dec;
   std::cout<<'\n';
  }
+ for(auto [p,n]:graph_exit_pcs)std::cout<<"Unported graph exit PC "<<std::hex<<p<<std::dec<<": "<<n<<" boundaries\n";
+ if(linked_irq4)std::cout<<"Linked IRQ4 services: "<<services4-service4_bad<<" of "<<services4<<" identical, "<<service4_bad<<" different, 0 skipped; "<<bus4-bus4_bad<<" of "<<bus4<<" bus events identical, "<<bus4_bad<<" different; "<<sub4<<" supplied sub writes; "<<sprite_cursor_frontiers<<" published video cursor byte frontiers\n";
+ if(require_trail||require_trail_path){
+  if(!coverage[0xaaee])throw std::runtime_error("missing trail entry");
+  if(require_trail)for(uint32_t p:{0xaaee,0xaaf4,0xaafa,0xaafe,0xab02,0xab04,0xab06,0xab0a,0xab0e,0xab12,0xab1a,0xab1e,0xab22,0xab28,0xab2c,0xab30,0xab34,0xab36,0xab3a,0xab3e,0xab42,0xab44,0xab48,0xab4a,0xab4c,0xab52,0xab56,0xab58,0xab5c,0xab64,0xab68,0xab6a,0xab6e,0xab76,0xab7c,0xab80,0xab84,0xab8a,0xab8e,0xab96,0xab9a,0xab9c,0xab9e,0xaba0,0xaba2,0xaba6,0xabaa,0xabae,0xabb2,0xabb8,0xabbc,0xabbe,0xabc2,0xabc4,0xabc8,0xabca,0xabce,0xabd0,0xabd2,0xabd6,0xabde,0xabe4,0xabe8,0xabec,0xabf2,0xabf6,0xabfe,0xac02,0xac04,0xac06,0xac08,0xac0c,0xac10,0xac14,0xac1a,0xac1e,0xac20,0xac24,0xac26,0xac28,0xac2a,0xac2e,0xac30,0xac34,0xac36,0xac3a,0xac3e,0xac42,0xac46,0xac4a,0xae32,0xae36,0xae3a,0xae3e,0xae42,0xae44,0xae46,0xae48,0xae4e})
+   if(!coverage[p])throw std::runtime_error("missing trail instruction at "+std::to_string(p));
+  for(auto [p,n]:graph_exit_pcs)if(n&&((p>=0xaaee&&p<=0xac4a)||(p>=0xae32&&p<=0xae4e)))throw std::runtime_error("trail remains external");
+  if(require_trail)for(uint32_t p:{0xab06,0xab28,0xabca,0xabd2,0xac2a,0xac36}){
+   const auto& n=trail_branches[p];
+   std::cout<<"Trail branch "<<std::hex<<p<<std::dec<<" taken/untaken="<<n[1]<<'/'<<n[0]<<'\n';
+   if(!n[0]||!n[1])throw std::runtime_error("missing trail branch direction at "+std::to_string(p));
+  }
+  std::cout<<"Trail coverage: computed projection, clipping, append and free-pool return"<<(require_trail?"; 99/99 PCs":"")<<'\n';
+ }
+ if(require_clear){
+  for(uint32_t p:{0xb698,0xb69e,0xb6a4,0xb6a6,0xb6ac,0xb6ae,0xb6b4,0xb6b8,0xb6ba,0xb6bc,0xb6be,0xb6c0,0xb6c4,0xb6ce,0xb6d6,0xb6dc,0xb6e2,0xb6e4,0xb6ea,0xb6ee,0xb6f0,0xb6f2,0xb6f4,0xb6f6,0xb6fa,0xb704,0xb70a,0xb710,0xb712,0xb714,0xb71a,0xb720,0xb722,0xb728,0xb72e,0xb732,0xb734,0xb738,0xb73c,0xb740,0xb744,0xb748,0xb74c,0xb750,0xb754,0xb758,0xb762,0xb76a,0xb770,0xb776,0xb778,0xb77e,0xb782,0xb784,0xb788,0xb78c,0xb790,0xb794,0xb798,0xb79c,0xb7a0,0xb7a4,0xb7a8,0xb7b2,0xb7b8,0xb7be,0xb7c0})
+   if(!coverage[p])throw std::runtime_error("missing sprite clear instruction at "+std::to_string(p));
+  for(auto [p,n]:graph_exit_pcs)if(p>=0xb698&&p<=0xb7c0&&n)throw std::runtime_error("sprite clear remains external");
+  std::cout<<"Sprite clear coverage: 67/67 PCs, full and strided RAM uploads\n";
+ }
+ if(require_allirq&&(!linked_irq4||!services4||!service2||!service6))throw std::runtime_error("missing linked IRQ level coverage");
+ if(require_publication_init){
+  if(!coverage[0xb66e]||graph_exit_pcs[0xb66e])throw std::runtime_error("missing computed publication initializer");
+  std::cout<<"Publication initializer coverage: computed $B66E fallthrough\n";
+ }
+ if(require_worldinit){
+  for(uint32_t p:{0x88c2,0x88ca,0x88ce,0x88d6,0x88da,0x88dc,0x88de,0x88e6,0x88ec,0x88f0,0x88f2,0x88f4,
+     0x88f6,0x88fa,0x88fc,0x8900,0x8904,0x8908,0x890c,0x8912,0x8916,0x891e,0x8924,0x8928,0x892a,0x892c,
+     0x892e,0x8932,0x8936,0x893a,0x8940,0x8944})
+   if(!coverage[p])throw std::runtime_error("missing world initializer coverage at "+std::to_string(p));
+  if(graph_exit_pcs[0x88ca]||graph_exit_pcs[0x8944])throw std::runtime_error("world initializer remains external");
+  std::cout<<"World initializer coverage: 32/32 PCs, computed math-chip operands\n";
+ }
+ if(require_ready||require_ready_path){
+  std::cout<<"Ready observed: bits="<<ready_bits[0]<<ready_bits[1]<<" branches="<<ready_taken<<'/'<<ready_untaken<<'\n';
+  for(uint32_t p:{0xc082,0xc088,0xc090,0xc094,0xc098})
+   if(!coverage[p])throw std::runtime_error("missing ready instruction coverage at "+std::to_string(p));
+  if(require_ready&&(!ready_bits[0]||!ready_bits[1]||!ready_taken||!ready_untaken))throw std::runtime_error("missing ready bit/branch coverage");
+  if(graph_exit_pcs[0xc082]||graph_exit_pcs[0xc098])throw std::runtime_error("ready graph remains external");
+  std::cout<<"Ready coverage: 5/5 PCs, taken/untaken="<<ready_taken<<'/'<<ready_untaken<<"\n";
+ }
+ if(require_follower){
+  for(uint32_t p:{0x7bb6,0x7bbc,0x7bc2,0x7bc8,0x7bce,0x7bd6,0x7bda,0x7be2,0x7be6,0x7bec,0x7bee,0x7bf4,0x7bf8,0x7bfc,0x7c00,0x7c02,0x7c06,0x7c0c,0x7c10})
+   if(!coverage[p])throw std::runtime_error("missing follower instruction coverage at "+std::to_string(p));
+  for(uint16_t stage:{1,7,2})if(!follower_stages.count(stage))throw std::runtime_error("missing follower stage coverage");
+  for(uint8_t age:{0,4,8,0x80})if(!follower_ages.count(age))throw std::runtime_error("missing follower animation coverage");
+  std::cout<<"Follower coverage: 19/19 instruction PCs, stages 1/7/2, animation 0/4/8/128\n";
+ }
  for(auto [p,n]:external_return_pcs)std::cout<<"Unported returned PC "<<std::hex<<p<<std::dec<<": "<<n<<" boundaries\n";
  for(auto [p,n]:coverage)std::cout<<std::hex<<p<<std::dec<<": "<<n<<" instructions, "<<irqcoverage[p]<<" IRQ entries\n";
- return calls&&entries&&(!linked||(services&&resumptions))&&!failed&&!bad&&!frontier_bad&&!autonomous_bad&&!service_bad&&!service_event_bad&&!selection_bad&&!baseline_bad&&baseline.empty()&&(!require_closed||external_returns==0)&&(!require_taken||(branch_taken&&branch_nv[0]&&branch_nv[3]))&&(!returns||(selections==services&&(successors||back_to_back)))?0:1;
+ return calls&&entries&&(!linked||((services+services4)&&resumptions))&&!service4_bad&&!bus4_bad&&!failed&&!bad&&!frontier_bad&&!autonomous_bad&&!service_bad&&!service_event_bad&&!selection_bad&&!baseline_bad&&baseline.empty()&&(!require_closed||external_returns==0)&&(!require_taken||(branch_taken&&branch_nv[0]&&branch_nv[3]))&&(!returns||(selections==services+services4&&(successors||back_to_back)))?0:1;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

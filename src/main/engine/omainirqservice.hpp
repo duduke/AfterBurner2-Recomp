@@ -40,7 +40,8 @@ public:
     // path (Context.supervisor_sp is the active user/supervisor stack here).
     // Waiting returns PC=$14856 so a scheduler can service an IRQ.
     Result logic_step(MainBus&, const Context&, const Clock&);
-    // One address-labelled wait/dispatcher/publication instruction, including
+    // One address-labelled wait/dispatcher, sprite clear/publication,
+    // follower, ready-bit or world projection instruction, including
     // ROM prefetches. Poll samples physical IPL at the CPU's selection phase;
     // the returned level is latched, not reselected at instruction completion.
     using Poll = std::function<unsigned(uint64_t)>;
