@@ -6,17 +6,19 @@ checkpoint history live in [ENGINE_NOTES.md](ENGINE_NOTES.md); completion
 items live in [ROADMAP.md](ROADMAP.md). Read the roadmap's "Working on the
 remaining tasks" before changing code.
 
-The continuation on `codex/irq4-remaining-callee-timing` computes the remaining
-`$14A86/$13F92/$16C8A/$18444/$13E5C` callee graphs, alongside the previously
-checked `$1329E`. All seven current IRQ4 datasets pass: 3,519/3,519 envelopes,
-8,099,444/8,099,444 predicted bus events and 18,769/18,769 calls to these six
-entries, zero skips. The bounded caller continuation checks IRQ entry within
-`$14856` re-arm,
-the `$1458A..$145B8` dispatcher and `$B676..$B696` publication instructions.
-Physical IPL now comes from bus-phase delivery and completion-tail clocks;
-bounded callers and omitted busy spins carry computed state/time. External
-handler/ISR resumptions and sub progress remain supplied boundaries; Phase 3d
-remains incomplete.
+The `codex/phase3d-irq26-resumption` checkpoint carries computed bounded
+caller IRQ2/IRQ6 entry through the verified handler and RTE, restoring the
+retained user stack before continuing caller state/time. Natural gameplay and
+directed fixtures pass 1,673/1,673 services and 74,059/74,059 handler bus events,
+zero skips, with 1,644 computed caller resumptions. The capture explicitly marks
+29 unported post-RTE intervals, including back-to-back exception entry.
+
+The previously verified IRQ4 callee graphs retain 3,519/3,519 envelopes and
+8,099,444/8,099,444 predicted bus events, zero skips. Physical IPL comes from
+bus-phase delivery and completion-tail clocks; bounded callers and omitted busy
+spins carry computed state/time. IRQ4/unported handler resumptions, shared-RAM
+and ADC producer state, first-resume wait operands and sub progress remain
+supplied boundaries. Phase 3d remains incomplete.
 
 ## Scope and current status
 
@@ -53,6 +55,7 @@ The current host/timing evidence is:
 | Natural IRQ/shared-input and paired composition | 120/120 separate and 122/122 paired complete dispatchers; 244/244 VBLANK windows; 240/240 RGB frames; zero skips | Captured IRQ frontiers, sub-produced operands and compositor feedback |
 | Bounded caller instructions and IRQ entry | 778,252/778,252 records; 2,181,954/2,181,954 bus events; 682,233/682,233 caller boundaries; zero skips; IRQ4 at every re-arm PC | Physical IPL visibility, initial contexts, external handler/ISR resumptions and sub progress |
 | Physical IPL and bounded caller schedule | 42,280,436/42,280,436 physical observations; 12,703,304 generated wait instructions; 38,111,440/38,111,440 wait bus assertions; zero skips | External handler/ISR returns and first resumed operands, unported CPU frontiers, initial contexts and sub progress |
+| Bounded caller IRQ2/IRQ6 resumptions | 1,673/1,673 services; 74,059/74,059 handler bus events; 1,644 computed caller resumptions; zero skips | 29 unported post-RTE intervals, shared-RAM/ADC producer state, first-resume wait operands and IRQ4 |
 | Bounded IRQ4, complete selected callee graphs and re-arm timing | 3,519/3,519 envelopes; 8,099,444/8,099,444 predicted bus events; 18,769/18,769 fade/animation/cycle/reload/scenery/transition calls; 16,349/16,349 uninterrupted wait steps | Game-flow caller transcripts, sub-owned write frontiers and interrupted contexts; six IRQ-overlapped wait attempts excluded |
 
 The shared-input checkpoint supersedes earlier IRQ4 race exclusions. Complete
@@ -93,6 +96,11 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   inputs. The full host still needs external handler/ISR resumptions, unported
   instruction graphs and sub progress; see the visibility continuation in
   `ENGINE_NOTES.md` for exact counts and limits.
+- [x] Link computed bounded caller IRQ2/IRQ6 entry, handler execution and
+  RTE back to caller state/time. Preserve the exception frame and retained
+  USP; explicitly mark unported post-RTE intervals, including back-to-back
+  exception entry. Shared-RAM/ADC producer state and IRQ4 remain supplied.
+  See the caller/IRQ2/IRQ6 resumption checkpoint in `ENGINE_NOTES.md`.
 - [ ] Finish independent scheduling across caller/ISR resumptions, ADC input
   producers, publication wait boundaries and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller
