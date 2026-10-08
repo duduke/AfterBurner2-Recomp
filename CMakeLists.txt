@@ -65,6 +65,9 @@ if(BUILD_TESTING)
     add_executable(xboard_timeline_regression tests/xboard_timeline_regression.cpp)
     target_include_directories(xboard_timeline_regression PRIVATE src/main)
     add_test(NAME xboard_timeline_regression COMMAND xboard_timeline_regression)
+    add_executable(xboard_irq_lines_regression tests/xboard_irq_lines_regression.cpp)
+    target_include_directories(xboard_irq_lines_regression PRIVATE src/main)
+    add_test(NAME xboard_irq_lines_regression COMMAND xboard_irq_lines_regression)
     add_executable(mainbus_regression tests/mainbus_regression.cpp
         src/main/engine/mainbus.cpp src/main/engine/subbus.cpp)
     target_include_directories(mainbus_regression PRIVATE src/main)
@@ -258,15 +261,25 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     add_test(NAME oracle_subirq_directed COMMAND oracle_subirq build/oracle/subirq_directed.bin --require-endpoints)
     add_test(NAME oracle_subirq_full COMMAND oracle_subirq build/oracle/subirq.bin)
     set_tests_properties(oracle_subirq_short oracle_subirq_directed oracle_subirq_full PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_executable(oracle_subreset tests/oracle_subreset.cpp src/main/engine/osubirq.cpp
+        src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
+        src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
+    target_include_directories(oracle_subreset PRIVATE src/main)
+    add_test(NAME oracle_subreset COMMAND oracle_subreset build/oracle/subreset.bin)
+    set_tests_properties(oracle_subreset PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_bus_arbiter tests/oracle_bus_arbiter.cpp src/main/engine/subbus.cpp)
     target_include_directories(oracle_bus_arbiter PRIVATE src/main)
     add_executable(oracle_publication_schedule tests/oracle_publication_schedule.cpp
+        src/main/hwvideo/hwsprites.cpp
         src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp
-        src/main/engine/osubpublication.cpp src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
+        src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
     target_include_directories(oracle_publication_schedule PRIVATE src/main)
     target_link_libraries(oracle_publication_schedule PRIVATE Threads::Threads)
     add_test(NAME oracle_publication_schedule COMMAND oracle_publication_schedule build/oracle/publication_schedule.bin build/oracle/publication_schedule.txt)
-    set_tests_properties(oracle_publication_schedule PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_test(NAME oracle_joint_main_progress COMMAND oracle_publication_schedule build/oracle/joint_main_progress.bin build/oracle/joint_main_progress.txt --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake)
+    add_test(NAME oracle_joint_reset_window COMMAND oracle_publication_schedule build/oracle/joint_reset_focused.bin build/oracle/joint_reset_focused.txt --reset-window --physical-main --require-sub-continuity --require-video-frontiers --require-sound-handshake)
+    add_test(NAME oracle_joint_main_progress_full COMMAND oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake)
+    set_tests_properties(oracle_publication_schedule oracle_joint_main_progress oracle_joint_reset_window oracle_joint_main_progress_full PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_test(NAME oracle_bus_arbiter COMMAND oracle_bus_arbiter build/oracle/bus_arbiter_short.bin build/oracle/arbiter_schedule.txt)
     set_tests_properties(oracle_bus_arbiter PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_subroad tests/oracle_subroad.cpp

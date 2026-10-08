@@ -93,6 +93,20 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
+**Current checkpoint and next task**: Physical main selection, observed main
+producers/callees and sub reset startup now pass together in the 600-frame
+joint corpus: 20,532,168 native records, 53,449,620 phases, zero differences/
+skips, one initial context per CPU and zero later supplied sub phases.
+Main supplies zero phases; sub supplies only the initial partial ISR's 46
+phases at three PCs, with zero writes. Sound latch handshakes, sprite/road
+bank swaps, sprite scaler feedback and partial screen frontiers also match.
+Next close native Z80/YM/PCM timing and remaining device deadline/boost owners,
+tile/text latch and RGB compositor ownership, and unverified main/sub paths.
+Visible-area display toggles still need directed coverage. Stage 1 remains
+the game loop. Earlier checkpoints below are historical; see the current
+result in `PHASE3D_PLAN.md` and the last `ENGINE_NOTES.md` section.
+Follow the [ordered remaining acceptance tasks](PHASE3D_PLAN.md#next-tasks-for-whole-host-acceptance).
+
 **Picking the next task**: Phase 3c is complete; 3d foundations are verified,
 but 3d is not complete. Input, live-player, projectile and selected enemy
 handlers now have independent checks. The directed host-composition checkpoint
@@ -199,7 +213,56 @@ Next extend this joint stream through IRQ services and sprite/road/main caller
 progress while retaining the 68000's private instruction-step debt. Whole-host
 player/weapon/video/sound acceptance remains pending; native Stage 1 stays active.
 See the joint publication continuation in `ENGINE_NOTES.md` for coverage limits.
+The joint stream now executes the bounded sprite/road callees through
+`OSubProgress`, retaining private internal-tail debt before each successor.
+Natural 120 matches 2,420,931 instructions, 6,110,061 phases and 242,205
+bounded grant completions, zero differences/skips. It computes 102,479 shared
+writes; 39,817 other writers and 347 entry contexts remain supplied. Natural
+joint coverage reaches 631/1,136 sprite/road PCs; directed standalone coverage
+does not close the other joint paths. Next extend joint IRQ entry/service/RTE
+and main caller/producer progress, then remove ADC/device/video/sound
+frontiers before whole-host acceptance. Native Stage 1 remains active.
+See the joint sprite/road continuation in `ENGINE_NOTES.md`.
+The joint stream now computes sub IRQ selection, entry, VPA acknowledgement,
+all thirteen service instructions and RTE into retained caller state. Natural
+120 matches 2,491,840 instruction/IRQ records and 6,309,809 bus phases, with
+88/88 entries/acknowledgements/restorations and zero differences/skips. Main
+`$1458A..$145B8` now computes its twelve dispatcher instructions in the same
+grants. There is one initial sub context; 4,630 main contexts and 36,902
+shared writers remain supplied. Next join main IRQ/caller/producer progress
+and device/video/sound ownership before whole-host acceptance. The initial
+partial sub ISR and final parked user continuation remain labelled; native
+Stage 1 remains active. See the joint IRQ/dispatcher continuation in
+`ENGINE_NOTES.md`.
 The runtime template inventory still identifies seven unported initial handlers.
+The expanded joint main checkpoint now covers 679/1,429 main caller PCs and
+92/103 added IRQ RAM-wrapper PCs. Natural 120 matches 3,045,337 records and
+7,960,655 phases, computing 141,627 shared writes with 669 still supplied.
+Main entry/device/RTE and unported callee gaps remain explicit. This corpus
+precedes coin/start. Synchronized timer acknowledgements now pass, and the
+fresh 600-frame live-gameplay replay closes the natural `$14840` RESET failure:
+19,049,961 records, 49,054,764 native phases and 2,257,946 bounded grants match,
+zero skips, including 568 retained sub IRQ services/returns. It covers
+1,118/1,432 main PCs and 658/1,136 sub PCs. Main supplied execution still has
+4,391,908 phases at 4,677 PCs; reset startup/TRAP also remains supplied.
+Main IRQ entry/VPA/RTE now also passes the fresh 120-frame joint replay:
+448 entries, acknowledges and returns, 432 retained entries/resumptions and
+7,967,919 native phases, zero skips. The new 600-frame gameplay extension
+passes 49,092,373 native phases and 2,893 main entries/acknowledges/RTEs,
+including natural RESET; 4,357,192 main phases at 4,507 PCs remain supplied.
+The physical main selection and producer/callee continuation now has a fresh
+120-frame proof: all 448 entries/services/returns/resumptions are retained,
+3,160,862 native records and 8,320,519 phases match, with zero supplied main
+phases or later main context replacements. The 600-frame gameplay proof now
+passes 20,532,151 native records and 53,449,565 phases, zero differences/
+skips, zero supplied main phases and one initial main context. All 2,893
+main entries/services/returns/resumptions use physical selection and retained
+state; TRAP #12 and RESET-handler RTE also pass. This closed the main CPU checkpoint. The subsequent sub/video/sound
+checkpoint passes 53,449,620 phases, zero differences/skips, computes all
+observed sub reset startup, and verifies sound latch acknowledgements,
+video banks, scaler feedback and partial screen updates. Native sound/device
+timing, tile/text latch and RGB ownership, and unverified paths remain open.
+Whole-host acceptance remains open; native Stage 1 remains the game loop.
 Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining
 Phase 3 work" below. The milestones are ordered so each one builds on the
@@ -653,6 +716,28 @@ IRQ2 composition; independent publication progress and IRQ4 timing remain.
       all 25 conditional branches, slew/rotation/append endpoints and five
       exposed returned-instruction continuations. Full dispatcher/sub cadence
       and paired host acceptance remain pending; see `ENGINE_NOTES.md`.
+- [x] Execute bounded sub sprite/road callees in the joint main/sub grant
+      replay, retaining private internal-tail debt before successors. Natural
+      120: 2,420,931 instructions, 6,110,061 phases and 242,205 bounded
+      completions identical, zero skips. 102,479 shared writes are computed;
+      39,817 writers and 347 entry contexts remain supplied. Joint coverage
+      reaches 631/1,136 graph PCs; five mutations fail. IRQ, main caller,
+      device/video/sound boundaries remain pending; see `ENGINE_NOTES.md`.
+- [x] Join sub IRQ selection, exception entry, VPA acknowledgement, all
+      thirteen service PCs and RTE with retained user resumption, plus the
+      twelve main dispatcher PCs at `$1458A..$145B8`. Natural 120 matches
+      2,491,840 instruction/IRQ records and 6,309,809 phases, zero skips;
+      88/88 services restore interrupted state. One initial sub context,
+      4,630 main contexts and 36,902 shared writers remain supplied. Eleven
+      mutations fail; main IRQ/caller and device/video/sound closure remain
+      pending. See `ENGINE_NOTES.md` for branch and capture boundaries.
+- [x] Compute physical main IRQ selection and close the main producers/callees
+      in the 600-frame joint stream: 20,532,151 records and 53,449,565 phases
+      identical, zero differences/skips, zero supplied main phases, one initial
+      main context, and 2,893 retained entries/services/returns/resumptions.
+      TRAP #12 and RESET-handler RTE pass; nine mutations fail. It covers
+      5,628/7,786 main PCs; other PCs/directions remain unverified. Sub startup,
+      other device deadlines/sound and video/compositor ownership remain open.
 - [ ] Independently schedule handler/caller and ISR resumptions, then
       progress publication and sub execution without
       captured operand frontiers.
@@ -825,3 +910,21 @@ Optional features, visual upgrades, and quality-of-life additions for After Burn
   - Optional support for high-quality CD audio tracks while preserving authentic YM2151/SegaPCM sound effects.
   - File-based music player mapping arcade music triggers to external user-provided audio files (e.g. in `res/music/`).
   - Seamless config toggle between authentic arcade FM/PCM music and CD soundtrack.
+
+The synchronized hardware continuation now computes main timer acknowledges
+`$1461C/$1466C` and natural `$14840` RESET cancellation/vector prefetches.
+The focused coin/start window passes 1,160,234 retained records and
+2,961,766 native phases, zero skips; its startup PEA/RTE/TRAP remains supplied.
+Whole-host acceptance still requires all four closures in `PHASE3D_PLAN.md`.
+
+### Sub startup, sound handshakes and video bank ownership checkpoint
+
+The 600-frame joint replay now computes all 17 sub startup PCs, with one
+initial context per CPU and zero later sub execution supplied. It matches
+20,532,168 records and 53,449,620 phases, zero differences/skips, including
+854 bank swaps, 568 frame sprite feedback checks, 575 partial screen updates
+and 1,278 sound latch reads/NMI acknowledgement requests. Five mutations
+are rejected; the existing 300-frame video oracle stays pixel-identical.
+Sound CPU/YM/PCM execution and device deadlines, tile/text latches and full
+RGB composition, and unexercised paths remain acceptance requirements.
+See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.

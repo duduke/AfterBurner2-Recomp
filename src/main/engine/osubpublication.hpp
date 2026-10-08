@@ -14,7 +14,8 @@ public:
     using Clock=std::function<void(uint64_t)>;
     using Phase=std::function<void(bool,uint32_t,uint16_t,uint16_t,uint32_t,uint64_t)>;
     using Select=std::function<void(uint64_t,uint16_t)>;
-    State step(SubBus&,State,const Clock&,const Phase&,const Select& = {}) const;
+    using Checkpoint=std::function<void(const State&)>;
+    State step(SubBus&,State,const Clock&,const Phase&,const Select& = {},const Checkpoint& = {}) const;
     // Values of already verified main signal writers, at supplied write
     // frontiers. Operand is retained from the actual RMW read frontier.
     // Addresses are main aliases of the same shared RAM.

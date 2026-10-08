@@ -32,6 +32,93 @@ supplied boundaries. Phase 3d remains incomplete.
 
 ## Scope and current status
 
+The four whole-host requirements remain distinct. The current joint checkpoint
+closes the first row and observed sub startup in the 600-frame corpus; remaining ownership and
+unverified paths still prevent whole-host acceptance:
+
+| Required closure | Current joint boundary |
+| --- | --- |
+| IRQ services and retained caller resumptions | Closed in the 600-frame corpus: all 2,893 main entries/services/returns/resumptions and 568 sub services/returns use computed selection and retained state |
+| Main producers and sub sprite/road progress | Zero supplied main phases; one initial context per CPU; all 17 sub startup PCs computed, zero later sub supplied phases/writes. Initial partial sub ISR and unexercised main/sub paths remain boundaries |
+| ADC/buttons, device deadlines and sound timing | Main ADC/mux/buttons, grant aborts and RESET cancellation pass; synchronized sound command/latch handshake matches 1,278 reads. Z80/YM/PCM execution, other head deadlines and boost owners remain open |
+| Video ownership and compositor inputs | 854 bank swaps, 278 road controls, 568 sprite feedback frames and 575 computed partial screen updates match. Tile/text latches, RGB compositor ownership and directed visible-area display toggles remain open |
+
+The preceding checkpoint and its exclusions are historical; the current main
+closure result is recorded below. The original 600-frame expanded joint
+experiment failed on natural RESET. The preceding continuation passed
+19,055,747 native records,
+49,092,373 native phases and 2,312,354 bounded grants, zero skips. It includes
+2,893 main entries/acknowledges/RTEs, 2,614 retained main entries, 2,616
+retained resumptions and 568 retained sub services/returns. Both main RESET
+callbacks, synchronized sub cancellation and reset vectors/prefetches are computed;
+startup PEA/RTE/TRAP execution was supplied. That checkpoint had 4,357,192
+supplied main phases at 4,507 PCs. Those main boundaries are now closed by
+the result below; preserve the remaining labelled device/sub boundaries and
+never seed replacement CPU contexts on a computed mismatch.
+
+The current strict joint replay matches 20,532,168 native records and
+53,449,620 ordered phases, zero differences/skips. Main supplies zero
+execution; each CPU has one initial context. All 17 sub startup PCs and
+568 services/returns are computed; the only supplied sub phases are 46 at
+three PCs in the ISR already running at the capture boundary, with zero
+writes and no later reseeding. Main coverage is 5,628/7,786 PCs and sub
+generated coverage is 658/1,136, plus the 17 startup PCs. Unobserved paths
+remain unverified. Strict targets require main closure, sub continuity,
+sound handshake and video frontier assertions; full replay requires RESET.
+The sound oracle computes latch values at supplied Z80 transaction clocks;
+it does not establish native audio CPU or YM/PCM timing. Native Stage 1
+remains active. See the final `ENGINE_NOTES.md` section for all boundaries.
+
+## Next tasks for whole-host acceptance
+
+Complete these in dependency order; each port needs MAME comparisons,
+explicit coverage exclusions and a rejected mutation before game wiring.
+
+1. **Native sound CPU progress and interrupt delivery.** Replace supplied
+   Z80 grant/transaction clocks with ROM-derived execution, retaining caller
+   state through NMI/IRQ entry, service and return. Compute sound reset and
+   synchronized NMI assertion/clearing. Check command delivery, latch reads,
+   YM writes and PCM accesses against the joint stream without reseeding.
+2. **Native audio/device deadlines and scheduler ownership.** Compute YM
+   mode/timer callbacks, PCM stepping and sound update deadlines, then all
+   remaining head-timer and boost owners. Preserve synchronized input queue
+   ordering and late delivery semantics. Treat trace deadlines as assertions,
+   with no supplied device frontier driving native scheduling. The device
+   inventory currently shows 7,199 YM-timer head grants, 2,717 sound-update
+   head grants and 11,289 tile-latch head grants to cover.
+3. **Tile/text latches and full video composition.** Compute tile latch
+   timing and latched scroll/page state. Feed independently owned text/tile,
+   road, sprite, palette, priority and shadow inputs into the compositor at
+   native partial update frontiers. Compare joint RGB output pixel-for-pixel
+   with MAME; the existing standalone 300-frame pixel oracle is a regression
+   check, not the joint ownership proof. Add directed visible-area display
+   enable changes; the natural corpus did not detect their omission.
+4. **Remaining main/sub execution and exception coverage.** Exercise and
+   verify the 2,158 main and 478 generated sub PCs absent from the current
+   corpus, plus unobserved branch directions. Include IRQ wrapper PCs
+   `$B836/$B83A/$B83E/$146D8/$14702`, nested higher-priority IRQ selection,
+   divide exception paths and startup RTE privilege exceptions. Expand
+   captures across gameplay states and reset sequences; never silently
+   accept an unported path or seed replacement CPU state on a mismatch.
+5. **Remove or explicitly bound fixture edges.** Extend capture/native
+   execution through cold boot and the initial partial sub ISR (46 supplied
+   phases), and beyond the two parked final continuations. Prove boot port,
+   bank/render and CPU initialization rather than promoting the current
+   fixtures to startup acceptance. Retain only the explicitly defined ROM
+   and external physical-input fixtures in the final acceptance contract.
+6. **Whole-host acceptance and game integration.** Run the complete joint
+   CPU/device/video/audio oracle with native grants, deadlines, IRQs and
+   producers, zero supplied execution/state replacements/read seeds, and
+   zero differences/skips within the declared coverage. Include directed
+   mutations for each owner and expanded gameplay/reset coverage. Only then
+   replace the reconstruction loop with the verified host and rerun ROM-free,
+   Stage 1, all oracle, pixel/audio and headless integration checks.
+
+The observed main IRQ/caller stream and sub reset startup are already
+verified; these tasks extend coverage and close remaining ownership rather
+than reopening those completed corpus checks. Whole-host acceptance remains
+pending until the final contract and its exclusions are explicit.
+
 Phase 3c supplies shared arcade RAM, the interrupt/caller handshake, 30 Hz
 object scheduling, palette routines, request publication, the sub CPU sprite
 transform and normal/interpolated hardware blits. Phase 3d replaces
@@ -383,7 +470,47 @@ entries and observed later caller boundaries are documented in `ENGINE_NOTES.md`
   scheduler observation build. 239,177 grants and 1,271,730 shared reads match;
   nine sub and four arbitration mutations fail. Producer/completion frontiers
   and other-device deadlines remain labelled inputs.
+- [x] Extend joint publication execution through bounded sprite/road callees,
+  retaining internal-tail debt before successor instructions. Natural 120:
+  2,420,931 instructions, 6,110,061 phases and 242,205 bounded grant
+  completions match, zero differences/skips. 102,479 shared writes are
+  computed; 39,817 writers and 347 entry contexts remain supplied. Joint
+  natural coverage reaches 631/1,136 graph PCs; the other 505 PCs and
+  unexercised branch directions remain outside joint coverage. IRQ service,
+  main producer/caller and device/video/sound frontiers remain explicit.
+- [x] Join the bounded sub IRQ entry/service/RTE and VPA wait under the
+  arbiter, retaining stack banks, registers and computed IRQ selection across
+  grants. Natural 120: 88/88 services restore their interrupted state;
+  2,491,840 instruction/IRQ records and 6,309,809 phases match, zero skips.
+  All thirteen service PCs execute. Both countdown branches and DBF outcomes
+  are covered; mutex-busy and arbitrary countdown endpoints remain outside
+  joint natural coverage. Main `$1458A..$145B8` computes all twelve dispatcher
+  PCs, active/inactive records and loop completion. 105,394 shared writes are
+  computed; 36,902 remain supplied, with one initial sub and 4,630 main entry
+  contexts. Main IRQ and handler/producer/device/video/sound closure remain.
 - [ ] Compose both CPU instruction continuations under the checked arbiter,
-  replace remaining main producer/caller boundaries and complete paired
+  close main IRQ entry/service/RTE, replace remaining main producer/caller boundaries and complete paired
   player/weapon/video/sound acceptance. Whole-host acceptance is pending;
   native Stage 1 remains active. See `ENGINE_NOTES.md` for scope and sensitivity.
+- [x] Expand joint main execution to existing caller ports and 103 literal
+  main IRQ RAM-wrapper/sound-ring instructions. Natural 120 covers 679/1,429
+  main PCs, including 92/103 added wrapper PCs; 3,045,337 records and
+  7,960,655 phases match, zero differences/skips. Computed shared writes reach
+  141,627; 669 remain supplied. This is an attract-mode checkpoint, with
+  main entry/device/RTE and unported callee gaps still supplied. The longer
+  original 600-frame experiment exposed RESET and failed (subsequently closed below); all four closure items above
+  remain open. See the expanded joint main continuation in `ENGINE_NOTES.md`.
+
+- [x] Join literal main IRQ2/4/6 entry, real VPA acknowledge and RTE into
+  retained caller execution. Fresh 120 matches 448 entries/acknowledges/RTEs,
+  432 retained entries and resumptions, 7,967,919 native phases and 367,179
+  bounded grants, zero skips. All three levels occur; four mutations fail.
+  Physical main IRQ selection and the unported service callee gaps remain
+  explicit. See the joint main interrupt continuation in `ENGINE_NOTES.md`.
+
+- [x] Extend joint main entry/VPA/RTE to the 600-frame live-gameplay stream.
+  19,055,747 records, 49,092,373 native phases and 2,312,354 bounded grants
+  match, zero skips; 2,893 entries/acknowledges/RTEs and natural RESET pass.
+  Coverage is 1,121/1,436 main PCs and 658/1,136 sub PCs. Main selection and
+  4,357,192 supplied main phases at 4,507 PCs still prevent CPU closure;
+  the other three acceptance rows also remain open.

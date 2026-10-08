@@ -7,8 +7,8 @@
 // Register-level 315-5250 model, derived from MAME's BSD-3-Clause
 // segaic16_m.cpp (Aaron Giles). Offsets are words, masks select active bits.
 // The host supplies EXCK edges, and consumes the IRQ/NMI line callbacks.
-// Sound writes take effect at this call boundary; CPU scheduling belongs
-// to the host, not this chip. The Z80 read acknowledges NMI, not the 68K.
+// Bounded callers deliver sound writes immediately; a scheduled host can
+// queue them through schedule_sound. The Z80 read acknowledges NMI, not the 68K.
 class CompareTimer5250
 {
 public:
@@ -22,6 +22,14 @@ public:
 
     std::function<void(bool)> irq_line, nmi_line;
     std::function<void(uint8_t)> sound_command;
+    // A scheduled host queues MAME's synchronize(write_to_sound) at the
+    // CPU transaction clock, then calls deliver_sound at the global frontier.
+    std::function<void(uint8_t)> schedule_sound;
+    void deliver_sound(uint8_t data) {
+        s.regs[11]=data;s.nmi=true;
+        if(sound_command)sound_command(data);
+        if(nmi_line)nmi_line(true);
+    }
 
     const State& state() const { return s; }
     void load(const State& value) { s = value; }
@@ -60,10 +68,8 @@ public:
             case 10: case 14: merge(10, data, mask); break;
             // MAME sends data & 0xff even on a high-byte-only write.
             case 11: case 15:
-                s.regs[11] = static_cast<uint8_t>(data);
-                s.nmi = true;
-                if (sound_command) sound_command(static_cast<uint8_t>(data));
-                if (nmi_line) nmi_line(true);
+                if(schedule_sound)schedule_sound(static_cast<uint8_t>(data));
+                else deliver_sound(static_cast<uint8_t>(data));
                 break;
         }
     }

@@ -422,7 +422,7 @@ for pc in (0x6844,0x14ee8):
                   'caller_host_directed', ['src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp',*common]))
 
 # Joint grants must reject altered private CPU debt and publication producers.
-publication_dependencies=['src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp','src/main/engine/osubpublication.cpp',*common]
+publication_dependencies=['src/main/hwvideo/hwsprites.cpp','src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp','src/main/engine/osubpublication.cpp','src/main/engine/osubprogress.cpp','src/main/engine/osubirq.cpp',*common]
 for name,source,old,new in [
     ('pubscheduledebt','src/main/hwmath/xboard_cpu_continuation.hpp','if(bus_end>=target){local=target;return local;}','if(bus_end>=target){local=bus_end;return local;}'),
     ('pubschedulerearm','src/main/engine/omainirqservice.cpp','constexpr uint16_t armed=1;','constexpr uint16_t armed=2;'),
@@ -431,7 +431,91 @@ for name,source,old,new in [
     cases.append((name,source,old,new,'tests/oracle_publication_schedule.cpp','publication_schedule',
                   [p for p in publication_dependencies if p!=source]))
 
+# Reused sprite/road ports must also reject changed operands in joint grants.
+for name,old,new in [
+    ('pubschedulesprite', 'case 0x66a: {\n    const uint32_t operand=2;', 'case 0x66a: {\n    const uint32_t operand=4;'),
+    ('pubscheduleroad', 'case 0xf0a: {\n    const uint32_t operand=6;', 'case 0xf0a: {\n    const uint32_t operand=5;'),
+]:
+    cases.append((name,'src/main/engine/osubprogress.inc',old,new,
+                  'tests/oracle_publication_schedule.cpp','publication_schedule',publication_dependencies))
+
+# Joint sub IRQ and dispatcher state must come from their native ports.
+for name,source,old,new in [
+    ('pubscheduleirqvpa','src/main/engine/osubirq.cpp','idle(wait+9);','idle(wait+8);'),
+    ('pubscheduleirqwait','src/main/hwmath/xboard_cpu_continuation.hpp','bus_end=ns;clock(ns);','clock(ns);'),
+    ('pubscheduleirqsave','src/main/engine/osubirq.cpp','write(sp-2,s.a[i]);','write(sp-2,s.a[i]+1);'),
+    ('pubscheduleirqdelay','src/main/engine/osubirq.cpp','word(s.d[0],0x39);','word(s.d[0],0x38);'),
+    ('pubscheduleirqrestore','src/main/engine/osubirq.cpp','sp=s.usp;read(next);','sp=s.usp+2;read(next);'),
+    ('pubscheduledispatch','src/main/engine/omainirqservice.cpp','case 0x145a0:r.a[5]+=64;','case 0x145a0:r.a[5]+=66;'),
+]:
+    cases.append((name,source,old,new,'tests/oracle_publication_schedule.cpp','publication_schedule',
+                  [p for p in publication_dependencies if p!=source]))
+
 # Object initializer checks now execute through the full production router.
+for name,source,old,new in [
+    ('jointmainstride','src/main/engine/omainirqservice.cpp','if(pc!=0xb648)r.a[0]+=4;','if(pc!=0xb648)r.a[0]+=6;'),
+    ('jointmainflight','src/main/engine/omainflightschedule.inc','branch(!(sr&4),0x9c2a,4);','branch(sr&4,0x9c2a,4);'),
+    ('jointmainirqsave','src/main/engine/omainirqwrapperschedule.inc','read16(0x1468a);\n    write16(sp-2,r.a[6]);','read16(0x1468a);\n    write16(sp-2,r.a[6]+1);'),
+    ('jointmainirqdelay','src/main/engine/omainirqwrapperschedule.inc','read16(0x14730);word(r.d[0],old-1);','read16(0x14730);word(r.d[0],old-2);'),
+    ('jointmainirqabort','src/main/hwmath/xboard_cpu_continuation.hpp','if(aborted&&bus_end>abort_step_start)','if(false&&aborted&&bus_end>abort_step_start)'),
+    ('jointmainphysical','src/main/hwmath/xboard_irq_lines.hpp','if(lines[i].asserted)return (i+1)*2;','if(lines[i].asserted)return (i+1)*2==2?0:(i+1)*2;'),
+    ('jointmainproducer','src/main/engine/omainproducerschedule.inc','case 0x148b8: {\n    const uint32_t operand=1;','case 0x148b8: {\n    const uint32_t operand=2;'),
+    ('jointmaincallee','src/main/engine/omainirqjointcalleeschedule.inc','case 0x14a86: {','case 0x14a86: { idle(2);'),
+    ('jointmainremaining','src/main/engine/omainremainingschedule.inc','case 0x7a6e: {','case 0x7a6e: { idle(2);'),
+]:
+    cases.append((name,source,old,new,'tests/oracle_publication_schedule.cpp','joint_main_progress',
+                  [p for p in publication_dependencies if p!=source]))
+
+# Full main exception phases must fail independently of the supplied IPL.
+for name,old,new in [
+    ('jointmainentrywait','if(acknowledge)acknowledge(ns+(sync-cycles)*CYCLE_NS);','if(acknowledge)acknowledge(ns+(sync-cycles+1)*CYCLE_NS);'),
+    ('jointmainentryprefetch','if(program){read16(entry);idle(2);','if(program){read16(entry);idle(4);'),
+    ('jointmainrterestore','const auto sp=sr&0x2000?s.sp+6:usp;','const auto sp=sr&0x2000?s.sp+8:usp+2;'),
+    ('jointmainrteprefetch','read16(target+2);clock(ns);','read16(target+4);clock(ns);'),
+]:
+    cases.append((name,'src/main/engine/omainirqservice.cpp',old,new,
+                  'tests/oracle_publication_schedule.cpp','joint_main_progress',
+                  [p for p in publication_dependencies if p!='src/main/engine/omainirqservice.cpp']))
+
+cases.append(('subresetwait','src/main/engine/osubirq.cpp','s.ns+=8*80;s.sr=', 's.ns+=6*80;s.sr=',
+              'tests/oracle_subreset.cpp','subreset',common+['src/main/engine/osubprogress.cpp','src/main/engine/osubpublication.cpp']))
+cases.append(('jointmaintrapframe','src/main/engine/omainirqservice.cpp',
+              'write16(sp+4,ret);write16(sp,s.sr);write16(sp+2,ret>>16);',
+              'write16(sp+4,ret);write16(sp,s.sr^1);write16(sp+2,ret>>16);',
+              'tests/oracle_publication_schedule.cpp','joint_reset_focused',
+              [p for p in publication_dependencies if p!='src/main/engine/omainirqservice.cpp']))
+cases.append(('jointsubstartuptrap','src/main/engine/osubirq.cpp',
+              'write(sp-2,0x41c);write(sp-6,saved);','write(sp-2,0x41c);write(sp-6,saved^1);',
+              'tests/oracle_publication_schedule.cpp','joint_reset_focused',
+              [p for p in publication_dependencies if p!='src/main/engine/osubirq.cpp']))
+cases.append(('jointvideobank','src/main/engine/mainbus.cpp',
+              'if (endpoints.sprite_draw) endpoints.sprite_draw();',
+              'm.sprite_buffer[2]^=1; if (endpoints.sprite_draw) endpoints.sprite_draw();',
+              'tests/oracle_publication_schedule.cpp','joint_reset_focused',
+              [p for p in publication_dependencies if p!='src/main/engine/mainbus.cpp']))
+cases.append(('jointsoundlatch','src/main/hwmath/compare_timer.hpp',
+              's.regs[11]=data;s.nmi=true;','s.regs[11]=data^1;s.nmi=true;',
+              'tests/oracle_publication_schedule.cpp','joint_reset_focused',publication_dependencies))
+cases.append(('jointvideowriteback','src/main/hwvideo/hwsprites.cpp',
+              'data[7]=read_addr;','data[7]=read_addr+1;',
+              'tests/oracle_publication_schedule.cpp','joint_reset_focused',
+              [p for p in publication_dependencies if p!='src/main/hwvideo/hwsprites.cpp']))
+cases.append(('jointvideotextpartial','tests/oracle_publication_schedule.cpp',
+              'if(w&&a>=0xd0000&&a<0xe0000&&(a&0xfff)>=0xe80)',
+              'if(false&&w&&a>=0xd0000&&a<0xe0000&&(a&0xfff)>=0xe80)',
+              'tests/oracle_publication_schedule.cpp','joint_reset_focused',publication_dependencies))
+cases.append(('jointmainadchead','tests/oracle_publication_schedule.cpp',
+              'XBoardBusArbiter::Time(main_board.adc.deadline())*1000000000ULL<device_deadline',
+              'main_board.adc.deadline()<main_board.next_scanline()',
+              'tests/oracle_publication_schedule.cpp','joint_reset_focused',publication_dependencies))
+for name,source,old,new in [
+    ('jointresetcallback','src/main/engine/omainirqservice.cpp','idle(4);reset(ns);idle(124);reset(ns);','idle(4);reset(ns);idle(122);reset(ns);'),
+    ('jointresetregister','src/main/engine/osubprogress.cpp','advance(ns);if(checkpoint)checkpoint(s);','if(checkpoint)checkpoint(s);advance(ns);'),
+    ('jointresetclock','tests/oracle_publication_schedule.cpp','substate.cycle_bias=reset_ns/80;','substate.cycle_bias=reset_ns/80-1;'),
+]:
+    cases.append((name,source,old,new,'tests/oracle_publication_schedule.cpp','joint_reset_focused',
+                  [p for p in publication_dependencies if p!=source]))
+
 cases = [(name,source,old,new,test,capture,handler_dependencies(source) if test=="tests/oracle_objects.cpp" else dependencies)
          for name,source,old,new,test,capture,dependencies in cases]
 
@@ -454,11 +538,14 @@ for name, source, old, new, test, capture, dependencies in cases:
         (include / Path(source).name).write_text(text.replace(old, new))
         command = ["-I" + str(include.parent), "-Isrc/main", test, *dependencies]
     else:
-        command = ["-Isrc/main", test, str(variant), *dependencies]
+        command = ["-Isrc/main", *([] if source==test else [test]), str(variant), *dependencies]
     subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2", "-pthread",
                     *command, "-o", str(binary)], check=True)
     with log_path.open("w") as log:
         args = [str(binary), "build/oracle/" + capture + (".bin.visibility" if name.startswith("visibility") else ".bin")]
+        if test == 'tests/oracle_publication_schedule.cpp': args += ['build/oracle/' + capture + '.txt']
+        if capture=='joint_main_progress': args += ['--physical-main','--require-main-irq']
+        if capture=='joint_reset_focused': args += ['--reset-window','--physical-main','--require-sub-continuity','--require-video-frontiers','--require-sound-handshake']
         if name.startswith("hostreturn"): args += ["--require-host", "--require-closed"]
         if capture == "caller_successors_directed": args += ["--require-taken"]
         if name.startswith("irq4return"): args += ["build/oracle/" + capture + ".bin.returns"]
@@ -471,7 +558,7 @@ for name, source, old, new, test, capture, dependencies in cases:
     # before aggregate summaries are printed. Keep the explicit failed bus/
     # state assertions as differential evidence, never a bare generic error.
     assertion_differences = [line for line in log_path.read_text().splitlines()
-                            if line.startswith(("Native phase cpu=", "Native grant completion ", "Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch", "Linked IRQ4 bus pc=", "Linked IRQ4 return mismatch", "IRQ4 bus pc=", "Leaf "))]
+                            if line.startswith(("Video update phase ", "Video bank phase ", "Sound latch phase ", "Main selection pc=", "Main RESET callback ns=", "Sub banks pc=", "RESET phase ns=", "Native phase cpu=", "Out-of-grant phase CPU=", "Sub RTE restore pc=", "Retained state CPU=", "Native grant completion ", "Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch", "Linked IRQ4 bus pc=", "Linked IRQ4 return mismatch", "IRQ4 bus pc=", "Leaf "))]
     schedule_errors = [line for line in log_path.read_text().splitlines()
                        if any(message in line for message in [
                            "unrecorded IRQ inside sampling gap", "missing scheduled poll",

@@ -5175,3 +5175,803 @@ oracles retain their documented read-set race exclusions and have zero
 differences; all new accepted comparisons have zero skips. CMake registrations
 are declared but unexecuted because CMake is not installed. No ROM images,
 tables or captures are tracked.
+
+
+### Joint sprite/road callee progress (2026-10-08)
+
+`oracle_publication_schedule` now runs `OSubProgress` for the existing bounded
+sprite/road graphs inside the same arbiter and shared MainBus/SubBus memory
+used by the publication callers. These are the already translated literal
+instructions, not new implementations or transaction replay. Their operands
+come from shared RAM and math/road endpoints at the granted phase. Supplied
+sub writes now pass through the bus with their actual byte masks, and supplied
+road-control reads retain their swap side effect; expected read bytes never
+seed operands. Native Stage 1 remains unchanged.
+
+The joint harness previously started a successor as soon as the worker had
+finished. Sprite/road register-only arithmetic and shifts can finish with
+private internal-tail clocks still unpaid by the current grant. The harness
+now keeps that instruction active until the continuation's public clock has
+paid the complete computed instruction duration. Its C++ locals, bus overrun
+and RMW operands remain retained across grants. The existing ROM-free
+continuation regression independently checks completed-but-unpaid tail debt.
+
+Capture format `AB2ARB05` adds an explicit instruction start time. The sub
+callee snapshots use read-only debugger breakpoints on the manifest PCs and
+record registers before instruction effects; the first bus and the manifest's
+literal internal-clock/branch offset determine start time. Only the sub CPU
+uses debugger symbols; main publication snapshots continue reading the
+executing main device directly. Each sub snapshot is emitted once per observed
+instruction cycle counter. Linked snapshots are assertions of the retained
+computed state, and cannot reset a chain on a predicted mismatch. IRQ entry
+still makes an explicit supplied cut, including supervisor bus phases that
+retain a user instruction CURPC. Regenerate the old-format joint capture with
+`make oracle-capture-publication-schedule` before running the new replay.
+
+The fresh natural 120-frame corpus has the same initial RAM and **all
+201,927 captured grant records and 8,319,935 raw phases** as the previous
+capture, after excluding the added snapshot fields. The complete scheduler
+trace is byte-for-byte unchanged. Thus the debugger snapshots do not change
+the observed bus ordering or grant schedule.
+
+| Joint check | Identical / captured | Skipped |
+|---|---:|---:|
+| Grant groups | 239,177 / 239,177 | 0 |
+| Shared reads | 1,271,730 / 1,271,730 | 0 |
+| Native instruction executions | 2,420,931 / 2,420,931 | 0 |
+| Native ordered phases | 6,110,061 / 6,110,061 | 0 |
+| Retained instruction contexts | 2,420,584 / 2,420,584 | 0 |
+| Wholly bounded CPU grant completions | 242,205 / 242,205 | 0 |
+
+The replay now computes **102,479 shared writes**, up from 327. The remaining
+**39,817 writes** are explicitly supplied producers; **347 entry contexts**
+remain inputs, down from 435. There are 242,517 grants resuming an active
+instruction, including grants paying private debt without another bus. All
+620,495 CPU grants and 496 quantum requests match; the 37 shared reads after
+a main write with a later CPU-local timestamp still match. No native
+continuation remains parked at this accepted capture stop.
+
+**Coverage and limits:** natural joint execution covers **631/1,136**
+sprite/road manifest PCs. The replay requires the road wrapper, initial road
+setup, sprite entry, bank/rotation graph and raster-writer representative PCs;
+it reports every unexercised PC and taken/untaken branch counts. The other
+505 PCs and any zero-count branch directions are not verified jointly. Of
+93 exercised branch PCs, 15 are unconditional; 39 of the 78 conditional/DBF
+PCs have only one direction in this natural corpus.
+Independent directed sprite/road checks still cover all 1,136 PCs and their
+previously documented limits; they do not establish joint scheduling of
+those paths. Main missed-count `$1486A` and optional sub BSR `$43E` remain
+unexercised jointly. End-of-graph register states without a bounded successor
+remain outside the retained-context assertions. IRQ entry/service/RTE and
+physical selection, main caller/producer progress, ADC/button cadence, sound
+CPU, reset/suspend, timer deadlines, boost request times and renderer ownership
+remain supplied. This extends bounded joint scheduling; it does not establish
+independent paired RGB/sound acceptance or complete Phase 3d.
+
+Five mutations reject actual computed differences: exposed private bus debt
+rejects grant completion by 160 ns; main re-arm `1 -> 2` and sub release
+`$200 -> $400` reject shared writes; sprite `$66A` address increment `2 -> 4`
+rejects retained A2 at `$66C`; road `$F0A` subtract operand `6 -> 5` rejects
+retained D0 at `$F0C`. Temporary variants and logs stay under ignored
+`build/oracle/`; production port constants remain unchanged. An exploratory
+sprite comparison threshold `$1E -> $1D` did not distinguish this natural
+corpus and is not sensitivity evidence; the accepted sprite mutation changes
+the actual address increment instead.
+
+```bash
+make oracle-capture-publication-schedule oracle-publication-schedule
+python3 tools/oracle/mutation_check.py pubscheduledebt pubschedulerearm pubschedulerelease pubschedulesprite pubscheduleroad
+```
+
+Next join the sub IRQ entry/service/RTE and retained resumptions, and extend
+main caller/producer execution under these same grants. Keep device and
+renderer/sound frontiers explicit until their producers are verified.
+
+
+Validation: `make test`, `make verify-stage1`, the full `make -j4 oracle-test`
+suite, the final strengthened `make oracle-publication-schedule`, all five
+listed mutation checks, game build, a 180-frame dummy SDL video/audio launch
+and `git diff --check` pass. The joint comparisons have zero skips. Existing
+standalone oracles retain their documented read-set race exclusions and have
+zero differences. CMake is unavailable here; its updated source registration
+has not been executed. ROMs, captures, mutation variants and their logs remain
+ignored; no ROM data or captures are tracked.
+
+## Joint sub IRQ entry/service/return and main dispatcher progress
+
+The next natural joint checkpoint extends the publication/sprite/road replay
+through sub IRQ entry, all thirteen service PCs and RTE, and through the twelve
+main dispatcher PCs `$1458A..$145B8`. The interrupted sub state stays retained
+through the exception and is checked after RTE, including PC, SR, D/A registers,
+USP and SSP. Accepted IRQ entries are computed from that state, never reseeded
+from their observed snapshots.
+
+Capture format `AB2ARB07` records program and CPU-space phases separately and
+includes both stack banks and the E-clock bias. The isolated MAME probe now
+observes each device's registers before instruction effects using a read-only
+saved snapshot array in its copied `m68000.cpp`. It needs no debugger hooks.
+The installed MAME sources, objects and binary are unchanged. Regenerate older
+captures with `make oracle-capture-publication-schedule`.
+
+Sub IRQ selection samples the physical VBLANK line at the computed arbiter
+global checkpoint, after delivering timers due at that checkpoint. Entry uses
+the retained absolute CPU clock and E-clock bias. The VPA wait parks at the
+computed ready time before observing the real CPU-space autovector read at
+`$FFFFF8` (value `$001C`), then pays its five bus clocks and the remaining
+internal clocks. It cannot expose the acknowledgement before its grant. The
+ordinary continuation still retains indivisible bus overrun and private tail
+debt until the successor can begin.
+
+The initial capture boundary lies inside an ISR; that partial service remains
+an explicit supplied frontier. Every subsequent accepted IRQ entry, service
+and return is native. Capture stops between whole grant groups after the final
+RTE and a resumed user instruction have completed. One final user continuation
+is parked beyond the accepted final grant; no ISR remains active at the stop.
+
+| Joint check | Identical / captured | Skipped |
+|---|---:|---:|
+| Grant groups | 239,177 / 239,177 | 0 |
+| CPU grants | 620,495 / 620,495 | 0 |
+| Shared reads | 1,271,764 / 1,271,764 | 0 |
+| Native instruction/IRQ records | 2,491,840 / 2,491,840 | 0 |
+| Native ordered phases | 6,309,809 / 6,309,809 | 0 |
+| Retained contexts | 2,487,209 / 2,487,209 | 0 |
+| Wholly bounded grant completions | 268,316 / 268,316 | 0 |
+| Sub IRQ entries / VPA reads / RTE restorations | 88 / 88 each | 0 |
+
+There are 8,320,117 total observed phases, including 88 CPU-space reads;
+158,185 native writes, including **105,394 computed shared writes**; and
+**36,902 supplied shared writes**. All 496 quantum requests agree. There are
+269,405 grants resuming an active instruction and 1,761,745 computed sub IRQ
+selection checkpoints. The 37 shared reads following a later-local-time main
+write still agree. The complete scheduler trace remains byte-for-byte identical
+to the preceding checkpoint; initial RAM and its 8,319,935 program phases are
+unchanged prefixes. The new stop adds 94 program phases.
+
+Supplied entry contexts are now **4,631: main 4,630, sub 1**. The increased main
+count exposes returns from unported dispatcher handlers (4,401 active handler
+calls) as explicit frontiers. The sub count falls to one initial context;
+sub IRQ entry no longer cuts the retained chain. Main IRQ entry/service/RTE
+and unported main handlers remain supplied.
+
+**Coverage and limits:** all thirteen sub ISR PCs execute. `$574`, `$57C` and
+`$58A` cover both directions (78/10, 9/1 and 5,016/88 respectively). The mutex
+busy branch `$56E` covers only the non-busy direction (0/88). Boot `$420/$428`,
+arbitrary interrupt masks/countdown endpoints, nested exceptions and immediate
+post-RTE interrupt selection are not established by this natural joint corpus.
+All twelve main dispatcher PCs execute; `$145A8` covers inactive/active paths
+(6,775/4,401), `$145B6` covers loop/exit (11,132/44), and `$1485C` covers both
+directions (332,398/44). Main missed-count `$1486A` and optional sub BSR `$43E`
+remain absent. Sprite/road coverage stays 631/1,136 PCs: the other 505 PCs and
+previously absent branch directions retain the preceding checkpoint's limits.
+Directed standalone coverage does not establish joint execution of those paths.
+
+All eleven mutation checks reject computed differences. The preceding five
+debt/re-arm/release/sprite/road checks remain effective. Six additions change
+the saved A-register value, busy-delay D0 constant, restored user SP, dispatcher
+A5 stride, VPA internal clock count and VPA wait parking. They fail respectively
+on a stack phase, retained D0, RTE SP, retained A5, a stack phase shifted by
+80 ns and an acknowledgement outside its grant. Variants and logs remain
+under ignored `build/oracle/`; production constants are unchanged.
+
+```bash
+make oracle-capture-publication-schedule oracle-publication-schedule
+python3 tools/oracle/mutation_check.py pubscheduledebt pubschedulerearm pubschedulerelease pubschedulesprite pubscheduleroad pubscheduleirqsave pubscheduleirqdelay pubscheduleirqrestore pubscheduledispatch pubscheduleirqvpa pubscheduleirqwait
+```
+
+This is bounded joint scheduling acceptance. Main IRQ/caller producers,
+ADC/button cadence, sound CPU, reset/suspend, timer deadlines, boost request
+times and renderer ownership remain external frontiers. The checkpoint does
+not wire the native graph into Stage 1 or establish independent paired
+RGB/sound or whole-host acceptance. Next join main IRQ entry/service/RTE and
+its caller/producer progress under these same grants.
+
+Validation: `make test`, `make verify-stage1`, the full `make -j4 oracle-test`
+suite, the strengthened `make oracle-publication-schedule`, all eleven listed
+mutations, game build, a 180-frame dummy SDL video/audio launch and
+`git diff --check` pass. Joint comparisons have zero differences and zero
+skips; standalone suites retain their documented read-set race exclusions.
+CMake is unavailable here, so its updated source registration was not executed.
+ROMs, captures, probe copies and mutation artifacts remain ignored.
+
+## Expanded joint main callers and IRQ RAM wrappers
+
+The joint replay now admits the existing literal main caller graphs, rather
+than only the dispatcher and publication wait. `generate_joint_main_manifest.py`
+derives capture/replay membership from checked-in case labels and rejects a
+stale manifest; it does not decode runtime opcodes or introduce behavior.
+`generate_input_schedule.py --graph irqwrapper` additionally translates 103
+instructions from `$1461C..$147C6` and `$B7F8..$B840`, excluding the named
+device/exception frontiers below. MOVEM retains the reversed low/high stack
+write order, restore dummy read and prefetches. The predecrement pointer swap
+stores low first; the memory-to-memory pointer swap advances its source before
+resolving its aliased destination. Flags and DBF endpoints remain literal.
+
+Format `AB2ARB08` seeds all MainBus RAM and the main/sub multiply/divide
+registers once at the initial boundary. Subsequent unported main math writes
+update those same devices; native instructions compare their actual reads.
+The `.inputs` sidecar records physical button-port frames independently of
+CPU reads. These observations are allowed physical inputs, not computed ADC
+cadence or ownership. The preceding `AB2ARB07` checkpoint remains supported.
+Scheduler-prefix, initial work/shared RAM and **all 8,320,117 prior raw phases**
+are unchanged in the new observation stream. Instrumentation adds no bus
+transactions or changes to grant order.
+
+The accepted fresh-NVRAM **120-frame corpus is attract mode**: `gameplay.lua`
+delivers coin at frame 360 and start at 420. It exercises reused gameplay
+routines, but its success is not live player/weapon whole-host acceptance.
+
+| Joint check | Identical / captured | Skipped |
+|---|---:|---:|
+| Grant groups | 239,177 / 239,177 | 0 |
+| CPU grants | 620,495 / 620,495 | 0 |
+| Shared reads | 1,271,764 / 1,271,764 | 0 |
+| Native instruction/IRQ records | 3,045,337 / 3,045,337 | 0 |
+| Native ordered phases | 7,960,655 / 7,960,655 | 0 |
+| Retained contexts | 3,042,113 / 3,042,113 | 0 |
+| Wholly bounded grant completions | 356,913 / 356,913 | 0 |
+
+The replay computes **141,627 shared writes**, leaving **669 supplied**, and
+291,594 native writes overall. There are 359,353 grants resuming an active
+instruction. All 496 quantum requests agree and the 37 later-local-time main
+write/shared-read cases still agree. Sub IRQ closure remains 88 retained
+entries, 88 real VPA reads and 88 exact RTE restorations.
+
+Coverage is **679/1,429 main PCs**, including **92/103** added IRQ RAM-wrapper
+PCs. The harness requires the save/restore, ADC-result RAM store, both IRQ4
+logic/display branches and both busy-delay DBF outcomes. It reports all
+unexercised main PCs and wrapper branch directions. The other 750 main PCs,
+eleven wrapper PCs, zero-count directions and earlier 505 missing joint sub
+PCs remain outside joint coverage. The initial partial sub ISR is supplied.
+Main entry contexts are 3,223, sub contexts one. Compared with the initial
+caller expansion's 786 main contexts, the extra wrapper execution exposes
+more individual unported callee returns as boundaries; it does not silently
+reseed on predicted mismatches. A census now reports every supplied PC and
+its phase/write counts: 359,416 main phases at 1,236 PCs, including 78,188
+writes; 46 sub phases at three initial ISR PCs, with no sub writes.
+
+**Device and exception frontiers:** main IRQ entry and RTE, timer
+acknowledgements `$1461C/$1466C`, ADC read/mux/strobe
+`$14626/$14654/$1465A`, output callbacks `$1471A/$14766`, sprite draws
+`$14744/$14790`, and synchronized sound-latch write `$B81E` remain external.
+They cannot be accepted just because their data values match. Attempting to
+join the timer acknowledge or mux write without its hardware owner exposed
+an early grant end: the CPU reports fewer clocks while retaining private
+instruction debt. In the first acknowledge experiment, grant 33,292 should
+end at 538,949,840 ns rather than 538,950,080 ns. These failing experiments
+are not acceptance evidence. The final wrapper membership excludes these
+instructions until synchronized callbacks and aborts are independently modeled.
+The remaining IRQ callees, main producers, deadline/boost times, sound CPU
+execution and sprite/road/compositor feedback also remain external.
+
+**Longer-run rejection:** the expanded 600-frame observation captures
+1,309,114 nonempty grant groups and 53,446,773 main/sub phases, but replay
+fails at grant 951,424. The retained sub `$67A` ADDA is interrupted by main
+`$14840` RESET. MAME reads reset vector address zero at 7,094,206,800 ns while
+the continuation incorrectly proceeds to its `$680` prefetch. MAME's
+`segaxbd_state::m68k_reset_callback` pulses sub RESET; `reset_df` calls that
+callback for both RESET assertion and release. The sub subsequently executes
+the real reset-vector/boot sequence. This boundary needs a computed main
+RESET producer, cancellation of the interrupted continuation and native sub
+reset/boot ownership. Do not skip it, synthesize a resumption or present the
+600-frame experiment as passing. This supplies concrete evidence for the
+still-open device/reset blocker, rather than extending an attract-mode claim
+to live gameplay.
+
+Four new mutations reject actual differences: publication A0 stride `4 -> 6`
+fails retained A0; inverted `$98C6` flight branch fails its program phase;
+IRQ4 saved A6 low word `+1` fails a stack phase; `$14730` DBF decrement
+`1 -> 2` fails retained D0. The preceding eleven joint mutations remain
+separate evidence for the earlier checkpoint. No production constants were
+changed by these temporary variants.
+
+```bash
+python3 tools/build_rom_image.py maincpu build/oracle/main_joint_image.bin
+python3 tools/generate_input_schedule.py build/oracle/main_joint_image.bin --graph irqwrapper --check
+python3 tools/generate_joint_main_manifest.py --check
+make oracle-capture-joint-main-progress oracle-joint-main-progress
+python3 tools/oracle/mutation_check.py jointmainstride jointmainflight jointmainirqsave jointmainirqdelay
+# This longer joint experiment currently FAILS at RESET; preserve the failure.
+make oracle-capture-joint-main-progress-full oracle-joint-main-progress-full
+```
+
+All four whole-host requirements remain open: full joint main IRQ/resumption;
+remaining main producers and joint sub coverage; physical ADC/button cadence,
+synchronized device yields/deadlines/reset/sound; and video/compositor
+ownership. The next corrective work is native hardware synchronization and
+RESET, then main entry/RTE under those same grants. This checkpoint does not
+wire the ports into native Stage 1 or complete Phase 3d.
+
+Validation: the full `make -j2 test verify-stage1 oracle-test` run passes,
+including the new short joint target. The final stricter replay and freshly
+regenerated canonical corpus pass with the same counts above; its complete
+scheduler trace is byte-identical and every prior raw phase agrees. All four
+new mutations, all six caller/wrapper generation checks, joint membership
+check, game build, 180-frame dummy SDL video/audio launch and
+`git diff --check` pass. Standalone tests retain documented race exclusions.
+The separate 600-frame joint experiment fails at RESET as described above;
+it is not part of the passing short acceptance claim. CMake is unavailable,
+so its source/test registration has not been executed. ROMs, images, captures,
+probe copies and mutation artifacts remain ignored; no commit was made.
+
+## Synchronized timer acknowledges and natural RESET continuation
+
+The retained CPU adapter now distinguishes two MAME operations. A device
+synchronization steals the remaining public grant at its callback clock,
+while retaining the completed microcode step's private bus/internal debt.
+Hardware RESET cancels the parked instruction and clears that debt. These
+follow `device_execute_interface::abort_timeslice` and
+`m68000_device::device_reset`; regression checks cover a retained RMW,
+interruptible VPA wait, an abort inside RESET's internal loop, and reuse after
+cancellation. The initial checkpoint of an uninterrupted internal step must
+still execute its bus before returning the aborted grant.
+
+Main `$1461C/$1466C` timer acknowledgements now execute jointly. The native
+315-5250 callback models the synchronized input-line request even when its
+IRQ line was already clear. A fresh 120-frame attract capture passes
+**239,177/239,177 grant groups, 7,962,095/7,962,095 native phases and
+358,652/358,652 bounded grant completions**, zero skips. The 360 added
+acknowledge instructions and their 1,440 phases close the previously observed
+240 ns early-return discrepancy. Coverage is 94/105 IRQ-wrapper PCs and
+681/1,432 main PCs (the newly admitted RESET PC is absent in this short
+corpus). Disabling the early grant abort causes an out-of-grant phase at
+`$1461C`; the mutation is rejected.
+
+Main `$14840` RESET now ports its four initial clocks, assertion callback,
+31 four-clock internal loop iterations, release callback and program
+prefetch, with supervisor execution explicitly required (the natural main entry
+has SR=$2100). RESET retains SR and selects the pending IRQ at rset5;
+main physical IPL ownership remains an explicit separate blocker. Both callbacks produce their own quantum requests; their times
+are assertions against MAME, rather than supplied producer times. The first
+callback schedules one input-line queue. The second appends ASSERT/CLEAR to
+that same queue before delivery. MAME's `interface_post_reset` resets the
+queue during the first CLEAR, discarding its remaining entries: two callback
+requests cause one actual sub reset execution. `interface_pre_reset` also
+clears `total_cycles`, so native cancellation rephases the sub VPA E clock
+at the reset frontier.
+
+The sub reset state preserves D0..D7/A0..A6/USP, clears T, sets S and mask 7,
+then reads SSP/PC vectors and both target prefetches, with two clocks between
+them. `capture_subreset.lua` uses a read-only probe before reset microcode
+starts; it does not force RESET or set CPU state. Its natural 600-frame
+fixture passes **7/7 reset states and 42/42 ordered vector/prefetch phases**,
+zero skips. Changing the initial eight clocks to six is rejected.
+
+Joint sub ports expose their register state only when the corresponding
+microcode checkpoint actually executes. This matters at `$67A`: after its
+first prefetch the private bus debt can keep the next ADDA step from executing
+when RESET arrives. Exporting the next step's updated A2 before that debt is
+paid incorrectly preserves an extra `$10`; the joint mutation rejects it.
+The RESET observer and normal instruction observer remain separate, so no
+replacement entry snapshot can hide cancellation or retained-state errors.
+
+The focused frame-400..440 corpus crosses coin/start and the formerly failing
+RESET. It passes **991,666/991,666 scheduler groups, 3,762,891/3,762,891 raw
+bus phases, 1,160,234/1,160,234 native instruction/IRQ records and
+2,961,766/2,961,766 native phases**, zero skips. There are **146,533/146,533
+bounded grant completions**, two computed main callbacks, one native sub
+cancellation/reset sequence, and 40 retained sub IRQ services/returns. All
+3,762,891 raw phases also agree with the earlier full observation stream;
+adding reset probes changes no CPU transactions. Startup `$402..$41C` and
+TRAP #10 `$62E..$63E` remain supplied execution, producing two additional
+sub contexts. This window omits an earlier raster-entry PC, so
+`--reset-window` reports all missing PCs without imposing the attract
+corpus's raster-path census; `--require-reset` retains the full census.
+The capture additionally checks the old interrupt mask to distinguish boot
+PEA/TRAP stack writes from actual VBLANK entries after RESET.
+
+The joint reader now streams one captured grant group at a time, retaining
+its exact chronological phases and last-group completion rule. Full captures
+contain over fifty million phases; future expected groups no longer need to
+occupy gigabytes of RAM while the current group executes.
+
+Commands:
+
+```
+make oracle-capture-subreset oracle-subreset
+make oracle-capture-joint-reset-window oracle-joint-reset-window
+make oracle-capture-joint-main-progress-full oracle-joint-main-progress-full
+python3 tools/oracle/mutation_check.py jointmainirqabort subresetwait jointresetcallback jointresetregister jointresetclock
+```
+
+These closures do not establish whole-host acceptance. Main IRQ entry/RTE,
+unported producers and reset startup, ADC/mux/deadline ownership, sound CPU
+execution and video bank/compositor ownership still need joint closure.
+
+The fresh **600-frame live-gameplay** replay now passes its full census and
+`--require-reset`. This replaces the rejected long checkpoint; the original
+pre-reset observation and failure log remain ignored local evidence.
+
+| Full joint check | Identical / captured | Skipped |
+| --- | ---: | ---: |
+| Scheduler grant groups | 1,371,502 / 1,371,502 | 0 |
+| Ordered main/sub bus phases | 53,446,773 / 53,446,773 | 0 |
+| Shared reads | 7,665,892 / 7,665,892 | 0 |
+| Native instruction/IRQ records | 19,049,961 / 19,049,961 | 0 |
+| Native ordered phases | 49,054,764 / 49,054,764 | 0 |
+| Retained instruction contexts | 19,026,321 / 19,026,321 | 0 |
+| Wholly bounded grant completions | 2,257,946 / 2,257,946 | 0 |
+
+All 568 sub IRQ entries have retained caller state, real VPA acknowledges and
+exact RTE restorations. There is no active ISR at capture stop. Native main
+RESET produces two callbacks, one synchronized cancellation and one reset
+vector/prefetch sequence. The replay computes **1,190,140 shared writes**,
+with **4,437 still supplied**, and 2,264,396 native writes overall.
+
+Coverage grows to **1,118/1,432 main PCs**, **100/105 IRQ-wrapper PCs** and
+**658/1,136 sub sprite/road PCs**. The remaining 314 main manifest PCs, five
+wrapper PCs and 478 sub manifest PCs are not verified jointly by this
+corpus; branch-direction counts remain printed explicitly. Supplied
+execution remains substantial: **4,391,908 main phases at 4,677 PCs,
+881,539 writes**, and **101 sub phases at 20 PCs, 12 writes** (initial partial
+ISR and reset startup/TRAP). Main entry contexts are 23,637; sub contexts
+three. Those values prevent a whole-host acceptance claim even though the
+long natural RESET failure is now closed.
+
+Validation: `make test`, `make verify-stage1`, `make oracle-test`, the full
+joint replay, all five new hardware/RESET mutations, generated-manifest
+checks, game build and 180-frame dummy-SDL run pass. The CMake registrations
+are maintained but CMake is unavailable on this host. The final rset5 selection checkpoint is checked by rerunning the focused
+RESET window; physical main IPL is still supplied by the existing main
+caller boundary and is not claimed as native interrupt selection.
+
+
+### Joint main interrupt entry, RTE and caller resumption
+
+`OMainIrqService::enter_joint` now emits the complete exception transcript:
+PC-low write, a real CPU-space autovector acknowledge at the computed VPA
+frontier, saved SR/PC-high writes, vector reads and both handler prefetches.
+The ten-cycle E-clock origin is supplied once at the initial main context,
+retained thereafter and asserted against every later independent snapshot.
+The existing data-only service oracle retains its original entry interface.
+The acknowledge hook parks the native continuation until the E-clock edge
+and charges the actual five-clock CPU-space phase, preserving grant debt.
+
+`return_joint` ports `$1466A/$14672/$147C6/$147E6` literally: three frame
+reads, SR restoration with MAME's `$A71F` mask, active SSP/USP selection, return prefetch, the IPL
+selection checkpoint, and the second return prefetch. The joint harness
+retains both main stack banks, checks them at every linked instruction,
+and follows the computed return PC into the caller or next exception.
+These four return addresses are part of the shared generated membership
+(1,436 main instruction PCs), rather than capture-only exceptions.
+
+The isolated MAME probe saves a read-only exception snapshot before
+`state_interrupt` effects: interrupted registers/SR, both stack banks,
+return PC, selected level and interrupted bus PC. It does not change CPU
+state, clock counts or input lines. `AB2ARB09` adds explicit main IRQ entry
+kinds and captures main CPU-space reads. The strict Make/CMake joint tests
+require `--require-main-irq`, rejecting an older capture that cannot assert
+these phases; legacy v7/v8 reading remains available for comparison.
+
+The new natural 120-frame attract corpus passes **239,177/239,177 groups,
+8,320,565/8,320,565 raw phases, 3,046,593/3,046,593 native records,
+7,967,919/7,967,919 native ordered phases and 367,179/367,179 bounded grants**,
+zero differences/skips. Main levels 2/4/6 occur **357/88/3** times. All
+**448 entries, 448 VPA acknowledges and 448 RTEs** match; **432 entries and
+432 post-RTE resumptions** carry retained caller state, and all 448 RTEs
+start with retained service state. There are 2,382 supplied entry contexts
+(2,381 main and one initial sub context). Computed shared writes remain
+141,627 with 669 supplied; supplied main execution drops to 352,600 phases
+at 1,168 PCs. Reserved SR bits, trace/address-error exceptions and the startup
+`$147E6` return are absent in this short corpus. The raw scheduler groups and program-bus transcript are
+unchanged from the earlier corpus; the extra 448 raw phases are real main
+CPU-space reads. `$147E6` is absent in this attract window.
+
+Four deliberate mutations fail different assertions: shifting VPA by one
+clock, delaying the second handler prefetch by two clocks, restoring the
+wrong RTE stack, and reading return PC+4 instead of PC+2. Their diagnostics
+identify the mismatched phase or the retained caller state; no mutation is
+accepted merely because execution leaves the bounded graph.
+
+This closes exception microcode and selected return phases, **not physical
+main IRQ selection or the full main service graph**. Main selection still
+uses a supplied level; ordinary caller and RTE IPL polls remain zero until
+the compare timer, VBLANK delivery and input-line synchronization have a
+native owner. Unported service callees still cut continuity. ADC/mux and
+sound deadlines, remaining producers/sub paths, reset startup, sprite/road
+feedback and compositor ownership remain open. The Stage 1 host is unchanged.
+
+
+The fresh **600-frame live-gameplay** continuation also passes, including
+coin/start and natural main RESET. The short and full captures replace the
+canonical `joint_main_progress` files only after passing; the earlier
+accepted v8 baselines remain ignored as `*_before_main_irq`.
+
+| Full joint assertion | Result |
+| --- | --- |
+| Scheduler groups | 1,371,502 / 1,371,502 identical; zero skips |
+| Raw main/sub phases | 53,449,666 / 53,449,666 delivered in computed order |
+| Native instruction/IRQ records | 19,055,747 / 19,055,747 identical; zero skips |
+| Native ordered phases | 49,092,373 / 49,092,373 identical; zero skips |
+| Bounded grant completions | 2,312,354 / 2,312,354 identical; zero skips |
+| Shared reads | 7,665,892 / 7,665,892 identical; zero skips |
+| Main IRQ2/4/6 entries | 2,307 / 568 / 18 |
+| Main entry / VPA acknowledge / RTE | 2,893 / 2,893 / 2,893 matching records |
+| Main retained entry / retained RTE / retained resumption | 2,614 / 2,893 / 2,616 records |
+| Sub retained entry / VPA / exact RTE restoration | 568 / 568 / 568 |
+| Main RESET callback / synchronized sub cancellation / vectors | 2 / 1 / 1 |
+| Main instruction / IRQ RAM-wrapper coverage | 1,121 / 1,436; 100 / 105 |
+| Sub sprite/road instruction coverage | 658 / 1,136 |
+| Native / supplied shared writes | 1,190,140 / 4,437 |
+| Supplied main execution | 4,357,192 phases at 4,507 PCs; 872,860 writes |
+| Supplied sub execution | 101 phases at 20 PCs; 12 writes |
+| Retained / supplied contexts | 19,037,168 / 18,579 |
+
+The full raw stream adds exactly 2,893 main CPU-space acknowledges to the
+previous accepted program-bus stream. All scheduler group and CPU-grant
+counts remain unchanged. The entry/RTE addition moves 5,786 records and
+37,609 phases into native execution; shared producer counts are unchanged.
+`$147E6` is absent in both natural corpora, as are reserved-SR-bit and
+trace/address-error returns. The 315 unexercised main manifest PCs and
+478 sub sprite/road PCs remain unverified in this joint corpus; existing
+independent directed checks do not convert them into joint acceptance.
+Main services with unported callees retain explicit cuts. Individual
+entry/RTE counts do not claim that every entire service or following caller
+is native; the retained-entry/resumption and supplied-execution census
+show the actual limits.
+
+Validation: `make -j2 test verify-stage1 oracle-test`, strict short replay,
+strict full replay with `--require-reset --require-main-irq`, generated
+membership/opcode checks, four main entry/RTE mutations, game build and
+180-frame headless run pass. Existing oracle fixtures retain their documented
+race exclusions; the new joint checks have zero skips. CMake registrations
+are updated; CMake is unavailable here. ROM data and captures remain ignored.
+
+
+## Physical main selection and remaining producer/callee continuation
+
+The joint main stream now contains 7,786 address-labelled PCs. The added
+65 producer instructions cover `$B7C2/$B7D2` display-list copying,
+`$1487A..$148FA` release/initializer/time counters, `$1495C` button history
+and `$18902` byte-to-word tile copying. Another 2,287 instructions reproduce
+the existing IRQ callee graphs with full instruction/program phases; 3,988
+more main instructions come from the prior 600-frame supplied-execution
+census. `$138BA` TRAP #12 and `$14842` RTE now use computed exception stacks
+and vector/prefetch phases. Scalar PC inventory is checked in; ROM images
+and captures remain ignored. These cases execute in the oracle scheduler;
+native Stage 1 remains the game loop.
+
+`XBoardMainIrqLines` follows `segaxbd_state::update_main_irqs` and the
+per-line `device_input::set_state_synced` queue. Main compare-timer EXCK
+and VBLANK changes come from `XBoardTimeline`; acknowledged line changes
+are queued at the native CPU transaction clock and delivered at global
+scheduler frontiers. Later changes on an already pending line drain at its
+first synchronization deadline. Highest asserted line 2/4/6 is sampled at
+the instruction's actual IPL selection phase. Exception entry also samples
+IPL after its two internal clocks between handler prefetches, using the new
+handler SR mask, matching MAME's `state_interrupt_df` `mmrw3` checkpoint.
+A higher-priority arrival can therefore select another entry before the
+first handler instruction. That nested-entry edge is not exercised by the
+natural corpus and remains unverified. The ROM-free queue check
+covers queued deadlines, combinations and coalesced changes.
+
+The boot-port sidecar `AB2IRQ02` replays observed initialization writes and
+acknowledges before frame 32. It initializes the timer counter by real
+scanline clocks and boot register transactions, rather than a captured
+counter or expected IRQ level. `AB2PIN02` supplies independent frame
+observations of physical buttons and all eight analog lanes. ADC deadlines
+and results use `ADC0804`; mux/direction writes use `IOExpander`. Port-C
+sound-reset writes and 5250 sound writes synchronize/abort the main grant.
+A newly armed ADC timer aborts only when it becomes the global head timer.
+Other device timer deadlines remain supplied scheduler frontiers; using the
+next scanline alone is incorrect when an audio/device timer expires sooner.
+This computes the main CPU transaction stream; it does not close Z80 audio
+execution or renderer/compositor ownership.
+
+The fresh 120-frame checkpoint matches 3,160,862/3,160,862 instruction/IRQ
+records and 8,320,519/8,320,519 ordered phases, zero differences/skips.
+All 448 main entries, acknowledges, services, RTEs and resumptions remain
+connected to computed caller state; 1,399,027 native main IPL polls select
+all entries. There are zero supplied main phases/writes and exactly one
+initial main context. It covers 1,852/7,786 main PCs. Unexercised PCs are
+listed in the replay's `Unexercised joint main caller PCs` output and remain
+unverified in this corpus; branch directions and gameplay-only instructions
+require the full gameplay replay. Sub still has the initial partial ISR's
+46 phases at three PCs; sound scheduling and non-main timer owners remain
+explicit boundaries.
+
+`--require-main-closed` rejects any supplied main phases, later main context
+replacement or main IRQ without computed physical selection. Both Make and
+CMake short/full joint targets require it; the full target also requires
+natural RESET coverage. The fresh 600-frame live-gameplay corpus now passes:
+
+| Assertion | Full result |
+| --- | --- |
+| Instruction/IRQ records | 20,532,151/20,532,151 identical |
+| Ordered native phases | 53,449,565/53,449,565 identical |
+| CPU grant groups | 1,371,502/1,371,502 identical |
+| Bounded grant completions | 2,655,794/2,655,794 identical |
+| Native writes | 3,145,935 computed |
+| Main IRQ2/4/6 | 2,307/568/18 entries |
+| Main physical selection | All 2,893 entries, 9,012,714 native IPL polls |
+| Main service/ack/RTE/resumption | 2,893 each, all retained |
+| Main supplied execution | Zero phases, PCs or writes; one initial context |
+| Main startup/reset | One TRAP #12, two RESET callbacks, one RESET-handler RTE |
+| Sub cancellation/reset | One synchronized cancellation and vector/prefetch sequence |
+| Sub IRQ | 568 retained services/returns, 568 VPA acknowledges |
+| Shared reads | 7,665,892/7,665,892 identical, no expected-read seeds |
+| Shared writes | 1,194,565 computed, 12 supplied sub startup writes |
+| Main PC coverage | 5,628/7,786 PCs; IRQ wrappers 108/113 |
+| Sub PC coverage | 658/1,136 PCs |
+| Remaining supplied sub execution | 101 phases at 20 PCs, 12 writes, three initial/startup contexts |
+
+All rows have zero differences/skips. The other 2,158 main PCs and 478 sub
+PCs, and branch directions not observed in the natural corpus, remain
+unverified. The five unexercised IRQ-wrapper PCs are `$B836/$B83A/$B83E`,
+`$146D8` and `$14702`. The replay lists all unexercised PCs explicitly. DIVU zero-divisor/
+overflow exception paths are rejected rather than invented. Two native
+continuations are parked beyond the final accepted grant; their later
+completions are outside the corpus. Initial RAM/CPU state and boot-port
+initialization are supplied fixture boundaries. Other hardware deadlines,
+non-main boost request owners, sound execution and video/compositor
+ownership remain outside this main CPU closure.
+
+The focused frame-400..440 window matches 1,449,723 records and 3,762,992
+native phases, zero differences/skips. Its 645,905 native main IPL polls
+select all 204 main physical
+entries/services/returns, the TRAP/RESET/RTE path and 40 retained sub
+services. Two initial partial-instruction prefetch phases at `$14092` are
+supplied; there are no later main context replacements. Its 101 supplied
+sub phases are the same startup/initial boundary as the full corpus.
+`make oracle-capture-joint-reset-window oracle-joint-reset-window` regenerates
+and checks this window with physical main selection enabled.
+
+Validation: `make -j2 test verify-stage1 oracle-test`, the affected flight/
+companion/weapon/host caller checks, generated opcode/membership checks,
+strict short/full main closure replays, game build and 180-frame headless
+run pass. Nine mutations are rejected: physical main IPL, producer counter,
+IRQ callee timing, remaining producer timing, TRAP stack SR, ADC head-timer
+selection, RESET callback timing, cancellation register checkpoint and reset
+E-clock origin. The final entry-selection audit also rechecks two rejected
+mutations of VPA timing and the second handler prefetch. The ADC mutation specifically reproduces the late timer
+competition that a scanline-only deadline test missed. A first callee
+mutation at unexercised `$B840` was replaced by covered `$14A86`; the
+unexercised path remains unverified. CMake registrations are updated but
+CMake is unavailable here. Captures and ROM data remain ignored.
+
+## Sub startup, sound handshakes and renderer bank feedback
+
+This supersedes the supplied sub startup and video/sound boundaries in the
+preceding checkpoint only to the extent stated here. The joint harness now
+computes the 17 startup PCs `$402/$408/$40C/$40E/$414/$418/$41A/$41C`,
+`$42A/$42E` and `$62E/$632/$634/$636/$63A/$63C/$63E`. PEA, synthetic
+exception frame, RTE, TRAP #10, stack/register setup and byte/long clearing
+follow the ROM instructions and MAME's `m68000-sdf.cpp` bus/internal/selection
+phases. TRAP includes USP/SSP banking, stack word order, vector fetch and
+prefetch; CLR.L preserves the low-word-first write order. User-mode RTE
+privilege exceptions are rejected as unverified. No startup CPU context is
+replaced after the initial fixture. `--require-sub-continuity` requires one
+initial sub context and no later supplied phases; with `--require-reset`
+it also requires all 17 startup PCs. Short captures without RESET do not
+claim startup coverage.
+
+The full live-gameplay replay requires RESET, main closure, sub continuity,
+video frontiers and sound handshake. Its current results are:
+
+| Assertion | 600-frame result |
+| --- | --- |
+| Instruction/IRQ records | 20,532,168/20,532,168 identical |
+| Ordered native phases | 53,449,620/53,449,620 identical |
+| Bounded grant completions | 2,655,852/2,655,852 identical |
+| Native writes | 3,145,947 computed |
+| Main selection/service/ack/RTE/resumption | 2,893 each, all retained; 9,012,714 native IPL polls |
+| Sub service/return | 568 each; 11,518,883 native IPL polls |
+| Initial contexts | One per CPU, no later replacement |
+| Supplied main execution | Zero phases, PCs or writes |
+| Supplied sub execution | 46 initial partial ISR phases at `$58A/$58E/$592`, zero writes; zero later supplied phases |
+| Shared reads | 7,665,892/7,665,892 identical, zero expected-read seeds |
+| Shared writes | 1,194,577 computed, zero supplied |
+| Sub startup coverage | All 17 added PCs; generated sprite/road coverage remains 658/1,136 |
+| Video bank swaps | 854 computed: 570 sprite, 284 road |
+| Road controls | 278 computed |
+| Hidden sprite scaler feedback | 568 physical-frame checks |
+| Partial screen updates | 575 computed, exact time/clip/display assertions |
+| Synchronized sound commands | 172 deliveries, including supplied pre-cutoff boot initialization |
+| Sound latch reads | 1,278 computed values/NMI acknowledgement requests |
+| YM/PCM transactions | 891,610 assertions at supplied Z80 clocks |
+
+All comparisons have zero differences/skips. The focused frame-400..440
+window matches 1,449,740 records and 3,763,047 native phases, zero differences/
+skips: 204 main cycles, 40 sub services, 63 bank swaps, 19 road controls,
+40 sprite feedback frames, 44 partial updates and 85 sound latch reads.
+Its two initial main prefetch phases at `$14092` and the same 46 initial
+sub ISR phases remain supplied, with zero writes. The short 120-frame
+capture matches 3,160,862 records and 8,320,519 phases, zero differences/
+skips, with 130 swaps, 88 sprite feedback/frontier checks and 172 latch
+reads. It separately checks main closure, sub continuity and sound/video
+assertions without requiring an unobserved reset startup; it observes no
+new command deliveries and does not establish command delivery coverage.
+
+### Sound synchronization and device census
+
+The 315-5250 endpoint now optionally queues sound commands at the native
+main bus transaction clock, aborting the grant, and delivers them at global
+scheduler frontiers. This follows MAME's synchronized `write_to_sound`;
+the prior immediate latch change occurred at a CPU-private clock. Default
+standalone endpoint delivery remains immediate, and a ROM-free regression
+checks deferred latch/NMI state and read acknowledgement. `AB2SND01` records
+actual Z80 latch/YM I/O and PCM transactions. Replay checks grant containment
+and computes latch values through `sound_read()` without expected-value
+seeding. The read requests NMI clearing at the device endpoint; native Z80
+interrupt entry/service and synchronized input-line delivery are not proved.
+YM/PCM transactions and their CPU clocks remain supplied. The 172 commands
+include boot initialization fixture transactions, not 172 native CPU writes.
+
+`AB2_DEVICE_TRACE` records actual scheduler head owners and callback
+expirations in an optional `.devices` trace. `report_device_ownership.py`
+is a read-only inventory, not an acceptance test or deadline source. The
+full trace observes 157,164 scanline callbacks, 2,310 ADC completions,
+24,867 input queue callbacks, 600 first-scanline ticks, 600 VBLANK starts,
+599 VBLANK ends, 172 sound deliveries, 600 tile latch callbacks, 503 sound
+manager updates, 1,159 YM mode writes and 1,170 YM timer callbacks. Input
+queue and YM mode callbacks show up to 1 microsecond delivery delay;
+other observed owners show zero. YM timers own 7,199 head grants, tile
+latches 11,289 and sound manager updates 2,717. These counts identify
+remaining owners; they do not establish native YM/PCM execution, deadlines
+or boost requests. The harness still receives other device scheduler
+frontiers from the trace.
+
+### Video bank feedback and physical partial updates
+
+`AB2VBN03` captures the real hidden sprite and road banks at the fixture
+boundary. Sprite draws compare the pre-handler CPU-visible bank against
+the computed post-swap hidden bank. Road reads compare MAME's real hidden
+buffer after the handler swap. Road control writes and frame-end hidden
+sprite buffers are independent assertions. Earlier attempts to infer the
+road buffer at a prefetch PC were wrong for operand-before-prefetch paths;
+the final probe reads the actual buffer. The ignored isolated MAME build
+adds save-item registration for the road pointer and observers for actual
+screen updates. Original MAME source/binaries remain unchanged.
+
+MAME's sprite renderer writes scaler address word 7 into the hidden bank,
+including its initial address before hidden-sprite rejection and its final
+address for each visible row. `HWSprites` now reproduces this hardware
+feedback. `render_bank` loads the scheduler-owned big-endian bank and
+exports the feedback to that bank; subsequent CPU swaps expose it naturally.
+Its clipped renderer uses the actual partial update bounds. The joint
+sprite bitmap is scratch output, not a proof of full RGB composition.
+
+Native scanline zero resets the partial cursor; line 224 renders through
+223. Display-enable changes and text register writes `$D0E80..$D0FFF`
+request a partial update before the register changes, using the old display
+state. Beam position follows MAME's nearest-pixel rounding on the 160 ns
+pixel/64 microsecond line grid. Already rendered lines are skipped. The
+initial capture fixture is after the frame notifier's visible rendering;
+its partial cursor must therefore start at 224, avoiding duplicate feedback
+before the next frame. This is an explicit initial fixture boundary, not a
+claim about boot rendering.
+
+`--require-video-frontiers` compares computed update time, clip and display
+state with actual MAME `screen_update` calls. The `.bin.screen` assertions
+do not drive timing or rendering. A separate fresh boot with the identical
+gameplay sequence supplied this read-only metadata for the already recorded
+full corpus; future Make capture targets produce it in the same capture
+run. The independent existing video oracle remains 300/300 frames
+pixel-identical, zero mismatched pixels; this does not close joint RGB,
+tile/text latch or palette/compositor input ownership.
+
+### Validation and remaining acceptance boundaries
+
+Game build, ROM-free tests, Stage 1 integration, board/main IRQ/sub IRQ/sub
+reset/sub progress oracles, generated main/sub opcode-membership checks and
+180-frame headless execution pass. Make and CMake register the stricter
+joint sidecar requirements; CMake execution remains unavailable here.
+Five mutations fail differentially: TRAP saved SR, a hidden sprite bank
+byte, delivered sound command, scaler word-7 feedback, and omission of the
+text-register partial update. The last mutation produces a wrong time and
+clip frontier rather than a final frame-only mismatch. Omitting the
+display-enable partial update did not fail this natural corpus, because
+observed toggles occur after the relevant rendering is complete; this case
+is not registered as proven. Visible-area display toggles need directed
+coverage and remain unverified.
+
+The 2,158 unexercised main PCs, 478 unexercised generated sub PCs and
+unobserved branch directions remain unverified. The five missing main IRQ
+wrapper PCs are `$B836/$B83A/$B83E`, `$146D8`, `$14702`; rejected divide
+exception paths also remain open. Initial RAM/CPU/boot port fixtures, the
+46 initial partial sub ISR phases, and two continuations parked beyond the
+last accepted grant remain explicit boundaries. Native Z80/YM/PCM execution,
+remaining device head/boost owners, tile/text latches and full RGB compositor
+inputs must still close before whole-host acceptance. Native Stage 1 remains
+the game loop. ROM data, captures, sidecars and instrumented binaries remain
+under ignored paths.
