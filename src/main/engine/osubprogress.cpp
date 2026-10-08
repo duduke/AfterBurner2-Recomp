@@ -5,8 +5,9 @@
 #include <stdexcept>
 #include <algorithm>
 
-OSubProgress::State OSubProgress::step(SubBus& bus,State s,const Clock& clock,const Phase& phase,const Select& select) const {
- if(!sub_instruction(s.pc))return OSubPublication{}.step(bus,s,clock,phase,select);
+OSubProgress::State OSubProgress::step(SubBus& bus,State s,const Clock& advance,const Phase& phase,const Select& select,const Checkpoint& checkpoint) const {
+    const Clock clock=[&](uint64_t ns){advance(ns);if(checkpoint)checkpoint(s);};
+ if(!sub_instruction(s.pc))return OSubPublication{}.step(bus,s,advance,phase,select,checkpoint);
  if(s.ns%80||s.sp&1)throw std::runtime_error("unsupported sub progress context");
  const auto pc=s.pc;auto& r=s;auto& sp=s.sp;auto& sr=s.sr;uint32_t next=pc;
  auto idle=[&](unsigned n){s.ns+=n*80;};

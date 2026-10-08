@@ -21,6 +21,15 @@ void OMainIrqService::write16(uint32_t a,uint16_t v) { clock(ns);bus->write16(a,
 void OMainIrqService::write8(uint32_t a,uint8_t v) { clock(ns);bus->write8(a,v);idle(4); }
 
 OMainIrqService::Result OMainIrqService::enter(MainBus& b,const Context& c,const Clock& advance) {
+    return enter_impl(b,c,advance,0,{},false);
+}
+
+OMainIrqService::Result OMainIrqService::enter_joint(MainBus& b,const Context& c,const Clock& advance,uint64_t bias,const Clock& acknowledge,const ReturnSelection& selection) {
+    if(!eligible(c.level,c.sr))throw std::runtime_error("masked joint main IRQ entry");
+    return enter_impl(b,c,advance,bias,acknowledge,true,selection);
+}
+
+OMainIrqService::Result OMainIrqService::enter_impl(MainBus& b,const Context& c,const Clock& advance,uint64_t bias,const Clock& acknowledge,bool program,const ReturnSelection& selection) {
     if((c.level!=2 && c.level!=4 && c.level!=6) || c.boundary_ns%CYCLE_NS || (c.supervisor_sp&1))
         throw std::runtime_error("unsupported 68000 entry context");
     bus=&b;clock=advance;ns=c.boundary_ns;pc=c.interrupted_pc;
@@ -30,18 +39,24 @@ OMainIrqService::Result OMainIrqService::enter(MainBus& b,const Context& c,const
     // clocks, then four internal clocks. Source: MAME m68000 state_interrupt
     // and vpa_sync/vpa_after, independent of this call's captured timestamps.
     idle(6);write16(sp-2,c.return_pc);
-    const uint64_t cycles=ns/CYCLE_NS,mod=cycles%10;
+    const uint64_t cycles=ns/CYCLE_NS-bias,mod=cycles%10;
     const uint64_t sync=cycles-mod+(mod<7 ? 10 : 20);
+    if(acknowledge)acknowledge(ns+(sync-cycles)*CYCLE_NS);
     idle(static_cast<unsigned>(sync-cycles)+1+4+4);
     sp-=6;write16(sp,c.sr);write16(sp+2,c.return_pc>>16);
     const uint32_t vector=(24+c.level)*4;
     const uint32_t entry=read32(vector);
     if(entry!=(c.level==2 ? 0x1461c : c.level==4 ? 0x14674 : 0x1466c))
         throw std::runtime_error("unexpected arcade IRQ vector");
-    idle(10); // two handler prefetch bus phases separated by two clocks
+    const auto sr=uint16_t((c.sr&0x38ff)|0x2000|(c.level<<8));
+    if(program){read16(entry);idle(2);
+        // state_interrupt_df mmrw3 selects after trap9's two clocks,
+        // before the last prefetch; a higher IRQ can precede the handler.
+        if(selection){clock(ns);selection(sr,ns);}read16(entry+2);}
+    else idle(10); // legacy data-only oracle omits ROM prefetch observations
 
     clock(ns);
-    return {c.registers,entry,sp,uint16_t((c.sr&0x38ff)|0x2000|(c.level<<8)),ns};
+    return {c.registers,entry,sp,sr,ns};
 }
 
 OMainIrqService::Result OMainIrqService::run(MainBus& b,const Context& c,const Clock& advance,const Boundary& boundary,const LeafObserver& observer) {
@@ -453,7 +468,7 @@ OMainIrqService::Result OMainIrqService::logic_step(MainBus& b,const Context& c,
     return {r,ret,sp,uint16_t((c.sr&0xffe0)|x),ns};
 }
 
-OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Context& c,const Clock& advance,const Poll& poll) {
+OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Context& c,const Clock& advance,const Poll& poll,const Clock& reset) {
     if(c.boundary_ns%CYCLE_NS || (c.supervisor_sp&1) || !poll || (c.sr&0xc000))
         throw std::runtime_error("unsupported caller instruction context");
     bus=&b;clock=advance;ns=c.boundary_ns;pc=c.interrupted_pc;
@@ -498,37 +513,64 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         auto value=uint16_t(r.d[reg]);read16(pc+4);bool carry=false,overflow=false;
         for(unsigned i=0;i<count;++i){carry=value&0x8000;const auto shifted=uint16_t(value<<1);
             overflow|=bool((value^shifted)&0x8000);value=shifted;idle(2);}
-        word(r.d[reg],value);sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x8000?8:0);
+        word(r.d[reg],value);sr=(sr&(count?0xffe0:0xfff0))|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x8000?8:0);
         latch();idle(2);next=pc+2;
     };
     auto asr_long=[&](unsigned reg,unsigned count) {
         auto value=r.d[reg];read16(pc+4);bool carry=false;
         for(unsigned i=0;i<count;++i){carry=value&1;value=(value>>1)|(value&0x80000000);idle(2);}
-        r.d[reg]=value;sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x80000000?8:0);
+        r.d[reg]=value;sr=(sr&(count?0xffe0:0xfff0))|(carry?0x11:0)|(value?0:4)|(value&0x80000000?8:0);
         idle(2);latch();idle(2);next=pc+2;
     };
     auto asr_word=[&](unsigned reg,unsigned count){
         auto value=uint16_t(r.d[reg]);read16(pc+4);bool carry=false;
         for(unsigned i=0;i<count;++i){carry=value&1;value=(value>>1)|(value&0x8000);idle(2);}
-        word(r.d[reg],value);sr=(sr&0xffe0)|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0);
+        word(r.d[reg],value);sr=(sr&(count?0xffe0:0xfff0))|(carry?0x11:0)|(value?0:4)|(value&0x8000?8:0);
         latch();idle(2);next=pc+2;
     };
     auto asl_long=[&](unsigned reg,unsigned count){
         auto value=r.d[reg];read16(pc+4);bool carry=false,overflow=false;
         for(unsigned i=0;i<count;++i){carry=value&0x80000000;const auto shifted=value<<1;
             overflow|=bool((value^shifted)&0x80000000);value=shifted;idle(2);}
-        r.d[reg]=value;sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x80000000?8:0);
+        r.d[reg]=value;sr=(sr&(count?0xffe0:0xfff0))|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x80000000?8:0);
         idle(2);latch();idle(2);next=pc+2;
     };
     // Register shifts and decimal DIVU follow the MAME 68000 microcode.
     auto logical_shift=[&](unsigned reg,unsigned size,unsigned count,bool left,bool rotate){
-        const uint32_t mask=size==4?0xffffffffu:0xffffu,sign=size==4?0x80000000u:0x8000u;
+        const uint32_t mask=size==4?0xffffffffu:size==1?0xffu:0xffffu,sign=size==4?0x80000000u:size==1?0x80u:0x8000u;
         auto value=r.d[reg]&mask;bool carry=false;read16(pc+4);
         for(unsigned i=0;i<count;++i){carry=left?bool(value&sign):bool(value&1);
-            value=left?(value<<1)&mask:(value>>1)|(rotate&&carry?sign:0);idle(2);}
-        if(size==4)r.d[reg]=value;else word(r.d[reg],value);
-        sr=(sr&(rotate?0xfff0:0xffe0))|(carry?(rotate?1:17):0)|(value?0:4)|(value&sign?8:0);
+            value=left?((value<<1)|(rotate&&carry?1u:0u))&mask:(value>>1)|(rotate&&carry?sign:0);idle(2);}
+        if(size==4)r.d[reg]=value;else if(size==1)byte(r.d[reg],value);else word(r.d[reg],value);
+        sr=(sr&(rotate||!count?0xfff0:0xffe0))|(carry?(rotate?1:17):0)|(value?0:4)|(value&sign?8:0);
         if(size==4)idle(2);latch();idle(2);next=pc+2;
+    };
+    auto multiply_unsigned=[&](unsigned reg,uint16_t operand,uint32_t target){
+        unsigned ones=0;for(auto v=operand;v;v>>=1)ones+=v&1;
+        const uint32_t value=uint32_t(uint16_t(r.d[reg]))*operand;
+        read16(target+2);idle(32+2*ones);latch();idle(2);
+        r.d[reg]=value;sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000u?8:0);next=target;
+    };
+    auto divide_unsigned=[&](unsigned reg,uint16_t divisor,uint32_t target){
+        const auto dividend=r.d[reg];
+        if(!divisor||(dividend>>16)>=divisor)throw std::runtime_error("unverified joint callee DIVU exception/overflow");
+        unsigned cycles=38;uint32_t partial=dividend,high=uint32_t(divisor)<<16;
+        for(unsigned i=0;i<15;++i){const auto old=partial;partial<<=1;
+            if(old&0x80000000)partial-=high;else{cycles+=2;if(partial>=high){partial-=high;--cycles;}}}
+        idle(cycles*2-4);r.d[reg]=((dividend%divisor)<<16)|(dividend/divisor);nz(dividend/divisor);
+        final(target+2);next=target;
+    };
+    auto bcd_register=[&](unsigned src,unsigned dst,bool subtract){
+        const unsigned a=r.d[src]&255,b=r.d[dst]&255,carry=bool(sr&16);unsigned result,raw;
+        if(subtract){unsigned low=(b&15)-(a&15)-carry;raw=uint16_t(b-a-carry);result=raw;
+            if(low&0x10)result-=6;if(raw&0x100)result-=0x60;
+        }else{unsigned low=(a&15)+(b&15)+carry;raw=a+b+carry;result=raw;
+            if(low>9)result+=6;if(result>0x9f)result+=0x60;
+        }
+        const bool c=result&0x300,z=(sr&4)&&!uint8_t(result),n=result&0x80;
+        const bool v=subtract?!(result&0x80)&&(raw&0x80):(result&0x80)&&!(raw&0x80);
+        read16(pc+4);latch();idle(2);byte(r.d[dst],result);
+        sr=(sr&0xffe0)|(c?17:0)|(z?4:0)|(n?8:0)|(v?2:0);next=pc+2;
     };
     auto decimal_divu=[&](){
         const uint32_t dividend=r.d[0],divisor=uint16_t(r.d[1]);
@@ -545,6 +587,16 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         else {idle(2);if(length==4)read16(pc+4);final(next+2);}
     };
     switch(pc) {
+    // $14840 RESET: rset1/rset2, 31 four-clock rset3/rset4 loops,
+    // rset5 prefetch. Both callbacks pulse the sub CPU on the X-Board.
+    case 0x14840:
+        if(!(sr&0x2000)||!reset)throw std::runtime_error("missing supervisor RESET owner");
+        idle(4);reset(ns);idle(124);reset(ns);latch();read16(pc+4);
+        next=pc+2;break;
+#include "engine/omainirqjointcalleeschedule.inc"
+#include "engine/omainremainingschedule.inc"
+#include "engine/omainproducerschedule.inc"
+#include "engine/omainirqwrapperschedule.inc"
 #include "engine/omaininputschedule.inc"
 #include "engine/omainflightschedule.inc"
 #include "engine/omaincompanionschedule.inc"
@@ -2020,4 +2072,33 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
     default:throw std::runtime_error("unported caller instruction at PC "+std::to_string(pc));
     }
     clock(ns);return {{r,next,sp,sr,ns},selected,selection};
+}
+
+// $1466A/$14672/$147C6/$147E6: MAME rte_df (rtr1..rtr4), three stack
+// reads followed by two return prefetches; restore SR before selecting IPL.
+OMainIrqService::Instruction OMainIrqService::return_joint(MainBus& b,const Result& s,uint32_t usp,const Clock& advance,const Poll& poll) {
+    switch(s.pc){case 0x1466a:case 0x14672:case 0x147c6:case 0x147e6:case 0x14842:break;
+        default:throw std::runtime_error("unported joint main RTE instruction");}
+    if(!(s.sr&0x2000)||s.ns%CYCLE_NS||(s.sp&1)||!poll)
+        throw std::runtime_error("unsupported joint main RTE context");
+    bus=&b;clock=advance;ns=s.ns;pc=s.pc;
+    const auto sr=uint16_t(read16(s.sp)&0xa71f);const auto target=read32(s.sp+2);
+    const auto sp=sr&0x2000?s.sp+6:usp;
+    read16(target);const auto selection=ns;clock(ns);const auto level=poll(ns);
+    if(level!=0&&level!=2&&level!=4&&level!=6)throw std::runtime_error("unsupported joint main RTE IPL");
+    read16(target+2);clock(ns);
+    return {{s.registers,target,sp,sr,ns},eligible(level,sr)?level:0,selection};
+}
+
+// $138BA TRAP #12: trap1..trap9 in m68000-sdf.cpp. Stack bank switch,
+// low PC/SR/high PC writes, vector $B0 and both handler prefetches.
+OMainIrqService::Instruction OMainIrqService::trap_joint(MainBus& b,const Result& s,uint32_t ssp,const Clock& advance,const Poll& poll) {
+    if(s.pc!=0x138ba||!poll)throw std::runtime_error("unsupported joint main TRAP");
+    bus=&b;clock=advance;ns=s.ns;pc=s.pc;
+    const auto sp=(s.sr&0x2000?s.sp:ssp)-6;const auto ret=s.pc+2;
+    const uint16_t sr=(s.sr&~0x8000)|0x2000;
+    idle(4);write16(sp+4,ret);write16(sp,s.sr);write16(sp+2,ret>>16);
+    const auto target=read32(0xb0);read16(target);idle(2);
+    const auto selection=ns;clock(ns);const auto level=poll(ns);read16(target + 2);clock(ns);
+    return {{s.registers,target,sp,sr,ns},eligible(level,sr)?level:0,selection};
 }

@@ -617,7 +617,8 @@ case 0x9ea4: {
 }
 // $009EA6: ADDA.W D0,A0
 case 0x9ea6: {
-    r.a[0]+=int16_t(r.d[0]);
+    const auto operand=uint16_t(r.d[0]);
+    r.a[0]+=int16_t(operand);
     read16(0x9eaa);
     idle(2);latch();idle(2);
     next=0x9ea8;
@@ -797,7 +798,8 @@ case 0x9eee: {
 }
 // $009EF0: ADDA.W D0,A0
 case 0x9ef0: {
-    r.a[0]+=int16_t(r.d[0]);
+    const auto operand=uint16_t(r.d[0]);
+    r.a[0]+=int16_t(operand);
     read16(0x9ef4);
     idle(2);latch();idle(2);
     next=0x9ef2;

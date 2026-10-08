@@ -44,9 +44,10 @@ void HWSprites::swap()
     std::swap_ranges(ram, ram + SPRITE_WORDS, ram_buffer);
 }
 
-void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, int origin_y, unsigned priority_mask) const
+void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, int origin_y, unsigned priority_mask,int clip_top,int clip_bottom) const
 {
-    for (const uint16_t* data = ram_buffer; data < ram_buffer + SPRITE_WORDS; data += 8)
+    if(clip_bottom<0)clip_bottom=height-1;
+    for (uint16_t* data = ram_buffer; data < ram_buffer + SPRITE_WORDS; data += 8)
     {
         // stop when we hit the end of sprite list
         if (data[0] & 0x8000)
@@ -71,6 +72,9 @@ void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, in
 
         if (!(priority_mask & (1u << ((data[3] >> 12) & 3))))
             continue;
+        // sega_outrun_sprite_device::draw initializes this register even
+        // for hidden entries, then updates it for each visible row.
+        data[7]=addr;
         if (hide)
             continue;
 
@@ -93,7 +97,7 @@ void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, in
 
         for (int y = top; y != ytarget; y += ydelta)
         {
-            if (y >= 0 && y < height)
+            if (y >= clip_top && y <= clip_bottom)
             {
                 uint16_t* dest = pixels + y * width;
                 int xacc = 0;
@@ -138,6 +142,7 @@ void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, in
                     if (last_word)
                         break;
                 }
+                data[7]=read_addr;
             }
 
             // accumulate vertical zoom; carrying into the high bit steps the row-start
@@ -148,4 +153,11 @@ void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, in
             yacc &= 0x1ff;
         }
     }
+}
+
+void HWSprites::render_bank(uint8_t* bank,uint16_t* pixels,int width,int height,int clip_top,int clip_bottom) const
+{
+    for(unsigned i=0;i<SPRITE_WORDS;++i)ram_buffer[i]=(uint16_t(bank[2*i])<<8)|bank[2*i+1];
+    render(pixels,width,height,0,0,0xf,clip_top,clip_bottom);
+    for(unsigned i=0;i<SPRITE_WORDS;++i){bank[2*i]=ram_buffer[i]>>8;bank[2*i+1]=ram_buffer[i];}
 }

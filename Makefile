@@ -55,6 +55,8 @@ test:
 
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/xboard_timeline_regression.cpp -o build/xboard_timeline_regression
 	./build/xboard_timeline_regression
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/xboard_irq_lines_regression.cpp -o build/xboard_irq_lines_regression
+	./build/xboard_irq_lines_regression
 	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/cpu_continuation_regression.cpp -o build/cpu_continuation_regression
 	./build/cpu_continuation_regression
 
@@ -861,14 +863,68 @@ oracle-host-generated-check:
 .PHONY: oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full oracle-caller-host oracle-host-generated-check
 
 # Both native publication streams share computed grants and one RAM instance.
-build/oracle_publication_schedule: tests/oracle_publication_schedule.cpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp
-	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/engine/osubpublication.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
+build/oracle_publication_schedule: tests/oracle_publication_schedule.cpp src/main/engine/omainjointmanifest.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp src/main/hwvideo/hwsprites.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
 
 oracle-capture-publication-schedule: oracle-scheduler-probe
 	@mkdir -p build/oracle
-	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/publication_schedule.txt" AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/publication_schedule.bin 120 15
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/publication_schedule.txt" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/publication_schedule.bin 120 15
 
 oracle-publication-schedule: build/oracle_publication_schedule
 	./build/oracle_publication_schedule build/oracle/publication_schedule.bin build/oracle/publication_schedule.txt
 
 .PHONY: oracle-capture-publication-schedule oracle-publication-schedule
+
+# Expanded existing main caller ports under the same main/sub grants.
+oracle-joint-main-generated-check:
+	@mkdir -p build/oracle
+	python3 tools/build_rom_image.py maincpu build/oracle/main_joint_image.bin
+	python3 tools/generate_input_schedule.py build/oracle/main_joint_image.bin --graph irqwrapper --check
+	python3 tools/generate_input_schedule.py build/oracle/main_joint_image.bin --graph producers --check
+	python3 tools/generate_input_schedule.py build/oracle/main_joint_image.bin --graph callees --check
+	python3 tools/generate_input_schedule.py build/oracle/main_joint_image.bin --graph remaining --check
+	python3 tools/generate_joint_main_manifest.py --check
+
+oracle-capture-joint-main-progress: oracle-scheduler-probe oracle-joint-main-generated-check
+	@mkdir -p build/oracle
+	python3 tools/generate_joint_main_manifest.py --check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_main_progress.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_main_progress.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_main_progress.bin.screen" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_main_progress.bin 120 15
+
+oracle-joint-main-progress: build/oracle_publication_schedule oracle-joint-main-generated-check
+	python3 tools/generate_joint_main_manifest.py --check
+	./build/oracle_publication_schedule build/oracle/joint_main_progress.bin build/oracle/joint_main_progress.txt --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake
+
+.PHONY: oracle-capture-joint-main-progress oracle-joint-main-progress oracle-joint-main-generated-check
+
+oracle-capture-joint-main-progress-full: oracle-scheduler-probe oracle-joint-main-generated-check
+	@mkdir -p build/oracle
+	python3 tools/generate_joint_main_manifest.py --check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.bin.screen" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_main_progress_full.bin 600 30
+
+oracle-joint-main-progress-full: build/oracle_publication_schedule
+	./build/oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake
+
+oracle-capture-joint-reset-window: oracle-scheduler-probe oracle-joint-main-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_reset_focused.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_reset_focused.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_reset_focused.bin.screen" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_ORACLE_START_FRAME=400 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_reset_focused.bin 440 15
+
+oracle-joint-reset-window: build/oracle_publication_schedule oracle-joint-main-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_reset_focused.bin build/oracle/joint_reset_focused.txt --reset-window --physical-main --require-sub-continuity --require-video-frontiers --require-sound-handshake
+
+.PHONY: oracle-capture-joint-reset-window oracle-joint-reset-window
+
+build/oracle_subreset: tests/oracle_subreset.cpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.hpp src/main/engine/osubprogress.inc src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subreset.cpp src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp $(ORACLE_SRCS) -o $@
+
+oracle-capture-subreset: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 tools/oracle/capture.sh tools/oracle/capture_subreset.lua build/oracle/subreset.bin 600 30
+
+oracle-subreset: build/oracle_subreset
+	./build/oracle_subreset build/oracle/subreset.bin
+
+oracle-test: oracle-subreset
+
+.PHONY: oracle-capture-subreset oracle-subreset
+
+.PHONY: oracle-capture-joint-main-progress-full oracle-joint-main-progress-full
+
+oracle-test: oracle-joint-main-progress

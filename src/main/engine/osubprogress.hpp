@@ -8,5 +8,6 @@ public:
     using Clock=OSubPublication::Clock;
     using Phase=OSubPublication::Phase;
     using Select=std::function<void(uint64_t,uint16_t)>;
-    State step(SubBus&,State,const Clock&,const Phase&,const Select& = {}) const;
+    using Checkpoint=std::function<void(const State&)>;
+    State step(SubBus&,State,const Clock&,const Phase&,const Select& = {},const Checkpoint& = {}) const;
 };

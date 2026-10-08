@@ -74,6 +74,14 @@ int main()
     CHECK(bus.compare_timer.sound_read()==0xab && !bus.compare_timer.state().nmi);
     bus.write8(0xe8016,0x12); CHECK(command==0 && commands==2); // high-byte bus data's low byte is zero
     bus.write16(0xe801e,0x1234); CHECK(bus.compare_timer.sound_read()==0x34);
+    uint8_t pending_command=0;
+    bus.compare_timer.schedule_sound=[&](uint8_t v){pending_command=v;};
+    bus.write16(0xe8016,0x56);
+    CHECK(pending_command==0x56 && bus.compare_timer.sound_read(false)==0x34 && !bus.compare_timer.state().nmi);
+    bus.compare_timer.deliver_sound(pending_command);
+    CHECK(bus.compare_timer.sound_read(false)==0x56 && bus.compare_timer.state().nmi);
+    CHECK(bus.compare_timer.sound_read()==0x56 && !bus.compare_timer.state().nmi);
+    bus.compare_timer.schedule_sound={};
 
     unsigned adc_reads=0, adc_writes=0;
     bus.endpoints.adc_read=[&]{ ++adc_reads; return 0x67; };

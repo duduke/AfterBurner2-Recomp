@@ -1212,7 +1212,8 @@ case 0xb32a: {
 }
 // $00B32C: ADDA.W D0,A1
 case 0xb32c: {
-    r.a[1]+=int16_t(r.d[0]);
+    const auto operand=uint16_t(r.d[0]);
+    r.a[1]+=int16_t(operand);
     read16(0xb330);
     idle(2);latch();idle(2);
     next=0xb32e;

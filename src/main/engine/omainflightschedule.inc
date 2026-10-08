@@ -794,7 +794,8 @@ case 0x9a42: {
 }
 // $009A46: ADDA.W D0,A0
 case 0x9a46: {
-    r.a[0]+=int16_t(r.d[0]);
+    const auto operand=uint16_t(r.d[0]);
+    r.a[0]+=int16_t(operand);
     read16(0x9a4a);
     idle(2);latch();idle(2);
     next=0x9a48;

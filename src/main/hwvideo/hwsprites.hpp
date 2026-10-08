@@ -45,7 +45,10 @@ public:
     // index (1-14 opaque, 0/15 transparent), bits 4-11 = 8-bit color
     // field, bits 12-14 = 3-bit priority.
     void render(uint16_t* pixels, int width, int height, int origin_x = 0, int origin_y = 0,
-                unsigned priority_mask = 0xf) const;
+                unsigned priority_mask = 0xf, int clip_top = 0, int clip_bottom = -1) const;
+    // Render the scheduler-owned big-endian bank and return the hardware's
+    // word-7 scaler address writeback to that same bank.
+    void render_bank(uint8_t* bank, uint16_t* pixels, int width, int height, int clip_top=0, int clip_bottom=-1) const;
 
 private:
     static constexpr int SPRITE_ENTRIES = 256;
@@ -53,7 +56,7 @@ private:
     static constexpr uint32_t BANK_WORDS = 0x10000;
 
     uint16_t ram[SPRITE_WORDS] = {};
-    uint16_t ram_buffer[SPRITE_WORDS] = {};
+    mutable uint16_t ram_buffer[SPRITE_WORDS] = {};
 
     std::vector<uint32_t> sprites;
     uint32_t numbanks = 0;

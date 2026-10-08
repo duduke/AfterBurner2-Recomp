@@ -374,3 +374,90 @@ CPU contexts, 141,969 other shared producers, IRQ services, device deadlines,
 ADC cadence, sub callees and complete renderer/sound ownership remain supplied.
 The natural joint corpus leaves `$1486A/$43E` unexercised. This checkpoint does
 not complete independent whole-host scheduling or replace native Stage 1.
+
+The joint sprite/road continuation now executes the existing bounded callee
+ports inside the shared-RAM grant replay: 2,420,931 instructions, 6,110,061
+phases and 242,205 bounded completions match, zero differences/skips. It
+computes 102,479 shared writes instead of 327; 39,817 other writers and 347
+entry contexts remain supplied. Internal-tail debt is paid before a successor
+starts. Natural joint coverage reaches 631/1,136 graph PCs; independent
+directed checks do not establish joint execution of the remaining paths.
+IRQ entry/service/RTE, main caller/producer progress, ADC/device deadlines and
+renderer/sound ownership still block whole-host acceptance. Native Stage 1
+remains active.
+
+The joint IRQ/dispatcher continuation now retains the sub CPU through all
+88 IRQ entries, actual CPU-space acknowledgements and exact RTE restorations.
+All thirteen ISR PCs and all twelve main `$1458A..$145B8` dispatcher PCs run
+inside the same grants. Natural 120 matches 2,491,840 instruction/IRQ records
+and 6,309,809 phases, zero differences/skips. One initial sub context remains;
+4,630 main contexts expose omitted IRQ/handler work, and 36,902 shared writes
+remain supplied. The initial partial ISR and final parked user continuation
+are explicit capture boundaries. Main IRQ/caller/producer, ADC/device and
+renderer/sound ownership still block whole-host acceptance. Native Stage 1
+remains active.
+
+The expanded joint main checkpoint computes 141,627 shared writes, leaving
+669 supplied in the 120-frame attract-mode corpus. It matches 3,045,337
+instruction/IRQ records and 7,960,655 phases with zero differences/skips;
+679/1,429 main PCs include 92/103 added main IRQ RAM-wrapper PCs. Main entry,
+hardware synchronizations, RTE and unported callees remain supplied. The
+600-frame extension fails when main `$14840` RESET interrupts an active sub
+instruction. Physical button frame observations do not close ADC producer
+cadence, device deadlines or sound timing. Sprite/road feedback and compositor
+ownership are also pending. All four whole-host blockers remain open; native
+Stage 1 remains active.
+
+The synchronized hardware continuation now computes main timer acknowledges
+`$1461C/$1466C` and natural `$14840` RESET cancellation/vector prefetches.
+The focused coin/start window passes 1,160,234 retained records and
+2,961,766 native phases, zero skips; its startup PEA/RTE/TRAP remains supplied.
+Whole-host acceptance still requires all four closures in `PHASE3D_PLAN.md`.
+
+The fresh 600-frame live-gameplay joint checkpoint also passes 19,049,961
+records and 49,054,764 native phases with native RESET cancellation. It still
+supplies 4,391,908 main phases at 4,677 PCs and reset startup/TRAP, so it does
+not authorize replacing the native Stage 1 host. See the full census in
+`ENGINE_NOTES.md` and the four remaining closure rows in `PHASE3D_PLAN.md`.
+
+
+The preceding joint main exception checkpoint computed IRQ2/4/6 entry, actual
+VPA acknowledge, RTE stack-bank restoration and caller resumption. The fresh
+120-frame attract corpus matches 448 entries/acknowledges/RTEs and 7,967,919
+native phases, zero skips, with 432 retained entries and caller resumptions.
+Main physical IRQ selection and service callees were still supplied at that
+checkpoint; it did not close the other three whole-host rows or replace
+native Stage 1. See `ENGINE_NOTES.md` for the phase and mutation evidence.
+
+The corresponding 600-frame gameplay stream matches 49,092,373 native
+phases, 2,893 main entries/acknowledges/RTEs and natural RESET, zero skips.
+That earlier checkpoint supplied 4,357,192 main phases at 4,507 PCs, with physical main
+selection, ADC/sound and video/compositor ownership open. This remains a
+bounded joint continuation checkpoint; native Stage 1 remains active.
+
+
+Physical main selection and producer/callee continuation now passes the
+120-frame joint corpus with 3,160,862 native records, 8,320,519 phases, zero
+supplied main phases and one initial main context. All 448 main IRQ entries
+and returns retain caller state. The 600-frame live-gameplay replay now
+matches 20,532,151 records and 53,449,565 phases, zero differences/skips,
+with all 2,893 main IRQ selections/services/returns/resumptions native, zero
+supplied main phases and one initial main context. TRAP/RESET/RTE also pass.
+This remains oracle infrastructure; Stage 1 still uses its documented game
+loop. Sub startup/coverage, sound/deadline and video/compositor ownership
+remain whole-host requirements. See the corresponding `ENGINE_NOTES.md`
+section for exact boundaries and unverified coverage.
+
+
+The subsequent sub startup/sound/video checkpoint computes all 17 observed
+sub reset startup PCs with one initial context per CPU and zero later
+supplied sub phases. The 600-frame joint stream matches 20,532,168 records
+and 53,449,620 phases, zero differences/skips. Computed sound latch reads,
+video bank swaps, sprite scaler feedback and partial screen frontiers also
+match MAME; the independent 300-frame pixel oracle remains identical.
+This remains oracle infrastructure. Stage 1 still uses its documented loop.
+Native Z80/YM/PCM and other device deadline ownership, tile/text latches and
+RGB compositor inputs, and unverified main/sub paths remain required before
+whole-host acceptance. Initial CPU/RAM/boot fixtures and 46 partial sub ISR
+phases at the capture boundary remain explicit exclusions. See the final
+`ENGINE_NOTES.md` section for detailed results and mutation coverage.

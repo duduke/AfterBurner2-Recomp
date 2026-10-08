@@ -1,7 +1,8 @@
 #include "engine/osubpublication.hpp"
 #include <stdexcept>
 
-OSubPublication::State OSubPublication::step(SubBus& bus,State s,const Clock& clock,const Phase& phase,const Select& select) const {
+OSubPublication::State OSubPublication::step(SubBus& bus,State s,const Clock& advance,const Phase& phase,const Select& select,const Checkpoint& checkpoint) const {
+    const Clock clock=[&](uint64_t ns){advance(ns);if(checkpoint)checkpoint(s);};
     const auto pc=s.pc;
     if(s.ns%CYCLE_NS||s.sp&1)throw std::runtime_error("unsupported sub publication context");
     auto idle=[&](unsigned n){s.ns+=n*CYCLE_NS;};

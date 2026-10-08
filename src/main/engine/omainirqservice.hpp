@@ -47,12 +47,21 @@ public:
     // the returned level is latched, not reselected at instruction completion.
     using Poll = std::function<unsigned(uint64_t)>;
     struct Instruction { Result state; unsigned irq; uint64_t poll_ns; };
-    Instruction caller_step(MainBus&, const Context&, const Clock&, const Poll&);
+    Instruction caller_step(MainBus&, const Context&, const Clock&, const Poll&, const Clock& reset = {});
     // Exception entry only, ending after both handler prefetch phases. The
     // instruction result supplies return PC/SR/registers and completion time.
     Result enter(MainBus&, const Context&, const Clock&);
+    // Complete program-bus entry for the joint scheduler. The acknowledge
+    // hook owns the VPA frontier and its five CPU-space clocks. Selection
+    // samples with the handler SR before the second handler prefetch.
+    Result enter_joint(MainBus&, const Context&, const Clock&, uint64_t cycle_bias, const Clock& acknowledge, const ReturnSelection& = {});
+    // Literal RTE at the main IRQ and RESET return sites. USP is retained by
+    // the scheduler; the completed supervisor stack advances by six bytes.
+    Instruction return_joint(MainBus&, const Result&, uint32_t usp, const Clock&, const Poll&);
+    Instruction trap_joint(MainBus&, const Result&, uint32_t ssp, const Clock&, const Poll&);
     uint32_t current_pc() const { return pc; }
 private:
+    Result enter_impl(MainBus&, const Context&, const Clock&, uint64_t, const Clock&, bool, const ReturnSelection& = {});
     MainBus* bus{};
     Clock clock;
     LeafObserver observe_leaf;
