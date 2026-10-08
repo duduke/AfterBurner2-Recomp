@@ -4825,3 +4825,223 @@ and `git diff --check` pass. The long-clock/zero-progress ROM-free checks also
 pass. Existing oracle race exclusions remain reported by their original gates;
 the new accepted IRQ and arbitration comparisons have zero skips. CMake is not
 installed in this environment, so its declared targets were not executed.
+
+### Timed weapon dispatcher/controller/fire/allocation checkpoint (2026-10-08)
+
+The bounded caller now executes `$9D34..$9DEA` and `$9DF8..$9F06` rather
+than supplying the weapon controller, missile/Vulcan gates and allocation
+progress. `omainweaponschedule.inc` contains 107 literal instruction PCs;
+`tools/generate_input_schedule.py --graph weapons` reads the user's ROM and
+emits matching capture/coverage manifests. There is no runtime decoder,
+embedded template data or native `OEntry` adapter. The existing independent
+weapon routine oracles remain distinct from this caller/timing check.
+
+The original `$145AC/$145B0` dispatcher reads slot 130's current handler and
+pushes its actual return stack. `$9D84/$9D88` call the fire graphs, which use
+shared button history, display/sequence/debug gates, signed ammo, cadence and
+reserve limits. The allocator pops a runtime free-slot index, performs WORD
+shifts/address arithmetic, activates its object, installs `$9F7C/$A030`,
+updates launch-side/ammo/counters and calls the HUD or sound producer. Those
+new projectile initializers remain outside this timed graph; activation of
+later slots is preserved by the already ported live dispatcher. `$B628` and
+`$B84C` execute their existing checked instruction graphs, retaining controller
+registers, active stack, RAM ownership, CCR and time across the calls.
+
+`$9D6A` has a BEQ target equal to its fall-through address. A program-address
+heuristic incorrectly attributed its first bus to the untaken timing path.
+The corrected capture uses the independent instruction-hook SR snapshot to
+select the start offset; raw MAME bus observations remain untouched. Directed
+branch coverage also uses that snapshot's Z flag to distinguish the two
+paths. The capture now includes the already ported `$D0DA` in every sound
+producer corpus: the weapon fixtures exposed one interrupted return there
+that the earlier directed capture had unnecessarily marked external.
+
+Natural 120-frame boot/attract replay: **465,074/465,074 instruction/IRQ
+records**, **1,364,220/1,364,220 bus events**, zero different/skipped;
+44 actual dispatcher calls and 90 controller-to-fire calls. It observes
+60/107 new PCs and no allocations; it is not gameplay coverage.
+
+The natural 600-frame gameplay continuation matches **2,783,882/2,783,882
+instruction/IRQ records**, **8,210,437/8,210,437 bus events** and
+**2,775,872/2,775,872 consecutive boundaries**, zero different/skipped and
+zero unported post-RTE returns. It observes 105/107 new PCs, 172 dispatcher
+calls, 346 controller-to-fire calls and seven fire-to-allocation calls. The
+unobserved `$9D78/$9D80` damage-handler transition is covered by the directed
+matrix. Explicit external graph-exit occurrences fall from 6,693 to 5,403;
+these are occurrences, not unique instructions or proof of whole-host closure.
+
+The corrected 240-frame directed capture matches **1,586,141/1,586,141
+instruction/IRQ records**, **4,656,016/4,656,016 bus events** and
+**1,581,806/1,581,806 consecutive boundaries**, zero different/skipped and
+zero unported post-RTE returns. It has 159 actual dispatcher calls, 420
+controller-to-fire calls and 80 fire-to-allocation calls. All 107 PCs, both
+directions of the 19 conditional branches and every required endpoint pass.
+The capture retains 316 explicit fixture context cuts and separately reports
+158 incomplete fixture cuts outside accepted records. It also retains 3,480
+external graph exits; this is bounded composition, not autonomous host timing.
+The natural files predate the additional `$D0DA` capture address and retain
+43/274 ordinary exit occurrences there. The corrected directed file computes
+that instruction and its exposed IRQ return; new captures include it in the
+sound-producer graph by default. Raw observations in the accepted files have
+not been edited or synthesized.
+
+Directed initial-state fixtures call six checked routine entries through a
+real IPL7 RAM trampoline, injected only at completed read/branch wait sites.
+They use arcade slot 130 (`$C080`), restore object/pool/HUD/sound RAM after
+execution, and keep fixture/context cuts visible. Acceptance requires all
+107 PCs, both directions of all 19 conditional branches, signed ammo
+`0/20/$8000/$FFFF`, free-slot counts `0/24/25/$7F`, launch counter
+`0/$3C/$7FFF/$FFFF`, and append counts `0/$BF/$C0/$C1`. These fixtures are
+initial operands, not supplied handler outputs or natural spawn evidence.
+
+Three mutations in ignored copies reject reserve `24 -> 25`, launch-side
+increment `4 -> 5`, and Vulcan sound command `$90 -> $91` through actual
+instruction-state/write mismatches. Production constants remain unchanged.
+The launch-side mutation produces 168 instruction-state differences and 67
+bus-event differences; the sound-command mutation produces 719 and 31. The
+reserve mutation changes D1 at `$9E88` and later rejects the branch/bus
+frontier at the 25-free-slot limit, before a full summary is possible. These
+are behavioral mismatches, not missing-coverage rejections.
+Copied sources, executables and captures stay under ignored `build/oracle/`.
+
+**Boundaries:** `$9D2C` pool reset, `$CFC4` HUD/decimal execution, projectile
+initializers/update graphs, damage/attachment transitions beyond the installed
+handler, other caller exits, main/sub delivery and renderer producers remain
+supplied. The `$9ED2` HUD call/return stack and its allocator return are
+computed, but the HUD callee's instruction stream is not part of this check.
+Existing IRQ4 reload/HUD tests remain independent. Input bytes at unowned
+lanes, initial CPU/chip contexts, ISR/sub frontiers and fixture cuts remain
+labelled inputs. Natural held/released-fire cadence is bounded by the supplied
+host scheduling; arbitrary IRQ overlap, all pool indices/flag contexts and
+whole-credit gameplay are not established. Native Stage 1 remains active;
+Phase 3d and plan section 2 item 1 remain incomplete.
+
+```bash
+make oracle-capture-caller-weapon-short oracle-capture-caller-weapon-directed oracle-capture-caller-weapon-full
+make oracle-caller-weapon oracle-weapon-generated-check
+```
+
+Validation passes: `make test`, `make verify-stage1`, the existing
+`make oracle-test` suite and the new `make oracle-caller-weapon` acceptance
+prerequisite, weapon/flight/companion generated checks, all three mutation
+checks, game build, 180-frame dummy SDL video/audio launch and
+`git diff --check`. Existing race exclusions remain reported by their original
+oracles; the new accepted comparisons have zero skips. CMake is unavailable,
+so the added CMake registrations are untested.
+No ROM bytes, disassembly listings or captures are tracked.
+
+### Flight recovery, HUD and launch-sound caller continuation (2026-10-08)
+
+This continuation replaces supplied execution at flight `$9626..$98BE`,
+HUD/decimal `$CFC4..$D09E`, and missile initializer `$9F7C..$A02E` with
+258 literal instruction PCs in `OMainIrqService::caller_step`. Its generated
+manifest and code come from the local ROM disassembly; runtime ROM lookups
+remain bus reads. The previous weapon checkpoint's HUD and missile-initializer
+boundaries are superseded for these ranges.
+
+The live `$145AC/$145B0` dispatcher now executes fuselage initialization,
+recovery and missile initialization. Recovery's `$969A` BSR and launch's
+`$A022` BSR enter the checked `$B84C` sound producer, retaining registers,
+CCR, stack, RAM ownership and instruction time. Launch sound is selected by
+`$A01A/$A01E` from the ROM lookup at `$A716`, rather than a native cue.
+The actual allocator `$9ED2` calls the HUD, which gates stage/ammunition,
+clears its tile pairs, converts ammunition through `$D062/$D090` and writes
+whole/half symbols. This extends the caller path independently of the
+existing IRQ4 HUD routine oracle.
+
+The newly used CPU forms include predecrement MOVEA, absolute-long JSR,
+DBF, register logical shifts/rotate, byte OR, register immediate BTST and
+non-overflowing unsigned DIVU. DIVU's operand-dependent microcode duration
+is computed from initial registers and checked against raw MAME bus times.
+Divide-by-zero and quotient overflow remain explicit unsupported contexts;
+legitimate decimal input is masked to 16 bits and uses nonzero divisors.
+ANDI.L register completion adds four internal clocks after prefetch, with
+an interrupt-visibility regression at a hardware deadline.
+
+Two capture errors were corrected before accepting the final corpora.
+The short `$9FCA` BEQ can read PC+4 on either direction; start labeling now
+uses MAME's instruction-hook SR snapshot, and the untaken short branch
+records one prefetch rather than two. Immediate register BTST requires
+two prefetches and a two-clock completion tail, so `$D054` is captured as
+one complete instruction. The two-millisecond fixture window also cut off
+some HUD/launch paths; host fixtures now allow four milliseconds. Final
+gameplay/directed acceptance uses fresh captures with these corrections; exploratory captures
+and any temporary diagnostic relabeling remain ignored and are not accepted
+reference evidence.
+
+Directed initial operands call seven ROM entries through a real IPL7 RAM
+trampoline at safe completed wait sites, using the actual fuselage slot 131
+and MainBus addresses. They restore object/work/HUD/sound/request lanes
+and retain explicit context cuts. The matrix includes decimal endpoints
+`0/1/9/10/99/100/101/999/10000/65535`, nonzero divisors, signed depth,
+recovery counters/timers, stage gates, ammo cap, target-ring presence,
+launch parity, sound enable/index and append capacity. These are directed
+initial operands; natural dispatcher/allocator/sound calls are counted
+separately by `--require-host-path`.
+
+**Boundaries:** missile update `$A234`, Vulcan initialization/update,
+remaining object/sequence/damage/pool-reset graphs, sub/renderer producers
+and independent whole-host scheduling remain outside this new graph.
+Caller replay still consumes labelled initial contexts, ISR/sub frontiers,
+unowned input lanes and directed cuts. Arbitrary IRQ overlap, every launch
+channel/pool state, whole-credit RAM/video equality and audio waveform
+identity are not established. Native Stage 1 remains active; Phase 3d and
+plan section 2 item 1 remain incomplete.
+
+```bash
+make oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full
+make oracle-caller-host oracle-host-generated-check
+```
+
+Natural 120-frame boot/attract replay matches **465,158/465,158
+instruction/IRQ records** and **1,364,541/1,364,541 bus events**, zero
+different/skipped and zero unported post-RTE boundaries. It does not establish
+natural gameplay coverage of the new HUD/recovery/launch graph.
+
+The fresh natural 600-frame gameplay replay matches **2,797,594/2,797,594
+instruction/IRQ records**, **8,242,928/8,242,928 bus events** and
+**2,789,702/2,789,702 consecutive boundaries**, zero different/skipped and
+zero unported post-RTE boundaries. Physical visibility matches
+**22,842,419/22,842,419 observations**. The actual dispatcher invokes flight
+initialization twice and missile initialization five times; the allocator
+calls the HUD five times, and five launch BSRs enter the sound producer.
+Natural sound commands cover `$40/$41/$42/$43`. It observes **131/258 PCs**;
+recovery, alternate gates and decimal endpoints require the directed matrix.
+There are no fixture cuts. External graph-exit occurrences fall to **5,280**,
+which counts boundary occurrences and does not establish whole-host closure.
+
+The fresh 360-frame directed replay matches **2,054,080/2,054,080
+instruction/IRQ records**, **6,030,246/6,030,246 bus events** and
+**2,047,505/2,047,505 consecutive boundaries**, zero different/skipped.
+All **258 PCs**, both directions of **21 conditional branches and four DBFs**,
+and all ten required decimal endpoints pass. The physical timeline matches
+**11,379,962/11,379,962 observations**. Actual dispatcher/allocator calls
+include one flight initialization, seven HUD calls and seven missile
+initializations; fifty recovery/launch sound calls cover commands
+`$40/$41/$42/$43/$F1`. These counts include natural execution between
+labelled fixtures; fixture entries themselves do not count as dispatcher calls.
+The run retains 462 explicit fixture context cuts, with 231 incomplete fixture
+cuts outside accepted records, and 5,338 external graph-exit occurrences.
+It exposes two supplied post-RTE continuations outside the selected graphs:
+`$6844` and `$14EE8`, each once. The directed acceptance target therefore
+requires closure of every new graph PC, all branches/endpoints and exact
+comparison, while reporting those two unrelated exits; it does not use the
+whole-corpus `--require-closed` gate. Natural and older closure gates retain
+that stricter requirement.
+
+Four deliberate mutations in ignored source copies fail actual state/write
+comparison: flight depth `$C00 -> $C01` produces 176 instruction and 176
+bus-event differences; HUD upper symbol `$8BFD -> $8BFC` produces 51/51;
+recovery command `$F1 -> $F2` produces 252/6; and launch ROM lookup
+`$A716 -> $A717` produces 816/64. The positive directed run exits successfully
+without whole-corpus closure, and all four mutants fail without that flag:
+these are behavioral rejections, independent of the two reported external
+post-RTE continuations. Production code/constants remain unchanged.
+
+Validation: `make test`, `make verify-stage1`, the existing `make oracle-test`
+suite, host/weapon/flight/companion generated checks, game build and a
+180-frame dummy SDL video/audio launch pass. The new `oracle-caller-host`
+prerequisite checks the short, natural and directed corpora. CMake is not
+installed here; its added registrations have not been executed. All ROM
+images, captures, exploratory normalization scripts, mutation copies and
+executables remain under ignored `build/oracle/`.

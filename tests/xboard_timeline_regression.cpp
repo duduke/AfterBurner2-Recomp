@@ -76,6 +76,12 @@ int main() {
     XBoardCpuVisibility tail_cpu(tail_board);
     tail_cpu.resume(edge-160,0xee80); // ASR.L #7: 18 completion clocks
     check(tail_cpu.before_bus(edge+1280)==4);
+    // HUD ANDI.L also completes after prefetch. A deadline in its four
+    // internal clocks must be delivered before the following instruction.
+    CompareTimer5250 hud_timer;XBoardTimeline hud_board(hud_timer,0);
+    XBoardCpuVisibility hud_cpu(hud_board);
+    hud_cpu.resume(edge-160,0x0280);
+    check(hud_cpu.before_bus(edge+160)==4);
     // A phase ending exactly at the clear deadline yields before the next
     // access at that timestamp; no arbitrary extra IRQ delay is added.
     cpu.resume(edge+XBoardTimeline::LINE_NS);

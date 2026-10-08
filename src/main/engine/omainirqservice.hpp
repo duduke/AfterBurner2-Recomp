@@ -41,7 +41,8 @@ public:
     // Waiting returns PC=$14856 so a scheduler can service an IRQ.
     Result logic_step(MainBus&, const Context&, const Clock&);
     // One address-labelled wait/dispatcher, sprite clear/publication,
-    // follower, ready-bit, world projection, sound-ring, input, live-flight, shadow or exhaust instruction,
+    // follower, ready-bit, world projection, sound-ring, input, flight,
+    // shadow/exhaust, weapon controller/fire/allocation, HUD or missile-init instruction,
     // including ROM prefetches. Poll samples physical IPL at the CPU's selection phase;
     // the returned level is latched, not reselected at instruction completion.
     using Poll = std::function<unsigned(uint64_t)>;

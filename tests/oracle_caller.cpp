@@ -54,10 +54,16 @@ int main(int argc,char** argv)try{
  const bool snapshots=linked_irq4||!memcmp(magic,"AB2CALL9",8);
  const bool closure=snapshots||!memcmp(magic,"AB2CALL8",8);
  const bool successors=closure||!memcmp(magic,"AB2CALL7",8);
+ bool require_host=false,require_host_path=false;
+ bool require_weapon=false,require_weapon_path=false;
  bool require_companion=false,require_companion_path=false,require_flight=false,require_flight_path=false,require_input=false,require_input_path=false,require_soundproducer_path=false,require_soundproducer=false,require_taken=false,require_closed=false,require_follower=false,require_ready=false,require_worldinit=false,require_publication_init=false,require_allirq=false,require_ready_path=false,require_clear=false,require_trail=false,require_trail_path=false;const char* baseline_path=nullptr;
  for(int i=2;i<argc;++i){
   const std::string arg=argv[i];
-  if(arg=="--require-companion")require_companion=true;
+  if(arg=="--require-host")require_host=true;
+  else if(arg=="--require-host-path")require_host_path=true;
+  else if(arg=="--require-weapon")require_weapon=true;
+  else if(arg=="--require-weapon-path")require_weapon_path=true;
+  else if(arg=="--require-companion")require_companion=true;
   else if(arg=="--require-companion-path")require_companion_path=true;
   else if(arg=="--require-flight")require_flight=true;
   else if(arg=="--require-flight-path")require_flight_path=true;
@@ -139,7 +145,12 @@ int main(int argc,char** argv)try{
  unsigned services=0,service_bad=0,service_events=0,service_event_bad=0,resumptions=0,service2=0,service6=0,user_returns=0,adc_inputs=0,external_returns=0;
  unsigned graph_exits=0;std::map<uint32_t,unsigned> graph_exit_pcs;
  std::map<uint32_t,std::array<unsigned,2>> trail_branches;
- std::map<uint32_t,std::array<unsigned,2>> companion_branches;
+ std::map<uint32_t,std::array<unsigned,2>> companion_branches,weapon_branches;
+ std::map<uint32_t,std::array<unsigned,2>> host_branches;
+ unsigned host_flight_calls=0,host_hud_calls=0,host_launch_calls=0,host_sound_calls=0;
+ std::set<unsigned> host_decimal,host_commands;
+ unsigned weapon_dispatches=0,weapon_fire_calls=0,weapon_allocation_calls=0;
+ std::set<unsigned> weapon_ammo,weapon_reserve,weapon_launch,weapon_append;
  std::set<unsigned> companion_counts;
  std::map<uint32_t,std::set<unsigned>> companion_bytes,companion_banks,companion_counters,companion_rows;
  std::map<uint32_t,std::set<unsigned>> companion_tables;
@@ -348,8 +359,30 @@ int main(int argc,char** argv)try{
    }
    if(const auto* instruction=main_flight_instruction(c.interrupted_pc);instruction&&instruction->branch)
     ++flight_branches[c.interrupted_pc][next!=c.interrupted_pc+instruction->branch];
+   if(const auto* instruction=main_host_instruction(c.interrupted_pc);instruction&&instruction->branch)
+    ++host_branches[c.interrupted_pc][next!=c.interrupted_pc+instruction->branch];
+   if(c.interrupted_pc==0x145b0&&(next==0x9810||next==0x9626||next==0x964c))++host_flight_calls;
+   if(c.interrupted_pc==0x145b0&&next==0x9f7c)++host_launch_calls;
+   if(c.interrupted_pc==0x9ed2)++host_hud_calls;
+   if(c.interrupted_pc==0x969a||c.interrupted_pc==0xa022){++host_sound_calls;host_commands.insert(uint8_t(c.registers.d[0]));}
+   if(c.interrupted_pc==0xd062)host_decimal.insert(c.registers.d[0]&65535);
+   if(const auto* instruction=main_weapon_instruction(c.interrupted_pc);instruction&&instruction->branch){
+    // $9D6A's taken target equals its fall-through. Its Z flag distinguishes
+    // both paths even though the resulting PC agrees.
+    const bool taken=c.interrupted_pc==0x9d6a?bool(c.sr&4):next!=c.interrupted_pc+instruction->branch;
+    ++weapon_branches[c.interrupted_pc][taken];
+   }
+   if(c.interrupted_pc==0x145b0&&(next==0x9d34||next==0x9d56))++weapon_dispatches;
+   if(c.interrupted_pc==0x9d84||c.interrupted_pc==0x9d88)++weapon_fire_calls;
+   if(c.interrupted_pc==0x9e4a||c.interrupted_pc==0x9e7c)++weapon_allocation_calls;
    if(const auto* instruction=main_companion_instruction(c.interrupted_pc);instruction&&instruction->branch)
     ++companion_branches[c.interrupted_pc][next!=c.interrupted_pc+instruction->branch];
+   if(c.interrupted_pc==0xb62e&&(c.registers.a[5]&0x3fffff)==0x3fc080)weapon_append.insert(uint16_t(c.registers.d[0]));
+   for(const auto& e:expected)if(!e.w){
+    if(c.interrupted_pc==0x9e42&&e.a==0x3f8d66)weapon_ammo.insert(e.d);
+    if(c.interrupted_pc==0x9e92&&e.a==0x3f8e7e)weapon_reserve.insert(e.d&255);
+    if(c.interrupted_pc==0x9eac&&e.a==((c.registers.a[5]+62)&0x3ffffe))weapon_launch.insert(e.d);
+   }
    if(c.interrupted_pc==0xaf64||c.interrupted_pc==0xaff4)companion_bytes[c.interrupted_pc].insert(uint8_t(c.registers.d[0]));
    if(c.interrupted_pc==0xaf72||c.interrupted_pc==0xb002)companion_banks[c.interrupted_pc].insert(uint16_t(c.registers.d[0]));
    if(c.interrupted_pc==0xaf4c||c.interrupted_pc==0xafdc||c.interrupted_pc==0xb06c)
@@ -501,6 +534,45 @@ int main(int argc,char** argv)try{
  }
  for(auto [p,n]:graph_exit_pcs)std::cout<<"Unported graph exit PC "<<std::hex<<p<<std::dec<<": "<<n<<" boundaries\n";
  if(linked_irq4)std::cout<<"Linked IRQ4 services: "<<services4-service4_bad<<" of "<<services4<<" identical, "<<service4_bad<<" different, 0 skipped; "<<bus4-bus4_bad<<" of "<<bus4<<" bus events identical, "<<bus4_bad<<" different; "<<sub4<<" supplied sub writes; "<<sprite_cursor_frontiers<<" published video cursor byte frontiers\n";
+ if(require_host||require_host_path){
+  unsigned observed=0,missing=0;
+  for(const auto& i:main_host_instructions){
+   observed+=coverage[i.pc]!=0;
+   if(graph_exit_pcs[i.pc]||external_return_pcs[i.pc])throw std::runtime_error("host graph remains external at "+std::to_string(i.pc));
+   if(require_host&&!coverage[i.pc]){++missing;std::cerr<<"Missing host instruction "<<std::hex<<i.pc<<std::dec<<'\n';}
+   const auto opcode=bus.read16(i.pc);
+   if(require_host&&i.branch&&(opcode&0xff00)!=0x6000){
+    const auto& n=host_branches[i.pc];std::cout<<"Host branch "<<std::hex<<i.pc<<std::dec<<" taken/untaken="<<n[1]<<'/'<<n[0]<<'\n';
+    if(!n[0]||!n[1]){++missing;std::cerr<<"Missing host branch direction "<<std::hex<<i.pc<<std::dec<<'\n';}
+   }
+  }
+  if(require_host_path&&(!host_flight_calls||!host_hud_calls||!host_launch_calls||!host_sound_calls))throw std::runtime_error("missing actual flight/HUD/launch-sound caller");
+  if(require_host)for(unsigned v:{0,1,9,10,99,100,101,999,10000,65535})if(!host_decimal.count(v))throw std::runtime_error("missing decimal endpoint");
+  std::cout<<"Host caller coverage: "<<observed<<'/'<<main_host_instructions.size()<<" PCs; flight/HUD/missile dispatch/sound calls="<<host_flight_calls<<'/'<<host_hud_calls<<'/'<<host_launch_calls<<'/'<<host_sound_calls<<"; commands";
+  for(auto command:host_commands)std::cout<<' '<<std::hex<<command<<std::dec;std::cout<<'\n';
+  if(missing)throw std::runtime_error("incomplete host coverage");
+ }
+ if(require_weapon||require_weapon_path){
+  unsigned observed=0;
+  for(const auto& i:main_weapon_instructions){
+   observed+=coverage[i.pc]!=0;
+   if(graph_exit_pcs[i.pc]||external_return_pcs[i.pc])throw std::runtime_error("weapon graph remains external at "+std::to_string(i.pc));
+   if(require_weapon&&!coverage[i.pc])throw std::runtime_error("missing weapon instruction at "+std::to_string(i.pc));
+   if(require_weapon&&i.branch&&i.pc!=0x9d80){
+    const auto& n=weapon_branches[i.pc];std::cout<<"Weapon branch "<<std::hex<<i.pc<<std::dec<<" taken/untaken="<<n[1]<<'/'<<n[0]<<'\n';
+    if(!n[0]||!n[1])throw std::runtime_error("missing weapon branch direction at "+std::to_string(i.pc));
+   }
+  }
+  if(require_weapon){
+   for(unsigned v:{0,20,0x8000,0xffff})if(!weapon_ammo.count(v))throw std::runtime_error("missing signed missile-ammo endpoint");
+   for(unsigned v:{0,24,25,0x7f})if(!weapon_reserve.count(v))throw std::runtime_error("missing missile reserve endpoint");
+   for(unsigned v:{0,0x3c,0x7fff,0xffff})if(!weapon_launch.count(v))throw std::runtime_error("missing launch-channel wrap endpoint");
+   for(unsigned v:{0,0xbf,0xc0,0xc1})if(!weapon_append.count(v))throw std::runtime_error("missing weapon append endpoint");
+  }
+  if(!coverage[0x9d56]||!weapon_fire_calls)throw std::runtime_error("missing weapon controller/fire caller");
+  if(require_weapon_path&&!weapon_dispatches)throw std::runtime_error("missing actual dispatcher weapon caller");
+  std::cout<<"Weapon coverage: "<<observed<<'/'<<main_weapon_instructions.size()<<" PCs; "<<weapon_dispatches<<" dispatcher calls, "<<weapon_fire_calls<<" controller fire calls, "<<weapon_allocation_calls<<" allocation calls; HUD/pool reset remain labelled boundaries\n";
+ }
  if(require_companion||require_companion_path){
   unsigned observed=0;
   for(const auto& i:main_companion_instructions){

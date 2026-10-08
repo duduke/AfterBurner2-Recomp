@@ -275,11 +275,18 @@ end
 local soundproducer=os.getenv("AB2_ORACLE_CALLER_SOUNDPRODUCER")=="1"
 assert(not soundproducer or snapshots,"sound producer requires instruction snapshots")
 if soundproducer then
- if os.getenv("AB2_ORACLE_SOUNDPRODUCER_DIRECTED")=="1" then sizes[0xd0da]=4 end
+ -- $D0DA is already timed and may resume after an IRQ in any linked corpus.
+ sizes[0xd0da]=4
  for p,n in pairs({[0xb84c]=3,[0xb850]=2,[0xb854]=5,[0xb85c]=2,
  [0xb860]=3,[0xb864]=2,[0xb868]=3,[0xb86c]=1,[0xb86e]=2,
  [0xb872]=3,[0xb876]=4,[0xb87a]=4,[0xb87c]=4,[0xb880]=4,[0xb884]=4})do sizes[p]=n end
 end
+local hostgraph=os.getenv("AB2_ORACLE_CALLER_HOST")=="1"
+assert(not hostgraph or snapshots,"host graph requires snapshots")
+local host_manifest=hostgraph and dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/hostcaller_schedule.lua") or {}
+local weapongraph=os.getenv("AB2_ORACLE_CALLER_WEAPON")=="1"
+assert(not weapongraph or snapshots,"weapon graph requires snapshots")
+local weapon_manifest=weapongraph and dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/weapon_schedule.lua") or {}
 local companiongraph=os.getenv("AB2_ORACLE_CALLER_COMPANION")=="1"
 local companiononly=os.getenv("AB2_ORACLE_COMPANION_ONLY")=="1"
 assert(not companiongraph or snapshots,"companion graph requires snapshots")
@@ -305,6 +312,8 @@ if companiononly then
  local returned=dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/flight_schedule.lua")
  for _,p in ipairs({0x427c,0x5d68,0x60ca,0x7650,0x18e8a})do flight_manifest[p]=returned[p]end
 end
+for p,i in pairs(host_manifest)do sizes[p]=i.phases end
+for p,i in pairs(weapon_manifest)do sizes[p]=i.phases end
 for p,i in pairs(companion_manifest)do sizes[p]=i.phases end
 for p,i in pairs(flight_manifest)do sizes[p]=i.phases end
 for p,i in pairs(input_manifest)do sizes[p]=i.phases end
@@ -332,6 +341,8 @@ if trail then
  completion[0xac06]={reg=0,tail=14}
  completion[0xac24]={reg=1,tail=4}
 end
+for p,i in pairs(host_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail}end end
+for p,i in pairs(weapon_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail}end end
 for p,i in pairs(companion_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail}end end
 for p,i in pairs(input_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail}end end
 for p,i in pairs(flight_manifest)do if i.tail>0 then completion[p]={reg=i.source,tail=i.tail,variable=i.variable>0,count=i.variable-1}end end
@@ -370,6 +381,8 @@ if snapshots then
  local addresses=snapshot_addresses
  for p in pairs(input_manifest)do addresses[p]=true end
  for p in pairs(flight_manifest)do addresses[p]=true end
+ for p in pairs(host_manifest)do addresses[p]=true end
+ for p in pairs(weapon_manifest)do addresses[p]=true end
  for p in pairs(companion_manifest)do addresses[p]=true end
  if flightonly or companiononly then for p in pairs(sizes)do addresses[p]=true end end
  if not inputonly and not flightonly and not companiononly then
@@ -525,9 +538,32 @@ local function access(w,a,d,m)
   if p==0xb6c0 or p==0xb6f6 or p==0xb754 or p==0xb7a4 then
    if main.state.D0.value&0xffff==0 then n=3 end
   end
-  if input_manifest[p] or flight_manifest[p] or companion_manifest[p] then
-   local i=input_manifest[p] or flight_manifest[p] or companion_manifest[p]
+  if input_manifest[p] or flight_manifest[p] or companion_manifest[p] or weapon_manifest[p] or host_manifest[p] then
+   local i=input_manifest[p] or flight_manifest[p] or companion_manifest[p] or weapon_manifest[p] or host_manifest[p]
    offset=i.offset==-1 and (a==p+4 and 320 or 160) or i.offset*80
+   if i.offset==-1 and i.branch==2 and a==p+4 then n=1 end
+   if i.offset==-2 then
+    local snap=assert(snapshot(p));local dividend,divisor=string.unpack(">I4I4",snap.regs)
+    divisor=divisor&65535;assert(divisor>0 and dividend>>16<divisor,"decimal DIVU outside bounded contract")
+    local cycles=38;local partial=dividend;local high=divisor<<16
+    for k=1,15 do local old=partial;partial=(partial<<1)&0xffffffff
+     if old&0x80000000~=0 then partial=(partial-high)&0xffffffff
+     else cycles=cycles+2;if partial>=high then partial=partial-high;cycles=cycles-1 end end
+    end
+    offset=(cycles*2-4)*80
+   end
+   if p==0xd004 or p==0xd036 or p==0xd050 or p==0x9f96 then
+    local register=p==0xd004 and 2 or p==0xd036 and 1 or p==0xd050 and 0 or 7
+    local old=string.unpack(">I4",assert(snapshot(p)).regs,register*4+1)&65535
+    n=old==0 and 3 or 2
+   end
+   -- These short BEQs can prefetch PC+4 on either path. Address alone
+   -- cannot distinguish their timing; use the independent SR snapshot.
+   if p==0x9d6a or p==0x9fca then
+    local taken=(assert(snapshot(p)).sr&4)~=0
+    offset=taken and 160 or 320
+    if p==0x9fca then n=taken and 2 or 1 end
+   end
   elseif p==0xb868 or p==0xab52 or p==0xac46 then offset=160
   elseif p==0xb850 or p==0xb85c then offset=a==p+4 and 320 or 160
   elseif p==0xab06 or p==0xab28 or p==0xabca or p==0xabd2 or p==0xac2a or p==0xac36 then offset=a==p+4 and 320 or 160
@@ -575,6 +611,12 @@ dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/gameplay.lua")
 -- Place a real IPL3 instruction and ROM caller before the physical line-223
 -- edge. Vary lead time; no debugger SR setter is used to unmask pending IRQs.
 local directed=os.getenv("AB2_ORACLE_CALLER_DIRECTED")=="1"
+local host_directed=os.getenv("AB2_ORACLE_HOST_DIRECTED")=="1"
+assert(not host_directed or (directed and hostgraph),"host fixture requires host graph")
+local host_entries={0x9810,0x9626,0x964c,0xcfc4,0xd062,0xd090,0x9f7c}
+local weapon_directed=os.getenv("AB2_ORACLE_WEAPON_DIRECTED")=="1"
+assert(not weapon_directed or (directed and weapongraph),"weapon fixture requires weapon graph")
+local weapon_entries={0x9d34,0x9d56,0x9df8,0x9e50,0x9e82,0x9ed8}
 local companion_directed=os.getenv("AB2_ORACLE_COMPANION_DIRECTED")=="1"
 assert(not companion_directed or (directed and companiongraph),"companion fixture requires companion graph")
 local companion_entries={0x9c34,0x9c9e,0xae8c,0xaee4,0xaf08,0xaf3c,0xafcc,0xb05c}
@@ -597,11 +639,11 @@ assert(not successor_directed or (directed and successors),"successor fixture re
 local companion_fixture_index=0
 local function fixture(k)
  local co=coroutine.create(function()
-  local dispatcher=not companion_directed and not flight_directed and not input_directed and not soundproducer_directed and not trail_directed and not worldinit_directed and not ready_directed and not follower_directed and not successor_directed and k%4==3
+  local dispatcher=not host_directed and not weapon_directed and not companion_directed and not flight_directed and not input_directed and not soundproducer_directed and not trail_directed and not worldinit_directed and not ready_directed and not follower_directed and not successor_directed and k%4==3
   local lead=dispatcher and (20+(k//4)%100*2) or (1+(k%64)*0.24)
   emu.wait((261*64-lead)/1e6)
   if closing or entry or handler or (main.state.SR.value&0x700)~=0x100 then return end
-  if companion_directed then
+  if companion_directed or weapon_directed or host_directed then
    -- These read/branch wait instructions have no partially completed stack
    -- effects. Re-entering CURPC at a just-completed RTS would pop twice.
    local p=main.state.CURPC.value
@@ -614,14 +656,16 @@ local function fixture(k)
   local input_saved
   local flight_saved
   local companion_saved
+  local weapon_saved
+  local host_saved
   if trail_directed or follower_directed or ready_directed or worldinit_directed then follower_saved={ram=space:read_range(0x3ffbc0,0x3ffc3f,8),stage=space:read_u16(0x29c09c),count=space:read_u16(0x2a3cf0),ready=space:read_u8(0x29c200)}end
   local saved={pc=main.state.CURPC.value,sr=main.state.SR.value,ssp=main.state.SP.value,usp=main.state.USP.value,d={},a={}}
   for i=0,7 do saved.d[i]=main.state["D"..i].value end
   for i=0,6 do saved.a[i]=main.state["A"..i].value end
   out:write(string.char(3)) -- explicit scheduler context cut
   if active or pending then cuts=cuts+1 end;active=nil;pending=nil;resume_check=false
-  space:write_u16(0x3ffd00,0x46fc);space:write_u16(0x3ffd02,(companion_directed or flight_directed or input_directed or soundproducer_directed) and 0x2700 or successor_directed and (k%2==0 and 0x2300 or 0x231a) or 0x2300)
-  space:write_u16(0x3ffd04,0x4eb9);space:write_u32(0x3ffd06,companion_directed and companion_entries[k%8+1] or flight_directed and 0x98c0 or input_directed and 0x14976 or soundproducer_directed and 0xb84c or trail_directed and 0xaaee or worldinit_directed and 0x88c2 or ready_directed and 0xc082 or follower_directed and 0x7bb6 or successor_directed and 0xb632 or dispatcher and 0x14594 or 0x14856)
+  space:write_u16(0x3ffd00,0x46fc);space:write_u16(0x3ffd02,(host_directed or weapon_directed or companion_directed or flight_directed or input_directed or soundproducer_directed) and 0x2700 or successor_directed and (k%2==0 and 0x2300 or 0x231a) or 0x2300)
+  space:write_u16(0x3ffd04,0x4eb9);space:write_u32(0x3ffd06,host_directed and host_entries[k%7+1] or weapon_directed and weapon_entries[k%6+1] or companion_directed and companion_entries[k%8+1] or flight_directed and 0x98c0 or input_directed and 0x14976 or soundproducer_directed and 0xb84c or trail_directed and 0xaaee or worldinit_directed and 0x88c2 or ready_directed and 0xc082 or follower_directed and 0x7bb6 or successor_directed and 0xb632 or dispatcher and 0x14594 or 0x14856)
   space:write_u16(0x3ffd0a,0x46fc);space:write_u16(0x3ffd0c,0x2700)
   space:write_u16(0x3ffd0e,0x4e71);space:write_u16(0x3ffd10,0x60fc)
   if input_directed then
@@ -636,6 +680,90 @@ local function fixture(k)
   space:write_u8(0x3f8050,1)
   if dispatcher then
    for i=0,253 do space:write_u8(0x3fa000+64*i,0)end
+  end
+  if host_directed then
+   -- Operand fixtures only, using the live fuselage slot; all arithmetic,
+   -- HUD writes and command lookup execute in the real ROM.
+   host_saved={}
+   local function save(a,size)
+    for i=0,size-1 do if host_saved[a+i]==nil then host_saved[a+i]=space:read_u8(a+i)end end
+   end
+   local function set(a,v,size)
+    save(a,size)
+    if size==1 then space:write_u8(a,v&255)elseif size==2 then space:write_u16(a,v&65535)else space:write_u32(a,v&0xffffffff)end
+   end
+   local n=k//7;local mode=n%12
+   main.state.A5.value=0x3fc0c0;main.state.A6.value=0xe4000
+   main.state.D0.value=({0,1,9,10,99,100,101,999,10000,65535})[n%10+1]
+   main.state.D1.value=({10,100,1000,10000})[n%4+1]
+   save(0x3fa000,254*64);save(0x3f8800,0xc00);save(0x0d0c00,0x200)
+   for a=0x3fc080,0x3fc1ff do set(a,0,1)end
+   for a=0x3fe800,0x3fe83f do set(a,0,1)end
+   set(0x3fc0c0,0xfc00,2);set(0x3fc0d4,131,1)
+   set(0x3fc0c4,0x7fff,2);set(0x3fc0c6,0x70,2)
+   set(0x3fc0e4,({0,0x1e7,0x1e8,0x3e7,0x3e8,0x3ff,0x400,0xffff,0xff00})[n%9+1],2)
+   set(0x3fc0f4,n%2,1)
+   set(0x3f91c6,({0,29,30,0x7e,0x7f,0x80,0xff})[n%7+1],1)
+   set(0x3f8d76,mode==1 and 1 or mode==2 and 0xffff or 0,2)
+   set(0x3f8d60,1,1);set(0x3f91c4,1,1);set(0x3f89ec,1,1)
+   set(0x29c09c,({1,14,15,16,18,19})[n%6+1],2)
+   set(0x29c200,mode==3 and 0 or 0x10,1)
+   set(0x3f91d0,mode==4 and 0x10 or 0,1)
+   set(0x29c09a,0,2);set(0x3f90fe,0,1)
+   set(0x29c096,({0,32,0xffe0,96,0xffa0,256,0xff00})[n%7+1],2)
+   set(0x29c098,0,2);set(0x29c080,0x70,2)
+   set(0x29c088,0,2);set(0x29c08a,0,2)
+   set(0x3f8d4c,({0,0x7fff,0x8000,0xffff})[n%4+1],2)
+   set(0x3f91fe,({0,0xfc,0xfffc})[n%3+1],2)
+   set(0x3f8d66,({0,1,2,9,10,11,99,100,101,0xffff})[n%10+1],2)
+   for a=0x3f8e30,0x3f8e6f,4 do set(a,0,4)end
+   if n%2~=0 then set(0x3f8e34,0x3fc300,4)end
+   set(0x29c0b8,n%2,2);set(0x3fc0f0,(n%16)*4,2)
+   set(0x3f8902,mode==5 and 0 or 1,1);set(0x3f8906,0,1)
+   set(0x3f8908,n%2==0 and 0 or 0x3f,2)
+   local count=({0,0xbf,0xc0,0xc1})[n%4+1]
+   set(0x2a3cf0,count,2);set(0x2a3c04,0x3fe800-count*16,4)
+  end
+  if weapon_directed then
+   -- Labelled initial RAM fixtures. All controller/fire/allocation effects
+   -- execute in the ROM; inject only at a wait to preserve stack completion.
+   weapon_saved={}
+   local function save(a,size)
+    for i=0,size-1 do if weapon_saved[a+i]==nil then weapon_saved[a+i]=space:read_u8(a+i)end end
+   end
+   local function set(a,v,size)
+    save(a,size)
+    if size==1 then space:write_u8(a,v&255)elseif size==2 then space:write_u16(a,v&65535)else space:write_u32(a,v&0xffffffff)end
+   end
+   local n=k//6;local mode=n%16
+   main.state.A5.value=0x3fc080;main.state.A6.value=0xe4000
+   main.state.D0.value=0x12345678;main.state.D1.value=0x89abcdef
+   save(0x3fa000,254*64);save(0x3f8d00,0x100);save(0x3f8900,0x50)
+   save(0x3f8e7f,0x82);save(0x0d0c00,0x200)
+   for a=0x3fc080,0x3fc0ff do set(a,0,1)end
+   for a=0x3fe800,0x3fe83f do set(a,0,1)end
+   set(0x3fc080,0x80,1);set(0x3fc08c,0x10a00,4);set(0x3fc094,130,1)
+   set(0x3fc0c0,mode==4 and 0 or 0x80,1)
+   set(0x3fc0c4,({0,0x7fff,0x8000,0xffff})[n%4+1],2)
+   set(0x3fc0c6,({0x70,0x8000,0x7fff,0xffff})[n%4+1],2)
+   set(0x3fc0be,({0,0x3c,0x7fff,0xffff})[n%4+1],2)
+   set(0x29c09c,({1,16,15,18,19})[n%5+1],2)
+   set(0x29c09a,mode==0 and 1 or 0,2)
+   set(0x29c200,mode==1 and 0 or mode==3 and 8 or 0x18,1)
+   set(0x3f91d0,mode==2 and 8 or 0,1)
+   set(0x29c202,mode==5 and 1 or 0,1)
+   set(0x3f90fe,mode==6 and 1 or 0,1)
+   set(0x29c077,mode==7 and 0x20 or 0,1)
+   set(0x29c076,mode==8 and 0 or mode==9 and 0x10 or mode==10 and 0x20 or 0x30,1)
+   set(0x3f8b5b,mode==11 and 0 or n%2==0 and 1 or 5,1)
+   set(0x3f8d66,mode==12 and 0 or mode==13 and 0xffff or mode==14 and 0x8000 or 20,2)
+   set(0x3f8d4a,0,2)
+   set(0x3f8e7f,({0,24,25,0x7f})[(n//4)%4+1],1)
+   for i=1,127 do set(0x3f8e7f+i,140,1)end
+   set(0x3f8ee0,n%2==0 and 0 or 1,1);set(0x3f8ee1,141,1)
+   set(0x3f8902,1,1);set(0x3f8906,0,1);set(0x3f8908,n%2==0 and 0 or 0x3f,2)
+   local count=({0,0xbf,0xc0,0xc1})[n%4+1]
+   set(0x2a3cf0,count,2);set(0x2a3c04,0x3fe800-count*16,4)
   end
   if companion_directed then
    -- Initial-state fixture only; the real ROM executes all sprite/table/chip work.
@@ -806,11 +934,13 @@ local function fixture(k)
   end
   main.state.SR.value=saved.sr|0x2000;main.state.PC.value=0x3ffd00
   guard=false;shared_guard.active=false
-  emu.wait(0.002)
+  emu.wait(host_directed and 0.004 or 0.002)
   if closing then return end
   assert(not entry and not handler and (main.state.SR.value&0x700)~=0x400 and (main.state.SR.value&0x700)~=0x600,"fixture ended during IRQ service")
   guard=true;shared_guard.active=true;out:write(string.char(3)) -- fixture restore cuts the CPU schedule
   if active or pending then cuts=cuts+1 end;active=nil;pending=nil;resume_check=false
+  if host_saved then for a,v in pairs(host_saved)do space:write_u8(a,v)end end
+  if weapon_saved then for a,v in pairs(weapon_saved)do space:write_u8(a,v)end end
   if companion_saved then for a,v in pairs(companion_saved)do space:write_u8(a,v)end end
   if flight_saved then for a,v in pairs(flight_saved)do space:write_u8(a,v)end end
   if input_saved then
@@ -841,8 +971,8 @@ end
 caller_frames=emu.add_machine_frame_notifier(function()
  frames=frames+1
  visibility_record(2,0,0,0,0,ns())
- if (companion_directed or input_directed or flight_directed) and frames>=32 and frames+2<tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then fixture(frames-32)
- elseif not companion_directed and not input_directed and not flight_directed and directed and frames>=32 and frames%4==0 then fixture(frames//4)end
+ if (host_directed or weapon_directed or companion_directed or input_directed or flight_directed) and frames>=32 and frames+2<tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then fixture(frames-32)
+ elseif not host_directed and not weapon_directed and not companion_directed and not input_directed and not flight_directed and directed and frames>=32 and frames%4==0 then fixture(frames//4)end
  if frames>=tonumber(os.getenv("AB2_ORACLE_PASSES") or "600") then
   if linked_irq4 then closing=true else assert(not handler,"unfinished caller service");close_capture()end
  end

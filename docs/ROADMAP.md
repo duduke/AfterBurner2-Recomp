@@ -164,6 +164,28 @@ Connect both bounded CPU streams under this policy and remove remaining
 producer/caller/video/sound frontiers before whole-host acceptance.
 See the sprite/road continuation in `ENGINE_NOTES.md` for branch limits;
 whole-host acceptance remains pending.
+The timed weapon controller/fire/allocation caller checkpoint adds 107 literal
+PCs at `$9D34..$9DEA/$9DF8..$9F06`. Natural 600-frame execution matches
+2,783,882/2,783,882 instruction/IRQ records and 8,210,437/8,210,437 bus events;
+directed 240-frame acceptance covers every PC, both directions of all nineteen
+conditional branches and the reserve/ammo/launch/append endpoints. Both have
+zero differences/skips and zero unported post-RTE returns; three mutations
+are rejected. Natural exit occurrences fall to 5,403. Pool-reset/HUD callee
+execution and activated projectile continuations remain timed boundaries,
+alongside main/sub producer scheduling and renderer ownership. Section 2
+item 1 remains incomplete; see the timed weapon checkpoint in `ENGINE_NOTES.md`.
+The flight/HUD/launch-sound caller continuation now adds 258 literal PCs for
+`$9810/$9626/$964C`, `$CFC4/$D062` and `$9F7C`, retaining actual dispatcher,
+allocator and sound-ring calls. Natural 600-frame execution matches
+2,797,594/2,797,594 instruction/IRQ records and 8,242,928/8,242,928 bus events,
+with zero unported post-RTE returns and 5,280 labelled external exits.
+Directed coverage reaches every PC and both
+directions of 21 conditionals/four DBFs; all comparisons have zero differences
+or skips. The longer directed run exposes supplied post-RTE continuations at
+`$6844/$14EE8`, outside these graphs. Remaining projectile/sequence/pool and
+independent two-CPU/video/sound acceptance boundaries remain explicit;
+native Stage 1 and section 2 item 1 remain unchanged. See the continuation in
+`ENGINE_NOTES.md` for natural results and mutation evidence.
 The runtime template inventory still identifies seven unported initial handlers.
 Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining

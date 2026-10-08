@@ -10,6 +10,8 @@
 #include "engine/omaininputschedule.hpp"
 #include "engine/omainflightschedule.hpp"
 #include "engine/omaincompanionschedule.hpp"
+#include "engine/omainweaponschedule.hpp"
+#include "engine/omainhostcallerschedule.hpp"
 
 // Captured physical levels are assertions only. Generated levels are the
 // caller oracle's Poll inputs; bus/frontier gaps remain labelled boundaries.
@@ -24,6 +26,8 @@ struct CpuVisibilityCapture {
         if(const auto* i=main_input_instruction(pc);i&&i->tail)return true;
         if(const auto* i=main_flight_instruction(pc);i&&i->tail)return true;
         if(const auto* i=main_companion_instruction(pc);i&&i->tail)return true;
+        if(const auto* i=main_weapon_instruction(pc);i&&i->tail)return true;
+        if(const auto* i=main_host_instruction(pc);i&&i->tail)return true;
         switch(pc) {
         case 0xab02:case 0xab42:case 0xab4a:case 0xab68:case 0xab9a:case 0xab9c:case 0xab9e:case 0xabc2:case 0xac02:case 0xac04:case 0xac06:case 0xac24:return true;
         case 0x88f0:case 0x88f2:case 0x88f4:case 0x88fa:case 0x8928:case 0x892a:case 0x892c:
@@ -80,7 +84,7 @@ struct CpuVisibilityCapture {
                     adc_result=bus.endpoints.adc_read();adc_lane=(hardware.selected_mux()>>2)&7;adc_result_known=true;
                     ++adc_reads;ok &= (bus.endpoints.adc_read()&m)==(d&m&255);
                 }
-                if((physical_buttons&&a==0x150000)||main_input_instruction(pc)||main_flight_instruction(pc)||main_companion_instruction(pc)||pc==0xd0da||(pc>=0xb84c&&pc<=0xb884)||(pc>=0x1458a&&pc<=0x145b8)||(pc>=0x14856&&pc<=0x14878)||(pc>=0xb676&&pc<=0xb7c0)||pc==0x1466a||pc==0x14672||pc==0x147c6||pc==0x147e6||(pc>=0x8b02&&pc<=0x8c1a)||(pc>=0x9556&&pc<=0x9572)||pc==0x8c1a||(pc>=0xb636&&pc<=0xb654)||pc==0x8afe||pc==0xb632||pc==0x8af8||pc==0xb62e||(pc>=0x88c2&&pc<=0x8944)||pc==0x8af2||(pc>=0x7bb6&&pc<=0x7c10)||(pc>=0xc082&&pc<=0xc098)||(pc>=0xaaee&&pc<=0xac4a)||(pc>=0xae32&&pc<=0xae4e)||pc==0xb66e||pc==0x14ee2||pc==0xb628||pc==0x15bfe||(kind==0&&a>=0x130000&&a<0x140000&&(m&255)))
+                if((physical_buttons&&a==0x150000)||main_input_instruction(pc)||main_flight_instruction(pc)||main_companion_instruction(pc)||main_weapon_instruction(pc)||main_host_instruction(pc)||pc==0xd0da||(pc>=0xb84c&&pc<=0xb884)||(pc>=0x1458a&&pc<=0x145b8)||(pc>=0x14856&&pc<=0x14878)||(pc>=0xb676&&pc<=0xb7c0)||pc==0x1466a||pc==0x14672||pc==0x147c6||pc==0x147e6||(pc>=0x8b02&&pc<=0x8c1a)||(pc>=0x9556&&pc<=0x9572)||pc==0x8c1a||(pc>=0xb636&&pc<=0xb654)||pc==0x8afe||pc==0xb632||pc==0x8af8||pc==0xb62e||(pc>=0x88c2&&pc<=0x8944)||pc==0x8af2||(pc>=0x7bb6&&pc<=0x7c10)||(pc>=0xc082&&pc<=0xc098)||(pc>=0xaaee&&pc<=0xac4a)||(pc>=0xae32&&pc<=0xae4e)||pc==0xb66e||pc==0x14ee2||pc==0xb628||pc==0x15bfe||(kind==0&&a>=0x130000&&a<0x140000&&(m&255)))
                     phases.push_back({t,end,uint32_t(pc),uint32_t(a),uint16_t(d),uint16_t(m),board.main_irq_level(),kind==1,board.adc.value(),buttons,sampled,sample_mask});
                 // Register shifts and ADDA select at nbcr3/roml3, after
                 // their prefetch. MAME can deliver an edge at the completed
