@@ -149,8 +149,21 @@ The sub publication waits/release now compute eight instruction PCs and
 retain computed main handshake values. The natural 600-frame sub replay
 matches 6,305,996/6,305,996 instructions and 15,895,267/15,895,267 phases,
 with zero different/skipped accepted records. Cross-CPU delivery order,
-main writer times and sub IRQ/callee frontiers remain inputs; timed sub
-call/return, sprite and road progress remain next.
+main writer times and sub IRQ/callee frontiers remain inputs. The eight
+publication caller instructions now compute BSR return stacks, request-word
+shifts and carry branches, retaining their produced lanes across supplied
+callee gaps. Independently timed bounded sprite/road progress now adds
+1,136 literal PCs: all are covered by directed MAME checks. Natural 600-frame
+execution matches 11,896,153/11,896,153 instructions and
+27,415,741/27,415,741 bus phases; seven mutations are rejected. The subsequent
+sub IRQ checkpoint computes entry, selection, ISR, RTE and retained resumption:
+600-frame checks match 12,072,480 instructions/entries and 28,083,147 phases.
+The arbiter matches 239,177 grants and 1,271,730 shared reads at labelled
+producer/completion frontiers; nine sub and four arbiter mutations fail.
+Connect both bounded CPU streams under this policy and remove remaining
+producer/caller/video/sound frontiers before whole-host acceptance.
+See the sprite/road continuation in `ENGINE_NOTES.md` for branch limits;
+whole-host acceptance remains pending.
 The runtime template inventory still identifies seven unported initial handlers.
 Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining

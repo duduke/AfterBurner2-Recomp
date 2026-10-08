@@ -433,12 +433,13 @@ Shared verbatim with the original `aburner` set.
   (§5) — safe to just not emulate it.
 - Motor/moving-cabinet hardware is unemulated upstream in MAME too — no
   reference behavior exists to port for the Moving Deluxe cabinet motor.
-- Real inter-CPU timing is tighter than a naive port might assume: MAME
-  forces a 6000Hz minimum scheduler quantum and adds extra sync points
-  around shared-RAM writes and IRQ delivery between the two 68000s. A
-  native port won't have MAME's cooperative scheduler, so ordering of
-  main/sub CPU steps needs deliberate attention wherever they touch
-  shared RAM (`subram0`/`subram1`/road control RAM).
+- MAME's After Burner II configuration sets a maximum scheduler quantum of
+  `1/6000 s`. Main IRQ assertions and sub reset request a 320-ns quantum for
+  100 us; scanline and other device timers also delimit grants. CPUs execute
+  main, sub, then Z80, so a main write with a later local timestamp can precede
+  a sub read. The shared-write `loffire_sync0_w` synchronization applies to
+  **Line of Fire**, not After Burner II. See the grant and shared-read oracle
+  checkpoint in `ENGINE_NOTES.md` before composing the native host.
 
 ## Open questions to resolve before/while porting the relevant subsystem
 

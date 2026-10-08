@@ -220,6 +220,23 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   natural 600-frame execution matches 6,305,996/6,305,996 instructions.
   Shared-bus delivery order, main writer times and sub IRQ/callee entries
   remain supplied; see the sub publication continuation in `ENGINE_NOTES.md`.
+- [x] Compute the eight sub publication caller instructions
+  `$432/$436/$43A/$43E/$442/$446/$44A/$44E`: BSR return-stack writes,
+  one-bit request shifts and carry-controlled optional sprite calls. Retain
+  computed stack/request lanes across supplied callee/IRQ gaps. Natural and
+  directed captures require all sixteen bounded PCs, both directions of five
+  branches and separate readiness/shift endpoints. Road/sprite execution,
+  sub IRQ timing and cross-CPU delivery remain supplied; see the sub caller
+  continuation in `ENGINE_NOTES.md`.
+- [x] Compute independently timed bounded sprite/road progress: road wrapper/
+  initialization, sprite sort/transform/interpolation, bank/pitch/rotation,
+  normal raster and special-road graphs (1,136 new PCs). Directed 360-frame
+  acceptance covers every new PC and matches 6,171,481 instructions and
+  13,787,074 bus phases; natural 600-frame acceptance matches 11,896,153
+  instructions and 27,415,741 phases, zero differences/skips. Seven mutations
+  are rejected. Sub IRQ, producer delivery, arbitration and renderer
+  composition remain supplied; see `ENGINE_NOTES.md` for eight unexercised
+  branch/loop directions and completion-tail limits.
 - [ ] Finish independent scheduling across caller/ISR resumptions, ADC input
   producers, publication wait boundaries and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller
@@ -328,3 +345,20 @@ entries and observed later caller boundaries are documented in `ENGINE_NOTES.md`
 - [ ] Mark Phase 3d complete only when every acceptance item passes; then draft
   the Phase 3e stage/game-flow plan. Whole-credit RAM/video equality remains
   Phase 3f; waveform equality remains audio acceptance work.
+
+## Sub IRQ and main/sub grant checkpoint — 2026-10-08
+
+- [x] Compute independent sub IRQ selection, autovector entry, all thirteen
+  handler PCs, MOVEM/RTE stack restoration and linked user resumption.
+  Natural 600: 12,072,480 instruction/entry records and 28,083,147 bus phases;
+  zero differences/skips, 599 exact returns, zero supplied tail continuations.
+  Directed gates cover countdown/mutex/pause and all 1,136 sprite/road PCs.
+- [x] Check native main/sub/Z80 grant budgets, quantum boost/expiry, overrun,
+  zero-progress aborts and main/sub RAM delivery against a separate MAME
+  scheduler observation build. 239,177 grants and 1,271,730 shared reads match;
+  nine sub and four arbitration mutations fail. Producer/completion frontiers
+  and other-device deadlines remain labelled inputs.
+- [ ] Compose both CPU instruction continuations under the checked arbiter,
+  replace remaining main producer/caller boundaries and complete paired
+  player/weapon/video/sound acceptance. Whole-host acceptance is pending;
+  native Stage 1 remains active. See `ENGINE_NOTES.md` for scope and sensitivity.

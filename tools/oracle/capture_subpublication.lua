@@ -5,12 +5,12 @@ local sub=manager.machine.devices[":mainpcb:subcpu"]
 local main=manager.machine.devices[":mainpcb:maincpu"]
 local space=sub.spaces.program
 local ms=main.spaces.program
-local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2SUBP2")
-local sizes={[0x452]=3,[0x456]=2,[0x458]=5,[0x556]=3,[0x55a]=2,[0x55c]=4,[0x640]=4,[0x646]=2}
+local out=assert(io.open(assert(os.getenv("AB2_ORACLE_OUT")),"wb"));out:write("AB2SUBP3")
+local sizes={[0x432]=4,[0x436]=4,[0x43a]=2,[0x43e]=4,[0x442]=4,[0x446]=2,[0x44a]=4,[0x44e]=4,[0x452]=3,[0x456]=2,[0x458]=5,[0x556]=3,[0x55a]=2,[0x55c]=4,[0x640]=4,[0x646]=2}
 local active,guard=nil,false
 local stop=false
 local order=0
-local fixture_index={[0x452]=0,[0x556]=0}
+local fixture_index={[0x452]=0,[0x556]=0,[0x436]=0,[0x442]=0}
 local fixtures=0
 local frames,records,writers,cuts=0,0,0,0
 local directed=os.getenv("AB2_ORACLE_PUBLICATION_DIRECTED")=="1"
@@ -55,37 +55,40 @@ local function event(w,a,d,m)
  -- explicit boundary, even while CURPC still names the interrupted wait.
  if sub.state.SR.value&0x2000~=0 then
   if active then out:write(string.char(5));cuts=cuts+1;active=nil end
+  if w and a>=0x9c000 and a<0xa4000 then out:write(string.char(4),string.pack(">I8I4I4I4I2I2",ns(),order,p,a,d,m))end
   return
  end
  if not sizes[p] then
-  if w and (a==0xa3c00 or a==0x9c0d6)then
+  if w and a>=0x9c000 and a<0xa4000 then
    out:write(string.char(4),string.pack(">I8I4I4I4I2I2",ns(),order,p,a,d,m))
   end
   return
  end
  if not active then
-   local first=(p==0x456 and (a==0x452 or a==p+4))or(p==0x55a and (a==0x556 or a==p+4))or(p==0x646 and (a==0x640 or a==p+4))or(p==0x55c and a==(stack()&0xffffe))or((p==0x452 or p==0x458 or p==0x556 or p==0x640)and a==p+4)
-  if w or not first then return end
-  local offset=(p==0x456 or p==0x55a or p==0x646) and (a==p+4 and 320 or 160) or 0
+   local call=p==0x432 or p==0x43e or p==0x44a or p==0x44e
+   local wordbranch=p==0x43a or p==0x446
+   local first=(call and a==(stack()&0xffffe))or(wordbranch and (a==p+8 or a==p+4))or((p==0x436 or p==0x442)and a==p+4)or(p==0x456 and (a==0x452 or a==p+4))or(p==0x55a and (a==0x556 or a==p+4))or(p==0x646 and (a==0x640 or a==p+4))or(p==0x55c and a==(stack()&0xffffe))or((p==0x452 or p==0x458 or p==0x556 or p==0x640)and a==p+4)
+  if (w and not call)or not first then return end
+  local offset=call and 160 or wordbranch and (a==p+4 and 320 or 160)or (p==0x456 or p==0x55a or p==0x646) and (a==p+4 and 320 or 160) or 0
   -- Untaken short branch has only one prefetch phase.
   local n=sizes[p];if (p==0x456 or p==0x55a or p==0x646)and a==p+4 then n=1 end
   active={pc=p,n=n,pre=string.pack(">I8",ns()-offset)..snapshot(p),events={}}
  end
  assert(active.pc==p,"sub changed PC within instruction")
  local replacement
- if directed and not w and a==0xa3c00 and frames>=40 and fixture_index[p] and fixture_index[p]<6 then
+ if directed and not w and (a==0xa3c00 or a==0x9c300 or a==0x9c302)and frames>=40 and fixture_index[p] and fixture_index[p]<6 then
   local v=({0,1,0x7fff,0x8000,0xffff,0xfffe})[fixture_index[p]+1]
   fixture_index[p]=fixture_index[p]+1;fixtures=fixtures+1
   -- A labelled physical RAM/input fixture, delivered before this read. The
   -- returned tap value and RAM agree; no expected operand enters the C++ port.
-  out:write(string.char(2),string.pack(">I8I4I4I4I2I2",ns(),order,0xffffffff,0x2a3c00,v,0xffff))
-  guard=true;ms:write_u16(0x2a3c00,v);guard=false
+  out:write(string.char(2),string.pack(">I8I4I4I4I2I2",ns(),order,0xffffffff,a|0x200000,v,0xffff))
+  guard=true;ms:write_u16(a|0x200000,v);guard=false
   order=order+1;d=v;replacement=v
  end
  active.events[#active.events+1]=string.pack(">I8I4I4I2I2B",ns(),order,a,d,m,w and 1 or 0)
  if #active.events==active.n then
   local post=state(ns()+320,0)
-  local nextpc=w and p+6 or a-2
+  local nextpc=w and (p==0x436 or p==0x442)and p+4 or w and p+6 or a-2
   out:write(string.char(1),active.pre,string.pack(">I4",#active.events),table.concat(active.events),post:sub(1,8),post:sub(13),string.pack(">I4",nextpc))
   records=records+1;active=nil
  end
@@ -108,6 +111,7 @@ local function mainread(a,d,m)
 end
 subpublication_ready_read=ms:install_read_tap(0x2a3c00,0x2a3c01,"subpublication_ready_read",mainread)
 subpublication_mutex_read=ms:install_read_tap(0x29c0d6,0x29c0d7,"subpublication_mutex_read",mainread)
+subpublication_shift=ms:install_write_tap(0x29c300,0x29c303,"subpublication_shift",mainwrite)
 subpublication_ready=ms:install_write_tap(0x2a3c00,0x2a3c01,"subpublication_ready",mainwrite)
 subpublication_mutex=ms:install_write_tap(0x29c0d6,0x29c0d7,"subpublication_mutex",mainwrite)
 if os.getenv("AB2_ORACLE_GAMEPLAY")=="1"then dofile(assert(os.getenv("AB2_ORACLE_SCRIPT_DIR")).."/gameplay.lua")end

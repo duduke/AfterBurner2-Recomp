@@ -332,3 +332,33 @@ match 6,305,996/6,305,996 instructions and 15,895,267/15,895,267 bus phases.
 Main write times, cross-CPU bus delivery order, sub IRQ/callee entries and
 stack operands remain supplied. Native Stage 1 is still active, and neither
 independent sub road/sprite scheduling nor whole-host gameplay is established.
+
+The sub publication caller continuation adds eight timed instructions for
+wait/sprite BSRs, request shifts and carry branches. The replay retains
+computed user return-stack and request lanes instead of reseeding them from
+expected reads. Unported shared-RAM writers, sub IRQ/callee state/time and
+cross-CPU delivery are still supplied; timed road/sprite execution and
+independent host acceptance remain pending. Native Stage 1 stays active.
+
+
+`OSubProgress` now computes independently timed bounded sprite/road work,
+including sprite sorting/interpolation and road initialization, bank/pitch,
+rotation, normal/special raster outputs and production bus swaps/control.
+All 1,136 new instruction PCs pass directed MAME coverage; natural 600-frame
+execution matches 11,896,153 instructions and 27,415,741 phases, with zero
+differences/skips. Eight conditional/loop directions and interrupted tail
+states remain explicit coverage limits in `ENGINE_NOTES.md`. Sub IRQ
+entry/RTE/selection, main producer delivery, bus arbitration and whole-host
+renderer composition remain supplied. Native Stage 1 remains active.
+
+
+`OSubIrq` now computes bounded IRQ4 selection, exception entry, all thirteen
+service instructions, retained stack/register restoration and RTE resumption.
+The 600-frame oracle matches 12,072,480 instruction/entry records, 28,083,147
+phases and 599 complete returns, with zero differences/skips and no supplied
+internal-tail continuations. The strengthened check corrects `$99A BSET #4,D0`
+to its two-clock completion tail. The independent grant-policy oracle matches
+239,177 grants and 1,271,730 shared reads, including main writes ahead of sub
+local time. This policy is checked at labelled CPU completion/producer and
+external timer frontiers. Full main/sub composition and caller/video/sound
+ownership still prevent whole-host acceptance; native Stage 1 stays active.

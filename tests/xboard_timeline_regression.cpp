@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include "hwmath/xboard_cpu_visibility.hpp"
+#include "hwmath/xboard_bus_arbiter.hpp"
 
 void check(bool condition) {
     if(!condition) throw std::runtime_error("X-Board timeline regression failed");
@@ -79,6 +80,27 @@ int main() {
     // access at that timestamp; no arbitrary extra IRQ delay is added.
     cpu.resume(edge+XBoardTimeline::LINE_NS);
     check(cpu.before_bus(edge+XBoardTimeline::LINE_NS)==0);
+
+    // Attosecond host time must remain valid after the 64-bit 18.4-second
+    // boundary. CPU budgets retain integer clock precision at a large epoch.
+    using Arbiter=XBoardBusArbiter;
+    const Arbiter::Time epoch=Arbiter::Time(40000000000ULL)*1000000000;
+    Arbiter grants({epoch,0,{epoch,epoch,epoch}});
+    grants.boost(epoch);
+    unsigned runs=0;
+    check(grants.grant(epoch+64000000000000ULL,[&](unsigned cpu,Arbiter::Time,unsigned budget){
+        check(cpu==runs++);
+        const auto cycle=cpu==2?Arbiter::SOUND_CYCLE:Arbiter::CYCLE;
+        return epoch+budget*cycle;
+    })==epoch+Arbiter::SOUND_CYCLE);
+    check(runs==3&&grants.state().local[0]==epoch+4*Arbiter::CYCLE&&
+          grants.state().local[1]==epoch+4*Arbiter::CYCLE);
+    // A CPU can abort a grant before consuming a clock. Timer delivery then
+    // owns the next step; later CPUs do not receive a fictitious time advance.
+    Arbiter aborted({epoch,0,{epoch,epoch,epoch}});aborted.boost(epoch);
+    check(aborted.grant(epoch+64000000000000ULL,[&](unsigned cpu,Arbiter::Time,unsigned budget){
+        check(cpu==0&&budget==4);return epoch;
+    })==epoch);
 
     std::cout << "X-Board timeline regression checks passed\n";
 }

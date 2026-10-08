@@ -21,7 +21,7 @@ bool same(const State& a,const State& b){return a.ns==b.ns&&a.pc==b.pc&&a.sp==b.
 int main(int argc,char** argv)try{
  const bool directed=argc>2&&std::string(argv[2])=="--require-endpoints";
  std::ifstream f(argc>1?argv[1]:"build/oracle/subpublication_short.bin",std::ios::binary);char magic[8];
- if(!f.read(magic,8)||memcmp(magic,"AB2SUBP2",8))throw std::runtime_error("invalid sub publication capture");
+ if(!f.read(magic,8)||memcmp(magic,"AB2SUBP3",8))throw std::runtime_error("invalid sub publication capture");
  std::vector<Call> calls;std::vector<Signal> signals;uint16_t initial_ready=0,initial_mutex=0;bool initial=false;unsigned cuts=0;
  while(f.peek()!=std::char_traits<char>::eof()){
   auto kind=num(f,1);
@@ -38,8 +38,10 @@ int main(int argc,char** argv)try{
  OSubPublication port;size_t si=0;unsigned failures=0,phase_bad=0,phases=0,chains=0,chain_bad=0,frontiers=0,computed=0,external=0;
  std::map<uint32_t,unsigned> coverage,producers;std::map<uint32_t,std::set<unsigned>> operands;std::map<uint32_t,std::array<unsigned,2>> branches;
  std::map<uint32_t,uint16_t> main_operands;unsigned main_reads=0,main_bad=0,delivery_leads=0;
+ std::set<uint32_t> owned;unsigned supplied_operands=0;
  uint32_t phase_order=0;uint64_t phase_time=0;
  auto clock=[&](uint64_t){while(si<signals.size()&&signals[si].order<phase_order){const auto& s=signals[si++];const auto a=s.a&0xfffff;
+   if(!s.read){if(s.m&0xff00)owned.insert(a);if(s.m&255)owned.insert(a+1);}
    if(s.ns>phase_time)++delivery_leads;
    if(s.read){auto v=bus.read16(a);++main_reads;main_operands[s.pc]=v;
     if((v&s.m)!=(s.d&s.m)){++main_bad;if(main_bad<6)std::cerr<<"Main signal read mismatch pc="<<std::hex<<s.pc<<std::dec<<'\n';}
@@ -53,27 +55,32 @@ int main(int argc,char** argv)try{
  State last{};bool have=false;
  for(auto c:calls){
   ++coverage[c.pre.pc];bool ok=true;
-  if(have&&last.ns==c.pre.ns&&last.pc==c.pre.pc){++chains;if(!same(last,c.pre)){++chain_bad;ok=false;}c.pre=last;}else ++frontiers;
-  // Only external stack/data operands may seed entry RAM. Shared handshake
-  // bytes are always retained across both CPU streams, including IRQ gaps.
-  for(const auto& e:c.events)if(!e.w&&e.a>=0x80000&&e.a<0xc0000&&e.a!=0x9c0d6&&e.a!=0xa3c00){auto old=bus.read16(e.a);bus.write16(e.a,(old&~e.m)|(e.d&e.m));}
+  if(have&&last.ns==c.pre.ns){++chains;if(!same(last,c.pre)){++chain_bad;ok=false;}c.pre=last;}else ++frontiers;
+  // Seed only previously unknown operand lanes. Computed return-stack and
+  // shift words survive callee gaps; the ledger supplies unported writers.
+  // Shared handshake bytes are retained across both CPU streams.
+  for(const auto& e:c.events)if(!e.w&&e.a>=0x80000&&e.a<0xc0000&&e.a!=0x9c0d6&&e.a!=0xa3c00){uint16_t seed_mask=0;
+    if((e.m&0xff00)&&!owned.count(e.a))seed_mask|=0xff00;
+    if((e.m&255)&&!owned.count(e.a+1))seed_mask|=255;
+    if(seed_mask){++supplied_operands;auto old=bus.read16(e.a);bus.write16(e.a,(old&~seed_mask)|(e.d&seed_mask));}}
   size_t cursor=0;
   auto advance=[&](uint64_t t){phase_order=cursor<c.events.size()?c.events[cursor].order:c.events.back().order+1;phase_time=t;clock(t);};
   auto result=port.step(bus,c.pre,advance,[&](bool w,uint32_t a,uint16_t d,uint16_t m,uint32_t pc,uint64_t t){
+   if(w){if(m&0xff00)owned.insert(a);if(m&255)owned.insert(a+1);}
    ++phases;bool equal=cursor<c.events.size();
    if(equal){const auto& e=c.events[cursor++];equal=e.ns==t&&e.a==a&&e.w==w&&e.m==m&&(e.d&m)==(d&m);}
    if(!equal){ok=false;++phase_bad;if(phase_bad<8)std::cerr<<"Sub publication phase pc="<<std::hex<<pc<<" a="<<a<<" d="<<d<<std::dec<<" t="<<t<<'\n';}
-   if(!w&&a==0xa3c00)operands[pc].insert(d);
+   if(!w&&(a==0xa3c00||a==0x9c300||a==0x9c302))operands[pc].insert(d);
   });
   ok&=cursor==c.events.size()&&same(result,c.post);if(!ok){++failures;if(failures<8)std::cerr<<"Sub publication record pc="<<std::hex<<c.pre.pc<<" next="<<result.pc<<'/'<<c.post.pc<<" sr="<<result.sr<<'/'<<c.post.sr<<std::dec<<" end="<<result.ns<<'/'<<c.post.ns<<'\n';}
-  if(c.pre.pc==0x456||c.pre.pc==0x55a||c.pre.pc==0x646)++branches[c.pre.pc][result.pc!=c.pre.pc+2];
+  if(c.pre.pc==0x43a||c.pre.pc==0x446||c.pre.pc==0x456||c.pre.pc==0x55a||c.pre.pc==0x646)++branches[c.pre.pc][result.pc!=c.pre.pc+((c.pre.pc==0x43a||c.pre.pc==0x446)?4:2)];
   last=result;have=true;
  }
  std::cout<<"Main signal reads/writes: "<<main_reads+computed-main_bad<<" of "<<main_reads+computed<<" identical, "<<main_bad<<" different, 0 skipped\n";
- std::cout<<"Sub publication instructions: "<<calls.size()-std::min<size_t>(failures,calls.size())<<" of "<<calls.size()<<" identical, "<<failures<<" different, 0 skipped\nSub publication bus phases: "<<phases-phase_bad<<" of "<<phases<<" identical, "<<phase_bad<<" different, 0 skipped\nSub publication chains: "<<chains-chain_bad<<" of "<<chains<<" identical, "<<chain_bad<<" different, 0 skipped\nSignal producers: "<<computed<<" computed, "<<external<<" supplied writes; "<<main_reads<<" checked main RMW reads, "<<delivery_leads<<" supplied cross-CPU delivery leads; "<<frontiers<<" supplied sub entry/IRQ/callee frontiers; "<<cuts<<" partial IRQ cuts\n";
- for(uint32_t pc:{0x452,0x456,0x458,0x556,0x55a,0x55c,0x640,0x646}){std::cout<<std::hex<<pc<<std::dec<<": "<<coverage[pc]<<" instructions\n";if(!coverage[pc])throw std::runtime_error("missing sub publication PC");}
+ std::cout<<"Sub publication instructions: "<<calls.size()-std::min<size_t>(failures,calls.size())<<" of "<<calls.size()<<" identical, "<<failures<<" different, 0 skipped\nSub publication bus phases: "<<phases-phase_bad<<" of "<<phases<<" identical, "<<phase_bad<<" different, 0 skipped\nSub publication chains: "<<chains-chain_bad<<" of "<<chains<<" identical, "<<chain_bad<<" different, 0 skipped\nSignal producers: "<<computed<<" computed, "<<external<<" supplied writes; "<<main_reads<<" checked main RMW reads, "<<delivery_leads<<" supplied cross-CPU delivery leads; "<<frontiers<<" supplied sub entry/IRQ/callee frontiers; "<<supplied_operands<<" supplied operand words; "<<cuts<<" partial IRQ cuts\n";
+ for(uint32_t pc:{0x432,0x436,0x43a,0x43e,0x442,0x446,0x44a,0x44e,0x452,0x456,0x458,0x556,0x55a,0x55c,0x640,0x646}){std::cout<<std::hex<<pc<<std::dec<<": "<<coverage[pc]<<" instructions\n";if(!coverage[pc])throw std::runtime_error("missing sub publication PC");}
  for(auto [p,n]:branches){std::cout<<"Branch "<<std::hex<<p<<std::dec<<" taken/untaken="<<n[1]<<'/'<<n[0]<<'\n';if(!n[0]||!n[1])throw std::runtime_error("missing sub publication branch direction");}
  for(uint32_t p:{0x14674,0x14798,0x1467c,0x1486e})if(!producers[p])throw std::runtime_error("missing main signal producer");
- if(directed)for(uint32_t p:{0x452,0x556})for(unsigned v:{0,1,0x7fff,0x8000,0xffff,0xfffe})if(!operands[p].count(v))throw std::runtime_error("missing sub readiness endpoint at "+std::to_string(p)+" value "+std::to_string(v));
+ if(directed)for(uint32_t p:{0x452,0x556,0x436,0x442})for(unsigned v:{0,1,0x7fff,0x8000,0xffff,0xfffe})if(!operands[p].count(v))throw std::runtime_error("missing sub publication endpoint at "+std::to_string(p)+" value "+std::to_string(v));
  return failures||phase_bad||chain_bad||main_bad?1:0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
