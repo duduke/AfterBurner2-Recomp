@@ -362,3 +362,15 @@ to its two-clock completion tail. The independent grant-policy oracle matches
 local time. This policy is checked at labelled CPU completion/producer and
 external timer frontiers. Full main/sub composition and caller/video/sound
 ownership still prevent whole-host acceptance; native Stage 1 stays active.
+
+
+The two directed post-RTE instructions `$6844/$14EE8` now compute their
+ROM-defined bit tests; directed host acceptance again requires zero unported
+returns. A joint publication checkpoint executes both native CPU continuations
+under the checked arbiter against shared RAM, matching 1,788,368 instructions,
+4,818,916 phases and 182,481 bounded grant completions. Private instruction-step
+debt and RMW operands survive grants; 327 shared writes are computed. Initial
+CPU contexts, 141,969 other shared producers, IRQ services, device deadlines,
+ADC cadence, sub callees and complete renderer/sound ownership remain supplied.
+The natural joint corpus leaves `$1486A/$43E` unexercised. This checkpoint does
+not complete independent whole-host scheduling or replace native Stage 1.

@@ -5045,3 +5045,133 @@ prerequisite checks the short, natural and directed corpora. CMake is not
 installed here; its added registrations have not been executed. All ROM
 images, captures, exploratory normalization scripts, mutation copies and
 executables remain under ignored `build/oracle/`.
+
+### Joint publication grants and the two directed post-RTE exits (2026-10-08)
+
+The directed host caller now computes `$6844` and `$14EE8`, the two unrelated
+returned instructions exposed by the previous 360-frame capture. Both are
+`BTST #1,$29C200`; their five ordered extension/operand/prefetch phases and
+Z-bit updates are literal generated instructions. They preserve every other
+CCR bit. The generator, Lua manifest and host coverage table include both;
+`oracle-caller-host` now requires `--require-closed` on the directed corpus too.
+This closes the returned instructions, not either surrounding handler graph.
+
+Fresh directed 360-frame acceptance matches **2,055,260/2,055,260
+instruction/IRQ records**, **6,036,146/6,036,146 bus events**, and
+**2,048,684/2,048,684 consecutive boundaries**. Physical visibility matches
+11,385,700 observations. All 260 host PCs, the existing 21 conditionals/four
+DBFs and decimal endpoints pass; there are zero differences/skips and zero
+unported post-RTE returns. The original 462 explicit fixture context cuts and
+231 incomplete fixture cuts remain labelled; 5,341 ordinary graph exits remain.
+The fresh natural 120-frame corpus matches 465,203 instruction/IRQ records,
+1,364,766 bus events and 464,370 consecutive boundaries, with zero
+unported post-RTE returns and 387 ordinary graph exits. Both new returned
+instructions have independent constant-mutation checks: disabling their bit
+mask (`2 -> 0`) rejects 234 and 946 instruction-state comparisons respectively.
+Both tested operand bytes are `$FF`. Changing bit 1 to bit 0 did not distinguish the observed inputs; that nearby
+sensitivity is not claimed. Cleared-bit and arbitrary CCR histories remain
+outside this capture's demonstrated coverage; the replay reports input bytes.
+
+The fresh natural 600-frame corpus matches **2,798,542/2,798,542
+instruction/IRQ records**, **8,247,668/8,247,668 bus events**, and
+**2,790,648/2,790,648 consecutive boundaries**, zero differences/skips or
+unported post-RTE returns. Physical visibility matches 22,847,001 observations;
+133/260 host PCs execute naturally. Its 5,282 ordinary graph-exit occurrences
+are boundaries, not unique remaining instructions. No fixture cuts occur.
+
+`XBoardCpuContinuation` lets the existing literal ports retain their C++ local
+state across a CPU grant. Two cooperative worker threads park at the ports'
+clock checkpoints; only the CPU granted by `XBoardBusArbiter` can resume.
+A sub operand is therefore read from the actual shared MainBus/SubBus RAM
+when its phase executes, and an RMW operand remains latched across intervening
+main grants. No instruction is replayed against expected read bytes, and no
+transaction list is reordered by CPU-local timestamp. Native Stage 1 is not
+wired to this adapter pending full acceptance.
+
+MAME `m68000.cpp::execute_run` first pays
+`m_count_before_instruction_step`, then executes partial/full microcode and
+carries negative remaining clocks into that private debt. It reports only the
+granted clocks. Internal clocks before a bus are not a separate yield: the
+following bus may execute past the grant target. The adapter retains that
+execution frontier while its public CPU clock consumes whole granted clocks.
+The grant deadline can lie between CPU clocks, particularly after the Z80
+contracts it; the CPU target is computed from the arbiter's cycle budget,
+not rounded directly from the wall-clock deadline. ROM-free checks cover
+private bus/tail debt, indivisible pre-bus clocks, RMW retention, worker reuse,
+unpaid-tail rejection, cancellation and propagation of a port error.
+
+`capture_host_publication_schedule.lua` records the same read-only scheduler
+probe as the independent arbiter oracle, adding executing PC and selected
+first-bus CPU contexts. Those selected instructions have no register/CCR
+changes before their first bus except the BSR stack decrement, which is
+explicitly reversed by four bytes. Stack addresses are masked to each CPU's
+physical map for phase identification. Sub supervisor accesses that retain a
+publication CURPC are IRQ frontiers, not publication instructions.
+An exploratory debugger snapshot approach was discarded: debugger `printf`
+uses the visible CPU's symbols when another CPU's breakpoint action fires,
+and `focus` changes breakpoint observation. The accepted capture reads the
+executing device's state directly, without breakpoints or focus commands;
+raw observations have not been normalized or edited.
+
+The fresh natural 120-frame joint replay checks both main `$14856..$14878`
+and sub publication caller/wait/release continuations under the computed
+arbiter. Its exact results are:
+
+| Joint check | Identical / captured | Skipped |
+|---|---:|---:|
+| Grant groups | 239,177 / 239,177 | 0 |
+| Shared reads | 1,271,730 / 1,271,730 | 0 |
+| Native instruction executions | 1,788,368 / 1,788,368 | 0 |
+| Native ordered phases | 4,818,916 / 4,818,916 | 0 |
+| Retained instruction contexts | 1,787,933 / 1,787,933 | 0 |
+| Wholly bounded CPU grant completions | 182,481 / 182,481 | 0 |
+
+All 8,319,935 main/sub phases are delivered in computed CPU order; 620,495
+CPU runs and 496 board quantum requests match. There are 182,879 grants
+resuming a native instruction, including grants paying debt without a new bus.
+327 shared writes now come from the actual native ports; the remaining
+141,969 shared writes are explicitly supplied producers. 435 instruction
+entry contexts remain inputs. Only an observed unported CPU phase cuts a
+retained instruction chain; predicted PC/time disagreement cannot create a
+new entry context. Initial work/shared RAM is supplied once;
+read assertions never seed operands. Wholly bounded grants return computed
+completion times into the arbiter; grants crossing unported CPU work retain
+supplied completion frontiers. Both CPU streams share one RAM instance.
+The 37 reads after a main write with a later local timestamp still match.
+
+**Coverage and limits:** 22/24 selected PCs execute jointly. Main missed-count
+`$1486A` and sub optional normal-sprite BSR `$43E` do not execute in this
+natural corpus; their prior independent directed instruction checks do not
+establish joint scheduling of those paths. Arbitrary instruction tails,
+IRQ entry/service/RTE/physical selection, sprite/road callees, ADC/button
+producer cadence, sound CPU, reset/suspend, device timer deadlines and boost
+request times remain external boundaries here. The current main port poll
+is deliberately a supplied no-selection boundary in this joint test;
+independent IRQ oracles remain separate. Unknown caller progress and video
+ownership are not removed. This is joint bounded publication scheduling,
+not whole-host gameplay, independent paired RGB/sound acceptance or Phase 3d
+completion. Native Stage 1 remains active.
+
+Three further mutations reject actual differences: exposing private debt as
+public overrun rejects native grant completion (160 ns at the first reported
+difference); main re-arm `1 -> 2` rejects its actual shared write; sub release
+bit `1 -> 2` rejects its actual byte-lane write. Together with the two returned
+bit tests, five new mutations fail. Mutation sources, binaries, transcripts,
+ROM images and exploratory captures stay ignored under `build/oracle/`.
+
+```bash
+make oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full
+make oracle-caller-host oracle-host-generated-check
+make oracle-capture-publication-schedule oracle-publication-schedule
+python3 tools/oracle/mutation_check.py hostreturn6844 hostreturn14ee8 pubscheduledebt pubschedulerearm pubschedulerelease
+```
+
+Validation for this continuation: `make test`, `make verify-stage1`, the full
+`make -j4 oracle-test` suite (including the joint publication prerequisite),
+host/weapon/flight/companion generated checks, game build, 180-frame dummy
+SDL video/audio launch and `git diff --check` pass. The strengthened explicit
+continuity check also passes the joint corpus with the same counts. Existing
+oracles retain their documented read-set race exclusions and have zero
+differences; all new accepted comparisons have zero skips. CMake registrations
+are declared but unexecuted because CMake is not installed. No ROM images,
+tables or captures are tracked.

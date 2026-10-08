@@ -149,6 +149,7 @@ int main(int argc,char** argv)try{
  std::map<uint32_t,std::array<unsigned,2>> host_branches;
  unsigned host_flight_calls=0,host_hud_calls=0,host_launch_calls=0,host_sound_calls=0;
  std::set<unsigned> host_decimal,host_commands;
+ std::map<uint32_t,std::set<unsigned>> host_return_bytes;
  unsigned weapon_dispatches=0,weapon_fire_calls=0,weapon_allocation_calls=0;
  std::set<unsigned> weapon_ammo,weapon_reserve,weapon_launch,weapon_append;
  std::set<unsigned> companion_counts;
@@ -404,6 +405,8 @@ int main(int argc,char** argv)try{
    if(c.interrupted_pc==0xb868){producer_indices.insert(uint16_t(c.registers.d[1]));producer_commands.insert(uint8_t(c.registers.d[0]));}
    if(c.interrupted_pc==0xc090){if(next==0xc098)++ready_taken;else ++ready_untaken;}
    expected_pending=irq!=0;
+   if(c.interrupted_pc==0x6844||c.interrupted_pc==0x14ee8)
+    for(const auto& e:expected)if(!e.w&&e.a==0x29c200&&e.m==0xff00)host_return_bytes[c.interrupted_pc].insert(e.d>>8);
    ++calls;++coverage[c.interrupted_pc];
    if(c.interrupted_pc==0x8afe){sub_inputs.insert(uint16_t(c.registers.d[1]));sub_flags[sr&31]=true;}
    if(c.interrupted_pc==0xb632){
@@ -550,6 +553,7 @@ int main(int argc,char** argv)try{
   if(require_host)for(unsigned v:{0,1,9,10,99,100,101,999,10000,65535})if(!host_decimal.count(v))throw std::runtime_error("missing decimal endpoint");
   std::cout<<"Host caller coverage: "<<observed<<'/'<<main_host_instructions.size()<<" PCs; flight/HUD/missile dispatch/sound calls="<<host_flight_calls<<'/'<<host_hud_calls<<'/'<<host_launch_calls<<'/'<<host_sound_calls<<"; commands";
   for(auto command:host_commands)std::cout<<' '<<std::hex<<command<<std::dec;std::cout<<'\n';
+  for(auto [pc,values]:host_return_bytes){std::cout<<"Host returned bit-test "<<std::hex<<pc<<" bytes";for(auto value:values)std::cout<<' '<<value;std::cout<<std::dec<<'\n';}
   if(missing)throw std::runtime_error("incomplete host coverage");
  }
  if(require_weapon||require_weapon_path){

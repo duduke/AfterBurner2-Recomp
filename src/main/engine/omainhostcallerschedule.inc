@@ -2262,3 +2262,23 @@ case 0xa02e: {
     next=read32(sp);sp+=4;read16(next);final(next+2);
     break;
 }
+// $006844: BTST #1,($0029C200).L
+case 0x6844: {
+    read16(0x6848);
+    read16(0x684a);
+    read16(0x684c);
+    const auto old=read8(0x29c200);
+    sr=(sr&~4)|(old&0x2?0:4);
+    final(0x684e);next=0x684c;
+    break;
+}
+// $014EE8: BTST #1,($0029C200).L
+case 0x14ee8: {
+    read16(0x14eec);
+    read16(0x14eee);
+    read16(0x14ef0);
+    const auto old=read8(0x29c200);
+    sr=(sr&~4)|(old&0x2?0:4);
+    final(0x14ef2);next=0x14ef0;
+    break;
+}
