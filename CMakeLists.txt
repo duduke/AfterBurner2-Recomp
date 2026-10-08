@@ -21,6 +21,7 @@ add_executable(afterburner2
     src/main/hwvideo/hwpalette.cpp
     src/main/hwvideo/screen.cpp
     src/main/hwaudio/arcade_audio.cpp
+    src/main/hwaudio/xboard_sound_cpu.cpp
     src/main/hwaudio/soundchip.cpp
     src/main/hwaudio/segapcm.cpp
     src/main/hwaudio/ym2151.cpp
@@ -62,6 +63,19 @@ if(BUILD_TESTING)
     target_include_directories(cpu_continuation_regression PRIVATE src/main)
     target_link_libraries(cpu_continuation_regression PRIVATE Threads::Threads)
     add_test(NAME cpu_continuation_regression COMMAND cpu_continuation_regression)
+    add_executable(sound_cpu_regression tests/sound_cpu_regression.cpp src/main/hwaudio/xboard_sound_cpu.cpp)
+    target_include_directories(sound_cpu_regression PRIVATE src/main)
+    add_test(NAME sound_cpu_regression COMMAND sound_cpu_regression)
+    add_executable(oracle_sound_boot tests/oracle_sound_boot.cpp src/main/hwaudio/xboard_sound_cpu.cpp)
+    target_include_directories(oracle_sound_boot PRIVATE src/main)
+    add_test(NAME oracle_sound_boot COMMAND oracle_sound_boot build/oracle/sound_boot.bin)
+    set_tests_properties(oracle_sound_boot PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_executable(oracle_pcm tests/oracle_pcm.cpp src/main/romloader.cpp)
+    target_include_directories(oracle_pcm PRIVATE src/main)
+    add_test(NAME oracle_pcm COMMAND oracle_pcm build/oracle/pcm.bin)
+    add_test(NAME oracle_pcm_directed COMMAND oracle_pcm build/oracle/pcm_directed.bin --require-directed)
+    add_test(NAME oracle_pcm_synthetic COMMAND oracle_pcm build/oracle/pcm_synthetic.bin --require-directed)
+    set_tests_properties(oracle_pcm oracle_pcm_directed oracle_pcm_synthetic PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(xboard_timeline_regression tests/xboard_timeline_regression.cpp)
     target_include_directories(xboard_timeline_regression PRIVATE src/main)
     add_test(NAME xboard_timeline_regression COMMAND xboard_timeline_regression)
@@ -267,10 +281,10 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     target_include_directories(oracle_subreset PRIVATE src/main)
     add_test(NAME oracle_subreset COMMAND oracle_subreset build/oracle/subreset.bin)
     set_tests_properties(oracle_subreset PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    add_executable(oracle_bus_arbiter tests/oracle_bus_arbiter.cpp src/main/engine/subbus.cpp)
+    add_executable(oracle_bus_arbiter tests/oracle_bus_arbiter.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp)
     target_include_directories(oracle_bus_arbiter PRIVATE src/main)
     add_executable(oracle_publication_schedule tests/oracle_publication_schedule.cpp
-        src/main/hwvideo/hwsprites.cpp
+        src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/hwvideo/screen.cpp
         src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp
         src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
     target_include_directories(oracle_publication_schedule PRIVATE src/main)
@@ -279,9 +293,14 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     add_test(NAME oracle_joint_main_progress COMMAND oracle_publication_schedule build/oracle/joint_main_progress.bin build/oracle/joint_main_progress.txt --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake)
     add_test(NAME oracle_joint_reset_window COMMAND oracle_publication_schedule build/oracle/joint_reset_focused.bin build/oracle/joint_reset_focused.txt --reset-window --physical-main --require-sub-continuity --require-video-frontiers --require-sound-handshake)
     add_test(NAME oracle_joint_main_progress_full COMMAND oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake)
+    add_test(NAME oracle_joint_video COMMAND oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake)
+    add_test(NAME oracle_joint_video_directed COMMAND oracle_publication_schedule build/oracle/joint_video_directed.bin build/oracle/joint_video_directed.txt --require-video-fixture --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake)
+    set_tests_properties(oracle_joint_video oracle_joint_video_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(oracle_publication_schedule oracle_joint_main_progress oracle_joint_reset_window oracle_joint_main_progress_full PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_test(NAME oracle_bus_arbiter COMMAND oracle_bus_arbiter build/oracle/bus_arbiter_short.bin build/oracle/arbiter_schedule.txt)
     set_tests_properties(oracle_bus_arbiter PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_test(NAME oracle_bus_boot COMMAND oracle_bus_arbiter build/oracle/bus_arbiter_boot.bin build/oracle/arbiter_boot.txt --require-boot)
+    set_tests_properties(oracle_bus_boot PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_subroad tests/oracle_subroad.cpp
         src/main/romloader.cpp src/main/roms.cpp
         src/main/engine/subbus.cpp src/main/engine/osubroad.cpp)

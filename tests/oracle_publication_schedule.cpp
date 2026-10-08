@@ -13,6 +13,7 @@
 #include "engine/omainirqwrapperschedule.hpp"
 #include "engine/osubirq.hpp"
 #include "hwvideo/hwsprites.hpp"
+#include "hwvideo/screen.hpp"
 #include "hwmath/xboard_timeline.hpp"
 #include "hwmath/xboard_irq_lines.hpp"
 #include "engine/osubprogress_manifest.hpp"
@@ -40,9 +41,12 @@ int main(int argc,char** argv)try{
  std::ifstream f(argc>1?argv[1]:"build/oracle/publication_schedule.bin",std::ios::binary);char magic[8];if(!f.read(magic,8)||(memcmp(magic,"AB2ARB07",8)&&memcmp(magic,"AB2ARB08",8)&&memcmp(magic,"AB2ARB09",8)))throw std::runtime_error("invalid arbiter capture");
  const bool mainentries=!memcmp(magic,"AB2ARB09",8);
  mainprogress=mainentries||!memcmp(magic,"AB2ARB08",8);
+ bool require_video_rgb=false,require_video_fixture=false;
  bool reset_window=false,require_reset=false,require_main_irq=false,physical_main=false,require_main_closed=false,require_sub_continuity=false,require_video_banks=false,require_video_frontiers=false,require_sound_handshake=false,progress=false;
  for(int i=3;i<argc;++i){
-  if(!std::strcmp(argv[i],"--reset-window")){reset_window=true;require_reset=true;}
+  if(!std::strcmp(argv[i],"--require-video-fixture"))require_video_fixture=true;
+  else if(!std::strcmp(argv[i],"--require-video-rgb")){require_video_rgb=true;require_video_frontiers=true;require_video_banks=true;physical_main=true;}
+  else if(!std::strcmp(argv[i],"--reset-window")){reset_window=true;require_reset=true;}
   else if(!std::strcmp(argv[i],"--require-reset"))require_reset=true;
   else if(!std::strcmp(argv[i],"--physical-main"))physical_main=true;
   else if(!std::strcmp(argv[i],"--require-main-closed")){require_main_closed=true;physical_main=true;require_main_irq=true;}
@@ -73,6 +77,59 @@ int main(int argc,char** argv)try{
   if(!video.read(reinterpret_cast<char*>(memory.sprite_buffer.data()),4096)||!video.read(reinterpret_cast<char*>(memory.road_buffer.data()),4096))throw std::runtime_error("missing initial video banks");
   memory.road_control=number(video,1);
  }else if(require_video_banks)throw std::runtime_error("missing joint video bank capture");
+ HWPalette video_palette(8192); HWRoad video_road(0x1700,0x1720,0x1780,-166); HWTiles video_tiles;
+ Screen video_screen(320,224,video_palette,video_road,video_sprites,video_tiles);
+ std::vector<RGB888> video_rgb(320*224);
+ std::ifstream pixel_capture(std::string(argv[1])+".pixels",std::ios::binary);
+ struct LatchEvent{uint64_t ns;HWTiles::FrameRegisters values;};std::vector<LatchEvent> latch_events;size_t latch_cursor=0;
+ {std::ifstream latches(std::string(argv[1])+".latches");LatchEvent e{};
+  while(latches>>e.ns){for(auto& v:e.values){unsigned n;if(!(latches>>n)||n>65535)throw std::runtime_error("truncated video latch");v=n;}latch_events.push_back(e);}
+ }
+ if(require_video_rgb&&(!pixel_capture||latch_events.empty()))throw std::runtime_error("missing joint RGB/latch assertions");
+ struct VideoFixture{uint64_t ns;bool display;std::vector<std::pair<unsigned,uint16_t>> words;};
+ std::vector<VideoFixture> display_fixture;size_t fixture_cursor=0;
+ {std::ifstream fixture(std::string(argv[1])+".fixture");uint64_t ns;unsigned enabled,count;
+  while(fixture>>ns>>enabled>>count){VideoFixture e{ns,enabled!=0,{}};
+   for(unsigned i=0;i<count;++i){unsigned offset,value;if(!(fixture>>offset>>value)||(!(offset<0x800||(offset>=0x1000&&offset<0x1800)||(offset>=0x2000&&offset<0x4000)))||value>65535)throw std::runtime_error("truncated directed video fixture");e.words.emplace_back(offset,value);}display_fixture.push_back(e);
+  }
+ }
+ if(require_video_fixture&&display_fixture.empty())throw std::runtime_error("missing directed display fixture");
+ const bool rgb_assertions=pixel_capture.is_open();uint64_t video_pixels=0;unsigned video_latches=0,video_disabled=0;
+ if(rgb_assertions){video_road.init(roms.road.rom,roms.road.length);video_tiles.init_gfx(roms.tiles.rom,roms.tiles.length);}
+ uint64_t effect_pixels=0,hilight_pixels=0;unsigned priority_masks=0,delayed_register_clips=0,row_scroll_clips=0,column_scroll_clips=0;
+ auto video_text=[&]{for(unsigned i=0;i<0x800;++i)video_tiles.write_text(i,(memory.bytes[MainBus::TEXT+2*i]<<8)|memory.bytes[MainBus::TEXT+2*i+1]);};
+ auto video_latch=[&](uint64_t t){
+  if(!rgb_assertions||t<=video_start_ns)return;
+  video_text();video_tiles.latch_frame_registers();
+  if(latch_cursor>=latch_events.size()||latch_events[latch_cursor].ns!=t||latch_events[latch_cursor].values!=video_tiles.frame_registers())throw std::runtime_error("computed tile latch mismatch");
+  ++latch_cursor;++video_latches;
+ };
+ auto video_compare_pixels=[&](uint64_t ns,unsigned top,unsigned bottom,bool display){
+  if(!rgb_assertions)return;
+  auto word=[&](unsigned offset){return uint16_t(memory.bytes[offset]<<8)|memory.bytes[offset+1];};
+  video_text();HWTiles::FrameRegisters live{};
+  for(unsigned i=0;i<4;++i){live[i]=video_tiles.read_text(0x740+i);live[4+i]=video_tiles.read_text(0x748+i);live[8+i]=video_tiles.read_text(0x74c+i);}
+  const auto latched=video_tiles.frame_registers();
+  if(display&&(latched[8]&0x8000||latched[9]&0x8000))++row_scroll_clips;
+  if(display&&(latched[4]&0x8000||latched[5]&0x8000))++column_scroll_clips;
+  if(display&&live!=video_tiles.frame_registers())++delayed_register_clips;
+  for(unsigned i=0;i<0x8000;++i)video_tiles.write_tile(i,word(MainBus::TILE+2*i));
+  for(unsigned i=0;i<8192;++i)video_palette.write(i,word(MainBus::PALETTE+2*i));
+  for(unsigned i=0;i<0x800;++i)video_road.write16(2*i,(memory.road_buffer[2*i]<<8)|memory.road_buffer[2*i+1]);
+  video_road.read_road_control();video_road.write_road_control(memory.road_control);
+  video_screen.render_partial(video_rgb.data(),top,bottom,display,memory.sprite_buffer.data());
+  for(;;){auto t=number(pixel_capture,8);auto a=number(pixel_capture,2),b=number(pixel_capture,2),enabled=number(pixel_capture,1);
+   if(a>b||b>=224)throw std::runtime_error("invalid captured RGB clip");
+   if(t<=video_start_ns){pixel_capture.seekg(320*(b-a+1)*6,std::ios::cur);continue;}
+   if(t!=ns||a!=top||b!=bottom||bool(enabled)!=display)throw std::runtime_error("computed RGB frontier mismatch");
+   for(unsigned y=top;y<=bottom;++y)for(unsigned x=0;x<320;++x){const auto index=number(pixel_capture,2),priority=number(pixel_capture,1),rgb=number(pixel_capture,3);const auto i=y*320+x;const auto color=video_rgb[i];const unsigned actual=(color.r<<16)|(color.g<<8)|color.b;
+    if(rgb!=actual||(display&&(index!=video_screen.indices()[i]||priority!=video_screen.priorities()[i]))){std::cerr<<"RGB pixel ns="<<ns<<" xy="<<x<<','<<y<<" index="<<video_screen.indices()[i]<<'/'<<index<<" pri="<<unsigned(video_screen.priorities()[i])<<'/'<<priority<<" rgb="<<std::hex<<actual<<'/'<<rgb<<std::dec<<'\n';throw std::runtime_error("computed joint RGB pixel mismatch");}
+    if(display){priority_masks|=1u<<video_screen.priorities()[i];if(index>=8192){++effect_pixels;if(word(MainBus::PALETTE+2*(index-8192))&0x8000)++hilight_pixels;}}
+    ++video_pixels;
+   }
+   if(!display)++video_disabled;break;
+  }
+ };
  auto video_check=[&](unsigned kind,const Phase& p){
   if(!video.is_open()||!kind)return;
   const auto expected_kind=number(video,1),t=number(video,8),pc=number(video,4),control=number(video,1);
@@ -141,8 +198,14 @@ int main(int argc,char** argv)try{
    if(e.ns!=ns||e.left!=0||e.right!=319||e.top!=video_last_partial||e.bottom!=bottom||e.display!=video_display){
     std::cerr<<"Video update phase ns="<<ns<<'/'<<e.ns<<" clip="<<video_last_partial<<'-'<<bottom<<'/'<<e.top<<'-'<<e.bottom<<" display="<<video_display<<'/'<<e.display<<'\n';throw std::runtime_error("computed screen frontier mismatch");}
   }
-  if(video_display){std::fill(sprite_pixels.begin(),sprite_pixels.end(),0);video_sprites.render_bank(memory.sprite_buffer.data(),sprite_pixels.data(),320,224,video_last_partial,bottom);}
+  if(rgb_assertions)video_compare_pixels(ns,video_last_partial,bottom,video_display);
+  else if(video_display){std::fill(sprite_pixels.begin(),sprite_pixels.end(),0);video_sprites.render_bank(memory.sprite_buffer.data(),sprite_pixels.data(),320,224,video_last_partial,bottom);}
   video_last_partial=scanline+1;++video_partial_updates;
+ };
+ // CPU I/O and explicit device fixtures share the display transition policy.
+ auto video_display_write=[&](uint64_t ns,bool enabled){
+  if(enabled!=video_display)video_partial(ns,video_vpos(ns));
+  video_display=enabled;
  };
  XBoardBusArbiter::Time device_deadline=0;
  // segaxbd_state::update_main_irqs queues input-line changes even when
@@ -160,8 +223,7 @@ int main(int argc,char** argv)try{
   if(starting&&running[0]&&XBoardBusArbiter::Time(main_board.adc.deadline())*1000000000ULL<device_deadline)maincpu.abort_grant(main_phase_ns);
  };
  mainbus.io[0].output=[&](unsigned p,uint8_t d,uint8_t){if(p==2){mux=d;const bool enabled=d&0x20;
-  if(enabled!=video_display)video_partial(main_phase_ns,video_vpos(main_phase_ns));
-  video_display=enabled;if(running[0])maincpu.abort_grant(main_phase_ns);}};
+  video_display_write(main_phase_ns,enabled);if(running[0])maincpu.abort_grant(main_phase_ns);}};
  auto advance_board=[&](uint64_t ns,bool inclusive=true){
   board_advancing=true;
   while(analog_cursor<physical_analog.size()&&physical_analog[analog_cursor].first<=ns){
@@ -184,6 +246,16 @@ int main(int argc,char** argv)try{
  main_board.scanline=[&](uint64_t t,unsigned line){
   if(line==223||line==224)main_lines.update(mainbus.compare_timer.state().irq,main_board.vblank(),t);
   main_lines.deliver(t);
+  if(fixture_cursor<display_fixture.size()&&display_fixture[fixture_cursor].ns==t){
+   const auto& fixture=display_fixture[fixture_cursor++];
+   video_display_write(t,fixture.display);
+   for(auto [offset,value]:fixture.words){
+    if(offset<0x800){video_partial(t,line);memory.bytes[MainBus::TEXT+2*offset]=value>>8;memory.bytes[MainBus::TEXT+2*offset+1]=value;}
+    else if(offset<0x2000){const auto i=2*(offset-0x1000);memory.sprite_buffer[i]=value>>8;memory.sprite_buffer[i+1]=value;}
+    else{const auto i=MainBus::PALETTE+2*(offset-0x2000);memory.bytes[i]=value>>8;memory.bytes[i+1]=value;}
+   }
+  }
+  if(line==261)video_latch(t);
   if(line==0){video_last_partial=0;video_partial_reset=t;}
   if(line==224&&video.is_open()&&t>video_start_ns){
    video_partial(t,223);
@@ -198,6 +270,11 @@ int main(int argc,char** argv)try{
    if(base==UINT64_MAX){advance_board(ns,false);main_lines.deliver(ns-1);video_start_ns=ns;
     // The initial RAM/banks are sampled by the frame notifier after the
     // visible frame has rendered, so its partial-render cursor is complete.
+    if(rgb_assertions){
+     while(latch_cursor<latch_events.size()&&latch_events[latch_cursor].ns<=ns)++latch_cursor;
+     if(!latch_cursor)throw std::runtime_error("missing initial tile latch boundary");
+     video_tiles.load_initial_frame_registers(latch_events[latch_cursor-1].values);
+    }
     video_last_partial=224;break;}
    const bool w=number(boot,1);const auto a=number(boot,4);const auto d=number(boot,2),m=number(boot,2);
    advance_board(base);main_lines.deliver(base);main_phase_ns=ns;board_advancing=false;
@@ -493,6 +570,10 @@ int main(int argc,char** argv)try{
  std::array<unsigned,2> supplied_phase_counts{},supplied_write_counts{},supplied_pc_counts{};
  for(auto [key,n]:supplied_phases){supplied_phase_counts[key.first]+=n;++supplied_pc_counts[key.first];}
  for(auto [key,n]:supplied_writes)supplied_write_counts[key.first]+=n;
+ if(!display_fixture.empty()&&(fixture_cursor!=display_fixture.size()||!video_disabled||!delayed_register_clips||!row_scroll_clips||!column_scroll_clips||!effect_pixels||!hilight_pixels||effect_pixels==hilight_pixels))throw std::runtime_error("directed video fixture lacks blanking, pending registers, scroll modes or both effect variants");
+ if(rgb_assertions&&(latch_cursor!=latch_events.size()||pixel_capture.peek()!=EOF||!video_pixels||!video_latches))throw std::runtime_error("unconsumed joint RGB/latch assertions or empty coverage");
+ if(rgb_assertions)std::cout<<"Joint video coverage: priority masks="<<std::hex<<priority_masks<<std::dec<<" effect pixels="<<effect_pixels<<" hilight pixels="<<hilight_pixels<<" clips with pending global registers="<<delayed_register_clips<<" row/column scroll clips="<<row_scroll_clips<<'/'<<column_scroll_clips<<'\n';
+ if(rgb_assertions)std::cout<<"Joint RGB: "<<video_pixels<<" pixels identical, 0 different, 0 skipped; "<<video_latches<<" native line-261 latches; "<<video_disabled<<" disabled clips; one initial latch boundary supplied; "<<fixture_cursor<<" directed video fixture events supplied\n";
  std::cout<<"Joint supplied execution census: main="<<supplied_phase_counts[0]<<" phases at "<<supplied_pc_counts[0]<<" PCs, "<<supplied_write_counts[0]<<" writes; sub="<<supplied_phase_counts[1]<<" phases at "<<supplied_pc_counts[1]<<" PCs, "<<supplied_write_counts[1]<<" writes\n";
  if(require_main_closed&&(supplied_phase_counts[0]||supplied_contexts[0]!=1||main_selected_entries!=main_entries))
   throw std::runtime_error("joint main closure requires zero supplied main phases, one initial context and every physical IRQ selected natively");

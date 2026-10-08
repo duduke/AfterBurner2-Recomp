@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <array>
 
 class HWTiles
 {
@@ -49,6 +50,10 @@ public:
     // immediately when written — call this at the same point in your frame
     // loop (e.g. once per vblank).
     void latch_frame_registers();
+    // Initial device boundary and read-only oracle observation, in page/Y/X order.
+    using FrameRegisters = std::array<uint16_t, 12>;
+    FrameRegisters frame_registers() const;
+    void load_initial_frame_registers(const FrameRegisters& values);
 
     // Draw one tile layer. `which`: 0 = foreground, 1 = background.
     // `category`: matches the tile entry's priority-vs-sprite bit (0 or 1)

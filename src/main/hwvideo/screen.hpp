@@ -48,6 +48,12 @@ public:
     // Renders one full frame into `output` (width*height RGB888 pixels,
     // row-major, matching the dimensions passed to the constructor).
     void render_frame(RGB888* output);
+    // Compose only this inclusive visible clip. External bank retains the
+    // sprite scaler feedback; disabled display neither draws nor changes it.
+    void render_partial(RGB888* output, int top, int bottom, bool display,
+                        uint8_t* sprite_bank = nullptr);
+    const std::vector<uint16_t>& indices() const { return pixels; }
+    const std::vector<uint8_t>& priorities() const { return priority; }
 
 private:
     int width, height;

@@ -101,9 +101,12 @@ Main supplies zero phases; sub supplies only the initial partial ISR's 46
 phases at three PCs, with zero writes. Sound latch handshakes, sprite/road
 bank swaps, sprite scaler feedback and partial screen frontiers also match.
 Next close native Z80/YM/PCM timing and remaining device deadline/boost owners,
-tile/text latch and RGB compositor ownership, and unverified main/sub paths.
-Visible-area display toggles still need directed coverage. Stage 1 remains
-the game loop. Earlier checkpoints below are historical; see the current
+remaining game/video integration and unverified main/sub paths. Tile/text
+latches and partial RGB now match MAME in the joint natural/directed corpora;
+see the current video acceptance result in ENGINE_NOTES.
+Directed visible-area display, pending-global, scroll-table and effect-pen
+coverage now passes; initial boundaries and unobserved states remain explicit.
+Stage 1 remains the game loop. Earlier checkpoints below are historical; see the current
 result in `PHASE3D_PLAN.md` and the last `ENGINE_NOTES.md` section.
 Follow the [ordered remaining acceptance tasks](PHASE3D_PLAN.md#next-tasks-for-whole-host-acceptance).
 
@@ -174,6 +177,10 @@ sub IRQ checkpoint computes entry, selection, ISR, RTE and retained resumption:
 600-frame checks match 12,072,480 instructions/entries and 28,083,147 phases.
 The arbiter matches 239,177 grants and 1,271,730 shared reads at labelled
 producer/completion frontiers; nine sub and four arbiter mutations fail.
+A separate cold-boot bus gate adds 33,234 grants, 418,054 natural shared reads,
+64 labelled read-only mirror probes, both byte lanes and RAM retention across
+six tagged sub reset entries; eight boot/shared mutations fail. Native boot
+CPU execution and device initialization remain open.
 Connect both bounded CPU streams under this policy and remove remaining
 producer/caller/video/sound frontiers before whole-host acceptance.
 See the sprite/road continuation in `ENGINE_NOTES.md` for branch limits;

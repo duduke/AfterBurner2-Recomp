@@ -182,3 +182,18 @@ void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int heig
         }
     }
 }
+
+HWTiles::FrameRegisters HWTiles::frame_registers() const
+{
+    FrameRegisters values{};
+    for (unsigned i=0;i<4;++i) {
+        values[i]=latched_pageselect[i]; values[4+i]=latched_yscroll[i]; values[8+i]=latched_xscroll[i];
+    }
+    return values;
+}
+void HWTiles::load_initial_frame_registers(const FrameRegisters& values)
+{
+    for (unsigned i=0;i<4;++i) {
+        latched_pageselect[i]=values[i]; latched_yscroll[i]=values[4+i]; latched_xscroll[i]=values[8+i];
+    }
+}

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <stdexcept>
 #include "hwvideo/screen.hpp"
 
 Screen::Screen(int w, int h, HWPalette& pal, HWRoad& rd, HWSprites& spr, HWTiles& tm)
@@ -10,10 +11,21 @@ Screen::Screen(int w, int h, HWPalette& pal, HWRoad& rd, HWSprites& spr, HWTiles
 
 void Screen::render_frame(RGB888* output)
 {
+    render_partial(output, 0, height-1, true);
+}
+
+void Screen::render_partial(RGB888* output, int top, int bottom, bool display, uint8_t* sprite_bank)
+{
+    if(top<0 || bottom>=height || top>bottom) throw std::runtime_error("invalid video clip");
+    if(!display) {
+        std::fill(output+top*width, output+(bottom+1)*width, RGB888{0,0,0});
+        return;
+    }
     std::fill(priority.begin(), priority.end(), uint8_t{0});
     std::fill(sprite_pixels.begin(), sprite_pixels.end(), uint16_t{0xffff});
 
-    sprites.render(sprite_pixels.data(), width, height, 0, 0, 0xf);
+    if(sprite_bank) sprites.render_bank(sprite_bank, sprite_pixels.data(), width, height, top, bottom);
+    else sprites.render(sprite_pixels.data(), width, height, 0, 0, 0xf, top, bottom);
 
     road.render_background(pixels.data(), width, height);
     // After Burner II forces road_priority = 0: the road's textured
@@ -29,7 +41,7 @@ void Screen::render_frame(RGB888* output)
 
     const uint32_t num_entries = palette.num_entries();
 
-    for (int i = 0; i < width * height; i++)
+    for (int i = top * width; i < (bottom+1) * width; i++)
     {
         const uint16_t spix = sprite_pixels[i];
         if (spix != 0xffff)

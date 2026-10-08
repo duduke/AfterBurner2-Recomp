@@ -14,6 +14,7 @@ SRCS = \
 	src/main/hwvideo/hwpalette.cpp \
 	src/main/hwvideo/screen.cpp \
 	src/main/hwaudio/arcade_audio.cpp \
+	src/main/hwaudio/xboard_sound_cpu.cpp \
 	src/main/hwaudio/soundchip.cpp \
 	src/main/hwaudio/segapcm.cpp \
 	src/main/hwaudio/ym2151.cpp \
@@ -47,7 +48,7 @@ clean:
 TEST_SRCS = tests/engine_regression.cpp $(filter src/main/engine/% src/main/hwvideo/%,$(SRCS))
 
 # Dependency files include transitive headers and generated .inc files.
-CHECK_SRCS = $(sort $(TEST_SRCS) tests/mainbus_regression.cpp tests/xboard_timeline_regression.cpp tests/xboard_irq_lines_regression.cpp tests/cpu_continuation_regression.cpp tests/stage1_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+CHECK_SRCS = $(sort $(TEST_SRCS) tests/mainbus_regression.cpp tests/xboard_timeline_regression.cpp tests/xboard_irq_lines_regression.cpp tests/cpu_continuation_regression.cpp tests/sound_cpu_regression.cpp tests/stage1_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
 CHECK_OBJS = $(addprefix build/check_obj/,$(CHECK_SRCS:.cpp=.o))
 check_objs = $(addprefix build/check_obj/,$(1:.cpp=.o))
 -include $(CHECK_OBJS:.o=.d)
@@ -76,17 +77,20 @@ build/xboard_irq_lines_regression: $(call check_objs,tests/xboard_irq_lines_regr
 	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
 build/cpu_continuation_regression: $(call check_objs,tests/cpu_continuation_regression.cpp)
 	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+build/sound_cpu_regression: $(call check_objs,tests/sound_cpu_regression.cpp src/main/hwaudio/xboard_sound_cpu.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
 
-test: build/engine_regression build/mainbus_regression build/xboard_timeline_regression build/xboard_irq_lines_regression build/cpu_continuation_regression
+test: build/engine_regression build/mainbus_regression build/xboard_timeline_regression build/xboard_irq_lines_regression build/cpu_continuation_regression build/sound_cpu_regression
 	./build/engine_regression
 	./build/mainbus_regression
 	./build/xboard_timeline_regression
 	./build/xboard_irq_lines_regression
 	./build/cpu_continuation_regression
+	./build/sound_cpu_regression
 
 clean-checks:
 	rm -rf build/check_obj
-	rm -f build/engine_regression build/mainbus_regression build/xboard_timeline_regression build/xboard_irq_lines_regression build/cpu_continuation_regression build/stage1_integration
+	rm -f build/engine_regression build/mainbus_regression build/xboard_timeline_regression build/xboard_irq_lines_regression build/cpu_continuation_regression build/sound_cpu_regression build/stage1_integration
 
 .PHONY: test clean-checks FORCE_CHECK_CONFIG FORCE_CHECK_REBUILD
 
@@ -822,9 +826,9 @@ oracle-subirq: build/oracle_subirq
 	./build/oracle_subirq build/oracle/subirq_directed.bin --require-endpoints
 	./build/oracle_subirq build/oracle/subirq.bin
 
-build/oracle_bus_arbiter: tests/oracle_bus_arbiter.cpp src/main/hwmath/xboard_bus_arbiter.hpp src/main/engine/subbus.cpp
+build/oracle_bus_arbiter: tests/oracle_bus_arbiter.cpp src/main/hwmath/xboard_bus_arbiter.hpp src/main/engine/mainbus.cpp src/main/engine/mainbus.hpp src/main/engine/subbus.cpp
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_bus_arbiter.cpp src/main/engine/subbus.cpp -o $@
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_bus_arbiter.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o $@
 
 MAME_SOURCE ?= /Users/dakiva/dev/mame
 oracle-scheduler-probe:
@@ -835,6 +839,19 @@ oracle-capture-bus-arbiter: oracle-scheduler-probe
 
 oracle-bus-arbiter: build/oracle_bus_arbiter
 	./build/oracle_bus_arbiter build/oracle/bus_arbiter_short.bin build/oracle/arbiter_schedule.txt
+
+oracle-capture-bus-boot: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/arbiter_boot.txt" AB2_ORACLE_START_FRAME=0 AB2_CPU_PROBE=1 tools/oracle/capture.sh tools/oracle/capture_bus_arbiter.lua build/oracle/bus_arbiter_boot.bin 32 15
+
+oracle-bus-boot: build/oracle_bus_arbiter
+	./build/oracle_bus_arbiter build/oracle/bus_arbiter_boot.bin build/oracle/arbiter_boot.txt --require-boot
+
+oracle-bus-boot-mutations: oracle-bus-boot
+	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" python3 tools/oracle/check_bus_boot_mutations.py
+
+oracle-test: oracle-bus-boot-mutations
+
+.PHONY: oracle-capture-bus-boot oracle-bus-boot oracle-bus-boot-mutations
 
 .PHONY: oracle-capture-subirq-short oracle-capture-subirq-directed oracle-capture-subirq-full oracle-subirq oracle-scheduler-probe oracle-capture-bus-arbiter oracle-bus-arbiter
 
@@ -892,8 +909,8 @@ oracle-host-generated-check:
 .PHONY: oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full oracle-caller-host oracle-host-generated-check
 
 # Both native publication streams share computed grants and one RAM instance.
-build/oracle_publication_schedule: tests/oracle_publication_schedule.cpp src/main/engine/omainjointmanifest.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
-	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp src/main/hwvideo/hwsprites.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
+build/oracle_publication_schedule: $(wildcard src/main/hwvideo/*.hpp) $(filter src/main/hwvideo/%,$(SRCS)) tests/oracle_publication_schedule.cpp src/main/engine/omainjointmanifest.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp $(filter src/main/hwvideo/%,$(SRCS)) $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
 
 oracle-capture-publication-schedule: oracle-scheduler-probe
 	@mkdir -p build/oracle
@@ -917,7 +934,7 @@ oracle-joint-main-generated-check:
 oracle-capture-joint-main-progress: oracle-scheduler-probe oracle-joint-main-generated-check
 	@mkdir -p build/oracle
 	python3 tools/generate_joint_main_manifest.py --check
-	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_main_progress.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_main_progress.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_main_progress.bin.screen" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_main_progress.bin 120 15
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_main_progress.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_main_progress.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_main_progress.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_main_progress.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_main_progress.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_main_progress.bin 120 15
 
 oracle-joint-main-progress: build/oracle_publication_schedule oracle-joint-main-generated-check
 	python3 tools/generate_joint_main_manifest.py --check
@@ -928,7 +945,7 @@ oracle-joint-main-progress: build/oracle_publication_schedule oracle-joint-main-
 oracle-capture-joint-main-progress-full: oracle-scheduler-probe oracle-joint-main-generated-check
 	@mkdir -p build/oracle
 	python3 tools/generate_joint_main_manifest.py --check
-	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.bin.screen" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_main_progress_full.bin 600 30
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_main_progress_full.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_main_progress_full.bin 600 30
 
 oracle-joint-main-progress-full: build/oracle_publication_schedule
 	./build/oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake
@@ -956,4 +973,66 @@ oracle-test: oracle-subreset
 
 .PHONY: oracle-capture-joint-main-progress-full oracle-joint-main-progress-full
 
-oracle-test: oracle-joint-main-progress
+# Bounded native Z80 reset boot, stopping before any device read is supplied.
+oracle-capture-sound-boot:
+	@mkdir -p build/oracle
+	tools/oracle/capture.sh tools/oracle/capture_sound_boot.lua build/oracle/sound_boot.bin 1 5
+
+build/oracle_sound_boot: tests/oracle_sound_boot.cpp src/main/hwaudio/xboard_sound_cpu.cpp src/main/hwaudio/xboard_sound_cpu.hpp src/main/hwaudio/xboard_pcm_startup.hpp src/main/hwmath/compare_timer.hpp src/third_party/z80.h
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_sound_boot.cpp src/main/hwaudio/xboard_sound_cpu.cpp -o $@
+
+oracle-sound-boot: build/oracle_sound_boot
+	./build/oracle_sound_boot build/oracle/sound_boot.bin
+
+test-sound-cpu: build/sound_cpu_regression
+	./build/sound_cpu_regression
+
+oracle-sound-boot-mutations: oracle-sound-boot
+	python3 tools/oracle/check_sound_boot_mutations.py
+
+.PHONY: oracle-capture-sound-boot oracle-sound-boot oracle-sound-boot-mutations test-sound-cpu
+
+oracle-test: oracle-joint-main-progress oracle-sound-boot-mutations
+
+oracle-pcm-probe:
+	python3 tools/oracle/build_pcm_probe.py /Users/dakiva/dev/mame build/oracle/pcm_probe
+
+oracle-capture-pcm: oracle-pcm-probe
+	MAME="$(CURDIR)/build/oracle/pcm_probe/mame" AB2_PCM_TRACE="$(CURDIR)/build/oracle/pcm.bin" AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_pcm.lua build/oracle/pcm.bin 600 15
+	MAME="$(CURDIR)/build/oracle/pcm_probe/mame" AB2_PCM_TRACE="$(CURDIR)/build/oracle/pcm_directed.bin" AB2_PCM_DIRECTED=1 AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_pcm.lua build/oracle/pcm_directed.bin 600 15
+	MAME="$(CURDIR)/build/oracle/pcm_probe/mame" AB2_PCM_TRACE="$(CURDIR)/build/oracle/pcm_synthetic.bin" AB2_PCM_SYNTHETIC=1 AB2_PCM_DIRECTED=1 AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_pcm.lua build/oracle/pcm_synthetic.bin 600 15
+
+.PHONY: oracle-pcm-probe oracle-capture-pcm
+
+build/oracle_pcm: tests/oracle_pcm.cpp src/main/hwaudio/xboard_pcm.hpp src/main/romloader.cpp src/main/romloader.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_pcm.cpp src/main/romloader.cpp -o $@
+
+oracle-pcm: build/oracle_pcm
+	./build/oracle_pcm build/oracle/pcm.bin
+	./build/oracle_pcm build/oracle/pcm_directed.bin --require-directed
+	./build/oracle_pcm build/oracle/pcm_synthetic.bin --require-directed
+
+.PHONY: oracle-pcm
+
+oracle-pcm-mutations: oracle-pcm
+	python3 tools/oracle/check_pcm_mutations.py
+
+oracle-test: oracle-pcm-mutations
+
+.PHONY: oracle-pcm-mutations
+
+# Joint tile latches and phase-local RGB use the existing computed main/sub corpus.
+oracle-joint-video: build/oracle_publication_schedule
+	./build/oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake
+.PHONY: oracle-joint-video
+
+oracle-capture-joint-video-directed: oracle-scheduler-probe oracle-joint-main-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_video_directed.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_video_directed.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_video_directed.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_video_directed.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_video_directed.bin.latches" AB2_DISPLAY_FIXTURE="$(CURDIR)/build/oracle/joint_video_directed.bin.fixture" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_video_directed.bin 120 15
+oracle-joint-video-directed: build/oracle_publication_schedule
+	./build/oracle_publication_schedule build/oracle/joint_video_directed.bin build/oracle/joint_video_directed.txt --require-video-fixture --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake
+.PHONY: oracle-capture-joint-video-directed oracle-joint-video-directed
+
+oracle-joint-video-mutations: oracle-joint-video oracle-joint-video-directed
+	python3 tools/oracle/check_joint_video_mutations.py
+oracle-test: oracle-joint-video-mutations
+.PHONY: oracle-joint-video-mutations
