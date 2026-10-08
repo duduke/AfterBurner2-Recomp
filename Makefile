@@ -229,7 +229,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-subirq oracle-bus-arbiter oracle-subprogress oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
+oracle-test: oracle-caller-host oracle-caller-weapon oracle-subirq oracle-bus-arbiter oracle-subprogress oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp $(HANDLER_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -804,3 +804,56 @@ oracle-bus-arbiter: build/oracle_bus_arbiter
 	./build/oracle_bus_arbiter build/oracle/bus_arbiter_short.bin build/oracle/arbiter_schedule.txt
 
 .PHONY: oracle-capture-subirq-short oracle-capture-subirq-directed oracle-capture-subirq-full oracle-subirq oracle-scheduler-probe oracle-capture-bus-arbiter oracle-bus-arbiter
+
+# Timed weapon controller and fire/allocation callers. HUD remains a labelled callee.
+oracle-capture-caller-weapon-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_CALLER_WEAPON=1 AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_weapon_short.bin 120 15
+
+oracle-capture-caller-weapon-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_WEAPON_DIRECTED=1 AB2_ORACLE_CALLER_WEAPON=1 AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_weapon_directed.bin 240 15
+
+oracle-caller-weapon: build/oracle_caller
+	./build/oracle_caller build/oracle/caller_weapon_short.bin --require-weapon-path --require-closed
+	./build/oracle_caller build/oracle/caller_weapon.bin --require-weapon-path --require-flight-path --require-input-path --require-allirq --require-closed
+	./build/oracle_caller build/oracle/caller_weapon_directed.bin --require-weapon --require-closed
+
+oracle-weapon-generated-check:
+	@mkdir -p build/oracle
+	python3 tools/build_rom_image.py maincpu build/oracle/weapon_main.bin
+	python3 tools/generate_input_schedule.py build/oracle/weapon_main.bin --graph weapons --check
+
+.PHONY: oracle-capture-caller-weapon-short oracle-capture-caller-weapon-directed oracle-caller-weapon oracle-weapon-generated-check
+
+oracle-capture-caller-weapon-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_CALLER_WEAPON=1 AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_weapon.bin 600 30
+
+.PHONY: oracle-capture-caller-weapon-full
+
+# Literal flight initialization/recovery and caller HUD/launch-sound graphs.
+oracle-capture-caller-host-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_CALLER_HOST=1 AB2_ORACLE_CALLER_WEAPON=1 AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_host_short.bin 120 15
+
+oracle-capture-caller-host-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_CALLER_DIRECTED=1 AB2_ORACLE_HOST_DIRECTED=1 AB2_ORACLE_CALLER_HOST=1 AB2_ORACLE_CALLER_WEAPON=1 AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_host_directed.bin 360 20
+
+oracle-capture-caller-host-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_CALLER_HOST=1 AB2_ORACLE_CALLER_WEAPON=1 AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SERVICE=1 AB2_ORACLE_CALLER_RETURN=1 AB2_ORACLE_CALLER_STEPS=1 AB2_ORACLE_CALLER_WORDS=1 AB2_ORACLE_CALLER_SUCCESSORS=1 AB2_ORACLE_CALLER_CLOSURE=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_CALLER_COMPANION=1 AB2_ORACLE_CALLER_IRQ4=1 AB2_ORACLE_CALLER_FLIGHT=1 AB2_ORACLE_CALLER_SOUNDPRODUCER=1 AB2_ORACLE_CALLER_FOLLOWER=1 AB2_ORACLE_CALLER_READY=1 AB2_ORACLE_CALLER_WORLDINIT=1 AB2_ORACLE_CALLER_CLEAR=1 AB2_ORACLE_CALLER_TRAIL=1 AB2_ORACLE_CALLER_INPUT=1 tools/oracle/capture.sh tools/oracle/capture_caller.lua build/oracle/caller_host.bin 600 30
+
+
+oracle-caller-host: build/oracle_caller
+	./build/oracle_caller build/oracle/caller_host_short.bin --require-closed
+	./build/oracle_caller build/oracle/caller_host.bin --require-host-path --require-weapon-path --require-flight-path --require-input-path --require-allirq --require-closed
+	./build/oracle_caller build/oracle/caller_host_directed.bin --require-host
+
+oracle-host-generated-check:
+	@mkdir -p build/oracle
+	python3 tools/build_rom_image.py maincpu build/oracle/host_main.bin
+	python3 tools/generate_input_schedule.py build/oracle/host_main.bin --graph host --check
+
+.PHONY: oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full oracle-caller-host oracle-host-generated-check

@@ -269,19 +269,31 @@ weapon-button coverage when connecting host controls.
   callers. Preserve 254 × 64-byte records, live active/handler reads and
   runtime ROM templates/handler pointers. Do not reinterpret native `OEntry`
   as arcade RAM or use dispatcher transcripts as independent handler oracles.
+  Partial continuation: the timed dispatcher now joins the 107-PC weapon
+  controller/fire/allocation graph through real JSR/BSR/RTS stack effects.
+  The subsequent 258-PC continuation joins flight initialization/recovery,
+  HUD/decimal refresh and missile initialization with its ROM sound lookup.
+  `$9D2C` pool reset and remaining projectile/sequence continuations remain
+  boundaries; see the caller continuations in `ENGINE_NOTES.md`.
 - [ ] Connect live `$9810/$98C0`, shadow/exhaust, recovery `$9626/$964C` and
   sequence `$1653A..$1657A/$1678E`. The live fuselage is slot 131 at `$C0C0`;
-  sequence compounds use a different base. Keep word/long arithmetic widths
+  sequence compounds use a different base. Flight initialization/recovery now
+  joins its real dispatcher; sequence composition and full host acceptance
+  remain pending. Keep word/long arithmetic widths
   and the real multiplier/divider chips; retain `$C5A8`'s verified RNG contract.
 - [ ] Compare every compound object record, previous position, emitted request,
   shared bank/pitch/altitude target and the sub CPU's `$7800` scaled-size table.
   Preserve 30 Hz logic and the original two-display-frame sub handshake.
 - [ ] Connect verified weapon, projectile, reload and HUD routines at their
   actual callers. Retain held/released fire, launch-side, cooldown/reload,
-  exhaustion, targeting, removal and attachment-transition checks.
+  exhaustion, targeting, removal and attachment-transition checks. The timed
+  allocator now calls `$CFC4/$D062` through its actual stack and bus phases;
+  remaining projectile continuations and whole-host acceptance are pending.
 - [ ] Connect sound-ring producers and the timer consumer at their actual
   callers. Verify command order and latch timing before removing native sound
-  events; routine ring equality does not establish producer cadence.
+  events; routine ring equality does not establish producer cadence. Recovery
+  `$969A` and launch `$A022` now enter the checked producer through actual
+  BSRs. Independent producer cadence/latch/waveform acceptance is pending.
 
 Each handler's independent capture contract includes complete object/shared
 RAM, D0..D7/A0..A6, main/sub math-chip state, IO1 input and ordered CPU-owned

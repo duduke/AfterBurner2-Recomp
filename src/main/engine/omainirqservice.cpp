@@ -520,6 +520,25 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         r.d[reg]=value;sr=(sr&0xffe0)|(carry?0x11:0)|(overflow?2:0)|(value?0:4)|(value&0x80000000?8:0);
         idle(2);latch();idle(2);next=pc+2;
     };
+    // Register shifts and decimal DIVU follow the MAME 68000 microcode.
+    auto logical_shift=[&](unsigned reg,unsigned size,unsigned count,bool left,bool rotate){
+        const uint32_t mask=size==4?0xffffffffu:0xffffu,sign=size==4?0x80000000u:0x8000u;
+        auto value=r.d[reg]&mask;bool carry=false;read16(pc+4);
+        for(unsigned i=0;i<count;++i){carry=left?bool(value&sign):bool(value&1);
+            value=left?(value<<1)&mask:(value>>1)|(rotate&&carry?sign:0);idle(2);}
+        if(size==4)r.d[reg]=value;else word(r.d[reg],value);
+        sr=(sr&(rotate?0xfff0:0xffe0))|(carry?(rotate?1:17):0)|(value?0:4)|(value&sign?8:0);
+        if(size==4)idle(2);latch();idle(2);next=pc+2;
+    };
+    auto decimal_divu=[&](){
+        const uint32_t dividend=r.d[0],divisor=uint16_t(r.d[1]);
+        if(!divisor||(dividend>>16)>=divisor)throw std::runtime_error("unverified decimal DIVU exception/overflow");
+        unsigned cycles=38;uint32_t partial=dividend,high=divisor<<16;
+        for(unsigned i=0;i<15;++i){const auto old=partial;partial<<=1;
+            if(old&0x80000000)partial-=high;else{cycles+=2;if(partial>=high){partial-=high;--cycles;}}}
+        idle(cycles*2-4);r.d[0]=((dividend%divisor)<<16)|(dividend/divisor);nz(dividend/divisor);
+        final(pc+4);next=pc+2;
+    };
     auto branch=[&](bool take,uint32_t target,unsigned length) {
         next=take?target:pc+length;idle(2);
         if(take) {read16(next);final(next+2);}
@@ -529,6 +548,8 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
 #include "engine/omaininputschedule.inc"
 #include "engine/omainflightschedule.inc"
 #include "engine/omaincompanionschedule.inc"
+#include "engine/omainweaponschedule.inc"
+#include "engine/omainhostcallerschedule.inc"
     // $D0DA: ADDQ.W #1,$8B5A, exposed by the directed producer's
     // restored-mask schedule. The following button call is timed by the input graph.
     case 0xd0da: {

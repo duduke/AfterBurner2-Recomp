@@ -18,6 +18,8 @@ inline unsigned m68000_completion_tail(uint16_t op,uint16_t source) {
     // two. CMPA uses its own rcal3 two-clock ending.
     if((family==9 || family==11 || family==13) && size==3)
         return family==11 ? 2 : (!(op&0x100) || mode<2 ? 4 : 2);
+    // ANDI.L #imm,Dn: roal3/roal4 complete four clocks after prefetch.
+    if((op&0xfff8)==0x0280) return 4;
     // Immediate BTST on Dn finishes its Z flag two clocks after prefetch.
     if((op&0xfff8)==0x0800) return 2;
     // EXG's register exchange completes two clocks after its prefetch.

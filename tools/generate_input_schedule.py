@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit bounded, address-labelled input/flight/companion instructions from the user's ROM image.
+"""Emit bounded, address-labelled input/flight/companion/weapon/host instructions from the user's ROM image.
 
 No runtime opcode decoder or ROM data is generated. The supported forms here
 are the selected graph's instruction subset. Unknown forms fail rather than guess.
@@ -15,7 +15,7 @@ from m68k_disasm import disasm_one
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('image', type=Path)
 parser.add_argument('--check', action='store_true')
-parser.add_argument('--graph', choices=['input','flight','companion'], default='input')
+parser.add_argument('--graph', choices=['input','flight','companion','weapons','host'], default='input')
 args = parser.parse_args()
 rom = args.image.read_bytes()
 
@@ -34,6 +34,10 @@ def ea(text):
         value = int(m[1], 16)
         if m[2] == 'W' and value & 0x8000: value |= 0xffff0000
         return ('abs', value, 1 if m[2] == 'W' else 2)
+    m = re.fullmatch(r'\$(\w+)\(PC\)', text)
+    if m: return ('pc', int(m[1],16), 0)
+    m = re.fullmatch(r'-\(A(\d)\)', text)
+    if m: return ('pre', int(m[1]), 0)
     m = re.fullmatch(r'(-?\d+)\(A(\d)\)', text)
     if m: return ('disp', int(m[2]), int(m[1]))
     m = re.fullmatch(r'\(A(\d)\)(\+?)', text)
@@ -46,13 +50,13 @@ def ea(text):
 def extensions(e, size):
     if e[0] == 'i': return 2 if size == 4 else 1
     if e[0] == 'abs': return e[2]
-    return 1 if e[0] in ('disp', 'index') else 0
+    return 1 if e[0] in ('disp', 'index', 'pc') else 0
 
 
 def address(e):
     mode, reg, value = e
-    if mode == 'abs': return hex(reg)
-    if mode in ('ind', 'post'): return f'r.a[{reg}]'
+    if mode in ('abs','pc'): return hex(reg)
+    if mode in ('ind', 'post', 'pre'): return f'r.a[{reg}]'
     if mode == 'disp': return f'r.a[{reg}]+({value})'
     if mode == 'index': return f'r.a[{reg}]+({value[0]})+int16_t(r.d[{value[1]}])'
     raise ValueError(e)
@@ -61,6 +65,8 @@ def address(e):
 cpp, lua, metadata = [], [], []
 ranges = [(0xb0ac, 0xb36a), (0x14976, 0x14990), (0xd0de, 0xd0e2)] if args.graph=='input' else [(0x98c0,0x9c34),(0x427c,0x4284),(0x5d68,0x5d6e),(0x60ca,0x60d0),(0x7650,0x7656),(0x18e8a,0x18e8e)]
 if args.graph=='companion': ranges=[(0x9c34,0x9d2c),(0xae8c,0xb0aa),(0x77ac,0x77ae)]
+if args.graph=='host': ranges=[(0x9626,0x98c0),(0xcfc4,0xd0a0),(0x9f7c,0xa030)]
+if args.graph=='weapons': ranges=[(0x9d34,0x9dec),(0x9df8,0x9f08)]
 for start, stop in ranges:
     pc = start
     while pc < stop:
@@ -95,6 +101,7 @@ for start, stop in ranges:
             if ext:
                 if mode == 'index': emit('idle(2);'); offset = 2
                 prefetch(extensions(e, size))
+            if mode=='pre': emit(f'idle(2);r.a[{reg}]-={size};'); offset=2
             emit(f'const auto {name}=read{size*8}({address(e)});'); phases += 2 if size == 4 else 1
             if mode == 'post': emit(f'r.a[{reg}]+={size};')
 
@@ -150,23 +157,32 @@ for start, stop in ranges:
                 elif name == 'NOT': emit(f'const auto value=uint{size*8}_t(~old);'); flags(size)
                 elif name == 'NEG': emit('const auto value=addsub_word(0,old,true,true);')
                 if mem and name != 'TST':
-                    prefetch(); emit('latch();'); write(dst, size, ext=False); emit(f'next=0x{end:x};')
+                    prefetch(); emit('latch();');
+                    if name=='CLR' and size==4:
+                        emit(f'write16({address(dst)}+2,0);write16({address(dst)},0);');phases+=2
+                    else: write(dst, size, ext=False)
+                    emit(f'next=0x{end:x};')
                 else:
                     if name not in ('TST',): write(dst, size, ext=False)
                     finish()
         elif name in ('BTST', 'BCLR', 'BSET'):
             src, dst = map(ea, operands)
-            prefetch(1); prefetch(extensions(dst, 1)); read(dst, 1, 'old', ext=False)
-            emit(f'sr=(sr&~4)|(old&0x{1<<src[1]:x}?0:4);')
-            if name in ('BCLR','BSET'):
-                emit(f'const auto value=old{"&~" if name=="BCLR" else "|"}0x{1<<src[1]:x};'); prefetch(); emit('latch();'); write(dst, 1, ext=False); emit(f'next=0x{end:x};')
-            else: finish()
-        elif name in ('ADD', 'SUB', 'CMP', 'ADDI', 'SUBI', 'CMPI', 'ADDQ', 'SUBQ', 'ANDI', 'ORI'):
+            if dst[0]=='d':
+                assert name=='BTST'
+                prefetch(1);prefetch();emit(f'sr=(sr&~4)|(r.d[{dst[1]}]&0x{1<<src[1]:x}?0:4);');emit('latch();idle(2);');emit(f'next=0x{end:x};');tail=2;source=dst[1]
+            else:
+                prefetch(1); prefetch(extensions(dst, 1)); read(dst, 1, 'old', ext=False)
+            if dst[0]!='d':
+                emit(f'sr=(sr&~4)|(old&0x{1<<src[1]:x}?0:4);')
+                if name in ('BCLR','BSET'):
+                    emit(f'const auto value=old{"&~" if name=="BCLR" else "|"}0x{1<<src[1]:x};'); prefetch(); emit('latch();'); write(dst, 1, ext=False); emit(f'next=0x{end:x};')
+                else: finish()
+        elif name in ('ADD', 'SUB', 'CMP', 'ADDI', 'SUBI', 'CMPI', 'ADDQ', 'SUBQ', 'ANDI', 'ORI', 'OR'):
             src, dst = map(ea, operands)
             if name not in ('ADDQ', 'SUBQ'): read(src, size, 'operand')
             else: emit(f'const uint32_t operand={src[1]};')
             read(dst, size, 'old')
-            if name in ('ANDI','ORI'): emit('const auto value=old'+('&' if name=='ANDI' else '|')+'operand;'); flags(size)
+            if name in ('ANDI','ORI','OR'): emit('const auto value=old'+('&' if name=='ANDI' else '|')+'operand;'); flags(size)
             else: emit(f'{"" if name.startswith("CMP") else "const auto value="}addsub_{'long' if size==4 else 'byte' if size==1 else 'word'}(old,operand,{"true" if name.startswith(("SUB", "CMP")) else "false"},{"false" if name.startswith("CMP") else "true"});')
             if dst[0] == 'd':
                 if not name.startswith('CMP'): write(dst, size, ext=False)
@@ -186,6 +202,21 @@ for start, stop in ranges:
             count=str(src[1]) if src[0]=='i' else f'(r.d[{src[1]}]&63)'
             emit(f'{name.lower()}_{"word" if size==2 else "long"}({dst[1]},{count});');phases=1;source=dst[1]
             tail=(2 if size==2 else 4)+(2*src[1] if src[0]=='i' else 0);variable=src[1]+1 if src[0]=='d' else 0
+        elif name in ('LSR','LSL','ROR'):
+            src,dst=map(ea,operands);assert src[0]=='i' and dst[0]=='d'
+            emit(f'logical_shift({dst[1]},{size},{src[1]},{"true" if name=="LSL" else "false"},{"true" if name=="ROR" else "false"});')
+            phases=1;tail=(4 if size==4 else 2)+2*src[1];source=dst[1]
+        elif name == 'DIVU':
+            src,dst=map(ea,operands);assert src==('d',1,0) and dst==('d',0,0)
+            emit('decimal_divu();');phases=1;offset=-2
+        elif name == 'DBF':
+            dst=ea(operands[0]);target=int(operands[1][1:],16)
+            emit(f'const auto old=uint16_t(r.d[{dst[1]}]);idle(2);read16(0x{target:x});word(r.d[{dst[1]}],old-1);')
+            emit(f'if(old){{final(0x{target+2:x});next=0x{target:x};}}else{{read16(0x{pc+4:x});final(0x{pc+6:x});next=0x{end:x};}}')
+            phases=2;offset=2;branch_length=end-pc
+        elif name == 'JSR':
+            target=ea(operands[0]);assert target[0]=='abs' and target[2]==2
+            emit(f'read16(0x{pc+4:x});read16(0x{target[1]:x});sp-=4;write16(sp,0x{end>>16:x});write16(sp+2,0x{end&65535:x});final(0x{target[1]+2:x});next=0x{target[1]:x};');phases=5
         elif name == 'RTS':
             emit('next=read32(sp);sp+=4;read16(next);final(next+2);');phases=4
         elif name == 'BSR':
@@ -193,7 +224,7 @@ for start, stop in ranges:
             emit(f'idle(2);sp-=4;write16(sp,0x{end>>16:x});write16(sp+2,0x{end&65535:x});read16(0x{target:x});final(0x{target+2:x});next=0x{target:x};');phases=4;offset=2
         elif name.startswith('B'):
             target = int(operands[0][1:],16)
-            conditions={'BT':'true','BNE':'!(sr&4)','BEQ':'sr&4','BLE':'(sr&4)||bool(sr&8)!=bool(sr&2)','BGE':'bool(sr&8)==bool(sr&2)','BGT':'!(sr&4)&&bool(sr&8)==bool(sr&2)','BPL':'!(sr&8)'}
+            conditions={'BT':'true','BNE':'!(sr&4)','BEQ':'sr&4','BLE':'(sr&4)||bool(sr&8)!=bool(sr&2)','BGE':'bool(sr&8)==bool(sr&2)','BGT':'!(sr&4)&&bool(sr&8)==bool(sr&2)','BPL':'!(sr&8)','BLT':'bool(sr&8)!=bool(sr&2)','BMI':'sr&8'}
             emit(f'branch({conditions[name]},0x{target:x},{end-pc});');phases=2;offset=-1;branch_length=end-pc
         else: raise ValueError(f'{pc:x}: unsupported {asm}')
         cpp += [f'// ${pc:06X}: {asm}',f'case 0x{pc:x}: {{',*['    '+s for s in lines],'    break;','}']
@@ -233,6 +264,11 @@ if args.graph=='companion':
     outputs[header]=outputs[header].replace(marker,table+marker)
     outputs[header]=outputs[header].replace('if(i.pc==pc)return &i;return nullptr;', 'if(i.pc==pc)return &i;\n    for(const auto& i:main_companion_return_instructions)if(i.pc==pc)return &i;return nullptr;')
 
+if args.graph=='weapons':
+    outputs={path.replace('input','weapon'):text.replace('OMainInputInstruction','OMainWeaponInstruction').replace('main_input','main_weapon') for path,text in outputs.items()}
+
+if args.graph=='host':
+    outputs={path.replace('input','hostcaller'):text.replace('OMainInputInstruction','OMainHostInstruction').replace('main_input','main_host') for path,text in outputs.items()}
 
 for path,text in outputs.items():
     if args.check:
