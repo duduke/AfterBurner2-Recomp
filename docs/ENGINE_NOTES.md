@@ -5975,3 +5975,501 @@ remaining device head/boost owners, tile/text latches and full RGB compositor
 inputs must still close before whole-host acceptance. Native Stage 1 remains
 the game loop. ROM data, captures, sidecars and instrumented binaries remain
 under ignored paths.
+
+## Sound-reference continuation: separate native Z80 runner
+
+`XBoardSoundCpu` separates cycle-stepped sound ROM execution from the Stage 1
+audio player's 32,000-clock rendering batches, command queue and artificial
+32-clock command gap. It uses the existing licensed `src/third_party/z80.h`
+decoder, with one shared implementation for both audio runners. Its host
+supplies 4 MHz grants and reset/NMI/IRQ lines. CPU state stays in the decoder
+between ticks, interrupt entry and return; CPU reset retains board RAM.
+The runner is not wired into the joint scheduler or game loop.
+
+The bus follows MAME `segaxbd.cpp::sound_map/sound_portmap`: ROM below
+`$F000`, PCM offsets `$00..$FF` mirrored across `$F000..$F7FF`, and 2 KB
+work RAM at `$F800..$FFFF`. I/O masks the high address byte, YM aliases
+`$00..$3F` preserve A0, and latch aliases `$40..$7F` call the supplied
+315-5250 endpoint. Unmapped reads return `$FF`, ROM writes are ignored,
+and an uninstalled mapped device callback fails. Side effects are delivered
+once per bus request, rather than once per tick while request pins remain
+asserted. Latch acknowledgement delegates to the verified compare/timer;
+the host still owns synchronized NMI line clearing. `XBoardPcmStartup`
+computes register reads/writes while all channels remain disabled. It
+initializes registers to `$FF` as MAME does, and rejects any write that
+enables a channel. Stream updates cannot change register state while every
+channel is stopped; active stepping remains a separate acceptance task.
+
+### Reference audit
+
+Inspected `rossops/Arcade-SegaXBoard_MiSTer` at commit
+`c48e62c06f3ffd56b05749488867040bb962666e`, fetched into a temporary checkout.
+No upstream code, ROMs or golden captures were added to this repository.
+Useful references are
+[xb_soundsys.sv](https://github.com/rossops/Arcade-SegaXBoard_MiSTer/blob/c48e62c06f3ffd56b05749488867040bb962666e/rtl/audio/xb_soundsys.sv),
+[PCM model](https://github.com/rossops/Arcade-SegaXBoard_MiSTer/blob/c48e62c06f3ffd56b05749488867040bb962666e/verif/models/segapcm.py),
+and [PCM tests](https://github.com/rossops/Arcade-SegaXBoard_MiSTer/blob/c48e62c06f3ffd56b05749488867040bb962666e/verif/unit/chips/test_segapcm.py).
+The sound RTL confirms the memory mirrors, reset input, latch read strobe
+and YM IRQ wiring. The reset source is I/O chip 0 port C bit 0 in MAME;
+the RTL header's chip numbering must not override the actual board source.
+
+For future PCM acceptance, reuse the test dimensions (loop/end/stop,
+fraction/address write-back, volumes and bank selection), not its fixture
+as proof. The pinned test constructs a new `random.Random(5218)` for each
+ROM byte, yielding a single repeated value rather than diverse sample data.
+That can conceal address-selection errors. Use one persistent RNG or an
+address-sensitive synthetic ROM, plus real MAME stepping captures. Its
+sound gate compares audio envelopes, not exact samples or our joint native
+ownership contract. FPGA cache delays and physical timing must also not be
+substituted for the MAME scheduler semantics this project accepts.
+
+### Bounded MAME evidence and exclusions
+
+`oracle-capture-sound-boot` captures reset-entry execution without CPU state
+setters. `oracle-sound-boot` starts the decoder once at reset and initializes
+work RAM once from the capture; it never reseeds registers or later RAM.
+All 556/556 pre-activation transactions match PC, direction, address and data,
+zero differences/skips: 421 memory reads (134 computed PCM reads), one
+computed reset-state latch read, and 134 computed PCM writes. The native
+runner uses 2,880 input clocks through the terminal PCM activation request.
+No captured read value is supplied to execution. ROM address-selection,
+latch-value and PCM read-address mutations fail the comparison.
+
+The capture can stop at a bounded transaction window, the first unsupported
+YM read/active PCM channel, or a main command/I/O change. The current fixture
+stops before enabling PCM channel 0. PCM stopped-register writes are computed;
+other device writes are assertions, not proof of synthesis or stepping.
+Captured transaction timestamps are ordered assertions and timing diagnostics,
+never execution inputs. After aligning the first bus event, 278/556 relative
+phase times equal MAME's, with a maximum difference of 500 ns. This exposes
+the existing pin decoder's access-phase placement as remaining work, not
+timing acceptance. Clock offsets, per-phase timing and native grant ownership
+are unverified. The reset-state latch requires no main
+command or NMI assertion in this fixture. ROM-free synthetic programs
+separately check NMI/RETN and IM1 IRQ/RETI caller retention, reset hold/release,
+second NMI delivery and mirrored device access without repeated side effects.
+They do not constitute natural ROM interrupt oracle coverage.
+
+Native Z80 progress in the joint stream, main-to-sound command/NMI queue
+timing, YM busy/timer/status ownership, PCM stepping and register write-back,
+audio output and further ROM paths remain open. The ordered sound milestone
+and whole-host acceptance remain incomplete. Make and CMake register the
+new CPU checks; the Make oracle suite includes the boot comparison and
+rejected mutations. Captures remain in ignored `build/oracle/`.
+
+Validation: `python3 tools/workflow.py run required` passes (`make test`,
+`make verify-stage1`, complete `make oracle-test`), including the existing
+joint and pixel regressions. The new boot comparison and all three mutations
+also pass separately; a final `quick` run passes after the PCM boundary
+regression was added. `make -j4` game build passes. CMake source/test
+registration is updated, but CMake execution remains unavailable here.
+
+## Active PCM continuation: continuous sample and write-back oracle
+
+`hwaudio/xboard_pcm.hpp` implements the MAME `segapcm.cpp` BANK_512
+algorithm, with one tick per 4 MHz/128 raw stereo sample. It retains all
+2 KB device RAM and sixteen internal fractional address bytes. Channel
+enable/stop, loop/end comparison (including the 8-bit end-register wrap),
+24-bit address addition/wrap, bank bits 6:4, seven-bit panning volumes and
+address/fraction write-back follow MAME directly. The host must advance
+the stream before register accesses; the component does not invent stream
+update deadlines. CPU reset does not reset this device state.
+
+The MiSTer model and randomized channel tests suggested the coverage
+dimensions. Two reference differences matter: its synthetic ROM generator
+repeats one byte, and its per-tick model clamps the mixed PCM channels to
+signed 16-bit. MAME accumulates raw sums before speaker routing and does
+not clamp in `segapcm_device::sound_stream_update`. This component returns
+32-bit raw sums, matching MAME even when they exceed signed 16-bit.
+Original algorithm attribution and the BSD-3-Clause notice are retained
+in `LICENSES/MAME-SegaPCM.txt`; no MiSTer GPL source was imported.
+
+### Read-only MAME observer and replay
+
+`build_pcm_probe.py` compiles an observer in a separate local MAME binary
+from the existing build objects. The MAME source tree, installed binary
+and original objects remain unchanged. Reference source is clean MAME
+commit `6b511c0a858b8de0499d38cf382f0ef666ebf2cc`.
+
+The `AB2PCM02` stream records one initial device state, every PCM register
+write/read in execution order, each real MAME stream update's sample count,
+the actual pre-routing outputs and its post-update RAM/fraction state.
+Outputs are observed with `stream.get_output`, scaled by 32768 back to
+exact raw integers; no alternate PCM algorithm generates the golden
+samples. This scale is a power of two and the sixteen-channel raw sum fits
+exactly in the stream's floating-point representation. Register accesses
+retain MAME's update-before-read/write ordering.
+
+`oracle_pcm.cpp` loads CRC-checked sample ROMs and fills the unpopulated
+region with `$FF` as MAME's ROMREGION_ERASEFF requires. It loads device
+state once, then computes every sample, read value and write-back state
+continuously. Later snapshots are assertions only, never replacement RAM
+or fractions. CPU register writes and stream batch lengths remain external
+fixtures; this is device algorithm acceptance, not joint native scheduling.
+
+### Natural and directed results
+
+Each capture runs 600 physical frames with the established coin/start and
+stick/button inputs. The directed variants also program stopped channels,
+then bank/panning/delta/loop/end/control registers on frames 500..563.
+All CPUs continue executing; their interleaved writes are captured and
+replayed alongside these explicit device fixtures.
+
+| Corpus | Raw stereo samples identical | Full RAM/fraction states identical | Writes / reads | Samples with raw sums outside signed 16-bit |
+| --- | --- | --- | --- | --- |
+| Natural gameplay, arcade ROM | 314,376/314,376 | 6,216/6,216 | 22,783 / 15,804 | 0 |
+| Directed registers, arcade ROM | 314,376/314,376 | 6,277/6,277 | 33,003 / 15,814 | 26,008 |
+| Directed registers, synthetic ROM | 314,376/314,376 | 6,277/6,277 | 33,003 / 15,814 | 26,369 |
+
+All have zero differences/skips. Natural coverage observes all sixteen
+channels, banks 0..4, four loops, 35 stops and 217,970 fraction carries.
+Each directed run observes all sixteen channels/eight banks, 89,177 loops,
+491 stops, 505,847 fraction carries, 21,460 full-address wraps, 134,719
+active samples with wrapped end registers and 263,179 samples with high
+volume bits masked. The directed control fixture also sets ignored control
+bits 7/3/2: 702,637 active channel samples retain those bits without changing
+the algorithm, and 172,034 active channel samples have zero delta. There
+are 646 explicit channel disables retaining nonzero fractions in each
+directed run. Both positive and negative output sums are observed. These
+paths are required by the directed gate, along with CPU register read/write
+interleaving and continuous fractional state.
+
+The synthetic fixture replaces only the PCM sample region in the local
+MAME process with an address-sensitive generated pattern. Native replay
+generates the same explicit external ROM fixture; no commercial bytes or
+captures are committed. This is a directed device test, separate from
+arcade-ROM fidelity. It distinguishes banks 6/7, both erased `$FF` in the
+arcade set: a bank-7-to-bank-6 alias passes both arcade-ROM captures but
+fails the synthetic one. It therefore closes a hole that a constant test
+ROM or the erased arcade banks cannot expose.
+
+Eight independently compiled mutations fail actual comparisons: bank
+shift, erased-bank alias, end increment, stop bit, loop address, volume
+mask, fraction retention and output clipping. Compilation errors, crashes,
+missing captures and coverage-only failures are not accepted as mutation
+proof. `oracle-test` includes all three PCM captures and the mutation gate;
+Make and CMake register the comparisons.
+
+### Remaining ownership boundaries
+
+The startup 556-transaction Z80/disabled-PCM oracle remains intact. The
+active component is not wired into Stage 1 or the joint scheduler. The
+500 ns Z80 access-phase mismatch, CPU command/reset/NMI/IRQ scheduling,
+native PCM stream update sizes/deadlines, YM busy/timer/FM behavior,
+speaker gains/mute, final mixed/resampled audio and independently owned
+initial device state remain unverified. The Stage 1 ROM loader still
+zero-fills its unused PCM tail; the new oracle explicitly supplies MAME's
+erased `$FF` region, and a future native adapter must preserve that contract.
+These results do not complete either ordered sound milestone or whole-host
+acceptance. Captures, probe source/binaries and synthetic output remain in
+ignored `build/oracle/`.
+
+Validation: `oracle-pcm` and `oracle-pcm-mutations` pass all three corpora
+and eight rejected mutations. `python3 tools/workflow.py run required`
+passes ROM-free tests, Stage 1 integration and the complete oracle suite,
+including the existing boot/CPU/joint/video checks and the PCM comparisons.
+CMake registrations are updated; CMake execution remains unavailable here.
+
+## MiSTer-guided joint tile/text latches and partial RGB (2026-10-08)
+
+The reference remains MiSTer commit
+`c48e62c06f3ffd56b05749488867040bb962666e`. Its
+[`xb_tilemap_5197.sv`](https://github.com/rossops/Arcade-SegaXBoard_MiSTer/blob/c48e62c06f3ffd56b05749488867040bb962666e/rtl/video/xb_tilemap_5197.sv),
+`xb_video_timing.sv`, `xb_mixer.sv` and `verif/models/tilemap16b.py` identify
+useful acceptance dimensions: line-261 global latches, live row/column
+scroll and alternate sets, text decoding, accumulated priority marks and
+sprite effect pens. No MiSTer source was imported. MAME's BSD implementation
+(`segaic16.cpp`, `segaxbd.cpp`, same source revision as the scheduler probe)
+remains the behavioral oracle. This verifies MAME's partial-render model;
+it does not adopt the FPGA's next-scanline buffers or pixel-clock pipeline.
+
+`Screen::render_partial` composes an inclusive visible clip, resolves its
+pixels using the palette at that update, and renders sprites against the
+computed buffered bank while retaining scaler feedback. Display-disabled
+clips produce black RGB and do not invoke the sprite engine. The existing
+`render_frame` API delegates to the complete enabled clip. Road/tile work
+uses scratch surfaces; only the requested output rows are published.
+
+The joint main/sub replay now drives `HWTiles::latch_frame_registers` from
+its physical line-261 callback. All four page, Y-scroll and X-scroll sets
+are compared with the actual MAME latch callback at the exact timestamp.
+One initial latch boundary is loaded from the last actual callback before
+the initial CPU/RAM boundary; later observations are assertions, never
+seeds. Text/tile RAM, palette RAM, road control/buffer and sprite buffer
+come from the retained native main/sub memory and computed bank swaps.
+Copying these into renderer caches does not supply later MAME snapshots.
+Existing CPU bus, bank and scaler assertions remain active.
+
+The isolated scheduler probe adds two read-only streams alongside the
+existing `.screen` frontier assertions:
+
+- `.latches`: decimal nanoseconds and twelve words in page/Y/X order.
+- `.pixels`: big-endian nanoseconds (8 bytes), inclusive top/bottom
+  (2 bytes each), display flag (1 byte), then each clipped pixel's palette
+  index (2 bytes), priority mark (1 byte) and RGB (3 bytes), row-major.
+
+Scope-exit pixel observation covers both enabled and disabled MAME returns.
+Enabled clips compare all three values for every pixel. Disabled clips
+compare black RGB; MAME's retained priority marks and special black palette
+index are not treated as active mixer outputs. This avoids the frame
+notifier's previous-image/current-palette lag. All captured bytes and the
+instrumented executable remain ignored under `build/oracle/`.
+
+The explicit `AB2_DISPLAY_FIXTURE` run additionally records `.fixture`
+events: nanoseconds, display flag, word count, and offset/value pairs.
+Offsets `$0000–$07FF` denote text words, `$1000–$17FF` buffered sprite
+words, and `$2000–$3FFF` palette words. After one second, line 64 disables display; line 128 enables it and
+writes global registers and live tables; line 260 writes them again before
+the next latch. Each table write uses the actual MAME device handler. The
+fixture selects different page quadrants, nonuniform row/column scroll,
+alternate rows, and global changes which must wait for line 261. Native
+replay applies these as **supplied fixture transactions**, preserving the
+normal CPU execution and all assertions. They are test stimulus, not a
+claim that the ROM generated these directed register values. A runtime ROM
+scan selects a real sprite row containing pen `$A` and an end marker; 32
+repeating-row sprite descriptors exercise all four priorities. Palette
+bit 15 toggles while preserving each entry's normal color. The fixture
+contains no embedded ROM bytes. Coverage gates require both shadow and
+hilight output pixels as well as consumed fixture events, visible blanking, enabled renders with
+pending globals and both row/column scroll modes.
+
+Commands (reuse captures unless the probe/fixture format changes):
+
+```bash
+python3 tools/workflow.py run oracle-capture-joint-main-progress
+python3 tools/workflow.py run oracle-capture-joint-main-progress-full
+python3 tools/workflow.py run oracle-capture-joint-video-directed
+python3 tools/workflow.py run oracle-joint-video
+python3 tools/workflow.py run oracle-joint-video-directed
+python3 tools/workflow.py run oracle-joint-video-mutations
+python3 tools/workflow.py run required
+```
+
+The first 120-frame natural run compares 6,307,840/6,307,840 pixels and
+88/88 computed latches, zero differences/skips. It has priority-mark
+coverage bitset `$1111`, no effect pixels and no renders with pending
+global registers. The stronger directed fixture and 600-frame run extend
+this coverage; their final results are recorded below.
+
+The final 120-frame directed replay compares 6,307,840/6,307,840 pixels
+and 88/88 native latches, zero differences/skips. All 180 supplied fixture
+events are consumed; 60 disabled visible clips match. It checks 60 enabled
+clips with pending globals and 180 clips in each row/column scroll mode.
+Priority-mark coverage bitset is `$1115`. There are 350,868 effect pixels:
+176,198 hilights and 174,670 shadows. The CPU execution census still has
+3,160,862 native records and 8,320,519 native phases, one initial context
+per CPU, no supplied main phases, and only the initial sub ISR's 46 read
+phases supplied. Fixture memory writes remain explicitly supplied.
+
+CPU I/O writes and directed device calls share the same native display
+transition policy. This permits an omitted visible partial update to fail
+the actual MAME frontier assertion, rather than exercising a separate
+fixture-only copy of that policy.
+
+Coverage remains the recorded natural and directed corpora. The reported
+priority-mark bitsets describe observed accumulated marks, not all sixteen
+possible combinations or exhaustive graphics/page/quadrant contents.
+Flip modes, non-After-Burner banking, unobserved game states and the FPGA's
+scanline buffering/pixel pipeline are outside this acceptance. Initial CPU,
+RAM, video-bank and latch boundaries remain supplied; Z80/YM/PCM scheduling
+and other device head/boost owners retain their existing exclusions.
+Stage 1 remains the game's reconstruction loop; this compositor ownership
+is wired into the joint oracle, not a claim of whole-game acceptance.
+
+All ten targeted mutations are rejected by actual MAME assertions: latch
+line, alternate-set selection, row-table origin, column-table origin,
+text color decode, strict sprite priority, effects-bank selection,
+immediate global latching, omitted display partial frontier and nonblack
+blanking. Comparison failures alone count; compile/runtime/coverage failures
+do not. The mutation harness builds temporary overlays and leaves production
+sources unchanged. These mutations are included in `oracle-test` alongside
+the natural 600-frame and directed checks.
+Normal CPU I/O stays active during the fixture: mux/output writes can
+re-enable display before the line-128 fixture edge. The replay compares
+those actual intervening partial updates as well, using the shared display
+transition policy and the retained CPU bus timestamps.
+
+The final 600-frame natural run compares 40,714,240/40,714,240 RGB pixels
+and 568/568 line-261 latches, zero differences/skips. It includes 22
+whole/partial disabled clips and two enabled clips with pending globals;
+priority-mark coverage bitset is `$1515`. Its zero effect-pixel coverage is
+explicitly supplemented by the directed run above. The original joint CPU,
+RESET, bank-swap and scaler-feedback assertions remain enabled.
+
+| Capture length and stimulus | Visible frames after initial boundary | RGB pixels identical | Computed latches identical |
+| --- | ---: | ---: | ---: |
+| 120, natural | 88 | 6,307,840 | 88 |
+| 600, natural coin/start/flight | 568 | 40,714,240 | 568 |
+| 120, directed device fixture with CPUs active | 88 | 6,307,840 | 88 |
+
+Total: 53,329,920 RGB pixels and 744 computed latch observations, zero
+differences/skips. Each capture has its own supplied initial boundary.
+
+Final validation: `python3 tools/workflow.py run required -j2` passes
+ROM-free tests, Stage 1 integration (audio RMS remains 903.949), and the
+complete oracle suite, including all ten integrated video mutations and
+all existing fixture coverage. Full local logs are under
+`build/workflow/20261008T174422.903992Z/`. Existing routine-local race
+exclusions remain documented; the new joint video comparisons skip zero
+pixels/latches. CMake registrations are updated; CMake execution remains
+unavailable in this environment.
+The game build also passes (`python3 tools/workflow.py run all -j4`).
+
+## Phase 3d continuation: cold boot and shared-bus edges
+
+MiSTer's `docs/DESIGN.md` CPU-bus section at commit
+`c48e62c06f3ffd56b05749488867040bb962666e` identifies repeated sub resets,
+byte strobes and main ownership of the sub address space as useful boot
+verification dimensions. The reference is
+<https://github.com/rossops/Arcade-SegaXBoard_MiSTer>. Its RTL holds sub DTACK
+while main owns that bus; that FPGA arbitration delay is not imported into
+our MAME scheduler model. MiSTer's reported polling-loop resynchronizations
+are likewise not exclusions in this oracle. No reference HDL is copied.
+
+`capture_bus_arbiter.lua` now supports `AB2_ORACLE_START_FRAME=0`. It asserts
+that scheduler base and grant index are still zero before observation starts,
+then captures through frame 32 using fresh NVRAM/config. `AB2ARB04` retains
+the prior `AB2ARB03` fields and adds one byte per phase: bit 0 marks reset
+entry from the read-only CPU reset serial, and bit 1 marks a directed,
+read-only RAM-mirror probe. The reader retains compatibility with existing
+`AB2ARB03` captures. Consecutive reads of ROM addresses 0/2/4/6 alone are not
+reset evidence: the boot ROM checksum also visits those addresses. Only the
+CPU probe's reset-entry tag arms the four-vector-word coverage counter.
+
+Cold shared RAM starts from the native memory object's zero initialization;
+the captured initial bytes assert that initialization and never seed it.
+The existing frame-32 corpus still supplies its one initial RAM boundary.
+Each main shared access now uses `MainBus`, and each sub access uses its
+actual `SubBus`, retaining one underlying RAM object. Byte transactions use
+`read8`/`write8` with the observed lane rather than normalizing every access
+through a sub word read/merge. CPU resets do not clear that retained RAM.
+All subsequent read values are assertions, never replacements.
+
+Natural boot uses the canonical `$29C000/$2A0000` and `$9C000/$A0000` views.
+To exercise mirrors explicitly, the capture adds 16 debug reads per CPU per
+RAM chip after real nonzero shared reads, cycling through all eight 16-KB
+aliases twice. These 64 observations are labelled probes, not CPU bus cycles;
+they change no CPU state, RAM, device state or scheduler deadline. Coverage
+requires all eight aliases for both chips in both CPU maps. They do not
+establish CPU access timing for those aliases. Natural CPU byte writes cover
+both high and low lanes independently on both CPUs.
+
+The fresh cold-boot corpus matches, with zero differences/skips:
+
+| Assertion | Identical / total |
+| --- | ---: |
+| Scheduler grant groups | 33,234 / 33,234 |
+| CPU runs | 89,422 / 89,422 |
+| Ordered natural main/sub program phases | 3,100,956 / 3,100,956 |
+| Natural shared reads | 418,054 / 418,054 |
+| Additional labelled mirror reads | 64 / 64 |
+| Explicit shared producer writes delivered | 176,846 / 176,846 |
+
+There are 1,547 grant groups without captured program phases, 45 quantum
+requests and 63 natural sub reads after a main write with a later CPU-local
+timestamp. Tagged reset coverage is one main and six sub vector sequences;
+this is a count of actual CPU reset entries, not a claim that every entry
+originates in a main RESET instruction. Word/high/low shared writes are
+16,699/73,310/77 for main and 85,860/872/28 for sub.
+
+Eight mutations are rejected by actual comparison mismatches: clearing
+shared RAM on sub reset, changing main address mapping, aliasing the two sub
+RAM chips, corrupting main high-byte writes, exchanging sub byte lanes,
+reversing CPU grants, adding a budget clock and shortening boost duration.
+`check_bus_boot_mutations.py` builds temporary overlays under ignored
+`build/oracle`; a build failure, crash or coverage-only failure is not a
+successful rejection. `oracle-test` includes the cold positive and mutation
+gates; CMake also registers the positive check.
+
+```bash
+python3 tools/workflow.py run oracle-capture-bus-boot
+python3 tools/workflow.py run oracle-bus-boot-mutations
+python3 tools/workflow.py run required -j2
+```
+
+This extends bounded bus-policy acceptance through initialization. CPU
+instructions, shared producer values, completion frontiers, device deadlines,
+boost requests and reset tags remain observed inputs in this bus-only test.
+It does not close native main/sub cold-boot instruction execution, boot I/O,
+render/bank initialization, the initial partial sub ISR or the final parked
+continuations. Those remain task 5 in `PHASE3D_PLAN.md`; whole-host acceptance
+and the retained Stage 1 loop are unchanged. ROM/capture bytes remain ignored.
+
+Validation passed `python3 tools/workflow.py run required -j2` (full logs in
+`build/workflow/20261008T185916.490868Z/`): ROM-free tests, Stage 1 and the
+complete oracle suite, including all eight new boot/shared mutations and all
+ten integrated video mutations. The 600-frame joint replay retained its
+20,532,168 instruction/IRQ records, 53,449,620 phases and 40,714,240 RGB pixels,
+zero differences/skips. Legacy routine-local race exclusions are unchanged;
+they are not new boot/joint exclusions. A fresh frame-32-to-34 `AB2ARB04`
+capture also passed (32,131 shared reads), checking the default post-boot
+format path without replacing the existing `AB2ARB03` corpus. The game build
+and `git diff --check` pass. CMake registrations remain untested because
+CMake is unavailable here. This checkpoint is included in the authorized
+audio/video/boot checkpoint commit and merge.
+
+## Tooling pilot: REA and 68000 boot analysis
+
+The requested small REA pilot used upstream source commit
+`84a17d55199b1b46493aea6bf4e41029a3b200fc` from
+<https://github.com/morluto/rea>. The selected target was the sub CPU startup
+at `$402`, stopping before `$420`, including exception-frame/RTE initialization.
+Our existing disassembler produced eight instructions, zero unknown opcodes.
+The existing MAME sub-reset oracle passed seven reset states and 42 ordered
+vector/prefetch phases, zero differences/skips. That reset oracle checks
+vector/prefetch execution; it is not an execution test of all eight startup
+instructions merely because the listing decoded successfully.
+
+`tools/rea_boot_pilot.mjs` runs upstream's unmodified executable-header parser
+using Node's type stripping and a `.js`-to-`.ts` resolution hook. It requires
+the exact clean source revision; no REA source or algorithms are imported into
+the game. The pilot writes all ROM-derived inputs and results to ignored
+`build/oracle/rea_pilot/`. It exercises three real ROM-based admission attempts
+and one supported-format control:
+
+| Input | REA admission result |
+| --- | --- |
+| Actual interleaved sub CPU ROM | Unsupported binary format |
+| Actual interleaved main CPU ROM | Unsupported binary format |
+| Sub ROM in ELF32 big-endian EM_68K, entry `$402`, load address zero | Unsupported ELF architecture |
+| Existing built native game Mach-O | Accepted |
+
+All four expected outcomes passed. The ELF wrapper's header, PT_LOAD mapping
+and unchanged ROM payload were independently checked. Merely wrapping the ROM
+in ELF does not solve the missing architecture admission. No architecture
+spoofing was used. These results are parser acceptance/rejection evidence;
+they are not successful REA decompilation or native-provider measurements.
+
+The source target model admits x86/x86_64/arm/arm64, not 68000 or Z80. Ghidra
+raw BinaryLoader configuration is currently specific to DOS COM/x86. A useful
+68000 integration would need target/architecture admission, explicit
+big-endian raw-ROM processor/load/entry configuration, and verified analysis
+seeded from the actual reset/vector/call evidence. Installing REA alone would
+not provide that. This host also has no detected Ghidra/Hopper installation or
+JDK, and its active Node 24.3 is below REA's supported 24.11 minimum for that
+major release. The isolated parser ran under Node 24.3; no supported full CLI,
+MCP server or provider run is claimed.
+
+**Decision:** defer REA integration. No decompiled startup routine or measured
+analysis speedup was obtained. Its calls/xrefs/evidence interface remains a
+possible later aid, but adapter and provider setup would exceed this small
+pilot. Continue the existing instruction-by-instruction/MAME workflow; if
+static navigation becomes the bottleneck, evaluate direct 68000-capable
+Ghidra analysis before building a REA adapter. CPU/device timing and oracle
+runtime would still require our existing checks. No acceptance task is closed
+by this tooling experiment; game code and agent configuration are unchanged.
+
+Reproduction (requires the pinned upstream checkout and existing game build):
+
+```bash
+mkdir -p build/oracle/rea_pilot
+python3 tools/build_rom_image.py subcpu build/oracle/rea_pilot/subcpu.bin
+python3 tools/build_rom_image.py maincpu build/oracle/rea_pilot/maincpu.bin
+node --experimental-strip-types tools/rea_boot_pilot.mjs /path/to/rea-checkout
+python3 tools/workflow.py run oracle-subreset
+```
+
+Pilot admission and ELF validation, script syntax, `oracle-subreset`, artifact ignore checks and
+`git diff --check` passed. No native code was changed, no REA/provider package
+was installed, and no agent registration/skill was applied. The earlier full
+required-suite checkpoint remains applicable to the unchanged native code.

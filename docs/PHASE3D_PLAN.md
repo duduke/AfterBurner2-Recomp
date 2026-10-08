@@ -41,7 +41,7 @@ unverified paths still prevent whole-host acceptance:
 | IRQ services and retained caller resumptions | Closed in the 600-frame corpus: all 2,893 main entries/services/returns/resumptions and 568 sub services/returns use computed selection and retained state |
 | Main producers and sub sprite/road progress | Zero supplied main phases; one initial context per CPU; all 17 sub startup PCs computed, zero later sub supplied phases/writes. Initial partial sub ISR and unexercised main/sub paths remain boundaries |
 | ADC/buttons, device deadlines and sound timing | Main ADC/mux/buttons, grant aborts and RESET cancellation pass; synchronized sound command/latch handshake matches 1,278 reads. Z80/YM/PCM execution, other head deadlines and boost owners remain open |
-| Video ownership and compositor inputs | 854 bank swaps, 278 road controls, 568 sprite feedback frames and 575 computed partial screen updates match. Tile/text latches, RGB compositor ownership and directed visible-area display toggles remain open |
+| Video ownership and compositor inputs | 854 bank swaps, 278 road controls, 568 sprite feedback frames and 575 natural partial updates match. Line-261 latches and joint RGB now match in natural/directed corpora: 53,329,920 pixels, 744 latches, zero differences/skips. Initial video boundaries, unobserved states and game integration remain open |
 
 The preceding checkpoint and its exclusions are historical; the current main
 closure result is recorded below. The original 600-frame expanded joint
@@ -79,6 +79,13 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    state through NMI/IRQ entry, service and return. Compute sound reset and
    synchronized NMI assertion/clearing. Check command delivery, latch reads,
    YM writes and PCM accesses against the joint stream without reseeding.
+   A separate cycle-stepped sound runner now matches 556/556 cold-boot bus
+   transactions before the first active PCM channel, including one computed
+   latch read, 134 PCM reads and 134 PCM writes; three mutations are rejected.
+   ROM-free checks cover reset,
+   mirrored endpoints and caller retention through NMI/RETN and IRQ/RETI.
+   These do not close joint sound progress, device timing or natural
+   interrupt delivery; see the sound-reference continuation in ENGINE_NOTES.
 2. **Native audio/device deadlines and scheduler ownership.** Compute YM
    mode/timer callbacks, PCM stepping and sound update deadlines, then all
    remaining head-timer and boost owners. Preserve synchronized input queue
@@ -86,6 +93,12 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    with no supplied device frontier driving native scheduling. The device
    inventory currently shows 7,199 YM-timer head grants, 2,717 sound-update
    head grants and 11,289 tile-latch head grants to cover.
+   Isolated PCM sample stepping now matches 943,128/943,128 raw stereo
+   samples and 18,770/18,770 register/fraction write-back states across
+   natural, directed arcade-ROM and synthetic-ROM MAME captures, zero
+   differences/skips; eight mutations are rejected. These retain supplied
+   CPU register transactions and stream batch sizes. Native PCM deadlines,
+   YM ownership and mixed/resampled audio remain open.
 3. **Tile/text latches and full video composition.** Compute tile latch
    timing and latched scroll/page state. Feed independently owned text/tile,
    road, sprite, palette, priority and shadow inputs into the compositor at
@@ -93,6 +106,14 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    with MAME; the existing standalone 300-frame pixel oracle is a regression
    check, not the joint ownership proof. Add directed visible-area display
    enable changes; the natural corpus did not detect their omission.
+   **Observed-corpus acceptance now passes:** natural 120/600-frame and
+   directed 120-frame joint runs compare 53,329,920 pixels and 744 native
+   latches, zero differences/skips. Directed coverage includes pending
+   globals, row/column and alternate tables, 60 blank clips, 174,670 shadow
+   and 176,198 hilight pixels. Ten mutations are rejected, including omitted
+   display frontiers and priority equality. Initial boundaries, supplied
+   directed device stimuli and unobserved states remain explicit; Stage 1
+   integration and whole-host acceptance are not promoted by this result.
 4. **Remaining main/sub execution and exception coverage.** Exercise and
    verify the 2,158 main and 478 generated sub PCs absent from the current
    corpus, plus unobserved branch directions. Include IRQ wrapper PCs
@@ -100,7 +121,11 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    divide exception paths and startup RTE privilege exceptions. Expand
    captures across gameplay states and reset sequences; never silently
    accept an unported path or seed replacement CPU state on a mismatch.
-5. **Remove or explicitly bound fixture edges.** Extend capture/native
+5. **Remove or explicitly bound fixture edges.** The cold bus-only gate now
+   checks 33,234 grants, 418,054 natural shared reads, 64 labelled mirror
+   probes, byte lanes and RAM retention across six tagged sub reset entries;
+   eight mutations fail. Its CPU producers/completions and device frontiers
+   remain supplied. Extend native instruction
    execution through cold boot and the initial partial sub ISR (46 supplied
    phases), and beyond the two parked final continuations. Prove boot port,
    bank/render and CPU initialization rather than promoting the current

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build a read-only scheduler trace MAME beside its existing binary.
+"""Build an isolated scheduler/video trace MAME beside its existing binary.
 
 Uses existing MAME objects; never changes its source, objects, or installed
 binary. Trace output is an ignored oracle capture. CPU budgets, returns,
 quantum assertions and next timer boundaries contain no ROM bytes. The
 optional CPU observer saves instruction-entry registers for Lua without
-changing CPU state or execution timing.
+changing CPU state or execution timing. AB2_DISPLAY_FIXTURE explicitly
+enables separately recorded test display changes; natural runs omit it.
 """
 from pathlib import Path
 import argparse,shlex,subprocess
@@ -133,6 +134,59 @@ xsource=xsource.replace(needle,needle+'''
         if(trace)std::fprintf(trace,"%llu %d %d %d %d %d\\n",(unsigned long long)machine().time().as_ticks(1000000000),cliprect.min_x,cliprect.max_x,cliprect.min_y,cliprect.max_y,int(m_segaic16vid->m_display_enable));
     }
 ''')
+# At function exit all async sprite work has completed in the enabled path.
+xsource=xsource.replace(needle,needle+'''
+    auto ab2_pixels = [&, this]() {
+        if(auto p=std::getenv("AB2_PIXEL_TRACE")) {
+            static FILE* f=std::fopen(p,"wb");
+            auto put=[&](u64 v,unsigned bytes){while(bytes--)std::fputc((v>>(bytes*8))&255,f);};
+            if(!f)return;
+            put(machine().time().as_ticks(1000000000),8);put(cliprect.min_y,2);put(cliprect.max_y,2);put(m_segaic16vid->m_display_enable,1);
+            for(int y=cliprect.min_y;y<=cliprect.max_y;++y)for(int x=cliprect.min_x;x<=cliprect.max_x;++x){
+                auto index=bitmap.pix(y,x);put(index,2);put(screen.priority().pix(y,x),1);put(u32(m_palette->pen_color(index))&0xffffff,3);
+            }
+        }
+    };
+    struct ab2_on_exit { decltype(ab2_pixels)& fn; ~ab2_on_exit(){fn();} } ab2_guard{ab2_pixels};
+''')
+# Explicit directed device fixture, separately captured and replayed as supplied.
+needle_fixture='TIMER_CALLBACK_MEMBER(segaxbd_state::scanline_tick)\n{'
+assert xsource.count(needle_fixture)==1
+xsource=xsource.replace(needle_fixture,needle_fixture+'''
+    if(auto p=std::getenv("AB2_DISPLAY_FIXTURE")) {
+        const auto ns=machine().time().as_ticks(1000000000);
+        if(ns>1000000000 && (param==64 || param==128 || param==260)) {
+            static FILE* f=std::fopen(p,"w");
+            const unsigned enabled=param!=64;
+            static unsigned address=[this](){
+                const auto* gfx=reinterpret_cast<const u32*>(memregion("sprites")->base());
+                for(unsigned a=0;a<65536;++a){bool has_a=false;for(unsigned n=0;n<8;++n)has_a|=((gfx[a]>>(4*n))&15)==10;
+                    if(has_a&&(gfx[a]&0xf0)==0xf0)return a;}
+                fatalerror("directed sprite fixture requires an actual ROM row with effect pen and end marker");return 0u;
+            }();
+            const unsigned count=param==64?0:112+257+8192;
+            if(f)std::fprintf(f,"%llu %u %u",(unsigned long long)ns,enabled,count);
+            m_segaic16vid->set_display_enable(enabled);
+            for(unsigned i=0;i<count;++i){
+                if(i>=112 && i<369){const unsigned word=i-112,sprite=word/8,slot=word%8;
+                    const u16 descriptor[]={0x100,u16(address),u16(189+sprite*8),u16(0x4200|((sprite%4)<<12)),0xe200,223,u16(0x20+sprite),u16(address)};
+                    const u16 value=word==256?0x8000:descriptor[slot];
+                    if(f)std::fprintf(f," %u %u",0x1000+word,unsigned(value));m_sprites->buffer()[word]=value;continue;}
+                if(i>=369){const unsigned word=i-369;
+                    const u16 value=(m_paletteram[word]&0x7fff)|(((ns/16768000)&1)?0x8000:0);
+                    if(f)std::fprintf(f," %u %u",0x2000+word,unsigned(value));paletteram_w(word,value,0xffff);continue;}
+                const unsigned offset=i<4?0x740+i:i<8?0x748+i-4:i<12?0x74c+i-8:
+                    i<56?0x78b+((i-12)/22)*0x20+(i-12)%22:0x7c0+((i-56)/28)*0x20+(i-56)%28;
+                const u16 old=m_segaic16vid->m_textram[offset];
+                const u16 value=i<4?old^0x1111:i<8?((old^0x100)&0x1ff)|0x8000:i<12?((old^0x200)&0x3ff)|0x8000:
+                    i<56?((i-12)*13)&0x1ff:(((i-56)*23)&0x3ff)|(i%4==0?0x8000:0);
+                if(f)std::fprintf(f," %u %u",offset,unsigned(value));
+                m_segaic16vid->textram_w(offset,value);
+            }
+            if(f)std::fprintf(f,"\\n");
+        }
+    }
+''')
 xpath=out/'segaxbd.cpp';xpath.write_text(xsource)
 command=dry('sega.make','../../../../osx_clang/obj/x64/Release/src/mame/sega/segaxbd.o','../../../../../src/mame/sega/segaxbd.cpp')
 for i,a in enumerate(command):
@@ -143,6 +197,29 @@ if '-include' in command:
 command+=['-I'+str(root/'src/mame/sega')]
 subprocess.run(command,cwd=cwd,check=True)
 subprocess.run(['ar','r',str(sega),str(out/'segaxbd.o')],check=True)
+tilesource=(root/'src/mame/sega/segaic16.cpp').read_text().replace('#include "emu.h"','#include "emu.h"\n#include <cstdio>\n#include <cstdlib>')
+needle='\t/* set a timer to do this again next frame */'
+assert tilesource.count(needle)==1
+tilesource=tilesource.replace(needle,'''
+    if(auto p=std::getenv("AB2_LATCH_TRACE")) {
+        static FILE* f=std::fopen(p,"w");
+        if(f){std::fprintf(f,"%llu",(unsigned long long)machine().time().as_ticks(1000000000));
+            for(auto v:info->latched_pageselect)std::fprintf(f," %u",v);
+            for(auto v:info->latched_yscroll)std::fprintf(f," %u",v);
+            for(auto v:info->latched_xscroll)std::fprintf(f," %u",v);
+            std::fprintf(f,"\\n");}
+    }
+'''+needle)
+tilepath=out/'segaic16.cpp';tilepath.write_text(tilesource)
+command=dry('sega.make','../../../../osx_clang/obj/x64/Release/src/mame/sega/segaic16.o','../../../../../src/mame/sega/segaic16.cpp')
+for i,a in enumerate(command):
+ if a=='-o':command[i+1]=str(out/'segaic16.o')
+ if a=='../../../../../src/mame/sega/segaic16.cpp':command[i]=str(tilepath)
+if '-include' in command:
+ i=command.index('-include');del command[i:i+2]
+command+=['-I'+str(root/'src/mame/sega')]
+subprocess.run(command,cwd=cwd,check=True)
+subprocess.run(['ar','r',str(sega),str(out/'segaic16.o')],check=True)
 link=dry('mame.make',changed='../../../../osx_clang/bin/x64/Release/libemu.a')
 for i,a in enumerate(link):
  if a=='-o':link[i+1]=str(out/'mame')

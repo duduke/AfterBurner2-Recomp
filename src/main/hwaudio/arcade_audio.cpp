@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <array>
 #include <deque>
-#define CHIPS_IMPL
 #include "../../third_party/z80.h"
 
 struct ArcadeAudio::State
