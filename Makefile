@@ -46,21 +46,49 @@ clean:
 # ROM-free checks exercise the real descriptor/scaler and engine code.
 TEST_SRCS = tests/engine_regression.cpp $(filter src/main/engine/% src/main/hwvideo/%,$(SRCS))
 
-test:
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEST_SRCS) -o build/engine_regression
-	./build/engine_regression
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/mainbus_regression.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o build/mainbus_regression
-	./build/mainbus_regression
+# Dependency files include transitive headers and generated .inc files.
+CHECK_SRCS = $(sort $(TEST_SRCS) tests/mainbus_regression.cpp tests/xboard_timeline_regression.cpp tests/xboard_irq_lines_regression.cpp tests/cpu_continuation_regression.cpp tests/stage1_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+CHECK_OBJS = $(addprefix build/check_obj/,$(CHECK_SRCS:.cpp=.o))
+check_objs = $(addprefix build/check_obj/,$(1:.cpp=.o))
+-include $(CHECK_OBJS:.o=.d)
 
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/xboard_timeline_regression.cpp -o build/xboard_timeline_regression
+# Invalidate these objects when compiler/options change; preserve stamp mtime
+# when they do not, so repeated checks only rerun the executable.
+CHECK_CONFIG_CHANGED := $(shell printf '%s\n' '$(CXX)' '$(CXXFLAGS)' '$(INCLUDES)' | cmp -s - build/check_obj/config || echo FORCE_CHECK_REBUILD)
+build/check_obj/config: FORCE_CHECK_CONFIG
+	@mkdir -p $(dir $@)
+	@printf '%s\n' '$(CXX)' '$(CXXFLAGS)' '$(INCLUDES)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else rm -f $(CHECK_OBJS); mv $@.tmp $@; fi
+
+# A phony prerequisite also catches option changes within one clock tick on
+# older make versions with second-resolution timestamp comparisons.
+build/check_obj/%.o: %.cpp build/check_obj/config $(CHECK_CONFIG_CHANGED)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -pthread -MMD -MP -c $< -o $@
+
+build/engine_regression: $(call check_objs,$(TEST_SRCS))
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+build/mainbus_regression: $(call check_objs,tests/mainbus_regression.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+build/xboard_timeline_regression: $(call check_objs,tests/xboard_timeline_regression.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+build/xboard_irq_lines_regression: $(call check_objs,tests/xboard_irq_lines_regression.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+build/cpu_continuation_regression: $(call check_objs,tests/cpu_continuation_regression.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+
+test: build/engine_regression build/mainbus_regression build/xboard_timeline_regression build/xboard_irq_lines_regression build/cpu_continuation_regression
+	./build/engine_regression
+	./build/mainbus_regression
 	./build/xboard_timeline_regression
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/xboard_irq_lines_regression.cpp -o build/xboard_irq_lines_regression
 	./build/xboard_irq_lines_regression
-	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/cpu_continuation_regression.cpp -o build/cpu_continuation_regression
 	./build/cpu_continuation_regression
 
-.PHONY: test
+clean-checks:
+	rm -rf build/check_obj
+	rm -f build/engine_regression build/mainbus_regression build/xboard_timeline_regression build/xboard_irq_lines_regression build/cpu_continuation_regression build/stage1_integration
+
+.PHONY: test clean-checks FORCE_CHECK_CONFIG FORCE_CHECK_REBUILD
 
 # Optional visual check; requires the user's ROMs in roms/.
 render-scene:
@@ -70,9 +98,10 @@ render-scene:
 .PHONY: render-scene
 
 # Optional integration suite: reads the user's CRC-verified ROMs.
-verify-stage1:
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/stage1_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)) -o build/stage1_integration
+build/stage1_integration: $(call check_objs,tests/stage1_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+
+verify-stage1: build/stage1_integration
 	./build/stage1_integration
 
 .PHONY: verify-stage1
