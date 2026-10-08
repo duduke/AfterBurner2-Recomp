@@ -186,6 +186,19 @@ or skips. The longer directed run exposes supplied post-RTE continuations at
 independent two-CPU/video/sound acceptance boundaries remain explicit;
 native Stage 1 and section 2 item 1 remain unchanged. See the continuation in
 `ENGINE_NOTES.md` for natural results and mutation evidence.
+The two directed `$6844/$14EE8` post-RTE instructions now compute their bit
+checks: directed host acceptance matches 2,055,260 instruction/IRQ records,
+6,036,146 phases and all 260 host PCs, zero differences/skips or unported
+post-RTE returns. Its strict closure gate is restored. Joint main/sub
+publication progress now runs the native ports against one shared RAM instance
+under the checked arbiter: 1,788,368 instructions, 4,818,916 phases and
+182,481 bounded grant completions match; 327 producer writes are computed.
+435 entry contexts, 141,969 other shared writers, device deadlines/boosts,
+IRQ services and sub callee progress remain inputs. Five new mutations fail.
+Next extend this joint stream through IRQ services and sprite/road/main caller
+progress while retaining the 68000's private instruction-step debt. Whole-host
+player/weapon/video/sound acceptance remains pending; native Stage 1 stays active.
+See the joint publication continuation in `ENGINE_NOTES.md` for coverage limits.
 The runtime template inventory still identifies seven unported initial handlers.
 Follow the current host acceptance plan in
 [PHASE3D_PLAN.md](PHASE3D_PLAN.md). Take the first unchecked item in "Remaining

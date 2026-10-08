@@ -237,6 +237,19 @@ continuous sound ring also passes, but sound caller timestamps remain supplied.
   are rejected. Sub IRQ, producer delivery, arbitration and renderer
   composition remain supplied; see `ENGINE_NOTES.md` for eight unexercised
   branch/loop directions and completion-tail limits.
+- [x] Close the two unrelated directed post-RTE instructions at `$6844/$14EE8`.
+  Directed host acceptance now requires strict whole-corpus return closure:
+  2,055,260 records, 6,036,146 phases and all 260 host PCs match, zero skips
+  and zero unported post-RTE returns. Both mask mutations are rejected;
+  surrounding handlers and cleared-bit inputs remain explicit boundaries.
+- [x] Join bounded main/sub publication progress under the checked arbiter,
+  preserving native RMW operands and private instruction-step debt across
+  grants. Natural 120 matches 1,788,368 native instructions, 4,818,916 phases,
+  182,481 bounded completions and 1,271,730 shared reads, zero skips.
+  327 native writes replace supplied producers; 435 entry contexts and
+  141,969 other shared writers remain supplied. 22/24 selected PCs execute
+  jointly; missed-count `$1486A` and optional BSR `$43E` lack joint coverage.
+  IRQ/ADC/sub callee/device frontiers still prevent whole-host acceptance.
 - [ ] Finish independent scheduling across caller/ISR resumptions, ADC input
   producers, publication wait boundaries and sub progress.
   Current IRQ contexts/frontiers, physical input bytes, unknown caller

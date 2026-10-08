@@ -258,4 +258,6 @@ return {
  [0xa022]={phases=4,offset=2,tail=0,source=0,branch=0},
  [0xa026]={phases=6,offset=0,tail=0,source=0,branch=0},
  [0xa02e]={phases=4,offset=0,tail=0,source=0,branch=0},
+ [0x6844]={phases=5,offset=0,tail=0,source=0,branch=0},
+ [0x14ee8]={phases=5,offset=0,tail=0,source=0,branch=0},
 }

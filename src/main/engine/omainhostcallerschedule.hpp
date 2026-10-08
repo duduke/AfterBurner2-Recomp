@@ -3,7 +3,7 @@
 #include <cstdint>
 // Generated instruction manifest; shared capture/coverage definitions.
 struct OMainHostInstruction { uint32_t pc; unsigned phases; int offset; unsigned tail,source,branch; };
-inline constexpr std::array<OMainHostInstruction,258> main_host_instructions{{
+inline constexpr std::array<OMainHostInstruction,260> main_host_instructions{{
     {0x9626,4,0,0,0,0},
     {0x962a,4,0,0,0,0},
     {0x9630,2,-1,0,0,4},
@@ -262,6 +262,8 @@ inline constexpr std::array<OMainHostInstruction,258> main_host_instructions{{
     {0xa022,4,2,0,0,0},
     {0xa026,6,0,0,0,0},
     {0xa02e,4,0,0,0,0},
+    {0x6844,5,0,0,0,0},
+    {0x14ee8,5,0,0,0,0},
 }};
 inline const OMainHostInstruction* main_host_instruction(uint32_t pc) {
     for(const auto& i:main_host_instructions)if(i.pc==pc)return &i;return nullptr;

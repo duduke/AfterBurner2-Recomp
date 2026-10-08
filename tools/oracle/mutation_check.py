@@ -414,6 +414,23 @@ for name,old,new in [
 ]:
     cases.append((name,"src/main/engine/osubpublication.cpp",old,new,
                   "tests/oracle_subpublication.cpp","subpublication_directed",common))
+# The unrelated directed post-RTE tests must reject a disabled ROM bit test.
+for pc in (0x6844,0x14ee8):
+    old=f'sr=(sr&~4)|(old&0x2?0:4);\n    final(0x{pc+10:x});'
+    cases.append((f'hostreturn{pc:x}', 'src/main/engine/omainhostcallerschedule.inc',
+                  old,old.replace('old&0x2','old&0x0'), 'tests/oracle_caller.cpp',
+                  'caller_host_directed', ['src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp',*common]))
+
+# Joint grants must reject altered private CPU debt and publication producers.
+publication_dependencies=['src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp','src/main/engine/osubpublication.cpp',*common]
+for name,source,old,new in [
+    ('pubscheduledebt','src/main/hwmath/xboard_cpu_continuation.hpp','if(bus_end>=target){local=target;return local;}','if(bus_end>=target){local=bus_end;return local;}'),
+    ('pubschedulerearm','src/main/engine/omainirqservice.cpp','constexpr uint16_t armed=1;','constexpr uint16_t armed=2;'),
+    ('pubschedulerelease','src/main/engine/osubpublication.cpp','v|0x200,0xff00','v|0x400,0xff00'),
+]:
+    cases.append((name,source,old,new,'tests/oracle_publication_schedule.cpp','publication_schedule',
+                  [p for p in publication_dependencies if p!=source]))
+
 # Object initializer checks now execute through the full production router.
 cases = [(name,source,old,new,test,capture,handler_dependencies(source) if test=="tests/oracle_objects.cpp" else dependencies)
          for name,source,old,new,test,capture,dependencies in cases]
@@ -438,10 +455,11 @@ for name, source, old, new, test, capture, dependencies in cases:
         command = ["-I" + str(include.parent), "-Isrc/main", test, *dependencies]
     else:
         command = ["-Isrc/main", test, str(variant), *dependencies]
-    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2",
+    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2", "-pthread",
                     *command, "-o", str(binary)], check=True)
     with log_path.open("w") as log:
         args = [str(binary), "build/oracle/" + capture + (".bin.visibility" if name.startswith("visibility") else ".bin")]
+        if name.startswith("hostreturn"): args += ["--require-host", "--require-closed"]
         if capture == "caller_successors_directed": args += ["--require-taken"]
         if name.startswith("irq4return"): args += ["build/oracle/" + capture + ".bin.returns"]
         if test == "tests/oracle_video.cpp": args += ["0", "build/oracle/paired_road_requests.bin"]
@@ -453,7 +471,7 @@ for name, source, old, new, test, capture, dependencies in cases:
     # before aggregate summaries are printed. Keep the explicit failed bus/
     # state assertions as differential evidence, never a bare generic error.
     assertion_differences = [line for line in log_path.read_text().splitlines()
-                            if line.startswith(("Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch", "Linked IRQ4 bus pc=", "Linked IRQ4 return mismatch", "IRQ4 bus pc=", "Leaf "))]
+                            if line.startswith(("Native phase cpu=", "Native grant completion ", "Caller pc=", "Caller record pc=", "Caller chain pc=", "Linked service mismatch", "Linked IRQ4 bus pc=", "Linked IRQ4 return mismatch", "IRQ4 bus pc=", "Leaf "))]
     schedule_errors = [line for line in log_path.read_text().splitlines()
                        if any(message in line for message in [
                            "unrecorded IRQ inside sampling gap", "missing scheduled poll",

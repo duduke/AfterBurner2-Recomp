@@ -55,6 +55,8 @@ test:
 
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/xboard_timeline_regression.cpp -o build/xboard_timeline_regression
 	./build/xboard_timeline_regression
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/cpu_continuation_regression.cpp -o build/cpu_continuation_regression
+	./build/cpu_continuation_regression
 
 .PHONY: test
 
@@ -229,7 +231,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-caller-host oracle-caller-weapon oracle-subirq oracle-bus-arbiter oracle-subprogress oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
+oracle-test: oracle-publication-schedule oracle-caller-host oracle-caller-weapon oracle-subirq oracle-bus-arbiter oracle-subprogress oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp $(HANDLER_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -849,7 +851,7 @@ oracle-capture-caller-host-full:
 oracle-caller-host: build/oracle_caller
 	./build/oracle_caller build/oracle/caller_host_short.bin --require-closed
 	./build/oracle_caller build/oracle/caller_host.bin --require-host-path --require-weapon-path --require-flight-path --require-input-path --require-allirq --require-closed
-	./build/oracle_caller build/oracle/caller_host_directed.bin --require-host
+	./build/oracle_caller build/oracle/caller_host_directed.bin --require-host --require-closed
 
 oracle-host-generated-check:
 	@mkdir -p build/oracle
@@ -857,3 +859,16 @@ oracle-host-generated-check:
 	python3 tools/generate_input_schedule.py build/oracle/host_main.bin --graph host --check
 
 .PHONY: oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full oracle-caller-host oracle-host-generated-check
+
+# Both native publication streams share computed grants and one RAM instance.
+build/oracle_publication_schedule: tests/oracle_publication_schedule.cpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/engine/osubpublication.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
+
+oracle-capture-publication-schedule: oracle-scheduler-probe
+	@mkdir -p build/oracle
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/publication_schedule.txt" AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/publication_schedule.bin 120 15
+
+oracle-publication-schedule: build/oracle_publication_schedule
+	./build/oracle_publication_schedule build/oracle/publication_schedule.bin build/oracle/publication_schedule.txt
+
+.PHONY: oracle-capture-publication-schedule oracle-publication-schedule
