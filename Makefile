@@ -103,6 +103,9 @@ oracle-capture:
 	$(MAKE) oracle-capture-subpublication-short
 	$(MAKE) oracle-capture-subpublication-directed
 	$(MAKE) oracle-capture-subpublication-full
+	$(MAKE) oracle-capture-subprogress-short
+	$(MAKE) oracle-capture-subprogress-directed
+	$(MAKE) oracle-capture-subprogress-full
 
 # 3d foundations only; leaf and directed calls do not prove player gameplay.
 oracle-capture-objects:
@@ -226,7 +229,7 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
+oracle-test: oracle-subirq oracle-bus-arbiter oracle-subprogress oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp $(HANDLER_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -734,3 +737,70 @@ oracle-subpublication: build/oracle_subpublication
 	./build/oracle_subpublication build/oracle/subpublication.bin
 
 .PHONY: oracle-capture-subpublication-short oracle-capture-subpublication-directed oracle-capture-subpublication-full oracle-subpublication
+
+# Bounded sub CPU sprite/road progress; external IRQ/producer delivery is explicit.
+build/oracle_subprogress: tests/oracle_subprogress.cpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.hpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/subbus.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subprogress.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp $(ORACLE_SRCS) -o $@
+
+oracle-capture-subprogress-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_subprogress.lua build/oracle/subprogress_short.bin 120 15
+
+oracle-capture-subprogress-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_PUBLICATION_DIRECTED=1 AB2_ORACLE_SUB_GRAPH_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_subprogress.lua build/oracle/subprogress_directed.bin 360 15
+
+oracle-capture-subprogress-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_subprogress.lua build/oracle/subprogress.bin 600 30
+
+oracle-subprogress: build/oracle_subprogress
+	./build/oracle_subprogress build/oracle/subprogress_short.bin
+	./build/oracle_subprogress build/oracle/subprogress_directed.bin --require-endpoints
+	./build/oracle_subprogress build/oracle/subprogress.bin
+
+oracle-subprogress-generated-check:
+	@mkdir -p build/oracle
+	python3 tools/build_rom_image.py subcpu build/oracle/subprogress_rom.bin
+	python3 tools/generate_sub_schedule.py build/oracle/subprogress_rom.bin --check
+
+.PHONY: oracle-capture-subprogress-short oracle-capture-subprogress-directed oracle-capture-subprogress-full oracle-subprogress oracle-subprogress-generated-check
+
+# Bounded independent sub interrupt selection, entry, service and resumption.
+build/oracle_subirq: tests/oracle_subirq.cpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.hpp src/main/engine/osubprogress.inc src/main/engine/osubpublication.cpp src/main/hwmath/xboard_sub_irq_selection.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subirq.cpp src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp $(ORACLE_SRCS) -o $@
+
+oracle-capture-subirq-short:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_subirq.lua build/oracle/subirq_short.bin 120 15
+
+oracle-capture-subirq-directed:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_PUBLICATION_DIRECTED=1 AB2_ORACLE_SUB_GRAPH_DIRECTED=1 AB2_ORACLE_SUB_IRQ_DIRECTED=1 tools/oracle/capture.sh tools/oracle/capture_subirq.lua build/oracle/subirq_directed.bin 360 15
+
+oracle-capture-subirq-full:
+	@mkdir -p build/oracle
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_subirq.lua build/oracle/subirq.bin 600 30
+
+oracle-subirq: build/oracle_subirq
+	./build/oracle_subirq build/oracle/subirq_short.bin
+	./build/oracle_subirq build/oracle/subirq_directed.bin --require-endpoints
+	./build/oracle_subirq build/oracle/subirq.bin
+
+build/oracle_bus_arbiter: tests/oracle_bus_arbiter.cpp src/main/hwmath/xboard_bus_arbiter.hpp src/main/engine/subbus.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_bus_arbiter.cpp src/main/engine/subbus.cpp -o $@
+
+MAME_SOURCE ?= /Users/dakiva/dev/mame
+oracle-scheduler-probe:
+	python3 tools/oracle/build_scheduler_probe.py "$(MAME_SOURCE)" build/oracle/scheduler_probe
+
+oracle-capture-bus-arbiter: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/arbiter_schedule.txt" AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_bus_arbiter.lua build/oracle/bus_arbiter_short.bin 120 15
+
+oracle-bus-arbiter: build/oracle_bus_arbiter
+	./build/oracle_bus_arbiter build/oracle/bus_arbiter_short.bin build/oracle/arbiter_schedule.txt
+
+.PHONY: oracle-capture-subirq-short oracle-capture-subirq-directed oracle-capture-subirq-full oracle-subirq oracle-scheduler-probe oracle-capture-bus-arbiter oracle-bus-arbiter

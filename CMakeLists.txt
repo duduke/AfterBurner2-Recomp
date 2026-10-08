@@ -237,6 +237,26 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     add_test(NAME oracle_subpublication_directed COMMAND oracle_subpublication build/oracle/subpublication_directed.bin --require-endpoints)
     add_test(NAME oracle_subpublication COMMAND oracle_subpublication build/oracle/subpublication.bin)
     set_tests_properties(oracle_subpublication_short oracle_subpublication_directed oracle_subpublication PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_executable(oracle_subprogress tests/oracle_subprogress.cpp
+        src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp
+        src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp)
+    target_include_directories(oracle_subprogress PRIVATE src/main)
+    add_test(NAME oracle_subprogress_short COMMAND oracle_subprogress build/oracle/subprogress_short.bin)
+    add_test(NAME oracle_subprogress_directed COMMAND oracle_subprogress build/oracle/subprogress_directed.bin --require-endpoints)
+    add_test(NAME oracle_subprogress_full COMMAND oracle_subprogress build/oracle/subprogress.bin)
+    set_tests_properties(oracle_subprogress_short oracle_subprogress_directed oracle_subprogress_full PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_executable(oracle_subirq tests/oracle_subirq.cpp
+        src/main/romloader.cpp src/main/roms.cpp src/main/engine/subbus.cpp
+        src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp)
+    target_include_directories(oracle_subirq PRIVATE src/main)
+    add_test(NAME oracle_subirq_short COMMAND oracle_subirq build/oracle/subirq_short.bin)
+    add_test(NAME oracle_subirq_directed COMMAND oracle_subirq build/oracle/subirq_directed.bin --require-endpoints)
+    add_test(NAME oracle_subirq_full COMMAND oracle_subirq build/oracle/subirq.bin)
+    set_tests_properties(oracle_subirq_short oracle_subirq_directed oracle_subirq_full PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_executable(oracle_bus_arbiter tests/oracle_bus_arbiter.cpp src/main/engine/subbus.cpp)
+    target_include_directories(oracle_bus_arbiter PRIVATE src/main)
+    add_test(NAME oracle_bus_arbiter COMMAND oracle_bus_arbiter build/oracle/bus_arbiter_short.bin build/oracle/arbiter_schedule.txt)
+    set_tests_properties(oracle_bus_arbiter PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_subroad tests/oracle_subroad.cpp
         src/main/romloader.cpp src/main/roms.cpp
         src/main/engine/subbus.cpp src/main/engine/osubroad.cpp)

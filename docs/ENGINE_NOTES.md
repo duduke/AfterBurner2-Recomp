@@ -4504,3 +4504,324 @@ and `git diff --check`. Existing corpora retain their documented read-set
 race skips with zero different records. CMake registrations were added but
 remain untested because CMake is unavailable here. Captures, ROM images
 and mutation artifacts remain ignored. This checkpoint is uncommitted.
+
+## Phase 3d continuation: bounded sub publication callers
+
+`OSubPublication` now translates the eight caller PCs
+`$432/$436/$43A/$43E/$442/$446/$44A/$44E`, extending the previous eight
+wait/release instructions. The four BSR.W sites compute the user-stack
+return address, high/low stack writes, target prefetches and 18-cycle timing.
+`$432` joins the retained `$556/$55A/$55C` readiness wait and RTS back to
+`$436`. `$43E/$44A` enter the still-supplied `$5C4/$5EE` graphs; `$44E`
+joins `$640/$646` before sprite execution remains external at `$648`.
+The two memory LSR.W instructions shift the `$300/$302(A6)` request words
+one bit, compute NZVC/X, and publish their RMW result. The two BCC.W
+instructions compute both the optional-call and skip paths, including their
+12/10-cycle timing and ordered prefetches. No road/sprite duration is guessed.
+
+The `AB2SUBP3` capture additionally records unported sub shared-RAM writes
+(including supervisor stack writes) and main writes to the two request words.
+They are explicit supplied writer frontiers. Replay retains byte-lane ownership:
+computed stack/request values and supplied writer values survive entry gaps;
+expected operand reads can seed only previously unknown lanes. All three
+corpora need zero such seeded operand words. Adjacent equal-time boundaries
+must match the complete computed CPU state, including PC; a wrong target
+cannot silently turn a consecutive instruction into an external entry.
+Cross-CPU transaction delivery order, external writer data/times and unported
+callee/IRQ contexts remain inputs, exactly as labelled in the replay output.
+
+The first exploratory capture omitted BSRs because live USP has already
+advanced to the decremented stack at the write tap. Its first-write filter
+was corrected while the pre-instruction debugger snapshot retains entry USP.
+Untaken BCC.W first-read attribution was also corrected to four cycles after
+entry (taken branches and BSR writes start after two). Those exploratory
+results are not acceptance evidence; fresh captures below use the corrected
+boundaries. Existing capture targets regenerate the new schema; older
+`AB2SUBP2` files must be recaptured.
+
+| Capture | Instructions identical | Bus phases identical | Chained boundaries identical | Main signal read/write assertions |
+| --- | ---: | ---: | ---: | ---: |
+| Natural 120 frames | 1,263,778 / 1,263,778 | 3,176,964 / 3,176,964 | 1,262,998 / 1,262,998 | 753 / 753 |
+| Directed 160 frames | 1,651,691 / 1,651,691 | 4,151,246 / 4,151,246 | 1,650,796 / 1,650,796 | 1,018 / 1,018 |
+| Natural 600 frames | 6,309,438 / 6,309,438 | 15,906,759 / 15,906,759 | 6,307,734 / 6,307,734 | 3,872 / 3,872 |
+
+All accepted records have zero differences and zero skips. Each corpus
+requires all sixteen PCs and both directions of all five conditional
+branches. Directed fixtures separately exercise `0/1/7FFF/8000/FFFF/FFFE`
+at both readiness sites and both shift sites (24 labelled physical fixtures).
+Those shifts can change subsequent real sprite-call activity, so directed
+instruction totals supersede the previous fixture's totals. Natural full
+coverage includes 571 `$432` calls, 569 calls at `$44E`, six at `$43E`,
+twenty at `$44A`, and 594 readiness RTS instructions. Supplied entry USP
+values are `$A3F74/$A3F7C/$A3F80`; arbitrary stacks are not established.
+
+The short/directed/full streams retain 780/895/1,704 supplied sub entry,
+IRQ or callee frontiers, 98/139/830 supplied delivery leads and one excluded
+partial IRQ cut each. They compute 402/547/2,081 main signal writes and
+check 351/471/1,791 main RMW operands. Their expanded ledgers supply
+189,764/258,378/979,592 other shared-RAM writes, including initialization,
+unported sub work, request writers and fixtures. These are boundary inputs,
+not newly ported instructions or assertions of independently scheduled work.
+
+Four deliberate port mutations are rejected using the directed corpus:
+BSR return word `PC+4` to `PC+2` fails its stack phase and retained RTS chain;
+`$44E` target `$640` to `$642` fails target prefetches and its next chain;
+shift one bit to two fails 63 instructions, 102 phases and 23 chains;
+inverting the BCC carry test fails 702 instructions and 1,404 phases.
+The wrong-return/target variants stop at the resulting unported PC after
+reporting mismatches. Mutation copies, executables and logs remain ignored
+under `build/oracle/`; production constants are unchanged.
+
+Unverified boundaries remain sub IRQ entry/RTE/selection, the partial IRQ
+cut, `$5C4/$5EE` callee execution, sprite instructions from `$648`, road/control
+work from `$45E`, external main producers, independent bus arbitration and
+arbitrary entry stack/flag contexts beyond these corpora. Main caller graph
+exit counts and the conditional road/video claim are unchanged. Native
+`OEngine` stays active; this completes another bounded Phase 3d task, not
+whole-host scheduling or Phase 3d acceptance.
+
+Validation passes: all three refreshed `oracle-subpublication` corpora,
+all four new mutation checks, `make test`, `make verify-stage1`,
+`make -j4 oracle-test`, the game build, the 180-frame dummy SDL video/audio
+launch and `git diff --check`. Existing oracle corpora retain their documented
+read-set race skips with zero different records. CMake registrations are
+unchanged and remain untested because CMake is unavailable here. ROM images,
+captures and mutation artifacts remain outside tracked source. This checkpoint
+is left uncommitted.
+
+
+## Phase 3d continuation: independently timed bounded sprite/road progress
+
+`OSubProgress` adds 1,136 literal instruction PCs to the sixteen publication
+caller/wait PCs. The generated, address-labelled cases cover `$45E-$554`,
+`$594-$62C`, `$648-$9E2`, `$C0A-$11D2`, `$16D4-$174E` and `$1758-$19E6`:
+road dispatch and initialization, sprite counting sort/transform/interpolation,
+bank/pitch/rotation updates, normal road rasterization and special-road work.
+Every data/table read goes through `SubBus` into the user's runtime ROM.
+`tools/generate_sub_schedule.py` emits only this bounded instruction subset;
+unknown instruction forms fail. It generates the C++ cases, metadata and Lua
+capture manifest together; `make oracle-subprogress-generated-check` requires
+reproducibility against the local sub ROM. This supersedes the previous
+checkpoint's external `$5C4/$5EE/$648/$45E` graph boundaries.
+
+The port computes each instruction's ordered 16-bit bus phases, byte lanes,
+NZVC/X, register/stack updates, branch targets and completion time at 80 ns
+per CPU cycle. Phase sequences follow local MAME `m68000-sdf.cpp` microcode:
+long RMW writes use low then high words, predecrement stack writes retain
+their order, indexed JMP fetches its target without rereading the extension,
+indexed LEA includes its internal idle between prefetches, and TAS writes
+before its final prefetch. Variable register shifts include every internal
+cycle; SUBX consumes X and retains sticky Z. BSR/JSR/RTS retain the computed
+user-stack words across callees. No routine duration or 30/60 Hz work timer
+is supplied to this component. Road swaps and control writes use production
+`SubBus` callbacks with retained displayed/working buffers in replay.
+
+The `AB2SUBT1` capture records measured sub instruction bus phases and
+pre-instruction CPU snapshots, plus explicit main/unported-sub writer
+transactions. Adjacent captured instruction times determine whether a chain
+must retain computed state; a wrong computed completion time cannot turn a
+chain into a supplied entry. Internal completion-tail CPU state is asserted
+by the next instruction snapshot when contiguous. An interrupted tail or an
+unported next boundary remains explicitly counted rather than claiming
+unobserved final registers. Unknown operand-lane seeding is an error in all
+three acceptance corpora. Main signal RMWs retain their latched input; other
+producer values and cross-CPU delivery order remain supplied.
+
+Directed fixtures run the actual ROM instructions from a RAM JSR trampoline
+with a real SR-writing instruction, starting only at safe user-mode waits.
+They save/restore shared RAM and CPU context and label every injected write
+as an external fixture producer. During a fixture, readiness writes are held
+at its labelled input so the live main CPU cannot re-arm the initialization
+wait. Matrix inputs include sprite count/zoom/anchor/flip/interpolation,
+clipping positions, stage/floor, recenter/kick thresholds, pitch clamps,
+roll quadrants, horizon/ring history, road mode/distance endpoints and delay state.
+The isolated trailing `$11D2` RTS is called directly: this verifies its
+instruction, not a naturally reachable caller. No fixture executes a native
+substitute for a sprite or road routine.
+
+| Capture | Instructions identical | Bus phases identical | Consecutive states identical | Main signal assertions |
+| --- | ---: | ---: | ---: | ---: |
+| Natural 120 frames | 2,175,016 / 2,175,016 | 5,103,758 / 5,103,758 | 2,174,881 / 2,174,881 | 753 / 753 |
+| Directed 360 frames | 6,171,481 / 6,171,481 | 13,787,074 / 13,787,074 | 6,170,826 / 6,170,826 | 2,164 / 2,164 |
+| Natural 600 frames | 11,896,153 / 11,896,153 | 27,415,741 / 27,415,741 | 11,895,390 / 11,895,390 | 3,872 / 3,872 |
+
+The natural full run covers 658/1,136 new PCs and computes 580 road swaps
+and 568 control writes. It checks 809,112 completion-tail successor states;
+181 tail successors remain supplied (returned PCs `$744/$754/$762/$798/
+$7B2/$85A/$99E/$D74/$E3C`). It retains 763 entry/IRQ boundaries, two
+excluded partial IRQ cuts, 2,081 computed main signal writes, 1,791 checked
+main RMW reads, 405,556 supplied external writes and 360,433 supplied
+cross-CPU delivery leads. These writer timestamps/order are boundary inputs,
+not independent arbitration evidence. All intermediate exploratory files
+stay ignored; only fresh corrected corpora are acceptance inputs.
+
+
+Mutation proof uses ignored copies of the native port, never the production
+constants. Six mutations on the 360-frame exploratory matrix reject sprite
+origin `160 -> 161` (151,883 phase differences), road blank word
+`$08000800 -> $08010800` (12,800), raster origin `$4B0 -> $4B1` (67,825),
+special-road stripe `$080D080D -> $080C080C` (448), indexed JMP idle
+`6 -> 4` cycles (8,391,143), and clearing the SUBX input carry (24,692).
+A seventh request-limit mutation `$FF -> $FE` on the first corrected directed
+capture rejects five instruction states and four consecutive states at the
+255-request endpoint, even though its bus phases and branch target match.
+These checks use explicit mismatch detection, without the all-PC coverage
+gate being the reason for rejection. Copies, executables and logs stay under
+ignored `build/oracle/`; no ROM data or captures enter tracked files.
+
+
+All accepted records have zero differences, zero skips and zero supplied
+unknown operand words. Directed acceptance requires all 1,136 new PCs, all
+sixteen prior PCs, both directions of the five publication branches and
+`0/1/7FFF/8000/FFFF/FFFE` at both readiness and request-shift sites. It
+computes 861 road swaps and 837 control writes, checks 560,317 completion-tail
+successor states and retains 76 supplied tail successors. Its ledger retains
+655 entry/IRQ/fixture boundaries, 136 excluded partial IRQ/fixture cuts,
+3,002,480 external writes and 82,136 cross-CPU delivery leads. The graph
+fixture matrix has 135 calls; publication endpoints have 24 fixtures.
+
+Across the three corpora, the taken directions at `$6E0` (BEQ), `$1744`
+(BEQ) and `$18CA` (BNE) remain unexercised. The repeated/taken DBF iterations
+at `$534/$10E2/$110E/$118A/$11B6` remain unexercised; their terminal
+iterations pass. These paths remain unverified despite full instruction-PC
+coverage. Arbitrary request/descriptor counts, all runtime ROM table indices,
+every stage and arbitrary stack/flag contexts are not established by this
+matrix. Completion-tail frontiers have the limitations described above.
+
+This completes independently timed **bounded sprite/road instruction
+progress**, not whole-host Phase 3d acceptance. Sub IRQ entry/RTE/selection,
+main producer timestamps/operand data, cross-CPU bus arbitration and renderer
+composition remain supplied. `OEngine` still uses native Stage 1. The next
+bounded scheduling work is sub IRQ/resumption and independent delivery across
+the verified main/sub publication components.
+
+Validation passes: `make test`, `make verify-stage1`, all `oracle-test`
+prerequisites and root checks (run in separate batches while capturing),
+`make oracle-subprogress` with all three fresh-schema corpora, all seven
+mutation checks, `make oracle-subprogress-generated-check`, the game build,
+180-frame dummy SDL video/audio launch and `git diff --check`. Existing
+oracles keep their documented read-set race skips and have zero differences.
+CMake registrations were added but are untested because CMake is unavailable.
+Changes are left uncommitted; ROMs/captures remain ignored.
+
+### Independent sub IRQ and main/sub arbitration checkpoint (2026-10-08)
+
+`OSubIrq` extends the bounded sprite/road stream with the initial `$420/$428`
+user wait, IRQ4 exception entry, all thirteen `$55E..$592` handler PCs, MOVEM
+save/restore and RTE. `instruction()` selects IRQ from a caller-supplied physical
+IPL callback at the actual microcode selection point. Exception markers are
+assertions in the linked oracle; they cannot replace a computed selection on a
+continuous boundary. USP, SSP, registers, CCR, return PC and local time survive
+each linked service. No opcode decoder or ROM tables are embedded.
+
+Entry uses six internal clocks, the low return-PC write, autovector VPA E-clock
+synchronization, SR/high-PC writes, vector reads and the two handler prefetches.
+E phase follows **CPU total cycles**, with the initial CPU/wall-clock epoch
+retained in `cycle_bias`; it does not assume that wall time divided by 80 is the
+CPU counter. RTE restores SR before return prefetch and switches to the retained
+user stack. The ISR polls byte `$9C000`, updates the signed countdown at
+`$9C049`, sets pause bit 0 at `$9C048`, delays using `$39`/DBF, then restores all
+fifteen saved registers. The discarded final MOVEM data read is retained.
+
+`XBoardSubIrqSelection` delivers VBLANK at completed buses and instruction
+completion tails. Internal clocks alone do not deliver an edge. The extended
+port exposes selection points in publication and sprite/road instructions,
+including RMW writes, branches, returns and post-prefetch register operations.
+The stricter continuation test found and corrected `$99A BSET #4,D0`: the
+low-register operation has **two**, not four, internal completion clocks in
+MAME `m68000-sdf.cpp::bset_imm8_ds_df`. A continuation is identified by its
+captured PC and explicit context-boundary markers, never by agreement with the
+port's predicted duration. For adjacent internal-tail instructions, the next
+actual MAME snapshot supplies the full completion-state assertion. This closes
+the old `$99E` duration discontinuities; raw capture phase times and snapshots
+are unchanged. Labelled fixture trampoline writes at `$A3E00/$A3E40` are CPU
+context boundaries, distinct from RAM-only endpoint fixtures.
+
+Fresh sub captures and the strengthened checks:
+
+| Capture | Instructions including exception entry | Bus phases | Linked state/selection boundaries | Complete IRQ returns |
+|---|---:|---:|---:|---:|
+| Natural 120 | 2,314,880/2,314,880 | 5,655,572/5,655,572 | 2,314,870/2,314,870 | 119/119 |
+| Directed 360 | 6,312,162/6,312,162 | 14,416,612/14,416,612 | 6,311,882/6,311,882 | 359/359 |
+| Natural 600 | 12,072,480/12,072,480 | 28,083,147/28,083,147 | 12,072,468/12,072,468 | 599/599 |
+
+Every accepted comparison is identical, zero different and zero skipped.
+There are respectively 120/360/600 entries; each capture stops with one service
+still active. Directed coverage requires all 1,136 sprite/road PCs, all thirteen
+ISR PCs, both directions of the mutex/countdown/DBF branches, and countdown
+bytes `0,1,2,$7F,$80,$FF`. Labelled main RAM writes hold the ISR mutex for two
+polls and exercise both prior pause-bit values. Initial shared RAM is an
+explicit input; no read assertions seed operand bytes. Natural 600 retains
+809,293 complete tail continuations and zero supplied tail continuations.
+The remaining 12 natural entry/callee frontiers include startup work outside
+this bounded graph. Three/four natural and 120 directed incomplete capture or
+fixture cuts are outside the accepted records, and are reported separately.
+
+Nine sub-side mutations are rejected: E-clock epoch, RTE stack bank, restored
+X bit, MOVEM word order, delay count, IRQ-mask eligibility, pause bit, omission
+of completion-tail delivery, and restoring the old `$99A` four-clock tail.
+Artifacts remain ignored under `build/oracle/subirq_mutations/`.
+
+`XBoardBusArbiter` ports MAME `schedule.cpp`'s grant policy for the configured
+main/sub/Z80 order. It keeps attosecond precision in a 128-bit host clock,
+converts remaining grant time to whole CPU clocks, retains CPU overrun, contracts
+later CPU targets after an earlier CPU yields, and handles zero-progress abort
+returns. Default quantum is `1/6000 s`; main IRQ and sub-reset boosts request
+four main clocks (320 ns) for 100 us. Quantum expiry is processed at outer timer
+delivery, matching MAME, rather than at every inner grant. Shared transactions
+are delivered in CPU execution order; they are not sorted by CPU-local time.
+
+A bus-only capture was insufficient: a grant can have no program bus access,
+and the first observed sub access can occur after main's local clock has
+already advanced. `build_scheduler_probe.py` therefore compiles a separate,
+read-only observation build using the user's existing macOS MAME build objects.
+It never changes the source checkout, existing objects, or original binary.
+Its ignored copy of `schedule.cpp` records timer boundaries, quantum requests,
+all CPU budgets/returns, and a private grant counter exposed only to Lua.
+The counter distinguishes repeated grants at the same global time, including
+zero-progress aborts. The counter/logging do not change gameplay or scheduling.
+The old bus-only inferred grant test was rejected and is not an acceptance gate.
+
+The fresh 120-frame arbitration check matches **239,177/239,177 grant groups**,
+**620,495 CPU runs**, **8,319,935 ordered main/sub phases**, and
+**1,271,730/1,271,730 shared reads**, zero different/skipped. It includes 37,250
+groups without captured program phases, 496 quantum requests, 4,030,442
+cross-CPU local-clock leads, and 37 shared reads after a main write whose local
+timestamp is later than the sub read's. All 142,296 producer writes are labelled
+inputs; shared reads are assertions only. Budgets, global/local time, quantum,
+and CPU order are computed and compared. Reversed CPU order, an extra budget
+clock, a five-clock IRQ quantum, and a 60-us boost duration all fail. A 101-us
+duration mutation was not distinguished by this capture's timer boundaries;
+that nearby expiry sensitivity is not claimed verified.
+
+**Scope:** the arbiter oracle supplies external device timer deadlines, board
+boost-request times, and CPU completion/producer frontiers for unported work.
+The sub stream independently computes its bounded instructions and IRQs; the
+arbiter independently checks grant policy and RAM delivery from those labelled
+frontiers. The two checks do not yet execute the full main/sub instruction
+streams together under one native host. Main producer cadence, other caller
+exits, complete video/renderer and sound ownership still block whole-host
+acceptance. The native Stage 1 reconstruction remains active. The eight earlier
+sprite/road branch-direction limits still apply; all-PC coverage does not
+claim all branch directions, table indices, SR masks, reset/suspend scenarios,
+or arbitrary device timer interactions.
+
+Commands (captures/probe binary and copied MAME source stay ignored):
+
+```bash
+make oracle-capture-subirq-short oracle-capture-subirq-directed oracle-capture-subirq-full
+make oracle-subirq
+make oracle-capture-bus-arbiter MAME_SOURCE=/path/to/prebuilt/mame/source
+make oracle-bus-arbiter
+```
+
+The scheduler probe currently expects the existing SDL3/macOS/Clang Release64
+build layout and ABI. Make oracles, ROM-free checks, Stage 1 checks and generated
+translation checks are the acceptance commands; CMake targets are also declared.
+
+Validation for this checkpoint: `make test`, `make verify-stage1`,
+`make oracle-test`, `make oracle-subprogress-generated-check`, the game build,
+and `git diff --check` pass. The long-clock/zero-progress ROM-free checks also
+pass. Existing oracle race exclusions remain reported by their original gates;
+the new accepted IRQ and arbitration comparisons have zero skips. CMake is not
+installed in this environment, so its declared targets were not executed.
