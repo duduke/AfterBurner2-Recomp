@@ -551,9 +551,21 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         read16(target+2);idle(32+2*ones);latch();idle(2);
         r.d[reg]=value;sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000u?8:0);next=target;
     };
+    // MAME divu_w_*_dd: zero branches to trap3 after eight clocks;
+    // overflow leaves Dn unchanged and sets N/V after six clocks.
     auto divide_unsigned=[&](unsigned reg,uint16_t divisor,uint32_t target){
         const auto dividend=r.d[reg];
-        if(!divisor||(dividend>>16)>=divisor)throw std::runtime_error("unverified joint callee DIVU exception/overflow");
+        if(!divisor){
+            const uint16_t high=dividend>>16,value=uint16_t(high-divisor);
+            const bool carry=high<divisor,overflow=((high^divisor)&(high^value)&0x8000)!=0;
+            sr=(sr&0xfff0)|(value?0:4)|(value&0x8000?8:0)|(overflow?2:0)|(carry?1:0);
+            const auto saved=sr;
+            if(!(sr&0x2000)){if(!c.exception_supervisor_sp)throw std::runtime_error("DIVU fault requires retained SSP");sp=c.exception_supervisor_sp;}
+            sr=(sr&~0x8000)|0x2000;idle(8);
+            write16(sp-2,target);sp-=6;write16(sp,saved);write16(sp+2,target>>16);
+            next=read32(0x14);read16(next);idle(2);final(next+2);return;
+        }
+        if((dividend>>16)>=divisor){idle(6);sr=(sr&0xfff0)|0xa;final(target+2);next=target;return;}
         unsigned cycles=38;uint32_t partial=dividend,high=uint32_t(divisor)<<16;
         for(unsigned i=0;i<15;++i){const auto old=partial;partial<<=1;
             if(old&0x80000000)partial-=high;else{cycles+=2;if(partial>=high){partial-=high;--cycles;}}}
@@ -572,15 +584,22 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         read16(pc+4);latch();idle(2);byte(r.d[dst],result);
         sr=(sr&0xffe0)|(c?17:0)|(z?4:0)|(n?8:0)|(v?2:0);next=pc+2;
     };
-    auto decimal_divu=[&](){
-        const uint32_t dividend=r.d[0],divisor=uint16_t(r.d[1]);
-        if(!divisor||(dividend>>16)>=divisor)throw std::runtime_error("unverified decimal DIVU exception/overflow");
-        unsigned cycles=38;uint32_t partial=dividend,high=divisor<<16;
-        for(unsigned i=0;i<15;++i){const auto old=partial;partial<<=1;
-            if(old&0x80000000)partial-=high;else{cycles+=2;if(partial>=high){partial-=high;--cycles;}}}
-        idle(cycles*2-4);r.d[0]=((dividend%divisor)<<16)|(dividend/divisor);nz(dividend/divisor);
-        final(pc+4);next=pc+2;
+    auto bcd_memory=[&](unsigned src,unsigned dst,bool subtract){
+        // MAME abcd/sbcd_pais_paid: source read, destination read, prefetch,
+        // selection and destination write; A7 byte predecrement is two.
+        idle(2);auto& sa=src==7?sp:r.a[src];sa-=src==7?2:1;const auto a=read8(sa);
+        auto& da=dst==7?sp:r.a[dst];da-=dst==7?2:1;const auto address=da;const auto b=read8(address);
+        const unsigned carry=bool(sr&16);unsigned result,raw;
+        if(subtract){unsigned low=(b&15)-(a&15)-carry;raw=uint16_t(b-a-carry);result=raw;
+            if(low&0x10)result-=6;if(raw&0x100)result-=0x60;
+        }else{unsigned low=(a&15)+(b&15)+carry;raw=a+b+carry;result=raw;
+            if(low>9)result+=6;if(result>0x9f)result+=0x60;
+        }
+        const bool c=result&0x300,z=(sr&4)&&!uint8_t(result),n=result&0x80;
+        const bool v=subtract?!(result&0x80)&&(raw&0x80):(result&0x80)&&!(raw&0x80);
+        sr=(sr&0xffe0)|(c?17:0)|(z?4:0)|(n?8:0)|(v?2:0);read16(pc+4);latch();write8(address,result);next=pc+2;
     };
+    auto decimal_divu=[&](){divide_unsigned(0,uint16_t(r.d[1]),pc+2);};
     auto branch=[&](bool take,uint32_t target,unsigned length) {
         next=take?target:pc+length;idle(2);
         if(take) {read16(next);final(next+2);}
@@ -2076,12 +2095,20 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
 
 // $1466A/$14672/$147C6/$147E6: MAME rte_df (rtr1..rtr4), three stack
 // reads followed by two return prefetches; restore SR before selecting IPL.
-OMainIrqService::Instruction OMainIrqService::return_joint(MainBus& b,const Result& s,uint32_t usp,const Clock& advance,const Poll& poll) {
+OMainIrqService::Instruction OMainIrqService::return_joint(MainBus& b,const Result& s,uint32_t usp,const Clock& advance,const Poll& poll,uint32_t retained_ssp) {
     switch(s.pc){case 0x1466a:case 0x14672:case 0x147c6:case 0x147e6:case 0x14842:break;
         default:throw std::runtime_error("unported joint main RTE instruction");}
-    if(!(s.sr&0x2000)||s.ns%CYCLE_NS||(s.sp&1)||!poll)
+    if(s.ns%CYCLE_NS||(s.sp&1)||!poll)
         throw std::runtime_error("unsupported joint main RTE context");
     bus=&b;clock=advance;ns=s.ns;pc=s.pc;
+    if(!(s.sr&0x2000)){
+        // Literal user-mode RTE faults at the opcode PC (MAME state_priviledge).
+        if(!retained_ssp||(retained_ssp&1))throw std::runtime_error("RTE privilege fault requires retained SSP");
+        const auto sp=retained_ssp-6;const auto sr=uint16_t((s.sr&~0x8000)|0x2000);
+        idle(4);write16(sp+4,s.pc);write16(sp,s.sr);write16(sp+2,s.pc>>16);
+        const auto target=read32(0x20);read16(target);idle(2);const auto selection=ns;clock(ns);const auto level=poll(ns);
+        read16(target+2);clock(ns);return {{s.registers,target,sp,sr,ns},eligible(level,sr)?level:0,selection};
+    }
     const auto sr=uint16_t(read16(s.sp)&0xa71f);const auto target=read32(s.sp+2);
     const auto sp=sr&0x2000?s.sp+6:usp;
     read16(target);const auto selection=ns;clock(ns);const auto level=poll(ns);

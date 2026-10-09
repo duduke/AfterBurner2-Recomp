@@ -15,6 +15,7 @@
 #include "engine/osubirq.hpp"
 #include "hwvideo/hwsprites.hpp"
 #include "hwvideo/screen.hpp"
+#include "hwvideo/xboard_video_timing.hpp"
 #include "hwmath/xboard_timeline.hpp"
 #include "hwmath/xboard_irq_lines.hpp"
 #include "engine/osubprogress_manifest.hpp"
@@ -35,9 +36,21 @@ bool publication_bounded(unsigned cpu,uint32_t pc){
  return false;
 }
 bool bounded(unsigned cpu,uint32_t pc){return publication_bounded(cpu,pc)||(cpu==0&&mainprogress&&main_joint_instruction(pc));}
-struct Boost{uint64_t at,quantum,duration;};
-struct Run{uint64_t start{},target{};unsigned budget{},ran{};bool present=false;std::vector<Boost> boosts;};
-struct Group{uint64_t index{},base{},deadline{},quantum{},end{};bool outer=false;std::array<XBoardBusArbiter::Time,3> starts{};std::array<bool,3> enabled{};std::array<Run,3> runs;std::vector<Boost> before;};
+using Time=XBoardBusArbiter::Time;
+// Probe timestamps are the low 64 attoseconds. Decode against source chronology,
+// never against the native scheduler being tested. Adjacent records are <9 s apart.
+constexpr Time trace_time(uint64_t raw,Time reference){
+ const Time period=Time(1)<<64,half=period/2;Time value=(reference&~(period-1))|raw;
+ if(value+half<reference)value+=period;
+ else if(value>reference+half&&value>=period)value-=period;
+ return value;
+}
+static_assert(trace_time(3,(Time(1)<<64)-2)==(Time(1)<<64)+3);
+static_assert(trace_time(UINT64_MAX-2,(Time(1)<<64)+3)==(Time(1)<<64)-3);
+static_assert(trace_time(7,0)==7);
+struct Boost{Time at;uint64_t quantum,duration;};
+struct Run{Time start{},target{};unsigned budget{},ran{};bool present=false;std::vector<Boost> boosts;};
+struct Group{uint64_t index{},quantum{};Time base{},deadline{},end{};bool outer=false;std::array<XBoardBusArbiter::Time,3> starts{};std::array<bool,3> enabled{};std::array<Run,3> runs;std::vector<Boost> before;};
 }
 int main(int argc,char** argv)try{
  std::ifstream f(argc>1?argv[1]:"build/oracle/publication_schedule.bin",std::ios::binary);char magic[8];if(!f.read(magic,8)||(memcmp(magic,"AB2ARB07",8)&&memcmp(magic,"AB2ARB08",8)&&memcmp(magic,"AB2ARB09",8)))throw std::runtime_error("invalid arbiter capture");
@@ -197,26 +210,19 @@ int main(int argc,char** argv)try{
  std::function<void(unsigned,bool,uint32_t,uint16_t,uint16_t,uint32_t,uint64_t)> observe;
  MainBus::Trace maintrace;mainbus.trace=&maintrace;
  uint64_t main_phase_ns=0;unsigned native_space=0;
- bool video_display=false;
- auto video_vpos=[](uint64_t ns){return ((ns+80)/XBoardTimeline::LINE_NS+224)%262;}; // screen_device rounds to the nearest 160 ns pixel
- unsigned video_last_partial=224;uint64_t video_partial_reset=0;unsigned video_partial_updates=0;
- auto video_partial=[&](uint64_t ns,unsigned scanline){
-  if(!video.is_open()||ns<=video_start_ns||scanline<video_last_partial||(video_last_partial==0&&video_partial_reset>ns))return;
-  const auto bottom=std::min(scanline,223u);if(video_last_partial>bottom)return;
+ XBoardVideoTiming video_timing;
+ video_timing.latch=video_latch;
+ video_timing.frame=[&](uint64_t t){Phase p{};p.ns=t;video_check(4,p);};
+ video_timing.render=[&](uint64_t ns,unsigned top,unsigned bottom,bool display){
   if(drawing_assertions){while(draw_cursor<draw_events.size()&&draw_events[draw_cursor].ns<=video_start_ns)++draw_cursor;
    if(draw_cursor>=draw_events.size())throw std::runtime_error("unrecorded native screen update");const auto e=draw_events[draw_cursor++];
-   if(e.ns!=ns||e.left!=0||e.right!=319||e.top!=video_last_partial||e.bottom!=bottom||e.display!=video_display){
-    std::cerr<<"Video update phase ns="<<ns<<'/'<<e.ns<<" clip="<<video_last_partial<<'-'<<bottom<<'/'<<e.top<<'-'<<e.bottom<<" display="<<video_display<<'/'<<e.display<<'\n';throw std::runtime_error("computed screen frontier mismatch");}
+   if(e.ns!=ns||e.left!=0||e.right!=319||e.top!=top||e.bottom!=bottom||e.display!=display){
+    std::cerr<<"Video update phase ns="<<ns<<'/'<<e.ns<<" clip="<<top<<'-'<<bottom<<'/'<<e.top<<'-'<<e.bottom<<" display="<<display<<'/'<<e.display<<'\n';throw std::runtime_error("computed screen frontier mismatch");}
   }
-  if(rgb_assertions)video_compare_pixels(ns,video_last_partial,bottom,video_display);
-  else if(video_display){std::fill(sprite_pixels.begin(),sprite_pixels.end(),0);video_sprites.render_bank(memory.sprite_buffer.data(),sprite_pixels.data(),320,224,video_last_partial,bottom);}
-  video_last_partial=scanline+1;++video_partial_updates;
+  if(rgb_assertions)video_compare_pixels(ns,top,bottom,display);
+  else if(display){std::fill(sprite_pixels.begin(),sprite_pixels.end(),0);video_sprites.render_bank(memory.sprite_buffer.data(),sprite_pixels.data(),320,224,top,bottom);}
  };
- // CPU I/O and explicit device fixtures share the display transition policy.
- auto video_display_write=[&](uint64_t ns,bool enabled){
-  if(enabled!=video_display)video_partial(ns,video_vpos(ns));
-  video_display=enabled;
- };
+ auto video_display_write=[&](uint64_t ns,bool enabled){video_timing.display_write(ns,enabled);};
  XBoardBusArbiter::Time device_deadline=0;
  // segaxbd_state::update_main_irqs queues input-line changes even when
  // clearing an already clear line. Synchronization aborts the executing
@@ -264,17 +270,12 @@ int main(int argc,char** argv)try{
    const auto& fixture=display_fixture[fixture_cursor++];
    video_display_write(t,fixture.display);
    for(auto [offset,value]:fixture.words){
-    if(offset<0x800){video_partial(t,line);memory.bytes[MainBus::TEXT+2*offset]=value>>8;memory.bytes[MainBus::TEXT+2*offset+1]=value;}
+    if(offset<0x800){video_timing.before_text_write(t,2*offset);memory.bytes[MainBus::TEXT+2*offset]=value>>8;memory.bytes[MainBus::TEXT+2*offset+1]=value;}
     else if(offset<0x2000){const auto i=2*(offset-0x1000);memory.sprite_buffer[i]=value>>8;memory.sprite_buffer[i+1]=value;}
     else{const auto i=MainBus::PALETTE+2*(offset-0x2000);memory.bytes[i]=value>>8;memory.bytes[i+1]=value;}
    }
   }
-  if(line==261)video_latch(t);
-  if(line==0){video_last_partial=0;video_partial_reset=t;}
-  if(line==224&&video.is_open()&&t>video_start_ns){
-   video_partial(t,223);
-   Phase p{};p.ns=t;video_check(4,p);
-  }
+  if(video.is_open())video_timing.scanline(t,line);
  };
  if(physical_main){
   std::ifstream boot(std::string(argv[1])+".irqboot",std::ios::binary);char tag[8];
@@ -289,7 +290,7 @@ int main(int argc,char** argv)try{
      if(!latch_cursor)throw std::runtime_error("missing initial tile latch boundary");
      video_tiles.load_initial_frame_registers(latch_events[latch_cursor-1].values);
     }
-    video_last_partial=224;break;}
+    if(video.is_open())video_timing.begin_after_render(ns);break;}
    const bool w=number(boot,1);const auto a=number(boot,4);const auto d=number(boot,2),m=number(boot,2);
    advance_board(base);main_lines.deliver(base);main_phase_ns=ns;board_advancing=false;
    if(w){if(m==0xffff)mainbus.write16(a,d);else if(m==255)mainbus.write8(a+1,d);else if(m==0xff00)mainbus.write8(a,d>>8);else throw std::runtime_error("invalid boot port mask");}
@@ -306,7 +307,7 @@ int main(int argc,char** argv)try{
  };
  maintrace.before_access=[&](bool w,uint32_t a,uint16_t){
   // segaic16_video_device::textram_w renders before merging register RAM.
-  if(w&&a>=0xd0000&&a<0xe0000&&(a&0xfff)>=0xe80)video_partial(main_phase_ns,video_vpos(main_phase_ns));
+  if(w&&a>=0xd0000&&a<0xe0000)video_timing.before_text_write(main_phase_ns,a&0xfff);
  };
  maintrace.access=[&](bool w,uint32_t a,uint16_t d,uint16_t m){observe(0,w,a,d,m,mainport.current_pc(),main_phase_ns);};
  auto begin=[&](const Phase& p){
@@ -327,7 +328,7 @@ int main(int argc,char** argv)try{
    if(!main_bias_ready){main_bias=snap.bias;main_bias_ready=true;}
    else if(main_bias!=snap.bias)throw std::runtime_error("main E-clock origin changed without RESET");
    if(main_return_pending&&linked[0])++main_resumptions;main_return_pending=false;
-   if(linked[0]&&main_rte(state.pc)&&state.pc!=0x14842)++main_retained_returns;
+   if(linked[0]&&(state.sr&0x2000)&&main_rte(state.pc)&&state.pc!=0x14842)++main_retained_returns;
    if(linked[0]){if(main_usp!=snap.usp||main_ssp!=snap.ssp)throw std::runtime_error("retained main stack banks mismatch");}
    else {main_usp=snap.usp;main_ssp=snap.ssp;}
   }
@@ -338,7 +339,7 @@ int main(int argc,char** argv)try{
   if(p.cpu==0&&snap.kind>=4&&linked[0])++main_retained_entries;
   ++instructions;++coverage[{p.cpu,(snap.kind==2||snap.kind>=4)?0xffffffff:p.pc}];running[p.cpu]=true;
   if(p.cpu==0)maincpu.start(state.ns,[&,state,snap,buspc=p.pc]{
-   OMainIrqService::Context c{};c.registers=state.registers;c.boundary_ns=state.ns;c.interrupted_pc=state.pc;c.supervisor_sp=state.sp;c.sr=state.sr;
+   OMainIrqService::Context c{};c.registers=state.registers;c.boundary_ns=state.ns;c.interrupted_pc=state.pc;c.supervisor_sp=state.sp;c.sr=state.sr;c.exception_supervisor_sp=main_ssp;
    if(snap.kind>=4){
     c.interrupted_pc=buspc;c.return_pc=state.pc;c.supervisor_sp=main_ssp;c.level=physical_main&&linked[0]?main_pending:(snap.kind-3)*2;++main_entries;++main_entry_levels[c.level/2-1];main_pending=0;
     states[0]=mainport.enter_joint(mainbus,c,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_bias,[&](uint64_t ready){
@@ -347,8 +348,8 @@ int main(int argc,char** argv)try{
     },[&](uint16_t sr,uint64_t t){const auto level=main_poll(t);main_pending=OMainIrqService::eligible(level,sr)?level:0;});
    }else if(state.pc==0x138ba){auto trapped=mainport.trap_joint(mainbus,state,main_ssp,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_poll);states[0]=trapped.state;main_pending=trapped.irq;++main_traps;
    }else if(main_rte(state.pc)){
-    auto returned=mainport.return_joint(mainbus,state,main_usp,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_poll);states[0]=returned.state;main_pending=returned.irq;
-    main_ssp=state.sp+6;if(state.pc==0x14842)++main_startup_returns;else ++main_returns;main_return_pending=state.pc!=0x14842;
+    auto returned=mainport.return_joint(mainbus,state,main_usp,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_poll,main_ssp);states[0]=returned.state;main_pending=returned.irq;
+    if(state.sr&0x2000){main_ssp=state.sp+6;if(state.pc==0x14842)++main_startup_returns;else ++main_returns;}main_return_pending=(state.sr&0x2000)&&state.pc!=0x14842;
    }else {auto instruction=mainport.caller_step(mainbus,c,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_poll,request_reset);states[0]=instruction.state;main_pending=instruction.irq;}
    if(state.pc==0x145a8||state.pc==0x145b6||state.pc==0x1485c||state.pc==0x14866){
     const auto length=state.pc==0x145a8||state.pc==0x14866?4:2;
@@ -420,9 +421,11 @@ int main(int argc,char** argv)try{
   const auto path=std::string(argv[1]);std::ifstream devices(path.substr(0,path.size()-4)+".devices");
   if(!devices)throw std::runtime_error("missing per-owner device callback assertions");
   const char* names[]={"segaic16_video_device::tilemap_16b_latch_values","screen_device::first_scanline_tick","screen_device::vblank_begin","screen_device::vblank_end","sound_manager::update","ym_generic_device::fm_mode_write","ym_generic_device::fm_timer_handler"};
+  Time device_source_time=0;
   for(std::string line;std::getline(devices,line);){std::istringstream in(line);char kind;in>>kind;if(kind!='F')continue;
    uint64_t base,expiry;std::string name;if(!(in>>base>>expiry>>name))throw std::runtime_error("malformed device callback assertion");
-   for(unsigned i=0;i<timer_assertions.size();++i)if(name==names[i])timer_assertions[i].push_back({base/1000000000ULL,expiry/1000000000ULL});
+   const auto decoded_base=trace_time(base,device_source_time),decoded_expiry=trace_time(expiry,decoded_base);device_source_time=decoded_base;
+   for(unsigned i=0;i<timer_assertions.size();++i)if(name==names[i])timer_assertions[i].push_back({uint64_t(decoded_base/1000000000ULL),uint64_t(decoded_expiry/1000000000ULL)});
   }
  }
  if(native_deadlines)sound_cpu->audio->timer_callback=[&](bool mode,unsigned,uint64_t ns,uint64_t base){
@@ -438,7 +441,7 @@ int main(int argc,char** argv)try{
   if(owner==XBoardDeviceDeadlines::SoundUpdate)sound_cpu->update_speaker(ns);
  };
  bool owns_boost=false;std::vector<Boost> produced_boosts;
- native_boost=[&](uint64_t ns){if(owns_boost){Boost b{ns*1000000000ULL,320000000000ULL,100000000000000ULL};boost(b);produced_boosts.push_back(b);}};
+ native_boost=[&](uint64_t ns){if(owns_boost){Boost b{Time(ns)*1000000000ULL,320000000000ULL,100000000000000ULL};boost(b);produced_boosts.push_back(b);}};
  auto next_device=[&](){
   auto ns=std::min({device_timers.deadline(),main_board.next_scanline(),main_board.adc.deadline(),main_lines.deadline(),sound_cpu->deadline()});
   if(!reset_requests.empty())ns=std::min(ns,reset_requests.front());
@@ -452,12 +455,12 @@ int main(int argc,char** argv)try{
   const bool deliver=owns_deadlines?next_device()<=port->state().base:g.outer;
   if(owns_deadlines&&deliver!=g.outer)throw std::runtime_error("native outer timer delivery differs");
   if(!owns_boost)for(auto b:g.before)boost(b);if(deliver)port->timers_delivered();
-  delivered_ns=uint64_t(port->state().base)/1000000000ULL;
+  delivered_ns=uint64_t(port->state().base/1000000000ULL);
   if(deliver){
    if(physical_main&&delivered_ns>=main_board.now()){advance_board(delivered_ns);main_lines.deliver(delivered_ns);}
    if(!reset_requests.empty()&&reset_requests.front()<=delivered_ns){
     if(!running[1]&&!linked[1])throw std::runtime_error("RESET crosses unported sub execution");
-    const auto reset_ns=uint64_t(port->state().local[1])/1000000000ULL;
+    const auto reset_ns=uint64_t(port->state().local[1]/1000000000ULL);
     subcpu.reset(reset_ns);substate=live_sub;substate.ns=reset_ns;
     // device_execute_interface::interface_pre_reset clears total_cycles;
     // local_time stays at this grant frontier, rephasing the VPA E clock.
@@ -483,17 +486,17 @@ int main(int argc,char** argv)try{
   }
   if(native_deadlines&&deliver)device_timers.advance(delivered_ns);
   const auto native_head=owns_deadlines?next_device():XBoardBusArbiter::Time(g.deadline);
-  if(owns_deadlines){++native_heads;if(native_head!=g.deadline){std::cerr<<"Native device head group="<<g.index<<" base="<<g.base<<" ns="<<uint64_t(native_head/1000000000ULL)<<'/'<<g.deadline/1000000000ULL<<'\n';throw std::runtime_error("native device deadline differs");}}
+  if(owns_deadlines){++native_heads;if(native_head!=g.deadline){std::cerr<<"Native device head group="<<g.index<<" base="<<uint64_t(g.base/1000000000ULL)<<" ns="<<uint64_t(native_head/1000000000ULL)<<'/'<<uint64_t(g.deadline/1000000000ULL)<<'\n';throw std::runtime_error("native device deadline differs");}}
   std::vector<Phase> none;auto& events=captured?captured_phases:none;size_t cursor=0;uint64_t latest_main=0;
   if(events.empty())++empty;
   auto result=port->grant(native_head,[&](unsigned c,XBoardBusArbiter::Time target,unsigned budget){++grants;auto& r=g.runs[c];
    device_deadline=native_head;
-   if(!r.present||target!=r.target||budget!=r.budget){++budget_bad;ok=false;if(budget_bad<5)std::cerr<<"Budget CPU="<<c<<" base="<<g.base<<" target="<<uint64_t(target)<<'/'<<r.target<<" cycles="<<budget<<'/'<<r.budget<<'\n';}
+   if(!r.present||target!=r.target||budget!=r.budget){++budget_bad;ok=false;if(budget_bad<5)std::cerr<<"Budget CPU="<<c<<" base="<<uint64_t(g.base/1000000000ULL)<<" target="<<uint64_t(target)<<'/'<<uint64_t(r.target)<<" cycles="<<budget<<'/'<<r.budget<<'\n';}
    const bool reset_grant=c==0&&mainprogress&&std::any_of(events.begin(),events.end(),[](const Phase& p){return p.cpu==0&&p.pc==0x14840&&p.snapshot.present;});
    r.present=false;if(!owns_boost&&!reset_grant)for(auto b:r.boosts)boost(b);
    if(c==0)request_reset=[&,expected=r.boosts,reset_grant,index=size_t(0)](uint64_t ns)mutable{
-    if(!reset_grant||index>=expected.size()||expected[index].at!=ns*1000000000ULL){
-     std::cerr<<"Main RESET callback ns="<<ns<<'/'<<(index<expected.size()?expected[index].at/1000000000ULL:0)<<'\n';
+    if(!reset_grant||index>=expected.size()||expected[index].at!=Time(ns)*1000000000ULL){
+     std::cerr<<"Main RESET callback ns="<<ns<<'/'<<uint64_t(index<expected.size()?expected[index].at/1000000000ULL:0)<<'\n';
      throw std::runtime_error("main RESET callback/quantum timing mismatch");}
     // set_state_synced queues ASSERT/CLEAR on one input-line timer. A
     // second RESET callback before delivery appends to that existing queue;
@@ -536,7 +539,7 @@ int main(int argc,char** argv)try{
    };
    observe=[&](unsigned cpu,bool w,uint32_t a,uint16_t d,uint16_t m,uint32_t pc,uint64_t t){
     ++native_phases;if(w)++native_writes;native[cpu]->bus_completed(t);
-    if(cursor>=events.size()||events[cursor].cpu!=cpu){std::cerr<<"Out-of-grant phase CPU="<<cpu<<" pc="<<std::hex<<pc<<" a="<<a<<std::dec<<" ns="<<t<<" grant="<<g.index<<" target="<<uint64_t(target)/1000000000ULL<<" cursor="<<cursor<<" events="<<events.size()<<" next="<<(cursor<events.size()?events[cursor].ns:0)<<" nextcpu="<<(cursor<events.size()?events[cursor].cpu:9)<<"\n";throw std::runtime_error("native phase outside granted CPU events");}
+    if(cursor>=events.size()||events[cursor].cpu!=cpu){std::cerr<<"Out-of-grant phase CPU="<<cpu<<" pc="<<std::hex<<pc<<" a="<<a<<std::dec<<" ns="<<t<<" grant="<<g.index<<" target="<<uint64_t(target/1000000000ULL)<<" cursor="<<cursor<<" events="<<events.size()<<" next="<<(cursor<events.size()?events[cursor].ns:0)<<" nextcpu="<<(cursor<events.size()?events[cursor].cpu:9)<<"\n";throw std::runtime_error("native phase outside granted CPU events");}
     auto p=events[cursor++];
     if(p.space!=native_space||p.ns!=t||p.pc!=pc||p.a!=a||p.write!=w||p.m!=m||(p.d&m)!=(d&m)){
      std::cerr<<"Native phase cpu="<<cpu<<" pc="<<std::hex<<pc<<" a="<<a<<'/'<<p.a<<" d="<<d<<'/'<<p.d<<std::dec<<" ns="<<t<<'/'<<p.ns<<" grant="<<g.index<<" space="<<native_space<<'/'<<p.space<<'\n';
@@ -544,7 +547,7 @@ int main(int argc,char** argv)try{
     shared_check(p,false);
     video_check(p.cpu==0&&p.write&&p.a>=0x110000&&p.a<0x120000?1:p.cpu==1&&p.a>=0xee000&&p.a<0xf0000?(!p.write?2:p.m&255?3:0):0,p);
    };
-   const auto start_ns=uint64_t(port->state().local[c])/1000000000ULL;
+   const auto start_ns=uint64_t(port->state().local[c]/1000000000ULL);
    const auto target_ns=start_ns+uint64_t(budget)*(c==2?250:80);
    uint64_t end_ns=start_ns;bool all_native=c<2&&running[c]&&g.index<=last_capture_group,any_native=false;
    if(c<2&&running[c])++split_grants;
@@ -590,7 +593,7 @@ int main(int argc,char** argv)try{
    // Only a grant wholly inside the retained bounded graph claims a native
    // completion. Other CPU work/zero-progress exits remain labelled inputs.
    if(all_native&&any_native){++bounded_returns;
-    if(end_ns*1000000000ULL!=supplied_end){++return_bad;std::cerr<<"Native grant completion "<<g.index<<" CPU="<<c<<" ns="<<end_ns<<'/'<<uint64_t(supplied_end)/1000000000ULL<<'\n';}
+    if(Time(end_ns)*1000000000ULL!=supplied_end){++return_bad;std::cerr<<"Native grant completion "<<g.index<<" CPU="<<c<<" ns="<<end_ns<<'/'<<uint64_t(supplied_end/1000000000ULL)<<'\n';}
    }
    return all_native&&any_native?XBoardBusArbiter::Time(end_ns)*1000000000ULL:supplied_end;
   },g.enabled);
@@ -603,19 +606,20 @@ int main(int argc,char** argv)try{
   for(auto r:g.runs)if(r.present){++grant_bad;ok=false;}
   if(cursor!=events.size()){phase_bad+=events.size()-cursor;ok=false;}
   ok&=result==g.end;
-  if(!ok){++failures;if(failures<8)std::cerr<<"Arbiter base="<<g.base<<" next="<<uint64_t(result)<<'/'<<g.end<<" phases="<<cursor<<'/'<<events.size()<<'\n';}
+  if(!ok){++failures;if(failures<8)std::cerr<<"Arbiter base="<<uint64_t(g.base/1000000000ULL)<<" next="<<uint64_t(result)<<'/'<<uint64_t(g.end)<<" phases="<<cursor<<'/'<<events.size()<<'\n';}
   if(captured)next_capture();
   ++groups;
   if(progress&&groups%100000==0)std::cerr<<"Joint replay progress: groups="<<groups<<" global_ns="<<delivered_ns<<" native_records="<<instructions<<" native_phases="<<native_phases<<'\n';
  };
+ Time source_time=0;
  std::string line;
  while(std::getline(trace,line)){std::istringstream in(line);char kind;in>>kind;
-  if(kind=='T'){if(active)throw std::runtime_error("timer delivery inside grant");outer=true;}
-  else if(kind=='G'){if(active)throw std::runtime_error("unterminated grant");g={};in>>g.index>>g.base>>g.deadline>>g.quantum;if(g.index!=groups+1)throw std::runtime_error("discontinuous source grant index");g.before=std::move(pending);pending.clear();g.outer=outer;outer=false;active=true;}
-  else if(kind=='C'){std::string tag;uint64_t start;unsigned suspend,eat;in>>tag>>start>>suspend>>eat;current=cpu(tag);g.starts[current]=start;g.enabled[current]=!suspend||eat;++cpu_masks;}
-  else if(kind=='Q'){Boost b;in>>b.at>>b.quantum>>b.duration;if(active)g.runs[current].boosts.push_back(b);else pending.push_back(b);}
-  else if(kind=='R'){std::string tag;in>>tag;auto& r=g.runs[cpu(tag)];in>>r.start>>r.target>>r.budget>>r.ran;r.present=true;}
-  else if(kind=='E'){in>>g.end;finish();active=false;}
+  if(kind=='T'){if(active)throw std::runtime_error("timer delivery inside grant");uint64_t raw;in>>raw;source_time=trace_time(raw,source_time);outer=true;}
+  else if(kind=='G'){if(active)throw std::runtime_error("unterminated grant");g={};uint64_t base,deadline;in>>g.index>>base>>deadline>>g.quantum;g.base=trace_time(base,source_time);source_time=g.base;g.deadline=trace_time(deadline,g.base);if(g.index!=groups+1)throw std::runtime_error("discontinuous source grant index");g.before=std::move(pending);pending.clear();g.outer=outer;outer=false;active=true;}
+  else if(kind=='C'){std::string tag;uint64_t start;unsigned suspend,eat;in>>tag>>start>>suspend>>eat;current=cpu(tag);g.starts[current]=trace_time(start,g.base);g.enabled[current]=!suspend||eat;++cpu_masks;}
+  else if(kind=='Q'){Boost b;uint64_t raw;in>>raw>>b.quantum>>b.duration;b.at=trace_time(raw,active?g.base:source_time);if(active)g.runs[current].boosts.push_back(b);else pending.push_back(b);}
+  else if(kind=='R'){std::string tag;in>>tag;auto& r=g.runs[cpu(tag)];uint64_t start,target;in>>start>>target>>r.budget>>r.ran;r.start=trace_time(start,g.base);r.target=trace_time(target,g.base);r.present=true;}
+  else if(kind=='E'){uint64_t raw;in>>raw;g.end=trace_time(raw,g.base);source_time=g.end;finish();active=false;}
   else throw std::runtime_error("invalid scheduler trace record");
   if(!in)throw std::runtime_error("invalid scheduler trace fields");
  }
@@ -674,7 +678,7 @@ int main(int argc,char** argv)try{
  std::cout<<"Joint sub continuity: "<<sub_late_supplied<<" supplied phases after initial context\n";
  if(video.is_open()&&video.peek()!=EOF)throw std::runtime_error("unconsumed joint video bank assertions");
  if(drawing_assertions&&draw_cursor!=draw_events.size())throw std::runtime_error("unconsumed joint screen frontier assertions");
- std::cout<<"Joint video ownership: "<<video_banks<<" computed bank swaps, "<<video_controls<<" computed road controls, "<<video_frames<<" physical-frame hidden sprite bank writebacks checked; "<<video_partial_updates<<" computed partial screen updates\n";
+ std::cout<<"Joint video ownership: "<<video_banks<<" computed bank swaps, "<<video_controls<<" computed road controls, "<<video_frames<<" physical-frame hidden sprite bank writebacks checked; "<<video_timing.partial_updates()<<" computed partial screen updates\n";
  if(sound_cursor!=sound_events.size()||(require_sound_handshake&&!sound_acknowledges))throw std::runtime_error("incomplete joint sound handshake coverage");
  std::cout<<"Joint sound handshake: "<<sound_deliveries<<" synchronized command deliveries, "<<sound_acknowledges<<" computed latch reads/NMI acknowledges; "<<sound_supplied<<" YM/PCM transactions at supplied Z80 clocks\n";
  if(mainprogress){for(auto [key,n]:supplied_phases)
@@ -687,5 +691,10 @@ int main(int argc,char** argv)try{
  std::cout<<"Joint sub IRQ: "<<irq_entries<<" entries, "<<retained_entries<<" from retained caller state; "<<irq_returns<<" exact RTE restorations, "<<sub_polls<<" computed selections, "<<acknowledgements<<" computed VPA waits, "<<in_irq<<" active at capture stop\n";
  std::cout<<"Joint instruction/IRQ records: "<<instructions<<" of "<<instructions<<" identical, 0 different, 0 skipped; "<<native_phases<<" of "<<native_phases<<" ordered phases identical, 0 different, 0 skipped\n";
  std::cout<<"Joint native publication/progress: "<<instructions<<" instructions, "<<native_phases<<" phases, "<<native_writes<<" writes computed; "<<chains<<" retained instruction contexts, "<<contexts<<" supplied entry contexts; "<<split_grants<<" grants resume an active instruction; "<<bounded_returns-return_bad<<" of "<<bounded_returns<<" bounded grant completions identical, "<<return_bad<<" different, 0 skipped\n";
- return failures||phase_bad||budget_bad||grant_bad||read_bad||state_bad||return_bad||!bounded_returns?1:0;
+ const bool passed=!(failures||phase_bad||budget_bad||grant_bad||read_bad||state_bad||return_bad||!bounded_returns);
+ if(passed&&mainprogress){std::ofstream census(std::string(argv[1])+".coverage.json");
+  census<<"{\"main_closed\":"<<(require_main_closed?"true":"false")<<",\"sub_continuity\":"<<(require_sub_continuity?"true":"false")<<",\"records\":[";
+  bool first=true;for(const auto& [key,n]:coverage){if(!first)census<<',';first=false;census<<'['<<key.first<<','<<key.second<<','<<n<<']';}census<<"]}\n";
+ }
+ return passed?0:1;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

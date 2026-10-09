@@ -62,7 +62,13 @@ OSubIrq::State OSubIrq::step(SubBus& bus,State s,const Clock& advance,const Phas
     // Microcode: pea_adr32, move_w_*_aipd, trap_imm4 and rte in MAME.
     case 0x402:read(0x406);read(0x408);sp-=4;write(sp,0);write(sp+2,0x40e);final(0x40a);next=0x408;break;
     case 0x408:read(0x40c);nz(0x700);final(0x40e);sp-=2;write(sp,0x700);next=0x40c;break;
-    case 0x40c:case 0x63e:{if(!(sr&0x2000))throw std::runtime_error("unverified sub startup RTE privilege exception");auto restored=read(sp);auto high=read(sp+2);next=(uint32_t(high)<<16)|read(sp+4);sp+=6;s.ssp=sp;sr=restored&0xa71f;if(!(sr&0x2000))sp=s.usp;read(next);final(next+2);break;}
+    case 0x40c:case 0x63e:{if(!(sr&0x2000)){
+        // $040C/$063E, MAME state_priviledge: fault PC is the RTE itself.
+        // Four internal clocks, low PC/SR/high PC, vector 8 and prefetch.
+        const auto saved=sr;s.usp=sp;sp=s.ssp;sr=(sr&~0x8000)|0x2000;idle(4);
+        write(sp-2,pc);sp-=6;write(sp,saved);write(sp+2,pc>>16);
+        auto high=read(0x20);next=(uint32_t(high)<<16)|read(0x22);read(next);idle(2);final(next+2);break;
+    }auto restored=read(sp);auto high=read(sp+2);next=(uint32_t(high)<<16)|read(sp+4);sp+=6;s.ssp=sp;sr=restored&0xa71f;if(!(sr&0x2000))sp=s.usp;read(next);final(next+2);break;}
     case 0x40e:s.a[6]=0x9c000;read(0x412);read(0x414);final(0x416);next=0x414;break;
     case 0x414:sp=s.a[6]+0x7f80;read(0x418);final(0x41a);next=0x418;break;
     case 0x418:s.d[0]=3;nz(3);final(0x41c);next=0x41a;break;

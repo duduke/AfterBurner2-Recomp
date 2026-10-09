@@ -238,8 +238,11 @@ for start, stop in ranges:
                     emit(f'const auto value=old{"&~" if name=="BCLR" else "^" if name=="BCHG" else "|"}{bitmask};'); prefetch(); emit('latch();'); write(dst, 1, ext=False); emit(f'next=0x{end:x};')
                 else: finish()
         elif name in ('ABCD','SBCD'):
-            src,dst=map(ea,operands);assert src[0]=='d' and dst[0]=='d'
-            emit(f'bcd_register({src[1]},{dst[1]},{"true" if name=="SBCD" else "false"});');phases=1;tail=2
+            src,dst=map(ea,operands)
+            assert (src[0],dst[0]) in (('d','d'),('pre','pre')), f'{pc:x} {asm}'
+            memory=src[0]=='pre'
+            emit(f'bcd_{"memory" if memory else "register"}({src[1]},{dst[1]},{"true" if name=="SBCD" else "false"});')
+            phases=4 if memory else 1;offset=2 if memory else 0;tail=0 if memory else 2
         elif name=='ANDI' and operands[1]=='CCR':
             immediate=ea(operands[0])[1]
             emit(f'read16(0x{pc+4:x});idle(8);sr=(sr&0xa700)|((sr&0x1f)&0x{immediate:x});read16(0x{pc+4:x});final(0x{pc+6:x});next=0x{end:x};');phases=3

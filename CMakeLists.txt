@@ -459,4 +459,29 @@ add_test(NAME oracle_speaker_edges COMMAND oracle_speaker build/oracle/speaker_e
 add_test(NAME oracle_joint_speaker_full COMMAND oracle_publication_schedule build/oracle/joint_speaker_full.bin build/oracle/joint_speaker_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker)
 add_test(NAME oracle_speaker_mutations COMMAND python3 tools/oracle/check_speaker_mutations.py)
 set_tests_properties(oracle_speaker oracle_speaker_edges oracle_joint_speaker_full oracle_speaker_mutations PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME oracle_joint_video_owned_directed COMMAND oracle_publication_schedule build/oracle/joint_video_owned_directed.bin build/oracle/joint_video_owned_directed.txt --require-video-fixture --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker)
+set_tests_properties(oracle_joint_video_owned_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endif()
+
+if(BUILD_TESTING AND ORACLE_TESTS)
+    foreach(PORT cpu_coverage cpu_nested_irq)
+        add_executable(oracle_${PORT} tests/oracle_${PORT}.cpp
+            src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp
+            src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
+            src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
+        target_include_directories(oracle_${PORT} PRIVATE src/main)
+        target_link_libraries(oracle_${PORT} PRIVATE Threads::Threads)
+    endforeach()
+    add_test(NAME oracle_cpu_coverage COMMAND oracle_cpu_coverage build/oracle/cpu_coverage.bin)
+    add_test(NAME oracle_cpu_coverage_legacy COMMAND oracle_cpu_coverage build/oracle/cpu_coverage_expanded.bin)
+    add_test(NAME oracle_cpu_coverage_expanded COMMAND oracle_cpu_coverage build/oracle/cpu_coverage_expanded_full.bin)
+    add_test(NAME oracle_cpu_nested_irq COMMAND oracle_cpu_nested_irq build/oracle/cpu_nested_irq.bin)
+    add_test(NAME oracle_cpu_coverage_check COMMAND python3 tools/oracle/check_cpu_coverage.py build/oracle/cpu_coverage_plan.json build/oracle/cpu_coverage_expanded_full.bin.coverage.json)
+    set_tests_properties(oracle_cpu_coverage_expanded PROPERTIES FIXTURES_SETUP cpu_coverage_census)
+    set_tests_properties(oracle_cpu_coverage_check PROPERTIES FIXTURES_REQUIRED cpu_coverage_census)
+    add_test(NAME oracle_joint_coverage_flight COMMAND oracle_publication_schedule build/oracle/joint_coverage_flight_expanded.bin build/oracle/joint_coverage_flight_expanded.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake)
+    set_tests_properties(oracle_cpu_coverage oracle_cpu_coverage_legacy oracle_cpu_coverage_expanded oracle_cpu_nested_irq oracle_cpu_coverage_check oracle_joint_coverage_flight PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_custom_target(oracle_cpu_coverage_mutations
+        COMMAND python3 tools/oracle/check_cpu_coverage_mutations.py
+        DEPENDS oracle_cpu_coverage oracle_cpu_nested_irq WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()

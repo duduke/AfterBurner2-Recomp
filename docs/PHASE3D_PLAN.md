@@ -111,7 +111,8 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    Its command FIFO is an external reconstruction transport, not acceptance
    of main/sub gameplay producers. Unobserved combinations and whole-game
    wiring still require tasks 4–6.
-3. **Tile/text latches and full video composition.** Compute tile latch
+3. **Tile/text latches and full video composition — accepted for the
+   observed post-boundary corpora.** Compute tile latch
    timing and latched scroll/page state. Feed independently owned text/tile,
    road, sprite, palette, priority and shadow inputs into the compositor at
    native partial update frontiers. Compare joint RGB output pixel-for-pixel
@@ -126,13 +127,32 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    display frontiers and priority equality. Initial boundaries, supplied
    directed device stimuli and unobserved states remain explicit; Stage 1
    integration and whole-host acceptance are not promoted by this result.
-4. **Remaining main/sub execution and exception coverage.** Exercise and
-   verify the 2,158 main and 478 generated sub PCs absent from the current
-   corpus, plus unobserved branch directions. Include IRQ wrapper PCs
-   `$B836/$B83A/$B83E/$146D8/$14702`, nested higher-priority IRQ selection,
-   divide exception paths and startup RTE privilege exceptions. Expand
-   captures across gameplay states and reset sequences; never silently
-   accept an unported path or seed replacement CPU state on a mismatch.
+   The reusable `XBoardVideoTiming` owner now computes partial clips, display
+   and text-write transitions, frame cursor resets and latch dispatch. The
+   coupled 600-frame natural/120-frame directed gates require native sound,
+   device heads and speaker output: 47,022,080 pixels, 656 latches and
+   1,544,619 device head assertions match, zero differences/skips. Thirteen
+   coupled video mutations reject; all prior video fixtures remain required.
+   Cold-boot video initialization remains dependent on tasks 4–5; the Stage 1
+   loop remains unchanged.
+4. **Main/sub PC, branch and directed exception coverage — complete for
+   the declared fixtures.** Independent original-ROM captures add the 2,158
+   main and 478 generated sub PCs missing from natural 600, then translate
+   714 additional main PCs reached by longer gameplay, plus both
+   outcomes of all 995 conditional Bcc/DBF sites: 5,340/5,340 instructions
+   and 12,735/12,735 bus phases match. The union covers 8,500/8,500 main
+   and 1,136/1,136 generated sub PCs. Another 52/52 cases verify the five
+   missing wrapper PCs, DIVU normal/overflow/zero paths and startup user
+   RTE privilege faults (218 exact phases). IRQ2 followed by higher IRQ6
+   retains both exception entries and stack state; nine source mutations
+   are rejected. The 1,200-frame physical-input gameplay extension also
+   passes 42,142,844 records and 109,932,641 native phases, with zero supplied
+   main phases or later CPU contexts. All 83,722,240 RGB pixels match;
+   RESET/TRAP and sound handshakes pass. These independent fixtures
+   supplement the retained joint stream; they do not establish every PC or
+   branch outcome in a continuous game, every operand/flag combination,
+   cold boot, complete credits or all reset sequences. No mismatch is
+   skipped or repaired with later CPU context. Next is task 5.
 5. **Remove or explicitly bound fixture edges.** The cold bus-only gate now
    checks 33,234 grants, 418,054 natural shared reads, 64 labelled mirror
    probes, byte lanes and RAM retention across six tagged sub reset entries;

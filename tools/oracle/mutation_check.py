@@ -422,7 +422,7 @@ for pc in (0x6844,0x14ee8):
                   'caller_host_directed', ['src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp',*common]))
 
 # Joint grants must reject altered private CPU debt and publication producers.
-publication_dependencies=['src/main/hwvideo/hwsprites.cpp','src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp','src/main/engine/osubpublication.cpp','src/main/engine/osubprogress.cpp','src/main/engine/osubirq.cpp',*common]
+publication_dependencies=['src/main/hwvideo/hwsprites.cpp','src/main/hwvideo/hwroad.cpp','src/main/hwvideo/hwtiles.cpp','src/main/hwvideo/hwpalette.cpp','src/main/hwvideo/screen.cpp','src/main/hwaudio/xboard_sound_cpu.cpp','src/third_party/ymfm/ymfm_opm.cpp','src/main/engine/omainirqservice.cpp','src/main/engine/omainirqcallee.cpp','src/main/engine/osubpublication.cpp','src/main/engine/osubprogress.cpp','src/main/engine/osubirq.cpp',*common]
 for name,source,old,new in [
     ('pubscheduledebt','src/main/hwmath/xboard_cpu_continuation.hpp','if(bus_end>=target){local=target;return local;}','if(bus_end>=target){local=bus_end;return local;}'),
     ('pubschedulerearm','src/main/engine/omainirqservice.cpp','constexpr uint16_t armed=1;','constexpr uint16_t armed=2;'),
@@ -501,8 +501,8 @@ cases.append(('jointvideowriteback','src/main/hwvideo/hwsprites.cpp',
               'tests/oracle_publication_schedule.cpp','joint_reset_focused',
               [p for p in publication_dependencies if p!='src/main/hwvideo/hwsprites.cpp']))
 cases.append(('jointvideotextpartial','tests/oracle_publication_schedule.cpp',
-              'if(w&&a>=0xd0000&&a<0xe0000&&(a&0xfff)>=0xe80)',
-              'if(false&&w&&a>=0xd0000&&a<0xe0000&&(a&0xfff)>=0xe80)',
+              'if(w&&a>=0xd0000&&a<0xe0000)',
+              'if(false&&w&&a>=0xd0000&&a<0xe0000)',
               'tests/oracle_publication_schedule.cpp','joint_reset_focused',publication_dependencies))
 cases.append(('jointmainadchead','tests/oracle_publication_schedule.cpp',
               'XBoardBusArbiter::Time(main_board.adc.deadline())*1000000000ULL<device_deadline',
@@ -539,7 +539,7 @@ for name, source, old, new, test, capture, dependencies in cases:
         command = ["-I" + str(include.parent), "-Isrc/main", test, *dependencies]
     else:
         command = ["-Isrc/main", *([] if source==test else [test]), str(variant), *dependencies]
-    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2", "-pthread",
+    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2", "-pthread", "-Itests",
                     *command, "-o", str(binary)], check=True)
     with log_path.open("w") as log:
         args = [str(binary), "build/oracle/" + capture + (".bin.visibility" if name.startswith("visibility") else ".bin")]

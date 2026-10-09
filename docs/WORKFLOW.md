@@ -135,3 +135,59 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=unavailable ./afterburner2 --frames 120
 
 The second run should log audio-device unavailability and still advance the
 sound board and finish normally. Audio queue backpressure does not drop samples.
+
+
+## Coupled video ownership
+
+`oracle-joint-video-owned` combines the existing 600-frame native speaker
+capture with `oracle-joint-video-owned-directed`, which checks display changes,
+pending globals, live scroll tables and effect pens with native sound/device
+heads and mixed speaker output. Create its new fixture with
+`oracle-capture-joint-video-owned-directed`, wait for successful completion,
+then reuse it. The old video/pixel gates remain in `oracle-test`, alongside
+`oracle-joint-video-mutations` with thirteen cases. To investigate only the
+new timing-owner cases without rerunning unrelated mutations:
+
+```sh
+python3 tools/oracle/check_joint_video_mutations.py text-frontier first-scanline vblank-frontier
+```
+
+The complete mutation target and all required checks still run for final
+acceptance. Initial video/CPU/boot boundaries and directed writes remain
+explicit fixtures; this gate does not establish whole-host cold boot.
+
+
+## Expanded main/sub coverage
+
+`oracle-main-sub-coverage` is required by `oracle-test`. It combines the
+independent 52-case wrapper/exception fixtures, expanded original-ROM
+instruction/branch fixtures, retained nested IRQ entries, nine mutation
+checks and the longer 1,200-frame joint gameplay replay. Reuse captures:
+
+```sh
+python3 tools/workflow.py run oracle-cpu-coverage oracle-cpu-coverage-check oracle-cpu-nested-irq
+python3 tools/workflow.py run oracle-main-sub-coverage
+```
+
+To regenerate locally, use `oracle-capture-cpu-coverage`,
+`oracle-capture-cpu-coverage-expanded`, `oracle-capture-cpu-nested-irq` and
+`oracle-capture-joint-coverage-flight`. The expanded capture first plans
+against the passed natural speaker census and runtime ROM images; all plan
+metadata/images/captures stay in ignored `build/oracle/`. A stale plan or
+missing PC/branch outcome fails `oracle-cpu-coverage-check`. The nested
+fixture explicitly drives an IRQ6 pin after IRQ2 VPA lookup in the isolated
+MAME build (`AB2_CPU_IRQ_FIXTURE`); normal captures leave this mode disabled.
+Independent instruction contexts do not replace any state in the continuous
+joint replay. Its timestamps decode the probe's legacy low-64 attoseconds
+against source chronology, avoiding the 18.446-second wrap while preserving
+absolute CPU nanosecond and bus assertions. Adjacent trace clocks must be
+less than half an epoch apart; this is a capture-format bound.
+
+The expanded manifest additionally translates 714 main PCs reached after the
+old natural window, including the `$CD26` ABCD memory form. Preserve both
+`oracle-cpu-coverage-legacy` (the original 4,464-case capture) and the current
+5,340-case gate. Regenerate the former with `oracle-capture-cpu-coverage-legacy`;
+its planner's `--legacy` option excludes only the explicitly labelled 714
+new PCs and reproduces the previous instruction/branch plan. The newer capture
+uses `cpu_coverage_expanded_full.bin`; the strict long replay uses
+`joint_coverage_flight_expanded.bin` with fresh snapshots for all new PCs.
