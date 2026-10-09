@@ -63,18 +63,20 @@ docs/                        — hardware & porting reference notes
 
 ## Status
 
-Playable Stage 1 reference experience with fighter combat, targeting, hits,
-original sprite art, HUD and sound-ROM playback. The native stage clears after
-3,600 logic ticks (120 seconds at the corrected 30 Hz cadence); Enter restarts it. Phase 3b replaced the native terrain with verified
-arcade road/scenery ports and the hardware renderer. Phase 3c adds verified
-frame/palette scheduling and both sprite lists through the arcade transform.
+The application now cold-boots the literal main/sub 68000 ports and original
+Z80 sound program through one native X-Board scheduler. The ROM drives attract
+mode, coin/start, flight, weapons, HUD, scenery and sound commands; the host
+presents the hardware renderer and mixed speaker output.
 
-Formations, flight/collision rules, HUD and stage duration remain reconstructed.
-Native controls do not feed arcade road attitude until the flight/input port
-in 3d. Complete stage progression, carrier introduction,
-attract mode and refueling remain future work; the full stage count has not
-yet been verified. See [docs/STAGE1_FIDELITY.md](docs/STAGE1_FIDELITY.md),
-[docs/ROADMAP.md](docs/ROADMAP.md), and [docs/PR_REVIEW.md](docs/PR_REVIEW.md).
+Whole-host acceptance covers the declared 121-, 603- and expanded 781-frame
+MAME corpora. The expanded window matches 73,593,282 main/sub bus phases,
+55,982,080 RGB pixels and 627,841 stereo frames, with zero supplied execution,
+state replacements or read seeds, and zero differences/skips. Fifteen owner
+mutations reject. Full-credit progression, all operand/branch outcomes,
+alternate DIP settings and arbitrary hardware reset/suspension paths remain
+unverified. Unknown program instructions stop explicitly. The earlier Stage 1
+reconstruction remains in regression fixtures. See [docs/ROADMAP.md](docs/ROADMAP.md)
+and the final [engine notes](docs/ENGINE_NOTES.md) for coverage and exclusions.
 
 ## Building
 
@@ -87,7 +89,9 @@ cmake --build build
 ```
 
 Controls: arrow keys move/bank/pitch, Z fires the cannon, X launches missiles,
-Space increases throttle, Enter restarts Stage 1, and Escape exits. Display runs at 60 Hz and object logic at 30 Hz.
+Space increases throttle and Left Shift reduces it. Press 5 to insert a coin,
+Enter to start, F5 to cold-restart, and Escape to exit. The board advances at
+its physical 16.768 ms frame period; logic cadence comes from the ROM.
 
 The Makefile is an alternative when CMake is unavailable: `make -j4`.
 Run ROM-free engine checks with `make test` (or CTest with a CMake build).

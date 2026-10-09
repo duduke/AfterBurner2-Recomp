@@ -191,3 +191,51 @@ its planner's `--legacy` option excludes only the explicitly labelled 714
 new PCs and reproduces the previous instruction/branch plan. The newer capture
 uses `cpu_coverage_expanded_full.bin`; the strict long replay uses
 `joint_coverage_flight_expanded.bin` with fresh snapshots for all new PCs.
+
+## Cold native startup and capture boundaries
+
+`oracle-joint-cold` checks the focused power-on stream; `oracle-joint-cold-full`
+checks the longer 603-frame observation window. Both require native CPU
+execution, sound/device heads, speaker output and RGB from reset, with zero
+supplied CPU contexts or execution phases. Physical DIP switches join the
+button/axis fixtures in the cold input format. `oracle-cold-generated-check`
+validates the 352 added boot translations against the local ROM image.
+
+Regenerate with `oracle-capture-joint-cold` and
+`oracle-capture-joint-cold-full`; complete each capture before its comparison.
+The capture requests exit from a frame device callback and retains every
+CPU phase through machine stop. Never call exit from a CPU tap to extend
+final continuations: MAME eats the executing CPU's remaining clocks.
+
+`oracle-joint-cold-boundaries` runs the full gate then matches the retained
+initial 46 sub ISR phases and both terminal CPU bus boundaries, requiring
+later native instruction/IRQ snapshots. `oracle-joint-cold-mutations` rejects
+eight startup owner changes. All are required by `oracle-test`; older
+fixtures and mutations remain. The finite stop can cut a new ISR; no future
+state or completion is supplied. See ENGINE_NOTES for the exact bounds and
+unobserved paths. Stage 1 game-loop replacement remains a subsequent task.
+
+
+## Autonomous whole host and live game
+
+```sh
+python3 tools/workflow.py run oracle-whole-host
+python3 tools/workflow.py run oracle-whole-host-full
+python3 tools/workflow.py run oracle-whole-host-expanded
+python3 tools/workflow.py run oracle-whole-host-mutations
+python3 tools/workflow.py run verify-whole-host
+python3 tools/workflow.py run verify-whole-host-headless
+```
+
+The first two reuse task 5's cold captures. Generate the expanded physical
+ADC/weapon fixture with `oracle-capture-whole-host-expanded` and wait for the
+capture to finish before replaying it. No capture file drives the host's
+instruction, grant, deadline or state selection. All three positive runs and
+fifteen owner mutations are required by `oracle-test`. `verify-stage1` keeps
+the reconstruction regression suite and also runs `verify-whole-host`.
+The live executable uses the same board host; 5 inserts a coin, Enter starts,
+F5 recreates a cold board, and arrow/Z/X/Space/Left Shift feed physical inputs.
+The 121-frame cold fixture contains only silence, so the speaker gain mutant
+uses the 603-frame gameplay fixture's nonzero stream. A silent gain mutation
+is not counted as a successful rejection. CMake exposes the new oracles under
+`ORACLE_TESTS` and the native game integration under `STAGE1_ROM_TESTS`.

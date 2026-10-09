@@ -10,6 +10,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 find_package(SDL2 REQUIRED)
+find_package(Threads REQUIRED)
 
 add_executable(afterburner2
     src/main/main.cpp
@@ -48,10 +49,11 @@ add_executable(afterburner2
     src/main/engine/oscenery.cpp
     src/main/engine/ostagesetup.cpp
     src/main/engine/osubroad.cpp
+    src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
 )
 
 target_include_directories(afterburner2 PRIVATE src/main ${SDL2_INCLUDE_DIRS})
-target_link_libraries(afterburner2 PRIVATE ${SDL2_LIBRARIES})
+target_link_libraries(afterburner2 PRIVATE ${SDL2_LIBRARIES} Threads::Threads)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(afterburner2 PRIVATE -Wall -Wextra)
@@ -484,4 +486,43 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     add_custom_target(oracle_cpu_coverage_mutations
         COMMAND python3 tools/oracle/check_cpu_coverage_mutations.py
         DEPENDS oracle_cpu_coverage oracle_cpu_nested_irq WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+if(BUILD_TESTING AND ORACLE_TESTS)
+add_test(NAME oracle_joint_cold COMMAND oracle_publication_schedule build/oracle/joint_cold.bin build/oracle/joint_cold.txt --require-cold --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker)
+add_test(NAME oracle_joint_cold_full COMMAND oracle_publication_schedule build/oracle/joint_cold_full.bin build/oracle/joint_cold_full.txt --require-reset --require-cold --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker)
+add_test(NAME oracle_joint_cold_boundaries COMMAND python3 tools/oracle/check_joint_cold_boundaries.py build/oracle/joint_cold_full.bin build/oracle/joint_speaker_full.bin)
+add_test(NAME oracle_joint_cold_mutations COMMAND python3 tools/oracle/check_joint_cold_mutations.py)
+set_tests_properties(oracle_joint_cold PROPERTIES FIXTURES_SETUP cold_initial)
+set_tests_properties(oracle_joint_cold_mutations PROPERTIES FIXTURES_REQUIRED cold_initial)
+set_tests_properties(oracle_joint_cold_full PROPERTIES FIXTURES_SETUP cold_census)
+set_tests_properties(oracle_joint_cold_boundaries PROPERTIES FIXTURES_REQUIRED cold_census)
+set_tests_properties(oracle_joint_cold oracle_joint_cold_full oracle_joint_cold_boundaries oracle_joint_cold_mutations PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+endif()
+
+if(BUILD_TESTING AND ORACLE_TESTS)
+    get_target_property(WHOLE_HOST_ORACLE_SOURCES oracle_publication_schedule SOURCES)
+    list(REMOVE_ITEM WHOLE_HOST_ORACLE_SOURCES tests/oracle_publication_schedule.cpp)
+    add_executable(oracle_whole_host tests/oracle_whole_host.cpp ${WHOLE_HOST_ORACLE_SOURCES})
+    target_include_directories(oracle_whole_host PRIVATE src/main)
+    target_link_libraries(oracle_whole_host PRIVATE Threads::Threads)
+    foreach(corpus IN ITEMS cold cold_full)
+        add_test(NAME oracle_whole_host_${corpus} COMMAND oracle_whole_host build/oracle/joint_${corpus}.bin build/oracle/joint_${corpus}.txt)
+        set_tests_properties(oracle_whole_host_${corpus} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endforeach()
+    add_test(NAME oracle_whole_host_expanded COMMAND oracle_whole_host build/oracle/whole_host_expanded.bin build/oracle/whole_host_expanded.txt)
+    add_test(NAME oracle_whole_host_mutations COMMAND python3 tools/oracle/check_whole_host_mutations.py)
+    set_tests_properties(oracle_whole_host_expanded oracle_whole_host_mutations PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(oracle_whole_host_cold PROPERTIES FIXTURES_SETUP whole_host_initial)
+    set_tests_properties(oracle_whole_host_mutations PROPERTIES FIXTURES_REQUIRED whole_host_initial)
+endif()
+
+if(BUILD_TESTING AND STAGE1_ROM_TESTS)
+    get_target_property(WHOLE_HOST_GAME_SOURCES afterburner2 SOURCES)
+    list(REMOVE_ITEM WHOLE_HOST_GAME_SOURCES src/main/main.cpp)
+    add_executable(whole_host_integration tests/whole_host_integration.cpp ${WHOLE_HOST_GAME_SOURCES})
+    target_include_directories(whole_host_integration PRIVATE src/main ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(whole_host_integration PRIVATE ${SDL2_LIBRARIES} Threads::Threads)
+    add_test(NAME whole_host_integration COMMAND whole_host_integration)
+    set_tests_properties(whole_host_integration PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()

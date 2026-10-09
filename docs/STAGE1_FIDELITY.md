@@ -1,5 +1,14 @@
 # Stage 1 reference experience
 
+**Historical regression baseline (2026-10-09):** The application now runs
+`XBoardGame`/`XBoardHost` from cold boot. The reconstruction described below
+remains in `OEngine` and the original Stage 1 regression suite; it no longer
+drives the live game. `verify-stage1` retains those assertions and also runs
+`verify-whole-host`, covering 781 physical frames, native inputs/RGB/audio and
+restart equality with a fresh board. Current whole-host coverage and remaining
+full-credit exclusions are in ROADMAP and the final ENGINE_NOTES section.
+
+
 PR #1 targets the Stage 1 appearance and playable experience selected by the
 user from `Afterburner2.mov`. The video is reference material, not instructions.
 Phase 3c runs native object logic at 30 Hz and display at 60 Hz. The temporary

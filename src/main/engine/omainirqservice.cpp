@@ -614,6 +614,7 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         next=pc+2;break;
 #include "engine/omainirqjointcalleeschedule.inc"
 #include "engine/omainremainingschedule.inc"
+#include "engine/omainbootschedule.inc"
 #include "engine/omainproducerschedule.inc"
 #include "engine/omainirqwrapperschedule.inc"
 #include "engine/omaininputschedule.inc"
@@ -2093,11 +2094,11 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
     clock(ns);return {{r,next,sp,sr,ns},selected,selection};
 }
 
-// $1466A/$14672/$147C6/$147E6: MAME rte_df (rtr1..rtr4), three stack
+// $144EA/$14828 startup and $1466A/$14672/$147C6/$147E6: MAME rte_df (rtr1..rtr4), three stack
 // reads followed by two return prefetches; restore SR before selecting IPL.
 OMainIrqService::Instruction OMainIrqService::return_joint(MainBus& b,const Result& s,uint32_t usp,const Clock& advance,const Poll& poll,uint32_t retained_ssp) {
     switch(s.pc){case 0x1466a:case 0x14672:case 0x147c6:case 0x147e6:case 0x14842:break;
-        default:throw std::runtime_error("unported joint main RTE instruction");}
+        default:if(s.pc!=0x144ea&&s.pc!=0x14828)throw std::runtime_error("unported joint main RTE instruction");}
     if(s.ns%CYCLE_NS||(s.sp&1)||!poll)
         throw std::runtime_error("unsupported joint main RTE context");
     bus=&b;clock=advance;ns=s.ns;pc=s.pc;
@@ -2117,15 +2118,27 @@ OMainIrqService::Instruction OMainIrqService::return_joint(MainBus& b,const Resu
     return {{s.registers,target,sp,sr,ns},eligible(level,sr)?level:0,selection};
 }
 
-// $138BA TRAP #12: trap1..trap9 in m68000-sdf.cpp. Stack bank switch,
-// low PC/SR/high PC writes, vector $B0 and both handler prefetches.
+// $13820/$13884 TRAP #10 and $138BA/$144F4 TRAP #12: trap1..trap9
+// in m68000-sdf.cpp. Stack bank switch, low PC/SR/high PC writes,
+// vector $A8/$B0 and both handler prefetches.
 OMainIrqService::Instruction OMainIrqService::trap_joint(MainBus& b,const Result& s,uint32_t ssp,const Clock& advance,const Poll& poll) {
-    if(s.pc!=0x138ba||!poll)throw std::runtime_error("unsupported joint main TRAP");
+    if((s.pc!=0x138ba&&s.pc!=0x13820&&s.pc!=0x13884&&s.pc!=0x144f4)||!poll)throw std::runtime_error("unsupported joint main TRAP");
     bus=&b;clock=advance;ns=s.ns;pc=s.pc;
     const auto sp=(s.sr&0x2000?s.sp:ssp)-6;const auto ret=s.pc+2;
     const uint16_t sr=(s.sr&~0x8000)|0x2000;
     idle(4);write16(sp+4,ret);write16(sp,s.sr);write16(sp+2,ret>>16);
-    const auto target=read32(0xb0);read16(target);idle(2);
+    const auto vector=(s.pc==0x13820||s.pc==0x13884)?0xa8:0xb0;
+    const auto target=read32(vector);read16(target);idle(2);
     const auto selection=ns;clock(ns);const auto level=poll(ns);read16(target + 2);clock(ns);
     return {{s.registers,target,sp,sr,ns},eligible(level,sr)?level:0,selection};
+}
+
+// Power-on state_reset_df, the same rstp3..rstp6 microcode as sub RESET.
+OMainIrqService::Result OMainIrqService::reset_joint(MainBus& b,const Result& s,uint32_t bus_pc,const Clock& advance) {
+    bus=&b;clock=advance;ns=s.ns;pc=bus_pc;
+    idle(8);const auto high_sp=read16(0),low_sp=read16(2);
+    const auto high_pc=read16(4),low_pc=read16(6);
+    const uint32_t target=(uint32_t(high_pc)<<16)|low_pc;
+    read16(target);idle(2);read16(target+2);clock(ns);
+    return {s.registers,target,(uint32_t(high_sp)<<16)|low_sp,uint16_t((s.sr&~0x8000)|0x2700),ns};
 }

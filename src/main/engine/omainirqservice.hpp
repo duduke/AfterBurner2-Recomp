@@ -60,6 +60,7 @@ public:
     // the scheduler; the completed supervisor stack advances by six bytes.
     Instruction return_joint(MainBus&, const Result&, uint32_t usp, const Clock&, const Poll&, uint32_t retained_ssp = 0);
     Instruction trap_joint(MainBus&, const Result&, uint32_t ssp, const Clock&, const Poll&);
+    Result reset_joint(MainBus&,const Result&,uint32_t bus_pc,const Clock&);
     uint32_t current_pc() const { return pc; }
 private:
     Result enter_impl(MainBus&, const Context&, const Clock&, uint64_t, const Clock&, bool, const ReturnSelection& = {});
