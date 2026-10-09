@@ -21,6 +21,7 @@ add_executable(afterburner2
     src/main/hwvideo/hwpalette.cpp
     src/main/hwvideo/screen.cpp
     src/main/hwaudio/arcade_audio.cpp
+    src/third_party/ymfm/ymfm_opm.cpp
     src/main/hwaudio/xboard_sound_cpu.cpp
     src/main/hwaudio/soundchip.cpp
     src/main/hwaudio/segapcm.cpp
@@ -63,6 +64,9 @@ if(BUILD_TESTING)
     target_include_directories(cpu_continuation_regression PRIVATE src/main)
     target_link_libraries(cpu_continuation_regression PRIVATE Threads::Threads)
     add_test(NAME cpu_continuation_regression COMMAND cpu_continuation_regression)
+    add_executable(audio_deadline_regression tests/audio_deadline_regression.cpp src/third_party/ymfm/ymfm_opm.cpp)
+    target_include_directories(audio_deadline_regression PRIVATE src/main)
+    add_test(NAME audio_deadline_regression COMMAND audio_deadline_regression)
     add_executable(sound_cpu_regression tests/sound_cpu_regression.cpp src/main/hwaudio/xboard_sound_cpu.cpp)
     target_include_directories(sound_cpu_regression PRIVATE src/main)
     add_test(NAME sound_cpu_regression COMMAND sound_cpu_regression)
@@ -70,6 +74,14 @@ if(BUILD_TESTING)
     target_include_directories(oracle_sound_boot PRIVATE src/main)
     add_test(NAME oracle_sound_boot COMMAND oracle_sound_boot build/oracle/sound_boot.bin)
     set_tests_properties(oracle_sound_boot PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_executable(oracle_sound_execution tests/oracle_sound_execution.cpp src/main/hwaudio/xboard_sound_cpu.cpp src/third_party/ymfm/ymfm_opm.cpp)
+    target_include_directories(oracle_sound_execution PRIVATE src/main)
+    add_test(NAME oracle_sound_execution COMMAND oracle_sound_execution build/oracle/sound_execution.bin build/oracle/sound_execution.txt)
+    add_test(NAME oracle_sound_irq COMMAND oracle_sound_execution build/oracle/sound_irq.bin build/oracle/sound_irq.txt)
+    set_tests_properties(oracle_sound_execution oracle_sound_irq PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_test(NAME oracle_sound_audio_irq COMMAND oracle_sound_execution build/oracle/sound_audio_irq.bin build/oracle/sound_audio_irq.txt --native-audio)
+    add_test(NAME oracle_sound_audio_timer_b COMMAND oracle_sound_execution build/oracle/sound_audio_timer_b.bin build/oracle/sound_audio_timer_b.txt --native-audio)
+    set_tests_properties(oracle_sound_audio_irq oracle_sound_audio_timer_b PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_pcm tests/oracle_pcm.cpp src/main/romloader.cpp)
     target_include_directories(oracle_pcm PRIVATE src/main)
     add_test(NAME oracle_pcm COMMAND oracle_pcm build/oracle/pcm.bin)
@@ -283,7 +295,7 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     set_tests_properties(oracle_subreset PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_executable(oracle_bus_arbiter tests/oracle_bus_arbiter.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp)
     target_include_directories(oracle_bus_arbiter PRIVATE src/main)
-    add_executable(oracle_publication_schedule tests/oracle_publication_schedule.cpp
+    add_executable(oracle_publication_schedule tests/oracle_publication_schedule.cpp src/main/hwaudio/xboard_sound_cpu.cpp src/third_party/ymfm/ymfm_opm.cpp
         src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/hwvideo/screen.cpp
         src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/mainbus.cpp
         src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp src/main/engine/subbus.cpp src/main/roms.cpp src/main/romloader.cpp)
@@ -293,6 +305,10 @@ if(BUILD_TESTING AND ORACLE_TESTS)
     add_test(NAME oracle_joint_main_progress COMMAND oracle_publication_schedule build/oracle/joint_main_progress.bin build/oracle/joint_main_progress.txt --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake)
     add_test(NAME oracle_joint_reset_window COMMAND oracle_publication_schedule build/oracle/joint_reset_focused.bin build/oracle/joint_reset_focused.txt --reset-window --physical-main --require-sub-continuity --require-video-frontiers --require-sound-handshake)
     add_test(NAME oracle_joint_main_progress_full COMMAND oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-frontiers --require-sound-handshake)
+    add_test(NAME oracle_joint_sound_full COMMAND oracle_publication_schedule build/oracle/joint_sound_full.bin build/oracle/joint_sound_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-sound)
+    set_tests_properties(oracle_joint_sound_full PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    add_test(NAME oracle_joint_audio_full COMMAND oracle_publication_schedule build/oracle/joint_audio_full.bin build/oracle/joint_audio_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines)
+    set_tests_properties(oracle_joint_audio_full PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_test(NAME oracle_joint_video COMMAND oracle_publication_schedule build/oracle/joint_main_progress_full.bin build/oracle/joint_main_progress_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake)
     add_test(NAME oracle_joint_video_directed COMMAND oracle_publication_schedule build/oracle/joint_video_directed.bin build/oracle/joint_video_directed.txt --require-video-fixture --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake)
     set_tests_properties(oracle_joint_video oracle_joint_video_directed PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
@@ -423,4 +439,24 @@ if(BUILD_TESTING AND ORACLE_TESTS)
         set_tests_properties(oracle_visibility_${CAPTURE} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
 
+endif()
+
+if(BUILD_TESTING AND ORACLE_TESTS)
+add_executable(oracle_speaker tests/oracle_speaker.cpp)
+target_include_directories(oracle_speaker PRIVATE src/main)
+add_custom_target(oracle-speaker
+    COMMAND $<TARGET_FILE:oracle_speaker> build/oracle/joint_speaker_full.bin.audio
+    COMMAND $<TARGET_FILE:oracle_speaker> build/oracle/speaker_edges
+    DEPENDS oracle_speaker WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_custom_target(oracle-joint-speaker-full
+    COMMAND $<TARGET_FILE:oracle_publication_schedule> build/oracle/joint_speaker_full.bin build/oracle/joint_speaker_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker
+    DEPENDS oracle_publication_schedule WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_custom_target(oracle-speaker-mutations
+    COMMAND python3 tools/oracle/check_speaker_mutations.py
+    DEPENDS oracle-speaker oracle-joint-speaker-full WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME oracle_speaker COMMAND oracle_speaker build/oracle/joint_speaker_full.bin.audio)
+add_test(NAME oracle_speaker_edges COMMAND oracle_speaker build/oracle/speaker_edges)
+add_test(NAME oracle_joint_speaker_full COMMAND oracle_publication_schedule build/oracle/joint_speaker_full.bin build/oracle/joint_speaker_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker)
+add_test(NAME oracle_speaker_mutations COMMAND python3 tools/oracle/check_speaker_mutations.py)
+set_tests_properties(oracle_speaker oracle_speaker_edges oracle_joint_speaker_full oracle_speaker_mutations PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()

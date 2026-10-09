@@ -65,14 +65,15 @@ int main(int argc,char** argv) try {
             throw std::runtime_error("native sound boot differs");
         }
         if(r.kind==1||r.kind==3)++writes;
-        // Diagnostic only: the current pin decoder's access phase placement
-        // is not assumed to equal MAME's. Never drive clocks from these times.
+        // Timings are assertions. CPU clocks and device side effects are
+        // computed at machine-cycle starts, never driven by capture times.
         if(cursor==0)origin_clock=e.clock;
         const auto native_ns=(e.clock-origin_clock)*250;
         const auto expected_ns=r.ns-records.front().ns;
         const auto delta=native_ns>expected_ns?native_ns-expected_ns:expected_ns-native_ns;
         if(!delta)++timing_matches;
         if(delta>max_timing_delta)max_timing_delta=delta;
+        if(delta)throw std::runtime_error("native sound boot timing differs");
         ++cursor;
         if(bounded&&cursor==expected)throw Boundary{};
     };
@@ -81,7 +82,7 @@ int main(int argc,char** argv) try {
     if(!ended||cursor!=expected||!latches||!pcm_reads||!pcm_writes)throw std::runtime_error("incomplete sound boot coverage");
     std::cout<<"Native sound boot vs arcade: "<<cursor<<'/'<<expected<<" transactions identical, 0 different, 0 skipped; "
              <<writes<<" writes, "<<latches<<" computed latch reads, "<<pcm_reads<<" computed PCM reads, "<<pcm_writes<<" PCM writes, "<<cpu.clocks()<<" native clocks; command/reset/device continuation and scheduler timestamps unverified\n";
-    std::cout<<"Sound boot timing diagnostic (not acceptance): "<<timing_matches<<'/'<<expected
+    std::cout<<"Sound boot relative timing: "<<timing_matches<<'/'<<expected
              <<" relative phase times equal, maximum delta "<<max_timing_delta<<" ns\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

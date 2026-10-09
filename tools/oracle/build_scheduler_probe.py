@@ -108,6 +108,34 @@ command+=['-I'+str(root/'src/devices/cpu/m68000')]
 subprocess.run(command,cwd=cwd,check=True)
 optional=out/'liboptional.a';optional.write_bytes((root/'build/osx_clang/bin/x64/Release/mame_mame/liboptional.a').read_bytes())
 subprocess.run(['ar','r',str(optional),str(out/'m68000.o')],check=True)
+# Read-only Z80 interrupt acknowledgements, including retained caller registers.
+# The generated decoder is copied; the original MAME sources stay untouched.
+zsource=(root/'src/devices/cpu/z80/z80.cpp').read_text()
+zsource=zsource.replace('#include "emu.h"','#include "emu.h"\n#include <cstdio>\n#include <cstdlib>')
+zh=(root/'build/generated/emu/cpu/z80/z80.hxx').read_text()
+needle='m_tmp_irq_vector = (intf != nullptr) ? intf->z80daisy_irq_ack() : standard_irq_callback(0, m_pc.w);'
+assert zh.count(needle)==2
+zh=zh.replace(needle,needle+'''
+        if(auto path=std::getenv("AB2_Z80_IRQ_TRACE")) {
+            static FILE* file=std::fopen(path,"w");
+            if(file)std::fprintf(file,"%llu %u %u %u %u %u %u %u %u\\n",
+                (unsigned long long)machine().time().as_ticks(1000000000),
+                m_prvpc.w,m_pc.w,m_sp.w,(m_af.b.h<<8)|get_f(),m_bc.w,m_de.w,m_hl.w,m_tmp_irq_vector&255);
+        }
+''')
+zdir=out/'cpu/z80';zdir.mkdir(parents=True,exist_ok=True)
+(zdir/'z80.hxx').write_text(zh)
+zpath=out/'z80.cpp';zpath.write_text(zsource)
+command=dry('optional.make','../../../../osx_clang/obj/x64/Release/src/devices/cpu/z80/z80.o','../../../../../src/devices/cpu/z80/z80.cpp')
+for i,a in enumerate(command):
+ if a=='-o':command[i+1]=str(out/'z80.o')
+ if a=='../../../../../src/devices/cpu/z80/z80.cpp':command[i]=str(zpath)
+if '-include' in command:
+ i=command.index('-include');del command[i:i+2]
+command.insert(1,'-I'+str(out))
+command+=['-I'+str(root/'src/devices/cpu/z80')]
+subprocess.run(command,cwd=cwd,check=True)
+subprocess.run(['ar','r',str(optional),str(out/'z80.o')],check=True)
 roadsource=(root/'src/mame/sega/segaic16_road.cpp').read_text()
 roadsource=roadsource.replace('#include "emu.h"','#include "emu.h"\n#include <cstdlib>')
 needle='info->buffer = std::make_unique<u16[]>(0x1000/2);'
@@ -220,6 +248,56 @@ if '-include' in command:
 command+=['-I'+str(root/'src/mame/sega')]
 subprocess.run(command,cwd=cwd,check=True)
 subprocess.run(['ar','r',str(sega),str(out/'segaic16.o')],check=True)
+# Read-only native audio stream observer. Batch sizes, indexes and time are
+# assertions, never playback inputs. Observe before speaker gain/resampling.
+audio=(root/'src/emu/sound.cpp').read_text()
+audio=audio.replace('#include "emu.h"','#include "emu.h"\n#include <cstdio>\n#include <cstdlib>\n#include <cmath>')
+needle='\t// Update the indexes\n\tm_output_buffer.commit(m_samples_to_update);'
+assert audio.count(needle)==1
+audio=audio.replace(needle,r'''
+    if(auto path=std::getenv("AB2_AUDIO_TRACE")) {
+        const bool pcm=std::strcmp(m_device.tag(),":mainpcb:pcm")==0;
+        const bool fm=std::strcmp(m_device.tag(),":mainpcb:ymsnd")==0;
+        if(pcm||fm){
+            static FILE* files[2]={nullptr,nullptr};const unsigned slot=pcm?1:0;
+            if(!files[slot]){std::string p=std::string(path)+(pcm?".pcm":".fm");
+                files[slot]=std::fopen(p.c_str(),"wb");if(files[slot])std::fwrite("AB2AST01",1,8,files[slot]);}
+            if(auto f=files[slot]){
+                auto put=[&](uint64_t v,unsigned n){while(n--)std::fputc((v>>(n*8))&255,f);};
+                put(m_device.machine().time().as_ticks(1000000000),8);
+                put(m_output_buffer.write_sample(),8);put(m_samples_to_update,4);
+                for(u32 i=0;i<m_samples_to_update;++i)for(unsigned ch=0;ch<2;++ch)
+                    put(int32_t(std::llround(get_output(ch,i)*32768.0)),4);
+            }
+        }
+    }
+'''+needle)
+# Observe MAME's mixed speaker inputs before optional host effects. Float bits
+# are exact assertions; speaker PCM conversion is MAME's truncation + clamp.
+needle='\tauto &spk = m_speakers[id];\n\tauto &out = spk.m_buffer;'
+assert audio.count(needle)==1
+audio=audio.replace(needle,r'''
+    if(auto path=std::getenv("AB2_AUDIO_TRACE")) {
+        static FILE* f=nullptr;static uint64_t first=0;
+        if(!f){std::string p=std::string(path)+".speaker";f=std::fopen(p.c_str(),"wb");if(f)std::fwrite("AB2SPK01",1,8,f);}
+        if(f){auto put=[&](uint64_t v,unsigned n){while(n--)std::fputc((v>>(n*8))&255,f);};
+            put(machine().time().as_ticks(1000000000),8);put(first,8);put(stream.samples(),4);
+            for(int i=0;i<stream.samples();++i)for(int ch=0;ch<stream.input_count();++ch){
+                float value=stream.get(ch,i);uint32_t bits;std::memcpy(&bits,&value,4);put(bits,4);}
+            first+=stream.samples();
+        }
+    }
+'''+needle)
+audiopath=out/'sound.cpp';audiopath.write_text(audio)
+command=dry('emu.make','../../../../osx_clang/obj/x64/Release/src/emu/sound.o','../../../../../src/emu/sound.cpp')
+for i,a in enumerate(command):
+ if a=='-o':command[i+1]=str(out/'sound.o')
+ if a=='../../../../../src/emu/sound.cpp':command[i]=str(audiopath)
+if '-include' in command:
+ i=command.index('-include');del command[i:i+2]
+command+=['-I'+str(root/'src/emu')]
+subprocess.run(command,cwd=cwd,check=True)
+subprocess.run(['ar','r',str(archive),str(out/'sound.o')],check=True)
 link=dry('mame.make',changed='../../../../osx_clang/bin/x64/Release/libemu.a')
 for i,a in enumerate(link):
  if a=='-o':link[i+1]=str(out/'mame')

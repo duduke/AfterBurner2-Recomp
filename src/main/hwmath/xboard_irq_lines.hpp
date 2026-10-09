@@ -8,6 +8,11 @@
 // drain with its first deadline, rather than scheduling a second timer.
 class XBoardMainIrqLines {
 public:
+    uint64_t deadline() const {
+        uint64_t result=std::numeric_limits<uint64_t>::max();
+        for(const auto& l:lines)if(l.pending&&l.deadline<result)result=l.deadline;
+        return result;
+    }
     void update(bool timer,bool blank,uint64_t ns) {
         const unsigned irq=(timer?2:0)|(blank?4:0);
         if(!timer)queue(0,false,ns);

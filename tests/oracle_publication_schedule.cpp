@@ -7,6 +7,7 @@
 #include <deque>
 #include <cstring>
 #include "hwmath/xboard_bus_arbiter.hpp"
+#include "hwmath/xboard_device_deadlines.hpp"
 #include "engine/mainbus.hpp"
 #include "engine/omainirqservice.hpp"
 #include "engine/omainjointmanifest.hpp"
@@ -19,6 +20,7 @@
 #include "engine/osubprogress_manifest.hpp"
 #include "hwmath/xboard_cpu_continuation.hpp"
 #include "roms.hpp"
+#include "sound_execution_fixture.hpp"
 namespace {
 uint64_t number(std::ifstream& f,unsigned n){uint64_t v=0;while(n--){auto c=f.get();if(c<0)throw std::runtime_error("truncated arbiter capture");v=v<<8|c;}return v;}
 unsigned cpu(const std::string& tag){if(tag==":mainpcb:maincpu")return 0;if(tag==":mainpcb:subcpu")return 1;if(tag==":mainpcb:soundcpu")return 2;throw std::runtime_error("unexpected grant CPU");}
@@ -42,6 +44,7 @@ int main(int argc,char** argv)try{
  const bool mainentries=!memcmp(magic,"AB2ARB09",8);
  mainprogress=mainentries||!memcmp(magic,"AB2ARB08",8);
  bool require_video_rgb=false,require_video_fixture=false;
+ bool native_sound=false,sound_attached=false,native_deadlines=false,require_speaker=false;
  bool reset_window=false,require_reset=false,require_main_irq=false,physical_main=false,require_main_closed=false,require_sub_continuity=false,require_video_banks=false,require_video_frontiers=false,require_sound_handshake=false,progress=false;
  for(int i=3;i<argc;++i){
   if(!std::strcmp(argv[i],"--require-video-fixture"))require_video_fixture=true;
@@ -55,11 +58,18 @@ int main(int argc,char** argv)try{
   else if(!std::strcmp(argv[i],"--require-video-banks"))require_video_banks=true;
   else if(!std::strcmp(argv[i],"--require-video-frontiers")){require_video_frontiers=true;require_video_banks=true;physical_main=true;}
   else if(!std::strcmp(argv[i],"--require-sound-handshake"))require_sound_handshake=true;
+  else if(!std::strcmp(argv[i],"--require-native-sound")){native_sound=true;require_sound_handshake=true;physical_main=true;}
+  else if(!std::strcmp(argv[i],"--require-speaker")){require_speaker=true;}
+  else if(!std::strcmp(argv[i],"--require-native-deadlines")){native_deadlines=true;native_sound=true;require_sound_handshake=true;physical_main=true;}
   else if(!std::strcmp(argv[i],"--require-main-irq"))require_main_irq=true;
   else throw std::runtime_error("unexpected joint acceptance option");
  }
  if(require_main_irq&&!mainentries)throw std::runtime_error("main IRQ acceptance requires a fresh AB2ARB09 capture");
  if(!roms.load_aburner2())throw std::runtime_error("ROMs required");
+ std::unique_ptr<SoundExecutionFixture> sound_cpu;
+ if(native_sound)sound_cpu=std::make_unique<SoundExecutionFixture>((std::string(argv[1])+".soundcpu").c_str());
+ if(native_deadlines)sound_cpu->enable_audio(std::string(argv[1])+".audio");
+ if(require_speaker){if(!native_deadlines)throw std::runtime_error("speaker requires native deadlines");sound_cpu->enable_speaker(std::string(argv[1])+".audio");}
  MainBus::Memory memory;MainBus mainbus(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,memory);auto& bus=mainbus.sub;
  if(!f.read(reinterpret_cast<char*>(memory.bytes.data()),0x10000))throw std::runtime_error("missing initial work/shared RAM");
  if(mainprogress){
@@ -212,6 +222,7 @@ int main(int argc,char** argv)try{
  // clearing an already clear line. Synchronization aborts the executing
  // grant at the acknowledge clock, retaining the instruction step debt.
  XBoardTimeline main_board(mainbus.compare_timer);XBoardMainIrqLines main_lines;bool board_advancing=false;
+ std::function<void(uint64_t)> native_boost;
  std::deque<std::pair<uint64_t,uint8_t>> sound_pending;unsigned sound_deliveries=0;
  unsigned analog_cursor=0;std::array<uint8_t,8> analog_values{};uint8_t mux=0;
  analog_values.fill(0x10);for(unsigned i=0;i<5;++i)analog_values[i]=0x80;
@@ -223,6 +234,7 @@ int main(int argc,char** argv)try{
   if(starting&&running[0]&&XBoardBusArbiter::Time(main_board.adc.deadline())*1000000000ULL<device_deadline)maincpu.abort_grant(main_phase_ns);
  };
  mainbus.io[0].output=[&](unsigned p,uint8_t d,uint8_t){if(p==2){mux=d;const bool enabled=d&0x20;
+  if(sound_attached)sound_cpu->queue_reset(main_phase_ns,!(d&1));
   video_display_write(main_phase_ns,enabled);if(running[0])maincpu.abort_grant(main_phase_ns);}};
  auto advance_board=[&](uint64_t ns,bool inclusive=true){
   board_advancing=true;
@@ -232,19 +244,21 @@ int main(int argc,char** argv)try{
   }
   if(inclusive)main_board.advance(ns);else main_board.advance_before(ns);
   while(!sound_pending.empty()&&(inclusive?sound_pending.front().first<=ns:sound_pending.front().first<ns)){
+   if(sound_attached)sound_cpu->external_time(sound_pending.front().first);
    mainbus.compare_timer.deliver_sound(sound_pending.front().second);sound_pending.pop_front();++sound_deliveries;
   }
   board_advancing=false;
  };
  mainbus.compare_timer.irq_line=[&](bool){
   if(physical_main)main_lines.update(mainbus.compare_timer.state().irq,main_board.vblank(),board_advancing?main_board.now():main_phase_ns);
+  if(native_boost&&main_board.main_irq_level())native_boost(board_advancing?main_board.now():main_phase_ns);
   if(!board_advancing&&running[0])maincpu.abort_grant(main_phase_ns);
  };
  // 5250 sound writes synchronize at the CPU transaction clock and abort
  // the current grant. Sound CPU execution remains outside this CPU proof.
  mainbus.compare_timer.schedule_sound=[&](uint8_t value){sound_pending.emplace_back(main_phase_ns,value);if(running[0])maincpu.abort_grant(main_phase_ns);};
  main_board.scanline=[&](uint64_t t,unsigned line){
-  if(line==223||line==224)main_lines.update(mainbus.compare_timer.state().irq,main_board.vblank(),t);
+  if(line==223||line==224){main_lines.update(mainbus.compare_timer.state().irq,main_board.vblank(),t);if(native_boost&&main_board.main_irq_level())native_boost(t);}
   main_lines.deliver(t);
   if(fixture_cursor<display_fixture.size()&&display_fixture[fixture_cursor].ns==t){
    const auto& fixture=display_fixture[fixture_cursor++];
@@ -399,11 +413,47 @@ int main(int argc,char** argv)try{
  std::unique_ptr<XBoardBusArbiter> port;Group g;bool active=false,outer=false;unsigned current=0;
  std::vector<Boost> pending;unsigned failures=0,phase_bad=0,budget_bad=0,grant_bad=0,groups=0,grants=0,phases=0,leads=0,boosts=0,empty=0;unsigned cpu_masks=0;
  auto boost=[&](const Boost& b){if(b.quantum==XBoardBusArbiter::DEFAULT_QUANTUM)return;if(b.quantum!=320000000000ULL||b.duration!=100000000000000ULL)throw std::runtime_error("unexpected board quantum request");port->boost(b.at);++boosts;};
+ XBoardDeviceDeadlines device_timers;uint64_t native_heads=0;
+ struct TimerAssertion{uint64_t delivered,expiry;};
+ std::array<std::deque<TimerAssertion>,XBoardDeviceDeadlines::Count+2> timer_assertions;
+ if(native_deadlines){
+  const auto path=std::string(argv[1]);std::ifstream devices(path.substr(0,path.size()-4)+".devices");
+  if(!devices)throw std::runtime_error("missing per-owner device callback assertions");
+  const char* names[]={"segaic16_video_device::tilemap_16b_latch_values","screen_device::first_scanline_tick","screen_device::vblank_begin","screen_device::vblank_end","sound_manager::update","ym_generic_device::fm_mode_write","ym_generic_device::fm_timer_handler"};
+  for(std::string line;std::getline(devices,line);){std::istringstream in(line);char kind;in>>kind;if(kind!='F')continue;
+   uint64_t base,expiry;std::string name;if(!(in>>base>>expiry>>name))throw std::runtime_error("malformed device callback assertion");
+   for(unsigned i=0;i<timer_assertions.size();++i)if(name==names[i])timer_assertions[i].push_back({base/1000000000ULL,expiry/1000000000ULL});
+  }
+ }
+ if(native_deadlines)sound_cpu->audio->timer_callback=[&](bool mode,unsigned,uint64_t ns,uint64_t base){
+  auto& expected=timer_assertions[XBoardDeviceDeadlines::Count+(mode?0:1)];
+  if(expected.empty()||expected.front().expiry!=ns||expected.front().delivered!=base)throw std::runtime_error("native per-owner timer callback differs");
+  expected.pop_front();
+ };
+ device_timers.callback=[&](XBoardDeviceDeadlines::Owner owner,uint64_t ns){
+  if(!native_deadlines)return;
+  auto& expected=timer_assertions[owner];
+  if(expected.empty()||expected.front().expiry!=ns||expected.front().delivered!=delivered_ns)throw std::runtime_error("native per-owner timer callback differs");
+  expected.pop_front();
+  if(owner==XBoardDeviceDeadlines::SoundUpdate)sound_cpu->update_speaker(ns);
+ };
+ bool owns_boost=false;std::vector<Boost> produced_boosts;
+ native_boost=[&](uint64_t ns){if(owns_boost){Boost b{ns*1000000000ULL,320000000000ULL,100000000000000ULL};boost(b);produced_boosts.push_back(b);}};
+ auto next_device=[&](){
+  auto ns=std::min({device_timers.deadline(),main_board.next_scanline(),main_board.adc.deadline(),main_lines.deadline(),sound_cpu->deadline()});
+  if(!reset_requests.empty())ns=std::min(ns,reset_requests.front());
+  if(!sound_pending.empty())ns=std::min(ns,sound_pending.front().first);
+  return XBoardBusArbiter::Time(ns)*1000000000ULL;
+ };
  auto finish=[&](){
   if(!port)port=std::make_unique<XBoardBusArbiter>(XBoardBusArbiter::State{g.base,0,g.starts});
-  for(auto b:g.before)boost(b);if(g.outer)port->timers_delivered();
+  const bool owns_deadlines=native_deadlines&&g.base>=video_start_ns*XBoardBusArbiter::Time(1000000000ULL);
+  owns_boost=owns_deadlines;produced_boosts.clear();
+  const bool deliver=owns_deadlines?next_device()<=port->state().base:g.outer;
+  if(owns_deadlines&&deliver!=g.outer)throw std::runtime_error("native outer timer delivery differs");
+  if(!owns_boost)for(auto b:g.before)boost(b);if(deliver)port->timers_delivered();
   delivered_ns=uint64_t(port->state().base)/1000000000ULL;
-  if(g.outer){
+  if(deliver){
    if(physical_main&&delivered_ns>=main_board.now()){advance_board(delivered_ns);main_lines.deliver(delivered_ns);}
    if(!reset_requests.empty()&&reset_requests.front()<=delivered_ns){
     if(!running[1]&&!linked[1])throw std::runtime_error("RESET crosses unported sub execution");
@@ -423,13 +473,24 @@ int main(int argc,char** argv)try{
   // Quantum values are assertions only; expiry/renewal are native.
   if(capture_pending&&capture_group<g.index)throw std::runtime_error("undelivered captured grant");
   const bool captured=capture_pending&&capture_group==g.index;
+  if(sound_cpu){
+   if(!sound_attached&&g.base>=video_start_ns*XBoardBusArbiter::Time(1000000000ULL)){
+    if(sound_cpu->bootstrap_latch.state().regs[11]!=mainbus.compare_timer.state().regs[11]||sound_cpu->bootstrap_latch.state().nmi!=mainbus.compare_timer.state().nmi)throw std::runtime_error("sound latch bootstrap continuity differs");
+    sound_cpu->bind_latch(mainbus.compare_timer);sound_attached=true;
+   }
+   if(!sound_attached)sound_cpu->supply_boot(g.index);
+   if(deliver)sound_cpu->advance(delivered_ns);
+  }
+  if(native_deadlines&&deliver)device_timers.advance(delivered_ns);
+  const auto native_head=owns_deadlines?next_device():XBoardBusArbiter::Time(g.deadline);
+  if(owns_deadlines){++native_heads;if(native_head!=g.deadline){std::cerr<<"Native device head group="<<g.index<<" base="<<g.base<<" ns="<<uint64_t(native_head/1000000000ULL)<<'/'<<g.deadline/1000000000ULL<<'\n';throw std::runtime_error("native device deadline differs");}}
   std::vector<Phase> none;auto& events=captured?captured_phases:none;size_t cursor=0;uint64_t latest_main=0;
   if(events.empty())++empty;
-  auto result=port->grant(g.deadline,[&](unsigned c,XBoardBusArbiter::Time target,unsigned budget){++grants;auto& r=g.runs[c];
-   device_deadline=g.deadline;
+  auto result=port->grant(native_head,[&](unsigned c,XBoardBusArbiter::Time target,unsigned budget){++grants;auto& r=g.runs[c];
+   device_deadline=native_head;
    if(!r.present||target!=r.target||budget!=r.budget){++budget_bad;ok=false;if(budget_bad<5)std::cerr<<"Budget CPU="<<c<<" base="<<g.base<<" target="<<uint64_t(target)<<'/'<<r.target<<" cycles="<<budget<<'/'<<r.budget<<'\n';}
    const bool reset_grant=c==0&&mainprogress&&std::any_of(events.begin(),events.end(),[](const Phase& p){return p.cpu==0&&p.pc==0x14840&&p.snapshot.present;});
-   r.present=false;if(!reset_grant)for(auto b:r.boosts)boost(b);
+   r.present=false;if(!owns_boost&&!reset_grant)for(auto b:r.boosts)boost(b);
    if(c==0)request_reset=[&,expected=r.boosts,reset_grant,index=size_t(0)](uint64_t ns)mutable{
     if(!reset_grant||index>=expected.size()||expected[index].at!=ns*1000000000ULL){
      std::cerr<<"Main RESET callback ns="<<ns<<'/'<<(index<expected.size()?expected[index].at/1000000000ULL:0)<<'\n';
@@ -437,9 +498,13 @@ int main(int argc,char** argv)try{
     // set_state_synced queues ASSERT/CLEAR on one input-line timer. A
     // second RESET callback before delivery appends to that existing queue;
     // it does not schedule another timer at its later private CPU clock.
-    boost(expected[index++]);reset_requests.push_back(reset_requests.empty()?ns:reset_requests.front());++reset_requests_sent;maincpu.abort_grant(ns);
+    if(owns_boost){native_boost(ns);++index;}else boost(expected[index++]);reset_requests.push_back(reset_requests.empty()?ns:reset_requests.front());++reset_requests_sent;maincpu.abort_grant(ns);
    };
    auto shared_check=[&](const Phase& p,bool apply){
+    if(sound_attached&&p.cpu==0&&p.write){
+     if(p.a>=0x140000&&p.a<0x150000&&(p.m&255))sound_cpu->check_native_host(g.index,p.ns,5,(p.a/2)&7,p.d&255);
+     else if(p.a>=0xe8000&&p.a<0xec000&&(((p.a/2)&15)==11||((p.a/2)&15)==15))sound_cpu->check_native_host(g.index,p.ns,4,0,p.d&255);
+    }
     if(apply){++supplied_phases[{p.cpu,p.pc}];if(p.write)++supplied_writes[{p.cpu,p.pc}];}
     ++phases;if(c==0)latest_main=p.ns;else if(latest_main>p.ns)++leads;
     const bool shared=p.space==0&&(p.cpu==0?(p.a>=0x280000&&p.a<0x2c0000):(p.a>=0x80000&&p.a<0xc0000));
@@ -499,6 +564,23 @@ int main(int argc,char** argv)try{
    }
    const auto cycle=c==2?XBoardBusArbiter::SOUND_CYCLE:XBoardBusArbiter::CYCLE;
    auto supplied_end=port->state().local[c]+r.ran*cycle;
+   if(c==2&&sound_cpu){
+    sound_cpu->observer=[&](const XBoardSoundCpu::Event& e,uint64_t ns){
+     unsigned kind=0;const auto k=unsigned(e.kind);
+     if(k<2&&e.address>=0xf000&&e.address<0xf800)kind=k?5:4;
+     else if(k==2&&e.address<0x80)kind=e.address<0x40?2:1;
+     else if(k==3&&e.address<0x40)kind=3;
+     if(!kind||sound_events.empty()||g.index<sound_events.front().grant||g.index>last_capture_group)return;
+     if(sound_cursor>=sound_events.size())throw std::runtime_error("extra native joint sound device transaction");
+     const auto& expected=sound_events[sound_cursor++];
+     if(expected.grant!=g.index||expected.ns!=ns||expected.kind!=kind||expected.pc!=e.pc||expected.a!=e.address||expected.d!=e.data)throw std::runtime_error("native joint sound device phase differs");
+     if(kind==1)++sound_acknowledges;
+    };
+    const auto ran=sound_cpu->run(g.index,start_ns,budget);
+    const auto actual=port->state().local[c]+ran*cycle;
+    if(actual!=supplied_end)throw std::runtime_error("native joint sound completion differs");
+    return actual;
+   }
    if(c==2){while(sound_cursor<sound_events.size()&&sound_events[sound_cursor].grant==g.index){const auto e=sound_events[sound_cursor++];
     if(e.ns<start_ns||XBoardBusArbiter::Time(e.ns)*1000000000ULL>supplied_end)throw std::runtime_error("sound transaction outside granted CPU interval");
     if(e.kind==1){const auto actual=mainbus.compare_timer.sound_read();
@@ -512,6 +594,12 @@ int main(int argc,char** argv)try{
    }
    return all_native&&any_native?XBoardBusArbiter::Time(end_ns)*1000000000ULL:supplied_end;
   },g.enabled);
+  if(owns_boost){
+   auto expected=g.before;for(const auto& r:g.runs)expected.insert(expected.end(),r.boosts.begin(),r.boosts.end());
+   expected.erase(std::remove_if(expected.begin(),expected.end(),[](const Boost& b){return b.quantum==XBoardBusArbiter::DEFAULT_QUANTUM;}),expected.end());
+   if(expected.size()!=produced_boosts.size())throw std::runtime_error("native boost owner count differs");
+   for(size_t i=0;i<expected.size();++i)if(expected[i].at!=produced_boosts[i].at||expected[i].quantum!=produced_boosts[i].quantum||expected[i].duration!=produced_boosts[i].duration)throw std::runtime_error("native boost owner timestamp differs");
+  }
   for(auto r:g.runs)if(r.present){++grant_bad;ok=false;}
   if(cursor!=events.size()){phase_bad+=events.size()-cursor;ok=false;}
   ok&=result==g.end;
@@ -532,6 +620,8 @@ int main(int argc,char** argv)try{
   if(!in)throw std::runtime_error("invalid scheduler trace fields");
  }
  if(active||cpu_masks!=3*groups||capture_pending)throw std::runtime_error("incomplete grant or bus capture");
+ if(sound_cpu){sound_cpu->finish(groups);sound_cpu->report();}
+ if(native_deadlines){if(!native_heads)throw std::runtime_error("no native device head coverage");for(const auto& events:timer_assertions)if(!events.empty())throw std::runtime_error("missing native per-owner timer callbacks");std::cout<<"Native device deadlines: "<<native_heads<<" head assertions identical; periodic callback timestamps identical ";for(auto n:device_timers.deliveries)std::cout<<n<<' ';std::cout<<'\n';}
  if(require_reset&&(!reset_sequences||reset_requests_sent!=2*reset_deliveries||!reset_requests.empty()))
   throw std::runtime_error("missing completed joint RESET coverage");
  std::cout<<"CPU grant groups: "<<groups-failures<<" of "<<groups<<" identical, "<<failures<<" different, 0 skipped; "<<grants<<" CPU grants, "<<empty<<" groups without captured program phases\nMain/sub bus arbitration: "<<phases<<" phases in computed CPU order, "<<phase_bad<<" undelivered; "<<leads<<" cross-CPU local-clock leads; "<<boosts<<" computed quantum requests; "<<budget_bad<<" budget differences, "<<grant_bad<<" missing grants\n";

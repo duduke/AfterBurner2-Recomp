@@ -82,7 +82,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["context", "run"])
     parser.add_argument("targets", nargs="*", help="Make targets, or one profile: " + ", ".join(PROFILES))
-    parser.add_argument("-j", "--jobs", type=int, default=min(4, os.cpu_count() or 1))
+    parser.add_argument("-j", "--jobs", type=int, default=min(8, os.cpu_count() or 1))
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("jobs must be positive")

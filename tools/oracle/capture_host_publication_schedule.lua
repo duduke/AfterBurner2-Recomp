@@ -30,6 +30,7 @@ local sprite_display,road_display=string.rep('\0',4096),string.rep('\0',4096)
 local road_control=0
 local sound=mainprogress and assert(io.open(os.getenv('AB2_ORACLE_OUT')..'.sound','wb')) or nil
 if sound then sound:write('AB2SND01')end
+if os.getenv('AB2_JOINT_SOUND_EXECUTION')=='1' then dofile(os.getenv('AB2_ORACLE_SCRIPT_DIR')..'/capture_sound_execution.lua')end
 local guard=false
 local frames,groups,phases=0,0,0
 local active=nil;local ready=false;local finish=false;local finish_user_serial=nil

@@ -14,6 +14,7 @@ SRCS = \
 	src/main/hwvideo/hwpalette.cpp \
 	src/main/hwvideo/screen.cpp \
 	src/main/hwaudio/arcade_audio.cpp \
+	src/third_party/ymfm/ymfm_opm.cpp \
 	src/main/hwaudio/xboard_sound_cpu.cpp \
 	src/main/hwaudio/soundchip.cpp \
 	src/main/hwaudio/segapcm.cpp \
@@ -909,8 +910,8 @@ oracle-host-generated-check:
 .PHONY: oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full oracle-caller-host oracle-host-generated-check
 
 # Both native publication streams share computed grants and one RAM instance.
-build/oracle_publication_schedule: $(wildcard src/main/hwvideo/*.hpp) $(filter src/main/hwvideo/%,$(SRCS)) tests/oracle_publication_schedule.cpp src/main/engine/omainjointmanifest.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
-	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp $(filter src/main/hwvideo/%,$(SRCS)) $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
+build/oracle_publication_schedule: $(wildcard src/main/hwvideo/*.hpp) $(filter src/main/hwvideo/%,$(SRCS)) tests/oracle_publication_schedule.cpp tests/sound_execution_fixture.hpp src/main/hwaudio/xboard_speaker.hpp src/main/hwaudio/xboard_sound_cpu.cpp src/main/hwaudio/xboard_sound_cpu.hpp src/main/hwaudio/xboard_pcm.hpp src/main/hwaudio/xboard_ym_timers.hpp src/main/hwaudio/xboard_audio_deadlines.hpp src/main/hwmath/xboard_device_deadlines.hpp $(wildcard src/third_party/ymfm/*) src/third_party/z80.h src/main/engine/omainjointmanifest.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/hwaudio/xboard_sound_cpu.cpp src/third_party/ymfm/ymfm_opm.cpp src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp $(filter src/main/hwvideo/%,$(SRCS)) $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
 
 oracle-capture-publication-schedule: oracle-scheduler-probe
 	@mkdir -p build/oracle
@@ -1036,3 +1037,101 @@ oracle-joint-video-mutations: oracle-joint-video oracle-joint-video-directed
 	python3 tools/oracle/check_joint_video_mutations.py
 oracle-test: oracle-joint-video-mutations
 .PHONY: oracle-joint-video-mutations
+
+# Continuous Z80 execution; captured bus values/times are assertions only.
+build/oracle_sound_execution: tests/oracle_sound_execution.cpp tests/sound_execution_fixture.hpp src/main/hwaudio/xboard_speaker.hpp src/main/hwaudio/xboard_sound_cpu.cpp src/main/hwaudio/xboard_sound_cpu.hpp src/main/hwaudio/xboard_ym_timers.hpp src/main/hwaudio/xboard_audio_deadlines.hpp src/main/hwmath/xboard_device_deadlines.hpp $(wildcard src/third_party/ymfm/*) src/main/hwaudio/xboard_pcm.hpp src/third_party/z80.h
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_sound_execution.cpp src/main/hwaudio/xboard_sound_cpu.cpp src/third_party/ymfm/ymfm_opm.cpp -o $@
+
+oracle-capture-sound-execution: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/sound_execution.txt" tools/oracle/capture.sh tools/oracle/capture_sound_execution.lua build/oracle/sound_execution.bin 16 5
+
+oracle-capture-sound-execution-full: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/sound_execution_full.txt" AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_sound_execution.lua build/oracle/sound_execution_full.bin 600 15
+
+oracle-sound-execution-full: build/oracle_sound_execution
+	./build/oracle_sound_execution build/oracle/sound_execution_full.bin build/oracle/sound_execution_full.txt
+
+oracle-capture-sound-irq: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/sound_irq.txt" AB2_Z80_IRQ_TRACE="$(CURDIR)/build/oracle/sound_irq.bin.irq" AB2_SOUND_IRQ_FIXTURE=1 tools/oracle/capture.sh tools/oracle/capture_sound_execution.lua build/oracle/sound_irq.bin 4 5
+
+oracle-sound-execution: build/oracle_sound_execution
+	./build/oracle_sound_execution build/oracle/sound_execution.bin build/oracle/sound_execution.txt
+
+oracle-sound-irq: build/oracle_sound_execution
+	./build/oracle_sound_execution build/oracle/sound_irq.bin build/oracle/sound_irq.txt
+
+oracle-capture-joint-sound-full: oracle-scheduler-probe oracle-joint-main-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_sound_full.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_sound_full.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_sound_full.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_sound_full.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_sound_full.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_JOINT_SOUND_EXECUTION=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_sound_full.bin 600 30
+
+oracle-joint-sound-full: build/oracle_publication_schedule oracle-joint-main-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_sound_full.bin build/oracle/joint_sound_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-sound
+
+oracle-sound-execution-mutations: oracle-sound-execution oracle-sound-execution-full oracle-sound-irq
+	python3 tools/oracle/check_sound_execution_mutations.py
+
+oracle-test: oracle-sound-execution-mutations oracle-joint-sound-full
+.PHONY: oracle-capture-sound-execution oracle-capture-sound-irq oracle-sound-execution oracle-sound-irq oracle-capture-joint-sound-full oracle-joint-sound-full oracle-sound-execution-mutations
+
+.PHONY: oracle-capture-sound-execution-full oracle-sound-execution-full
+
+# Host synchronization cost only; no ROMs, captured clocks or acceptance skips.
+build/cpu_continuation_benchmark: tools/benchmark_cpu_continuation.cpp src/main/hwmath/xboard_cpu_continuation.hpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tools/benchmark_cpu_continuation.cpp -o $@
+benchmark-cpu-continuation: build/cpu_continuation_benchmark
+	./build/cpu_continuation_benchmark
+.PHONY: benchmark-cpu-continuation
+
+# All native device heads and raw audio batches are assertions, not providers.
+oracle-capture-joint-audio-full: oracle-scheduler-probe oracle-joint-main-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_audio_full.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_audio_full.devices" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/joint_audio_full.bin.audio" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_audio_full.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_audio_full.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_audio_full.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_JOINT_SOUND_EXECUTION=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_audio_full.bin 600 30
+oracle-joint-audio-full: build/oracle_publication_schedule oracle-joint-main-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_audio_full.bin build/oracle/joint_audio_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines
+.PHONY: oracle-capture-joint-audio-full oracle-joint-audio-full
+
+build/audio_deadline_regression: tests/audio_deadline_regression.cpp src/main/hwaudio/xboard_audio_deadlines.hpp src/main/hwmath/xboard_device_deadlines.hpp src/main/hwaudio/xboard_pcm.hpp $(wildcard src/third_party/ymfm/*)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/audio_deadline_regression.cpp src/third_party/ymfm/ymfm_opm.cpp -o $@
+test-audio-deadlines: build/audio_deadline_regression
+	./build/audio_deadline_regression
+test: test-audio-deadlines
+.PHONY: test-audio-deadlines
+
+oracle-capture-sound-audio-irq: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/sound_audio_irq.txt" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/sound_audio_irq.bin.audio" AB2_Z80_IRQ_TRACE="$(CURDIR)/build/oracle/sound_audio_irq.bin.irq" AB2_SOUND_IRQ_FIXTURE=1 tools/oracle/capture.sh tools/oracle/capture_sound_execution.lua build/oracle/sound_audio_irq.bin 4 5
+oracle-capture-sound-audio-timer-b: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/sound_audio_timer_b.txt" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/sound_audio_timer_b.bin.audio" AB2_Z80_IRQ_TRACE="$(CURDIR)/build/oracle/sound_audio_timer_b.bin.irq" AB2_SOUND_TIMER_B_FIXTURE=1 tools/oracle/capture.sh tools/oracle/capture_sound_execution.lua build/oracle/sound_audio_timer_b.bin 4 5
+oracle-sound-audio-irq: build/oracle_sound_execution
+	./build/oracle_sound_execution build/oracle/sound_audio_irq.bin build/oracle/sound_audio_irq.txt --native-audio
+oracle-sound-audio-timer-b: build/oracle_sound_execution
+	./build/oracle_sound_execution build/oracle/sound_audio_timer_b.bin build/oracle/sound_audio_timer_b.txt --native-audio
+.PHONY: oracle-capture-sound-audio-irq oracle-capture-sound-audio-timer-b oracle-sound-audio-irq oracle-sound-audio-timer-b
+
+oracle-audio-deadline-mutations: oracle-joint-audio-full oracle-sound-audio-irq oracle-sound-audio-timer-b
+	python3 tools/oracle/check_audio_deadline_mutations.py
+oracle-test: oracle-audio-deadline-mutations
+.PHONY: oracle-audio-deadline-mutations
+
+# Exact MAME default speaker resampling/mix, captures remain local.
+build/oracle_speaker: tests/oracle_speaker.cpp src/main/hwaudio/xboard_speaker.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_speaker.cpp -o $@
+oracle-speaker: build/oracle_speaker
+	./build/oracle_speaker build/oracle/joint_speaker_full.bin.audio
+.PHONY: oracle-speaker
+
+oracle-joint-speaker-full: build/oracle_publication_schedule oracle-joint-main-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_speaker_full.bin build/oracle/joint_speaker_full.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker
+.PHONY: oracle-joint-speaker-full
+
+oracle-speaker-edges: build/oracle_speaker
+	./build/oracle_speaker build/oracle/speaker_edges
+oracle-capture-speaker-edges: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/speaker_edges" tools/oracle/capture.sh tools/oracle/capture_speaker_edges.lua build/oracle/speaker_edges.done 64 5
+oracle-capture-joint-speaker-full: oracle-scheduler-probe oracle-joint-main-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_speaker_full.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_speaker_full.devices" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/joint_speaker_full.bin.audio" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_speaker_full.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_speaker_full.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_speaker_full.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_JOINT_SOUND_EXECUTION=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_speaker_full.bin 600 30
+.PHONY: oracle-speaker-edges oracle-capture-speaker-edges oracle-capture-joint-speaker-full
+
+oracle-speaker-mutations: oracle-speaker oracle-speaker-edges oracle-joint-speaker-full
+	python3 tools/oracle/check_speaker_mutations.py
+oracle-test: oracle-speaker-mutations
+.PHONY: oracle-speaker-mutations

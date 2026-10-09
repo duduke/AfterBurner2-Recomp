@@ -34,6 +34,7 @@ with tempfile.TemporaryDirectory(prefix='joint-video-mutations-',dir=root/'build
    paths[path]=str(local)
   binary=overlay/name
   cmd=[paths.get(arg,arg) for arg in commands[0]]
+  cmd+=['-Itests'] # Temporary oracle copies retain shared test-header includes.
   cmd[cmd.index('-o')+1]=str(binary)
   subprocess.run(cmd,cwd=root,check=True,capture_output=True)
   capture='joint_video_directed' if directed else ('joint_main_progress' if name in ('latch-line','text-palette') else 'joint_main_progress_full')
