@@ -70,6 +70,11 @@ batches from continuous state. Device head times and boosts are assertions
 inside the joint CPU window; pre-window boot frontiers remain supplied.
 Native Stage 1 remains active. See the final `ENGINE_NOTES.md` section for all boundaries.
 
+The later cold-native task-5 gate below supersedes startup boundaries for
+its own continuous corpus. Earlier post-boundary contracts above and in
+tasks 1–4 retain their original fixtures. Whole-game acceptance and the
+reconstruction-loop replacement remain task 6.
+
 ## Next tasks for whole-host acceptance
 
 Complete these in dependency order; each port needs MAME comparisons,
@@ -152,31 +157,48 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    supplement the retained joint stream; they do not establish every PC or
    branch outcome in a continuous game, every operand/flag combination,
    cold boot, complete credits or all reset sequences. No mismatch is
-   skipped or repaired with later CPU context. Next is task 5.
-5. **Remove or explicitly bound fixture edges.** The cold bus-only gate now
-   checks 33,234 grants, 418,054 natural shared reads, 64 labelled mirror
-   probes, byte lanes and RAM retention across six tagged sub reset entries;
-   eight mutations fail. Its CPU producers/completions and device frontiers
-   remain supplied. Extend native instruction
-   execution through cold boot and the initial partial sub ISR (46 supplied
-   phases), and beyond the two parked final continuations. Prove boot port,
-   bank/render and CPU initialization rather than promoting the current
-   fixtures to startup acceptance. Retain only the explicitly defined ROM
-   and external physical-input fixtures in the final acceptance contract.
-6. **Whole-host acceptance and game integration.** Audio subsystem wiring
-   into Stage 1 is complete and independently verified; the reconstruction
-   gameplay producers remain outside that audio contract. Run the complete joint
-   CPU/device/video/audio oracle with native grants, deadlines, IRQs and
-   producers, zero supplied execution/state replacements/read seeds, and
-   zero differences/skips within the declared coverage. Include directed
-   mutations for each owner and expanded gameplay/reset coverage. Only then
-   replace the reconstruction loop with the verified host and rerun ROM-free,
-   Stage 1, all oracle, pixel/audio and headless integration checks.
+   skipped or repaired with later CPU context. Startup closure is task 5 below.
+5. **Remove or explicitly bound fixture edges — accepted for the cold
+   observed corpus.** The original cold bus-only mirror/byte-lane/reset
+   fixtures remain required. The new native 603-frame gate starts CPU,
+   RAM/math, I/O, video banks and renderer latches at power-on; it executes
+   352 additional main instructions and five startup exception sites.
+   All 21,722,588 main/sub records, 56,831,338 phases, 43,223,040 RGB pixels
+   and 1,378,296 independently computed device heads match, zero
+   differences/skips. It supplies zero CPU contexts, execution phases,
+   producer writes, boot sound host writes or initial latch state. All
+   10,686,524 native Z80 transactions and 484,801 mixed stereo frames match.
+   An independent overlap check matches the old 46 supplied initial ISR
+   phases and both final CPU boundaries, then requires later native
+   instruction/IRQ snapshots without a reset replacement. Eight startup
+   mutations reject. Only ROMs and declared external physical input frames/
+   DIP switches initialize the cold contract. Its finite machine stop can
+   leave pending native instruction debt and one new sub ISR active; those
+   future phases are outside observation, never supplied. Alternate boot/
+   reset/suspend states, operands, branch outcomes, full credits and live
+   game integration remain task 6. Older post-boundary and directed fixtures
+   retain their explicit inputs and exclusions; they are not replaced.
+6. **Whole-host acceptance and game integration — accepted for the declared
+   cold/expanded corpora (2026-10-09).** The reusable `XBoardHost` dispatches
+   instructions autonomously and owns native grants, deadlines, IRQs and
+   producers. `oracle_whole_host` passively asserts complete CPU/device/video/
+   audio streams, with zero supplied execution/state replacements/read seeds
+   and zero differences/skips. The expanded 781-frame physical input endpoint
+   and weapon-combination run matches 28,128,435 CPU snapshots, 73,593,282 bus
+   phases, 55,982,080 RGB pixels and 627,841 stereo frames. Fifteen owner
+   mutations reject, including a speaker gain mutation against nonzero audio
+   in the full gameplay fixture (the focused cold window is silent).
+   The application now uses this verified host through `XBoardGame`; native
+   781-frame input/RGB/audio and restart-to-fresh equality checks supplement
+   the retained Stage 1 reconstruction suite. All earlier oracle fixtures
+   remain required. Finite machine-stop continuations, later full-credit
+   progression, additional operands/branches, alternate DIP settings and
+   arbitrary hardware reset/suspension remain explicit exclusions.
 
 The observed main IRQ/caller stream and sub reset startup are already
 verified; these tasks extend coverage and close remaining ownership rather
-than reopening those completed corpus checks. Whole-host acceptance remains
-pending until the final contract and its exclusions are explicit.
+than reopening those completed corpus checks. The whole-host contract is accepted within those finite corpora;
+Phase 3e must expand coverage beyond the stated exclusions.
 
 Phase 3c supplies shared arcade RAM, the interrupt/caller handshake, 30 Hz
 object scheduling, palette routines, request publication, the sub CPU sprite

@@ -27,6 +27,8 @@ SRCS = \
 # Verified road/scenery and shared bus; ADC awaits the flight/input port.
 SRCS += src/main/engine/omainhost.cpp src/main/engine/omainirqservice.cpp src/main/engine/omainirqcallee.cpp src/main/engine/omaininput.cpp src/main/engine/omainplayer.cpp src/main/engine/omaindamage.cpp src/main/engine/omainsequence.cpp src/main/engine/omainworld.cpp src/main/engine/omainweapons.cpp src/main/engine/omainobjects.cpp src/main/engine/omainsound.cpp src/main/engine/omainpalette.cpp src/main/engine/omainframe.cpp src/main/engine/omainsprites.cpp src/main/engine/osubsprites.cpp src/main/engine/subbus.cpp src/main/engine/mainbus.cpp src/main/engine/omainadc.cpp src/main/engine/oscenery.cpp src/main/engine/ostagesetup.cpp src/main/engine/osubroad.cpp
 
+SRCS += src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
+
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
 -include $(DEPS)
@@ -35,7 +37,7 @@ TARGET = afterburner2
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) -o $(TARGET) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OBJS) -pthread -o $(TARGET) $(LIBS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
@@ -49,7 +51,7 @@ clean:
 TEST_SRCS = tests/engine_regression.cpp $(filter src/main/engine/% src/main/hwvideo/%,$(SRCS))
 
 # Dependency files include transitive headers and generated .inc files.
-CHECK_SRCS = $(sort $(TEST_SRCS) tests/mainbus_regression.cpp tests/xboard_timeline_regression.cpp tests/xboard_irq_lines_regression.cpp tests/cpu_continuation_regression.cpp tests/sound_cpu_regression.cpp tests/stage1_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+CHECK_SRCS = $(sort $(TEST_SRCS) tests/mainbus_regression.cpp tests/xboard_timeline_regression.cpp tests/xboard_irq_lines_regression.cpp tests/cpu_continuation_regression.cpp tests/sound_cpu_regression.cpp tests/stage1_integration.cpp tests/whole_host_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
 CHECK_OBJS = $(addprefix build/check_obj/,$(CHECK_SRCS:.cpp=.o))
 check_objs = $(addprefix build/check_obj/,$(1:.cpp=.o))
 -include $(CHECK_OBJS:.o=.d)
@@ -910,7 +912,7 @@ oracle-host-generated-check:
 .PHONY: oracle-capture-caller-host-short oracle-capture-caller-host-directed oracle-capture-caller-host-full oracle-caller-host oracle-host-generated-check
 
 # Both native publication streams share computed grants and one RAM instance.
-build/oracle_publication_schedule: $(wildcard src/main/hwvideo/*.hpp) $(filter src/main/hwvideo/%,$(SRCS)) tests/oracle_publication_schedule.cpp tests/sound_execution_fixture.hpp src/main/hwaudio/xboard_speaker.hpp src/main/hwaudio/xboard_sound_cpu.cpp src/main/hwaudio/xboard_sound_cpu.hpp src/main/hwaudio/xboard_pcm.hpp src/main/hwaudio/xboard_ym_timers.hpp src/main/hwaudio/xboard_audio_deadlines.hpp src/main/hwmath/xboard_device_deadlines.hpp $(wildcard src/third_party/ymfm/*) src/third_party/z80.h src/main/engine/omainjointmanifest.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
+build/oracle_publication_schedule: $(wildcard src/main/hwvideo/*.hpp) $(filter src/main/hwvideo/%,$(SRCS)) tests/oracle_publication_schedule.cpp tests/sound_execution_fixture.hpp src/main/hwaudio/xboard_speaker.hpp src/main/hwaudio/xboard_sound_cpu.cpp src/main/hwaudio/xboard_sound_cpu.hpp src/main/hwaudio/xboard_pcm.hpp src/main/hwaudio/xboard_ym_timers.hpp src/main/hwaudio/xboard_audio_deadlines.hpp src/main/hwmath/xboard_device_deadlines.hpp $(wildcard src/third_party/ymfm/*) src/third_party/z80.h src/main/engine/omainjointmanifest.hpp src/main/engine/omainbootschedule.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
 	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_publication_schedule.cpp src/main/hwaudio/xboard_sound_cpu.cpp src/third_party/ymfm/ymfm_opm.cpp src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp $(filter src/main/hwvideo/%,$(SRCS)) $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
 
 oracle-capture-publication-schedule: oracle-scheduler-probe
@@ -1200,3 +1202,79 @@ oracle-capture-cpu-coverage-legacy: oracle-scheduler-probe oracle-joint-speaker-
 	python3 tools/oracle/plan_cpu_coverage.py build/oracle/joint_speaker_full.bin.coverage.json build/oracle/cpu_coverage_plan_legacy.lua --legacy --main-image build/oracle/coverage-main.bin --sub-image build/oracle/coverage-sub.bin
 	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/build/oracle/cpu_coverage_plan_legacy.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua build/oracle/cpu_coverage_expanded.bin 700 15
 .PHONY: oracle-capture-cpu-coverage-legacy
+
+# Cold CPU/bank capture, including reset vectors and every instruction snapshot.
+oracle-capture-joint-cold: oracle-scheduler-probe oracle-cold-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_cold.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_cold.devices" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/joint_cold.bin.audio" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_cold.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_cold.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_cold.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_JOINT_SOUND_EXECUTION=1 AB2_ORACLE_START_FRAME=0 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_cold.bin 120 15
+
+.PHONY: oracle-capture-joint-cold
+
+oracle-joint-cold: build/oracle_publication_schedule oracle-cold-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_cold.bin build/oracle/joint_cold.txt --require-cold --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker
+
+.PHONY: oracle-joint-cold
+
+# Full cold stream extends beyond the old 600-frame terminal grants.
+oracle-capture-joint-cold-full: oracle-scheduler-probe oracle-cold-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_cold_full.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_cold_full.devices" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/joint_cold_full.bin.audio" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_cold_full.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_cold_full.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_cold_full.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_JOINT_SOUND_EXECUTION=1 AB2_ORACLE_START_FRAME=0 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_cold_full.bin 602 30
+
+
+oracle-joint-cold-full: build/oracle_publication_schedule oracle-cold-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_cold_full.bin build/oracle/joint_cold_full.txt --require-reset --require-cold --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker
+
+oracle-joint-cold-mutations: oracle-joint-cold
+	python3 tools/oracle/check_joint_cold_mutations.py
+
+.PHONY: oracle-capture-joint-cold-full oracle-joint-cold-full oracle-joint-cold-mutations
+
+
+oracle-joint-cold-boundaries: oracle-joint-cold-full
+	python3 tools/oracle/check_joint_cold_boundaries.py build/oracle/joint_cold_full.bin build/oracle/joint_speaker_full.bin
+
+oracle-test: oracle-joint-cold-mutations oracle-joint-cold-boundaries
+.PHONY: oracle-joint-cold-boundaries
+
+
+oracle-cold-generated-check:
+	python3 tools/build_rom_image.py maincpu build/oracle/cold_main_image.bin
+	python3 tools/generate_input_schedule.py build/oracle/cold_main_image.bin --graph boot --check
+.PHONY: oracle-cold-generated-check
+
+oracle-capture-whole-host-expanded: oracle-scheduler-probe oracle-cold-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/whole_host_expanded.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/whole_host_expanded.devices" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/whole_host_expanded.bin.audio" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/whole_host_expanded.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/whole_host_expanded.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/whole_host_expanded.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INPUT_ENDPOINTS=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_JOINT_SOUND_EXECUTION=1 AB2_ORACLE_START_FRAME=0 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/whole_host_expanded.bin 780 35
+.PHONY: oracle-capture-whole-host-expanded
+
+build/oracle_whole_host: $(wildcard src/main/hwvideo/*.hpp src/main/hwmath/*.hpp src/main/hwaudio/*.hpp src/main/engine/*.hpp) $(filter src/main/hwvideo/%,$(SRCS)) tests/oracle_whole_host.cpp src/main/engine/xboard_host.hpp src/main/hwaudio/xboard_sound_board.hpp src/main/hwaudio/xboard_speaker.hpp src/main/hwaudio/xboard_sound_cpu.cpp src/main/hwaudio/xboard_sound_cpu.hpp src/main/hwaudio/xboard_pcm.hpp src/main/hwaudio/xboard_ym_timers.hpp src/main/hwaudio/xboard_audio_deadlines.hpp src/main/hwmath/xboard_device_deadlines.hpp $(wildcard src/third_party/ymfm/*) src/third_party/z80.h src/main/engine/omainjointmanifest.hpp src/main/engine/omainbootschedule.hpp src/main/hwmath/xboard_cpu_continuation.hpp $(CALLER_OBJS) src/main/engine/osubpublication.cpp src/main/engine/osubpublication.hpp src/main/engine/osubprogress.cpp src/main/engine/osubprogress.inc src/main/engine/osubprogress_manifest.hpp src/main/engine/osubirq.cpp src/main/engine/osubirq.hpp src/main/hwmath/xboard_timeline.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_whole_host.cpp src/main/hwaudio/xboard_sound_cpu.cpp src/third_party/ymfm/ymfm_opm.cpp src/main/engine/osubpublication.cpp src/main/engine/osubprogress.cpp src/main/engine/osubirq.cpp $(filter src/main/hwvideo/%,$(SRCS)) $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
+
+oracle-whole-host: build/oracle_whole_host
+	./build/oracle_whole_host build/oracle/joint_cold.bin build/oracle/joint_cold.txt
+
+oracle-whole-host-full: build/oracle_whole_host
+	./build/oracle_whole_host build/oracle/joint_cold_full.bin build/oracle/joint_cold_full.txt
+
+oracle-whole-host-expanded: build/oracle_whole_host
+	./build/oracle_whole_host build/oracle/whole_host_expanded.bin build/oracle/whole_host_expanded.txt
+.PHONY: oracle-whole-host oracle-whole-host-full oracle-whole-host-expanded
+
+oracle-whole-host-mutations: oracle-whole-host
+	python3 tools/oracle/check_whole_host_mutations.py
+.PHONY: oracle-whole-host-mutations
+
+build/whole_host_integration: $(call check_objs,tests/whole_host_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+
+verify-whole-host: build/whole_host_integration
+	./build/whole_host_integration
+.PHONY: verify-whole-host
+
+oracle-whole-host-speaker-producer: build/oracle_whole_host
+	python3 tools/oracle/check_whole_host_mutations.py speaker producer
+.PHONY: oracle-whole-host-speaker-producer
+
+oracle-test: oracle-whole-host-mutations oracle-whole-host-full oracle-whole-host-expanded
+verify-stage1: verify-whole-host
+
+verify-whole-host-headless: all
+	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 120
+.PHONY: verify-whole-host-headless

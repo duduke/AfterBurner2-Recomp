@@ -11,6 +11,7 @@
 #include "engine/mainbus.hpp"
 #include "engine/omainirqservice.hpp"
 #include "engine/omainjointmanifest.hpp"
+#include "engine/omainbootschedule.hpp"
 #include "engine/omainirqwrapperschedule.hpp"
 #include "engine/osubirq.hpp"
 #include "hwvideo/hwsprites.hpp"
@@ -27,15 +28,15 @@ uint64_t number(std::ifstream& f,unsigned n){uint64_t v=0;while(n--){auto c=f.ge
 unsigned cpu(const std::string& tag){if(tag==":mainpcb:maincpu")return 0;if(tag==":mainpcb:subcpu")return 1;if(tag==":mainpcb:soundcpu")return 2;throw std::runtime_error("unexpected grant CPU");}
 struct Snapshot {uint32_t pc{},sp{};uint64_t ns{};uint16_t sr{};uint32_t usp{},ssp{};uint64_t bias{};unsigned kind{};OMainObjects::Registers registers;bool present=false;};
 struct Phase{unsigned cpu;uint64_t ns;bool write;uint32_t a;uint16_t d,m;uint32_t pc;unsigned space{};Snapshot snapshot;};
-bool mainprogress=false;
-bool main_rte(uint32_t pc){return pc==0x1466a||pc==0x14672||pc==0x147c6||pc==0x147e6||pc==0x14842;}
+bool mainprogress=false,coldprogress=false;
+bool main_rte(uint32_t pc){return pc==0x1466a||pc==0x14672||pc==0x147c6||pc==0x147e6||pc==0x14842||pc==0x144ea||pc==0x14828;}
 bool publication_bounded(unsigned cpu,uint32_t pc){
  if(cpu==0){switch(pc){case 0x1458a:case 0x14590:case 0x14594:case 0x1459c:case 0x145a0:case 0x145a4:case 0x145a8:case 0x145ac:case 0x145b0:case 0x145b2:case 0x145b6:case 0x145b8:case 0x14856:case 0x1485c:case 0x1485e:case 0x14866:case 0x1486a:case 0x1486e:case 0x14876:case 0x14878:return true;}}
  if(cpu==1&&(sub_instruction(pc)||OSubIrq::startup_instruction(pc)))return true;
  if(cpu==1){switch(pc){case 0x420:case 0x428:case 0x55e:case 0x562:case 0x568:case 0x56e:case 0x570:case 0x574:case 0x578:case 0x57c:case 0x580:case 0x586:case 0x58a:case 0x58e:case 0x592:case 0x432:case 0x436:case 0x43a:case 0x43e:case 0x442:case 0x446:case 0x44a:case 0x44e:case 0x452:case 0x456:case 0x458:case 0x556:case 0x55a:case 0x55c:case 0x640:case 0x646:return true;}}
  return false;
 }
-bool bounded(unsigned cpu,uint32_t pc){return publication_bounded(cpu,pc)||(cpu==0&&mainprogress&&main_joint_instruction(pc));}
+bool bounded(unsigned cpu,uint32_t pc){return publication_bounded(cpu,pc)||(cpu==0&&mainprogress&&(main_joint_instruction(pc)||(coldprogress&&(main_boot_instruction(pc)||main_rte(pc)||pc==0x13820||pc==0x13884||pc==0x144f4))));}
 using Time=XBoardBusArbiter::Time;
 // Probe timestamps are the low 64 attoseconds. Decode against source chronology,
 // never against the native scheduler being tested. Adjacent records are <9 s apart.
@@ -53,14 +54,16 @@ struct Run{Time start{},target{};unsigned budget{},ran{};bool present=false;std:
 struct Group{uint64_t index{},quantum{};Time base{},deadline{},end{};bool outer=false;std::array<XBoardBusArbiter::Time,3> starts{};std::array<bool,3> enabled{};std::array<Run,3> runs;std::vector<Boost> before;};
 }
 int main(int argc,char** argv)try{
- std::ifstream f(argc>1?argv[1]:"build/oracle/publication_schedule.bin",std::ios::binary);char magic[8];if(!f.read(magic,8)||(memcmp(magic,"AB2ARB07",8)&&memcmp(magic,"AB2ARB08",8)&&memcmp(magic,"AB2ARB09",8)))throw std::runtime_error("invalid arbiter capture");
- const bool mainentries=!memcmp(magic,"AB2ARB09",8);
+ std::ifstream f(argc>1?argv[1]:"build/oracle/publication_schedule.bin",std::ios::binary);char magic[8];if(!f.read(magic,8)||(memcmp(magic,"AB2ARB07",8)&&memcmp(magic,"AB2ARB08",8)&&memcmp(magic,"AB2ARB09",8)&&memcmp(magic,"AB2ARB10",8)))throw std::runtime_error("invalid arbiter capture");
+ const bool cold=coldprogress=!memcmp(magic,"AB2ARB10",8);
+ const bool mainentries=cold||!memcmp(magic,"AB2ARB09",8);
  mainprogress=mainentries||!memcmp(magic,"AB2ARB08",8);
  bool require_video_rgb=false,require_video_fixture=false;
  bool native_sound=false,sound_attached=false,native_deadlines=false,require_speaker=false;
  bool reset_window=false,require_reset=false,require_main_irq=false,physical_main=false,require_main_closed=false,require_sub_continuity=false,require_video_banks=false,require_video_frontiers=false,require_sound_handshake=false,progress=false;
  for(int i=3;i<argc;++i){
-  if(!std::strcmp(argv[i],"--require-video-fixture"))require_video_fixture=true;
+  if(!std::strcmp(argv[i],"--require-cold")){if(!cold)throw std::runtime_error("cold acceptance requires AB2ARB10");}
+  else if(!std::strcmp(argv[i],"--require-video-fixture"))require_video_fixture=true;
   else if(!std::strcmp(argv[i],"--require-video-rgb")){require_video_rgb=true;require_video_frontiers=true;require_video_banks=true;physical_main=true;}
   else if(!std::strcmp(argv[i],"--reset-window")){reset_window=true;require_reset=true;}
   else if(!std::strcmp(argv[i],"--require-reset"))require_reset=true;
@@ -84,21 +87,27 @@ int main(int argc,char** argv)try{
  if(native_deadlines)sound_cpu->enable_audio(std::string(argv[1])+".audio");
  if(require_speaker){if(!native_deadlines)throw std::runtime_error("speaker requires native deadlines");sound_cpu->enable_speaker(std::string(argv[1])+".audio");}
  MainBus::Memory memory;MainBus mainbus(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,memory);auto& bus=mainbus.sub;
- if(!f.read(reinterpret_cast<char*>(memory.bytes.data()),0x10000))throw std::runtime_error("missing initial work/shared RAM");
+ MainBus::Memory initial;auto& capture_memory=cold?initial:memory;
+ if(!f.read(reinterpret_cast<char*>(capture_memory.bytes.data()),0x10000))throw std::runtime_error("missing initial work/shared RAM");
  if(mainprogress){
-  if(!f.read(reinterpret_cast<char*>(memory.bytes.data()+0x10000),MainBus::MEMORY_BYTES-0x10000))throw std::runtime_error("missing initial video RAM");
+  if(!f.read(reinterpret_cast<char*>(capture_memory.bytes.data()+0x10000),MainBus::MEMORY_BYTES-0x10000))throw std::runtime_error("missing initial video RAM");
   std::array<uint16_t,32> math;for(auto& v:math)v=number(f,2);
-  mainbus.mul.load(math[0],math[1]);bus.mul.load(math[16],math[17]);
-  for(unsigned base:{8u,24u}){uint16_t v[]={math[base],math[base+1],math[base+2],math[base+4],math[base+5],math[base+6]};if(base==8)mainbus.div.load(v);else bus.div.load(v);}
+  if(cold){for(unsigned i=0;i<8;++i)if(math[i]!=mainbus.mul.read(i)||math[8+i]!=mainbus.div.read(i)||math[16+i]!=bus.mul.read(i)||math[24+i]!=bus.div.read(i))throw std::runtime_error("cold arithmetic initialization differs");}
+  else {mainbus.mul.load(math[0],math[1]);bus.mul.load(math[16],math[17]);
+  for(unsigned base:{8u,24u}){uint16_t v[]={math[base],math[base+1],math[base+2],math[base+4],math[base+5],math[base+6]};if(base==8)mainbus.div.load(v);else bus.div.load(v);}}
   const auto buttons=uint8_t(number(f,1));mainbus.io[1].input=[buttons](unsigned p){return p==0?buttons:uint8_t(0xff);};
  }
+ if(cold&&capture_memory.bytes!=memory.bytes)throw std::runtime_error("cold RAM initialization differs");
+ unsigned cold_io_writes=0,cold_compare_writes=0;unsigned cold_io_masks=0;
  unsigned reads=0,read_bad=0,writes=0,shared_leads=0,external_writes=0,native_shared_writes=0;std::array<uint64_t,SubBus::SHARED_BYTES> main_write_ns{};
  std::ifstream video(std::string(argv[1])+".video",std::ios::binary);unsigned video_banks=0,video_controls=0,video_frames=0;uint64_t video_start_ns=UINT64_MAX;
  HWSprites video_sprites;std::vector<uint16_t> sprite_pixels(320*224);
  if(video){char header[8];video.read(header,8);if(std::memcmp(header,"AB2VBN03",8))throw std::runtime_error("invalid joint video bank capture");
   video_sprites.init(roms.sprites.rom,roms.sprites.length);
-  if(!video.read(reinterpret_cast<char*>(memory.sprite_buffer.data()),4096)||!video.read(reinterpret_cast<char*>(memory.road_buffer.data()),4096))throw std::runtime_error("missing initial video banks");
-  memory.road_control=number(video,1);
+  auto& initial_banks=cold?initial:memory;
+  if(!video.read(reinterpret_cast<char*>(initial_banks.sprite_buffer.data()),4096)||!video.read(reinterpret_cast<char*>(initial_banks.road_buffer.data()),4096))throw std::runtime_error("missing initial video banks");
+  initial_banks.road_control=number(video,1);
+  if(cold&&(memory.sprite_buffer!=initial.sprite_buffer||memory.road_buffer!=initial.road_buffer||initial.road_control!=memory.road_control))throw std::runtime_error("cold hidden banks differ");
  }else if(require_video_banks)throw std::runtime_error("missing joint video bank capture");
  HWPalette video_palette(8192); HWRoad video_road(0x1700,0x1720,0x1780,-166); HWTiles video_tiles;
  Screen video_screen(320,224,video_palette,video_road,video_sprites,video_tiles);
@@ -174,20 +183,26 @@ int main(int argc,char** argv)try{
    while(sound.peek()!=EOF){SoundEvent e{};e.grant=number(sound,8);e.kind=number(sound,1);e.ns=number(sound,8);e.pc=number(sound,2);e.a=number(sound,2);e.d=number(sound,1);sound_events.push_back(e);}
   }else if(require_sound_handshake)throw std::runtime_error("missing joint sound capture");
  }
+ std::array<uint8_t,3> physical_switches{0xff,0xff,0xff};
  std::vector<std::pair<uint64_t,uint8_t>> physical_buttons;
  std::vector<std::pair<uint64_t,std::array<uint8_t,8>>> physical_analog;
  if(mainprogress){std::ifstream input(std::string(argv[1])+".inputs",std::ios::binary);char header[8];
-  if(!input.read(header,8)||(memcmp(header,"AB2PIN01",8)&&memcmp(header,"AB2PIN02",8)))throw std::runtime_error("missing joint physical inputs");
-  const bool analog=!memcmp(header,"AB2PIN02",8);
+  if(!input.read(header,8)||(memcmp(header,"AB2PIN01",8)&&memcmp(header,"AB2PIN02",8)&&memcmp(header,"AB2PIN03",8)))throw std::runtime_error("missing joint physical inputs");
+  if(cold&&memcmp(header,"AB2PIN03",8))throw std::runtime_error("cold capture requires physical DIP switches");
+  const bool analog=memcmp(header,"AB2PIN01",8)!=0;
+  if(!memcmp(header,"AB2PIN03",8))for(auto& v:physical_switches)v=number(input,1);
   while(input.peek()!=EOF){auto t=number(input,8);auto b=uint8_t(number(input,1));if(!physical_buttons.empty()&&t<=physical_buttons.back().first)throw std::runtime_error("nonmonotonic physical inputs");physical_buttons.emplace_back(t,b);
    if(analog){std::array<uint8_t,8> values;for(auto& v:values)v=number(input,1);physical_analog.emplace_back(t,values);}
   }
   if(physical_buttons.empty())throw std::runtime_error("empty joint physical inputs");
  }
  XBoardCpuContinuation maincpu,subcpu;std::array<XBoardCpuContinuation*,2> native{&maincpu,&subcpu};
- std::array<bool,2> running{},linked{};std::array<OMainIrqService::Result,2> states{};
+ std::array<bool,2> running{},linked{};
+ std::array<uint32_t,2> executing_pc{};
+ std::array<Snapshot,2> native_entry{};std::array<bool,2> entry_pending{};
+ bool main_reset_ready=cold;std::array<OMainIrqService::Result,2> states{};
  OMainIrqService mainport;OSubIrq subport;
- OSubIrq::State substate{},interrupted{},live_sub{};bool in_irq=false,reset_ready=false;
+ OSubIrq::State substate{},interrupted{},live_sub{};bool in_irq=false,reset_ready=cold;
  std::vector<uint64_t> reset_requests;unsigned reset_requests_sent=0,reset_deliveries=0,reset_sequences=0;
  std::function<void(uint64_t)> request_reset;
  uint32_t main_usp=0,main_ssp=0;uint64_t main_bias=0;bool main_bias_ready=false;
@@ -210,6 +225,7 @@ int main(int argc,char** argv)try{
  std::function<void(unsigned,bool,uint32_t,uint16_t,uint16_t,uint32_t,uint64_t)> observe;
  MainBus::Trace maintrace;mainbus.trace=&maintrace;
  uint64_t main_phase_ns=0;unsigned native_space=0;
+ if(cold)video_start_ns=0;
  XBoardVideoTiming video_timing;
  video_timing.latch=video_latch;
  video_timing.frame=[&](uint64_t t){Phase p{};p.ns=t;video_check(4,p);};
@@ -243,6 +259,7 @@ int main(int argc,char** argv)try{
   if(sound_attached)sound_cpu->queue_reset(main_phase_ns,!(d&1));
   video_display_write(main_phase_ns,enabled);if(running[0])maincpu.abort_grant(main_phase_ns);}};
  auto advance_board=[&](uint64_t ns,bool inclusive=true){
+  video_timing.advance_initial_latch(ns,inclusive);
   board_advancing=true;
   while(analog_cursor<physical_analog.size()&&physical_analog[analog_cursor].first<=ns){
    const auto& input=physical_analog[analog_cursor++];
@@ -277,7 +294,8 @@ int main(int argc,char** argv)try{
   }
   if(video.is_open())video_timing.scanline(t,line);
  };
- if(physical_main){
+ if(cold)video_timing.begin_from_reset();
+ if(physical_main&&!cold){
   std::ifstream boot(std::string(argv[1])+".irqboot",std::ios::binary);char tag[8];
   if(!boot.read(tag,8)||(memcmp(tag,"AB2IRQ01",8)&&memcmp(tag,"AB2IRQ02",8)))throw std::runtime_error("missing physical main boot ports");
   board_advancing=true;
@@ -301,7 +319,7 @@ int main(int argc,char** argv)try{
  }
  auto main_poll=[&](uint64_t t){maincpu.clock(t);++main_polls;return physical_main?main_lines.level():0u;};
  if(mainprogress)mainbus.io[1].input=[&](unsigned p)->uint8_t{
-  if(p!=0)return 0xff;
+  if(p!=0)return p<=3?physical_switches[p-1]:0xff;
   auto i=std::upper_bound(physical_buttons.begin(),physical_buttons.end(),delivered_ns,[](uint64_t t,const auto& v){return t<v.first;});
   return i==physical_buttons.begin()?physical_buttons.front().second:std::prev(i)->second;
  };
@@ -317,6 +335,12 @@ int main(int argc,char** argv)try{
   // cuts continuity; disagreement with predicted time/PC cannot create a cut.
   if(linked[p.cpu]){
    ++chains;auto& r=states[p.cpu];if(r.ns!=state.ns||r.pc!=state.pc||r.sp!=state.sp||r.sr!=state.sr||r.registers.d!=state.registers.d||r.registers.a!=state.registers.a){++state_bad;std::cerr<<"Retained state CPU="<<p.cpu<<" pc="<<std::hex<<p.pc<<" sr="<<r.sr<<'/'<<state.sr<<" sp="<<r.sp<<'/'<<state.sp<<std::dec<<" ns="<<state.ns<<'\n';for(unsigned i=0;i<8;++i)if(r.registers.d[i]!=state.registers.d[i])std::cerr<<" D"<<i<<"="<<std::hex<<r.registers.d[i]<<'/'<<state.registers.d[i]<<std::dec<<'\n';for(unsigned i=0;i<7;++i)if(r.registers.a[i]!=state.registers.a[i])std::cerr<<" A"<<i<<"="<<std::hex<<r.registers.a[i]<<'/'<<state.registers.a[i]<<std::dec<<'\n';throw std::runtime_error("retained native instruction state mismatch");}state=r;
+  }else if(cold){
+   // m68000_device power-on registers and clocks start at zero. The first
+   // reset snapshot asserts that state; no capture field initializes it.
+   if(snap.kind!=(p.cpu?3u:7u)||state.ns||state.pc||state.sp||state.sr||snap.usp||snap.ssp||snap.bias||state.registers.d!=OMainObjects::Registers{}.d||state.registers.a!=OMainObjects::Registers{}.a)
+    throw std::runtime_error("cold CPU power-on state differs");
+   state={};
   }else {++contexts;++supplied_contexts[p.cpu];}
   if(p.cpu==1&&linked[1]&&(substate.usp!=snap.usp||substate.ssp!=snap.ssp||substate.cycle_bias!=snap.bias)){
    std::cerr<<"Sub banks pc="<<std::hex<<p.pc<<" usp="<<substate.usp<<'/'<<snap.usp<<" ssp="<<substate.ssp<<'/'<<snap.ssp<<std::dec<<" bias="<<substate.cycle_bias<<'/'<<snap.bias<<" kind="<<snap.kind<<'\n';
@@ -330,23 +354,25 @@ int main(int argc,char** argv)try{
    if(main_return_pending&&linked[0])++main_resumptions;main_return_pending=false;
    if(linked[0]&&(state.sr&0x2000)&&main_rte(state.pc)&&state.pc!=0x14842)++main_retained_returns;
    if(linked[0]){if(main_usp!=snap.usp||main_ssp!=snap.ssp)throw std::runtime_error("retained main stack banks mismatch");}
-   else {main_usp=snap.usp;main_ssp=snap.ssp;}
+   else if(!cold){main_usp=snap.usp;main_ssp=snap.ssp;}
   }
   if(p.cpu==0&&physical_main&&linked[0]){
-   if(snap.kind>=4){if(main_pending!=(snap.kind-3)*2){std::cerr<<"Main selection pc="<<std::hex<<p.pc<<std::dec<<" pending="<<main_pending<<" expected="<<(snap.kind-3)*2<<" delivered="<<delivered_ns<<"\n";throw std::runtime_error("main IRQ without computed physical selection");}++main_selected_entries;}
+   if((snap.kind>=4&&snap.kind<=6)){if(main_pending!=(snap.kind-3)*2){std::cerr<<"Main selection pc="<<std::hex<<p.pc<<std::dec<<" pending="<<main_pending<<" expected="<<(snap.kind-3)*2<<" delivered="<<delivered_ns<<"\n";throw std::runtime_error("main IRQ without computed physical selection");}++main_selected_entries;}
    else if(main_pending)throw std::runtime_error("main physical selection missed IRQ entry");
   }
-  if(p.cpu==0&&snap.kind>=4&&linked[0])++main_retained_entries;
-  ++instructions;++coverage[{p.cpu,(snap.kind==2||snap.kind>=4)?0xffffffff:p.pc}];running[p.cpu]=true;
+  if(p.cpu==0&&(snap.kind>=4&&snap.kind<=6)&&linked[0])++main_retained_entries;
+  if(cold){native_entry[p.cpu]=snap;entry_pending[p.cpu]=true;executing_pc[p.cpu]=p.pc;}
+  ++instructions;++coverage[{p.cpu,(snap.kind==2||(snap.kind>=4&&snap.kind<=6))?0xffffffff:p.pc}];running[p.cpu]=true;
   if(p.cpu==0)maincpu.start(state.ns,[&,state,snap,buspc=p.pc]{
    OMainIrqService::Context c{};c.registers=state.registers;c.boundary_ns=state.ns;c.interrupted_pc=state.pc;c.supervisor_sp=state.sp;c.sr=state.sr;c.exception_supervisor_sp=main_ssp;
-   if(snap.kind>=4){
+   if(snap.kind==7){states[0]=mainport.reset_joint(mainbus,state,buspc,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;});}
+   else if((snap.kind>=4&&snap.kind<=6)){
     c.interrupted_pc=buspc;c.return_pc=state.pc;c.supervisor_sp=main_ssp;c.level=physical_main&&linked[0]?main_pending:(snap.kind-3)*2;++main_entries;++main_entry_levels[c.level/2-1];main_pending=0;
     states[0]=mainport.enter_joint(mainbus,c,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_bias,[&](uint64_t ready){
      maincpu.hold_until(ready);native_space=1;observe(0,false,0xfffff0+c.level*2,24+c.level,0xffff,buspc,ready);native_space=0;
      maincpu.bus_completed(ready,5*OMainIrqService::CYCLE_NS);++main_acknowledgements;
     },[&](uint16_t sr,uint64_t t){const auto level=main_poll(t);main_pending=OMainIrqService::eligible(level,sr)?level:0;});
-   }else if(state.pc==0x138ba){auto trapped=mainport.trap_joint(mainbus,state,main_ssp,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_poll);states[0]=trapped.state;main_pending=trapped.irq;++main_traps;
+   }else if((state.pc==0x138ba||state.pc==0x13820||state.pc==0x13884||state.pc==0x144f4)){auto trapped=mainport.trap_joint(mainbus,state,main_ssp,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_poll);states[0]=trapped.state;main_pending=trapped.irq;++main_traps;
    }else if(main_rte(state.pc)){
     auto returned=mainport.return_joint(mainbus,state,main_usp,[&](uint64_t t){maincpu.clock(t);main_phase_ns=t;},main_poll,main_ssp);states[0]=returned.state;main_pending=returned.irq;
     if(state.sr&0x2000){main_ssp=state.sp+6;if(state.pc==0x14842)++main_startup_returns;else ++main_returns;}main_return_pending=(state.sr&0x2000)&&state.pc!=0x14842;
@@ -362,7 +388,7 @@ int main(int argc,char** argv)try{
   });
   else {
    OSubIrq::State c{};c.d=state.registers.d;c.a=state.registers.a;c.pc=state.pc;c.sp=state.sp;c.sr=state.sr;c.ns=state.ns;c.usp=snap.usp;c.ssp=snap.ssp;c.cycle_bias=snap.bias;
-   if(linked[1])c=substate;
+   if(linked[1])c=substate;else if(cold)c={};
    const bool entry=snap.kind==2,reset=snap.kind==3;const auto buspc=p.pc;
    live_sub=c;
    subcpu.start(state.ns,[&,c,entry,reset,buspc]{
@@ -404,7 +430,7 @@ int main(int argc,char** argv)try{
   if(capture_group<=last_capture_group)throw std::runtime_error("nonmonotonic captured grant");
   last_capture_group=capture_group;captured_phases.reserve(count);
   while(count--){Phase p;p.cpu=number(f,1)-1;p.ns=number(f,8);p.write=number(f,1);p.a=number(f,4);p.d=number(f,2);p.m=number(f,2);p.pc=number(f,4);p.space=number(f,1);p.snapshot.kind=number(f,1);p.snapshot.present=p.snapshot.kind!=0;
-   if(p.cpu>1||p.snapshot.kind>(mainentries?6u:3u)||(p.cpu==1&&p.snapshot.kind>3)||(p.cpu==0&&(p.snapshot.kind==2||p.snapshot.kind==3)))throw std::runtime_error("invalid instruction snapshot kind or CPU");
+   if(p.cpu>1||p.snapshot.kind>(cold?7u:mainentries?6u:3u)||(p.cpu==1&&p.snapshot.kind>3)||(p.cpu==0&&(p.snapshot.kind==2||p.snapshot.kind==3)))throw std::runtime_error("invalid instruction snapshot kind or CPU");
    if(p.snapshot.present){auto& v=p.snapshot;v.ns=number(f,8);v.pc=number(f,4);v.sr=number(f,2);v.sp=number(f,4);for(auto& r:v.registers.d)r=number(f,4);for(auto& r:v.registers.a)r=number(f,4);v.usp=number(f,4);v.ssp=number(f,4);v.bias=number(f,8);}
    captured_phases.push_back(p);
   }
@@ -449,7 +475,11 @@ int main(int argc,char** argv)try{
   return XBoardBusArbiter::Time(ns)*1000000000ULL;
  };
  auto finish=[&](){
-  if(!port)port=std::make_unique<XBoardBusArbiter>(XBoardBusArbiter::State{g.base,0,g.starts});
+  if(!port)port=std::make_unique<XBoardBusArbiter>(cold?XBoardBusArbiter::State{}:XBoardBusArbiter::State{g.base,0,g.starts});
+  // All three devices consume grants in this corpus, including Z80 held
+  // RESET (eatcycles). A suspend without clock consumption is unobserved.
+  constexpr std::array<bool,3> cold_enabled{true,true,true};
+  if(cold&&g.enabled!=cold_enabled)throw std::runtime_error("unverified cold CPU suspend mask");
   const bool owns_deadlines=native_deadlines&&g.base>=video_start_ns*XBoardBusArbiter::Time(1000000000ULL);
   owns_boost=owns_deadlines;produced_boosts.clear();
   const bool deliver=owns_deadlines?next_device()<=port->state().base:g.outer;
@@ -492,7 +522,7 @@ int main(int argc,char** argv)try{
   auto result=port->grant(native_head,[&](unsigned c,XBoardBusArbiter::Time target,unsigned budget){++grants;auto& r=g.runs[c];
    device_deadline=native_head;
    if(!r.present||target!=r.target||budget!=r.budget){++budget_bad;ok=false;if(budget_bad<5)std::cerr<<"Budget CPU="<<c<<" base="<<uint64_t(g.base/1000000000ULL)<<" target="<<uint64_t(target)<<'/'<<uint64_t(r.target)<<" cycles="<<budget<<'/'<<r.budget<<'\n';}
-   const bool reset_grant=c==0&&mainprogress&&std::any_of(events.begin(),events.end(),[](const Phase& p){return p.cpu==0&&p.pc==0x14840&&p.snapshot.present;});
+   const bool reset_grant=c==0&&mainprogress&&(cold||std::any_of(events.begin(),events.end(),[](const Phase& p){return p.cpu==0&&p.pc==0x14840&&p.snapshot.present;}));
    r.present=false;if(!owns_boost&&!reset_grant)for(auto b:r.boosts)boost(b);
    if(c==0)request_reset=[&,expected=r.boosts,reset_grant,index=size_t(0)](uint64_t ns)mutable{
     if(!reset_grant||index>=expected.size()||expected[index].at!=Time(ns)*1000000000ULL){
@@ -538,9 +568,21 @@ int main(int argc,char** argv)try{
     if(apply&&p.cpu==1&&!p.write&&p.a>=0xee000&&p.a<0xf0000)bus.read16(p.a);
    };
    observe=[&](unsigned cpu,bool w,uint32_t a,uint16_t d,uint16_t m,uint32_t pc,uint64_t t){
-    ++native_phases;if(w)++native_writes;native[cpu]->bus_completed(t);
+    ++native_phases;if(w)++native_writes;
+    if(cold&&cpu==0&&w){
+     if(a>=0x140000&&a<0x160000){++cold_io_writes;cold_io_masks|=1u<<((a>>16)-0x14);}
+     if(a>=0xe8000&&a<0xec000)++cold_compare_writes;
+    }native[cpu]->bus_completed(t);
     if(cursor>=events.size()||events[cursor].cpu!=cpu){std::cerr<<"Out-of-grant phase CPU="<<cpu<<" pc="<<std::hex<<pc<<" a="<<a<<std::dec<<" ns="<<t<<" grant="<<g.index<<" target="<<uint64_t(target/1000000000ULL)<<" cursor="<<cursor<<" events="<<events.size()<<" next="<<(cursor<events.size()?events[cursor].ns:0)<<" nextcpu="<<(cursor<events.size()?events[cursor].cpu:9)<<"\n";throw std::runtime_error("native phase outside granted CPU events");}
     auto p=events[cursor++];
+    if(cold){
+     const auto& n=native_entry[cpu];const auto& v=p.snapshot;
+     if(v.present!=entry_pending[cpu]||(v.present&&(n.kind!=v.kind||n.ns!=v.ns||n.pc!=v.pc||n.sp!=v.sp||n.sr!=v.sr||n.usp!=v.usp||n.ssp!=v.ssp||n.bias!=v.bias||n.registers.d!=v.registers.d||n.registers.a!=v.registers.a))) {
+      std::cerr<<"Autonomous CPU entry CPU="<<cpu<<" kind="<<n.kind<<'/'<<v.kind<<" pc="<<std::hex<<n.pc<<'/'<<v.pc<<" buspc="<<pc<<'/'<<p.pc<<std::dec<<" ns="<<n.ns<<'/'<<v.ns<<'\n';
+      throw std::runtime_error("autonomous CPU snapshot assertion differs");
+     }
+     entry_pending[cpu]=false;
+    }
     if(p.space!=native_space||p.ns!=t||p.pc!=pc||p.a!=a||p.write!=w||p.m!=m||(p.d&m)!=(d&m)){
      std::cerr<<"Native phase cpu="<<cpu<<" pc="<<std::hex<<pc<<" a="<<a<<'/'<<p.a<<" d="<<d<<'/'<<p.d<<std::dec<<" ns="<<t<<'/'<<p.ns<<" grant="<<g.index<<" space="<<native_space<<'/'<<p.space<<'\n';
      throw std::runtime_error("native publication phase mismatch");}
@@ -549,9 +591,9 @@ int main(int argc,char** argv)try{
    };
    const auto start_ns=uint64_t(port->state().local[c]/1000000000ULL);
    const auto target_ns=start_ns+uint64_t(budget)*(c==2?250:80);
-   uint64_t end_ns=start_ns;bool all_native=c<2&&running[c]&&g.index<=last_capture_group,any_native=false;
+   uint64_t end_ns=start_ns;bool all_native=c<2&&(cold||running[c])&&g.index<=last_capture_group,any_native=false;
    if(c<2&&running[c])++split_grants;
-   while((cursor<events.size()&&events[cursor].cpu==c)||(c<2&&running[c]&&g.index<=last_capture_group)){
+   while((cursor<events.size()&&events[cursor].cpu==c)||(c<2&&(cold||running[c])&&g.index<=last_capture_group)){
     if(c<2&&running[c]){
      any_native=true;end_ns=native[c]->advance(target_ns);
      // A completed instruction can still owe private internal-tail clocks.
@@ -559,6 +601,19 @@ int main(int argc,char** argv)try{
      if(!native[c]->done()||end_ns<states[c].ns)break;
      running[c]=false;linked[c]=true;
      if(end_ns>=target_ns)break;
+    }else if(cold&&c<2){
+     // The capture is a passive observer: only retained native state and
+     // selected hardware signals decide which microcode sequence runs next.
+     Phase p{};p.cpu=c;auto& v=p.snapshot;v.present=true;
+     const auto& r=states[c];v.registers=r.registers;v.pc=r.pc;v.sp=r.sp;v.sr=r.sr;v.ns=r.ns;
+     v.usp=c?substate.usp:main_usp;v.ssp=c?substate.ssp:main_ssp;v.bias=c?substate.cycle_bias:main_bias;
+     const bool reset=c?reset_ready:main_reset_ready;
+     const auto pending=c?sub_pending:main_pending;
+     v.kind=reset?(c?3:7):pending?(c?2:3+pending/2):1;
+     p.pc=reset||pending?executing_pc[c]:r.pc;
+     if(!reset&&!pending&&!bounded(c,p.pc))throw std::runtime_error("unported autonomous CPU instruction: "+std::to_string(p.pc));
+     if(c==0)main_reset_ready=false;
+     begin(p);any_native=true;
     }else if(cursor<events.size()&&events[cursor].cpu==c){
      const auto p=events[cursor];
      if(c<2&&p.snapshot.present&&(p.snapshot.kind>=2||bounded(c,p.pc))){begin(p);any_native=true;}
@@ -596,7 +651,7 @@ int main(int argc,char** argv)try{
     if(Time(end_ns)*1000000000ULL!=supplied_end){++return_bad;std::cerr<<"Native grant completion "<<g.index<<" CPU="<<c<<" ns="<<end_ns<<'/'<<uint64_t(supplied_end/1000000000ULL)<<'\n';}
    }
    return all_native&&any_native?XBoardBusArbiter::Time(end_ns)*1000000000ULL:supplied_end;
-  },g.enabled);
+  },cold?cold_enabled:g.enabled);
   if(owns_boost){
    auto expected=g.before;for(const auto& r:g.runs)expected.insert(expected.end(),r.boosts.begin(),r.boosts.end());
    expected.erase(std::remove_if(expected.begin(),expected.end(),[](const Boost& b){return b.quantum==XBoardBusArbiter::DEFAULT_QUANTUM;}),expected.end());
@@ -624,6 +679,14 @@ int main(int argc,char** argv)try{
   if(!in)throw std::runtime_error("invalid scheduler trace fields");
  }
  if(active||cpu_masks!=3*groups||capture_pending)throw std::runtime_error("incomplete grant or bus capture");
+ // MAME finishes the final device callback batch after the last complete
+ // grant. The cold stop is requested from VBLANK, with no CPU executing.
+ if(cold&&native_deadlines&&next_device()<=port->state().base){
+  delivered_ns=uint64_t(port->state().base/1000000000ULL);port->timers_delivered();
+  advance_board(delivered_ns);main_lines.deliver(delivered_ns);
+  sound_cpu->advance(delivered_ns);device_timers.advance(delivered_ns);
+ }
+
  if(sound_cpu){sound_cpu->finish(groups);sound_cpu->report();}
  if(native_deadlines){if(!native_heads)throw std::runtime_error("no native device head coverage");for(const auto& events:timer_assertions)if(!events.empty())throw std::runtime_error("missing native per-owner timer callbacks");std::cout<<"Native device deadlines: "<<native_heads<<" head assertions identical; periodic callback timestamps identical ";for(auto n:device_timers.deliveries)std::cout<<n<<' ';std::cout<<'\n';}
  if(require_reset&&(!reset_sequences||reset_requests_sent!=2*reset_deliveries||!reset_requests.empty()))
@@ -635,7 +698,14 @@ int main(int argc,char** argv)try{
  // Reset startup has its own coverage gate below; short runs need not reset.
  for(unsigned c=0;c<2;++c)for(uint32_t pc=0;pc<0x14900;pc+=2)
   if(publication_bounded(c,pc)&&!(c==1&&(sub_instruction(pc)||OSubIrq::startup_instruction(pc)))&&pc!=0x1486a&&pc!=0x43e&&pc!=0x420&&pc!=0x428&&!coverage[{c,pc}])throw std::runtime_error("missing joint publication PC");
- std::cout<<"Capture stop: "<<unsigned(running[0])+unsigned(running[1])<<" native continuations parked outside accepted final grant; all later CPU completions supplied\n";
+ if(cold){if(cold_io_masks!=3||!cold_compare_writes)throw std::runtime_error("missing cold I/O initialization");
+  std::cout<<"Cold initialization: "<<main_boot_instructions.size()<<" additional generated PCs and five startup exception PCs; "<<cold_io_writes<<" native I/O writes on both chips, "<<cold_compare_writes<<" native compare/timer writes; initial CPU/RAM/math/bank state asserted, 0 replacements\n";
+  for(const auto& i:main_boot_instructions)if(!coverage[{0,i.pc}])throw std::runtime_error("missing cold boot instruction");
+  for(uint32_t pc:{0x144ea,0x14828,0x13820,0x13884,0x144f4})if(!coverage[{0,pc}])throw std::runtime_error("missing cold startup exception");
+ }
+ if(cold&&groups!=last_capture_group)throw std::runtime_error("cold capture ends before scheduler stop");
+ if(cold)std::cout<<"Cold capture stop: "<<unsigned(running[0])+unsigned(running[1])<<" pending native instructions at machine stop; no later supplied CPU grants; future bus phases outside finite capture\n";
+ else std::cout<<"Capture stop: "<<unsigned(running[0])+unsigned(running[1])<<" native continuations parked outside accepted final grant; all later CPU completions supplied\n";
  for(auto [key,n]:coverage)std::cout<<"Native publication PC CPU="<<key.first<<" pc="<<std::hex<<key.second<<std::dec<<": "<<n<<'\n';
  unsigned progress_pcs=0;for(const auto& i:sub_instructions)if(coverage[{1,i.pc}])++progress_pcs;
  for(uint32_t pc:{0x45e,0x594,0x648,0xc0a,0xf02,0x1074})
@@ -667,11 +737,11 @@ int main(int argc,char** argv)try{
  if(!display_fixture.empty()&&(fixture_cursor!=display_fixture.size()||!video_disabled||!delayed_register_clips||!row_scroll_clips||!column_scroll_clips||!effect_pixels||!hilight_pixels||effect_pixels==hilight_pixels))throw std::runtime_error("directed video fixture lacks blanking, pending registers, scroll modes or both effect variants");
  if(rgb_assertions&&(latch_cursor!=latch_events.size()||pixel_capture.peek()!=EOF||!video_pixels||!video_latches))throw std::runtime_error("unconsumed joint RGB/latch assertions or empty coverage");
  if(rgb_assertions)std::cout<<"Joint video coverage: priority masks="<<std::hex<<priority_masks<<std::dec<<" effect pixels="<<effect_pixels<<" hilight pixels="<<hilight_pixels<<" clips with pending global registers="<<delayed_register_clips<<" row/column scroll clips="<<row_scroll_clips<<'/'<<column_scroll_clips<<'\n';
- if(rgb_assertions)std::cout<<"Joint RGB: "<<video_pixels<<" pixels identical, 0 different, 0 skipped; "<<video_latches<<" native line-261 latches; "<<video_disabled<<" disabled clips; one initial latch boundary supplied; "<<fixture_cursor<<" directed video fixture events supplied\n";
+ if(rgb_assertions)std::cout<<"Joint RGB: "<<video_pixels<<" pixels identical, 0 different, 0 skipped; "<<video_latches<<" native line-261 latches; "<<video_disabled<<" disabled clips; "<<(cold?0:1)<<" initial latch boundaries supplied; "<<fixture_cursor<<" directed video fixture events supplied\n";
  std::cout<<"Joint supplied execution census: main="<<supplied_phase_counts[0]<<" phases at "<<supplied_pc_counts[0]<<" PCs, "<<supplied_write_counts[0]<<" writes; sub="<<supplied_phase_counts[1]<<" phases at "<<supplied_pc_counts[1]<<" PCs, "<<supplied_write_counts[1]<<" writes\n";
- if(require_main_closed&&(supplied_phase_counts[0]||supplied_contexts[0]!=1||main_selected_entries!=main_entries))
+ if(require_main_closed&&(supplied_phase_counts[0]||supplied_contexts[0]!=(cold?0u:1u)||main_selected_entries!=main_entries))
   throw std::runtime_error("joint main closure requires zero supplied main phases, one initial context and every physical IRQ selected natively");
- if(require_sub_continuity&&(sub_late_supplied||supplied_contexts[1]!=1))
+ if(require_sub_continuity&&((cold&&supplied_phase_counts[1])||sub_late_supplied||supplied_contexts[1]!=(cold?0u:1u)))
   throw std::runtime_error("joint sub continuity requires one initial context and zero later supplied phases");
  if(require_sub_continuity&&require_reset){for(uint32_t pc=0x402;pc<=0x63e;pc+=2)
   if(OSubIrq::startup_instruction(pc)&&!coverage[{1,pc}])throw std::runtime_error("missing joint sub startup instruction");}
@@ -683,11 +753,14 @@ int main(int argc,char** argv)try{
  std::cout<<"Joint sound handshake: "<<sound_deliveries<<" synchronized command deliveries, "<<sound_acknowledges<<" computed latch reads/NMI acknowledges; "<<sound_supplied<<" YM/PCM transactions at supplied Z80 clocks\n";
  if(mainprogress){for(auto [key,n]:supplied_phases)
   std::cout<<"Supplied execution CPU="<<key.first<<" pc="<<std::hex<<key.second<<std::dec<<" phases="<<n<<" writes="<<supplied_writes[key]<<'\n';}
- if(!irq_entries||retained_entries!=irq_entries||irq_returns!=irq_entries||acknowledgements!=irq_entries||in_irq)
+ // Every completed ISR restores its retained caller. A cold machine-stop
+ // can cut the next live ISR; its checked phases remain native and its
+ // future completion is outside the declared finite observation window.
+ if(!irq_entries||retained_entries!=irq_entries||irq_returns+unsigned(cold&&in_irq)!=irq_entries||acknowledgements!=irq_entries||(!cold&&in_irq))
   {std::cerr<<"Joint IRQ closure entries="<<irq_entries<<" retained="<<retained_entries<<" returns="<<irq_returns<<" VPA="<<acknowledgements<<" active="<<in_irq<<"\n";throw std::runtime_error("incomplete retained joint sub IRQ coverage");}
- std::cout<<"Joint entry contexts: main="<<supplied_contexts[0]<<" sub="<<supplied_contexts[1]<<"; initial partial ISR remains supplied\n";
+ std::cout<<"Joint entry contexts: main="<<supplied_contexts[0]<<" sub="<<supplied_contexts[1]<<(cold?"; cold reset replaces the initial partial ISR boundary\n":"; initial partial ISR remains supplied\n");
  std::cout<<"Joint RESET: "<<reset_requests_sent<<" computed main callback requests, "<<reset_deliveries<<" synchronized sub cancellations, "<<reset_sequences<<" native vector/prefetch sequences\n";
- std::cout<<"Joint main startup: "<<main_traps<<" TRAP #12 entries, "<<main_startup_returns<<" RESET-handler RTEs\n";
+ std::cout<<"Joint main startup: "<<main_traps<<" TRAP #10/#12 entries, "<<main_startup_returns<<" RESET-handler RTEs\n";
  std::cout<<"Joint sub IRQ: "<<irq_entries<<" entries, "<<retained_entries<<" from retained caller state; "<<irq_returns<<" exact RTE restorations, "<<sub_polls<<" computed selections, "<<acknowledgements<<" computed VPA waits, "<<in_irq<<" active at capture stop\n";
  std::cout<<"Joint instruction/IRQ records: "<<instructions<<" of "<<instructions<<" identical, 0 different, 0 skipped; "<<native_phases<<" of "<<native_phases<<" ordered phases identical, 0 different, 0 skipped\n";
  std::cout<<"Joint native publication/progress: "<<instructions<<" instructions, "<<native_phases<<" phases, "<<native_writes<<" writes computed; "<<chains<<" retained instruction contexts, "<<contexts<<" supplied entry contexts; "<<split_grants<<" grants resume an active instruction; "<<bounded_returns-return_bad<<" of "<<bounded_returns<<" bounded grant completions identical, "<<return_bad<<" different, 0 skipped\n";

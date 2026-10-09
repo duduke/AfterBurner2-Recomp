@@ -16,6 +16,15 @@ public:
     // Explicit oracle boundary: the frame notifier sampled RAM/banks after
     // rendering. This does not establish cold-boot video initialization.
     void begin_after_render(uint64_t ns) { start=ns; last_partial=224; }
+    // Fresh MAME video starts at line 224, before the board's first line 0.
+    void begin_from_reset() { start=0; last_partial=224; initial_latch_pending=true; }
+    void advance_initial_latch(uint64_t ns,bool inclusive=true) {
+        constexpr uint64_t first_latch=37*XBoardTimeline::LINE_NS;
+        if(initial_latch_pending&&(ns>first_latch||(inclusive&&ns==first_latch))) {
+            if(latch)latch(first_latch);
+            initial_latch_pending=false;
+        }
+    }
     static unsigned vpos(uint64_t ns) {
         // screen_device::vpos rounds to the nearest pixel from VBLANK start.
         return ((ns+80)/XBoardTimeline::LINE_NS+224)%262;
@@ -50,5 +59,5 @@ public:
 private:
     uint64_t start=std::numeric_limits<uint64_t>::max(),partial_reset=0;
     unsigned last_partial=224,updates=0;
-    bool display=false;
+    bool display=false,initial_latch_pending=false;
 };

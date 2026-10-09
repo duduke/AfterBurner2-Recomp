@@ -10,10 +10,14 @@ for _,index in pairs(machine.devices[':mainpcb:gfxdecode'].items)do before=math.
 local grant,basea,bases=emu.item(before+1),emu.item(before+2),emu.item(before+3)
 assert(grant.size==8 and basea.size==8 and bases.size==4,'missing probe scheduler metadata')
 local function base()return bases:read(0)*1000000000000000000+basea:read(0)end
+local cold=os.getenv('AB2_ORACLE_START_FRAME')=='0'
 local mainprogress=os.getenv('AB2_JOINT_MAIN_PROGRESS')=='1'
-local out=assert(io.open(os.getenv('AB2_ORACLE_OUT'),'wb'));out:write(mainprogress and 'AB2ARB09' or 'AB2ARB07')
+local out=assert(io.open(os.getenv('AB2_ORACLE_OUT'),'wb'));out:write(cold and 'AB2ARB10' or mainprogress and 'AB2ARB09' or 'AB2ARB07')
 local inputs=mainprogress and assert(io.open(os.getenv('AB2_ORACLE_OUT')..'.inputs','wb')) or nil
-if inputs then inputs:write('AB2PIN02')end
+if inputs then
+ inputs:write(cold and 'AB2PIN03' or 'AB2PIN02')
+ if cold then for _,port in ipairs({'IO1PORTB','IO1PORTC','IO1PORTD'})do inputs:write(string.char(machine.ioport.ports[':mainpcb:'..port]:read()))end end
+end
 local irqboot=mainprogress and assert(io.open(os.getenv('AB2_ORACLE_OUT')..'.irqboot','wb')) or nil
 if irqboot then irqboot:write('AB2IRQ02')end
 local banks=mainprogress and assert(io.open(os.getenv('AB2_ORACLE_OUT')..'.video','wb')) or nil
@@ -33,7 +37,7 @@ if sound then sound:write('AB2SND01')end
 if os.getenv('AB2_JOINT_SOUND_EXECUTION')=='1' then dofile(os.getenv('AB2_ORACLE_SCRIPT_DIR')..'/capture_sound_execution.lua')end
 local guard=false
 local frames,groups,phases=0,0,0
-local active=nil;local ready=false;local finish=false;local finish_user_serial=nil
+local active=nil;local ready=false;local finish=false;local finish_user_serial=nil;local stopping=false
 local function close()
  if not active then return end
  out:write(string.pack('>I8I8I4',active.grant,active.base,#active.events),table.concat(active.events));groups=groups+1
@@ -61,6 +65,8 @@ local probes={};local resetprobe=emu.item(assert(cpus[2].items['0/ab2_reset_snap
 local resetserial=resetprobe:read(0)
 local mainirq=mainprogress and emu.item(assert(cpus[1].items['0/ab2_irq_snapshot'])) or nil
 local mainirqserial=mainirq and mainirq:read(0) or 0
+local mainreset=cold and emu.item(assert(cpus[1].items['0/ab2_reset_snapshot'])) or nil
+local mainresetserial=mainreset and mainreset:read(0) or 0
 local mainentry=nil
 for i=1,2 do local index=cpus[i].items['0/ab2_cpu_snapshot'];assert(index,'missing CPU instruction probe');probes[i]=emu.item(index)end
 local last_serial={0,0};local in_entry=false;local initial_irq=false
@@ -71,6 +77,13 @@ local function packed(kind,t,p,sr,sp,d,a,usp,ssp,bias)
 end
 local function instruction(cpu,p,w,a,t)
  local state=cpus[cpu].state
+ if cpu==1 and mainreset and mainreset:read(0)~=mainresetserial then
+  mainresetserial=mainreset:read(0)
+  assert(not w and a==0,'missing main reset vector')
+  local v={};for i=0,21 do v[i]=mainreset:read(i)end
+  local d,r={},{};for i=0,7 do d[i+1]=v[5+i]end;for i=0,6 do r[i+1]=v[13+i]end
+  return packed(7,v[2],v[3],v[4],v[21],d,r,v[20],v[21],v[2]//80-v[1])
+ end
  if cpu==1 and mainirq then
   if mainirq:read(0)~=mainirqserial then
    mainirqserial=mainirq:read(0)
@@ -107,7 +120,7 @@ local function instruction(cpu,p,w,a,t)
  -- After RESET, startup PEA/TRAP stack writes also run in supervisor mode.
  -- A VBLANK entry must have an eligible pre-interrupt mask; startup keeps 7.
  local entry=cpu==2 and w and state.SR.value&0x2000~=0 and ((probes[cpu]:read(4)>>8)&7)<4 and not irqpcs[p] and a==((state.SP.value-2)&0xffffe)
- if not entry and (not bounded[cpu][p] or (cpu==2 and state.SR.value&0x2000~=0 and not irqpcs[p] and not startup[p]))then return string.char(0)end
+ if not cold and not entry and (not bounded[cpu][p] or (cpu==2 and state.SR.value&0x2000~=0 and not irqpcs[p] and not startup[p]))then return string.char(0)end
  local serial=probes[cpu]:read(0)
  if not entry and last_serial[cpu]==serial then return string.char(0)end
  local v={};for i=0,21 do v[i]=probes[cpu]:read(i)end
@@ -150,7 +163,11 @@ local function event(cpu,w,a,d,m,space)
   local serial=probes[2]:read(0)
   if not finish_user_serial then finish_user_serial=serial end
   if serial>finish_user_serial then
-   out:close();if inputs then inputs:close()end;if banks then banks:close();banks=nil end;if sound then sound:close();sound=nil end;print(string.format('captured %d CPU grants and %d main/sub phases through frame %d',groups,phases,frames));machine:exit();ready=false;return
+   if cold then
+    stopping=true
+   else
+    out:close();if inputs then inputs:close()end;if banks then banks:close();banks=nil end;if sound then sound:close();sound=nil end;print(string.format('captured %d CPU grants and %d main/sub phases through frame %d',groups,phases,frames));machine:exit();ready=false;return
+   end
   end
  end
  if not active then active={grant=g,base=b,events={}}end
@@ -189,15 +206,8 @@ if mainprogress then
  arbiter_taps[#arbiter_taps+1]=mainack:install_read_tap(0,0xffffff,'main_acknowledge',function(a,d,m)event(1,false,a,d,m,1)end)
 end
 if os.getenv('AB2_ORACLE_GAMEPLAY')=='1'then dofile(os.getenv('AB2_ORACLE_SCRIPT_DIR')..'/gameplay.lua')end
-arbiter_frame=emu.add_machine_frame_notifier(function()
- if banks and ready then banks:write(string.pack('>BI8I4B',4,math.floor(machine.time:as_double()*1e9+0.5),0,road_control),hidden_sprites())end
- if inputs then
-  -- Independent physical port observations, not expected CPU read values.
-  inputs:write(string.pack('>I8B',math.floor(machine.time:as_double()*1e9+0.5),machine.ioport.ports[':mainpcb:IO1PORTA']:read()))
-  for i=0,7 do local p=machine.ioport.ports[':mainpcb:ADC'..i];inputs:write(string.char(p and p:read() or 0x10))end
- end
- frames=frames+1;if frames==tonumber(os.getenv('AB2_ORACLE_START_FRAME')or'32')then
-  guard=true
+local function initialize()
+ guard=true
   local s=cpus[1].spaces.program
   out:write(s:read_range(0x3f8000,0x3fffff,8),cpus[2].spaces.program:read_range(0x9c000,0xa3fff,8))
   if mainprogress then
@@ -213,7 +223,35 @@ arbiter_frame=emu.add_machine_frame_notifier(function()
   for i=1,2 do last_serial[i]=probes[i]:read(0)end
   resetserial=resetprobe:read(0)
   if mainirq then mainirqserial=mainirq:read(0)end
+end
+if cold then
+ assert(base()==0 and grant:read(0)==0,'cold capture started after execution')
+ initialize();ready=true
+ inputs:write(string.pack('>I8B',0,machine.ioport.ports[':mainpcb:IO1PORTA']:read()))
+ for i=0,7 do local p=machine.ioport.ports[':mainpcb:ADC'..i];inputs:write(string.char(p and p:read() or 0x10))end
+end
+arbiter_frame=emu.add_machine_frame_notifier(function()
+ if banks and ready then banks:write(string.pack('>BI8I4B',4,math.floor(machine.time:as_double()*1e9+0.5),0,road_control),hidden_sprites())end
+ if inputs then
+  -- Independent physical port observations, not expected CPU read values.
+  inputs:write(string.pack('>I8B',math.floor(machine.time:as_double()*1e9+0.5),machine.ioport.ports[':mainpcb:IO1PORTA']:read()))
+  for i=0,7 do local p=machine.ioport.ports[':mainpcb:ADC'..i];inputs:write(string.char(p and p:read() or 0x10))end
+ end
+ frames=frames+1;if frames==tonumber(os.getenv('AB2_ORACLE_START_FRAME')or'32')then
+  initialize()
   initial_irq=cpus[2].state.SR.value&0x2000~=0;ready=true
  end
  if frames>=tonumber(os.getenv('AB2_ORACLE_PASSES')or'120')then finish=true end
+ -- Exit only from this device callback, with no executing CPU. Calling
+ -- schedule_exit inside a program tap eats the current microcode clocks.
+ if cold and stopping then machine:exit()end
 end)
+
+-- machine:exit is deferred until MAME finishes its current scheduler slice.
+-- Cold captures keep observing through that stop, including both old final
+-- continuations; the last group is closed only after all CPUs have yielded.
+if cold then arbiter_stop=emu.add_machine_stop_notifier(function()
+ close();out:close();if inputs then inputs:close()end
+ if banks then banks:close();banks=nil end;if sound then sound:close();sound=nil end
+ print(string.format('captured %d CPU grants and %d main/sub phases through frame %d, through machine stop',groups,phases,frames))
+end)end

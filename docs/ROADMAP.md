@@ -99,15 +99,24 @@ in the 300-frame cold-boot window. Static graphs remain inspection aids;
 no timing, interrupt or whole-host acceptance is advanced. See the tooling
 pilot section at the end of `ENGINE_NOTES.md` for reproduction and exclusions.
 
-**Current checkpoint and next task**: Main/sub PC and directed exception
-coverage now includes all 2,158 main and 478 generated sub PCs absent from
-natural 600. The combined corpus reaches 8,500/8,500 main and 1,136/1,136
-sub PCs; 995 conditional Bcc/DBF sites have both outcomes. All 5,340 expanded
-and 52 wrapper/exception fixtures pass exact bus/state comparisons, and
-IRQ2 -> IRQ6 retains CPU/stack state. The longer joint gameplay gate keeps
-initial boot/partial-ISR/final parked boundaries explicit. Next is task 5,
-**Remove or explicitly bound fixture edges**, in PHASE3D_PLAN. Independent
-fixtures do not establish continuous whole-game or cold-boot acceptance.
+**Current checkpoint and next task**: Task 6 whole-host acceptance and game
+integration now pass for the declared cold/expanded corpora. `XBoardHost`
+chooses every instruction, IRQ, RESET sequence, grant and device deadline
+from retained native state; capture data is only a passive assertion. The
+781-frame physical-input window matches 28,128,435 CPU snapshots,
+73,593,282 main/sub bus phases, 55,982,080 RGB pixels and 627,841 stereo frames,
+with zero supplied execution/state/read seeds and zero differences/skips.
+Fifteen owner mutations reject. The SDL application now runs `XBoardGame`
+using this same host, physical coin/start/ADC inputs, completed hardware
+screen clips and joint speaker batches. Restart reproduces a fresh cold
+board. The reconstruction remains as historical Stage 1 regression coverage.
+Task 5's cold startup, 46-phase overlap and two continued terminal jobs remain
+required, along with the independent 8,500-main/1,136-sub PC and 995 branch
+fixtures. **Next:** expand whole-game/full-credit coverage (Phase 3e), including
+later stage/refueling/progression, additional operands/branch outcomes,
+alternate DIP settings and arbitrary hardware reset/suspend states. Those
+paths are not implied by finite whole-host acceptance. See the final
+ENGINE_NOTES section for the contract, owner mutations and test evidence.
 
 **Retained joint baseline**: Physical main selection, observed main
 producers/callees and sub reset startup now pass together in the 600-frame
@@ -1027,3 +1036,35 @@ See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.
   suite takes 1,182.62 s. Earlier declared race exclusions remain unchanged;
   all new coverage gates have zero differences/skips. See ENGINE_NOTES for
   the exact contract, capture commands and validation logs.
+
+
+### Startup and capture boundary closure (2026-10-09)
+
+- [x] Execute main/sub cold boot from native reset state: all 352 additional
+  generated instruction PCs and five startup exception PCs occur; CPU,
+  RAM/math, I/O and hidden video bank initialization match MAME.
+- [x] Remove the initial sub ISR's 46 supplied phases: the cold stream
+  supplies zero main/sub contexts, execution phases or producer writes.
+- [x] Continue beyond both retained final continuations: the 603-frame cold
+  gate matches 21,722,588 records, 56,831,338 bus phases and 43,223,040 RGB
+  pixels; independent overlap assertions match both old final bus boundaries.
+  Native Z80, device heads, audio and speaker output also match from reset.
+- [x] Reject eight startup owner mutations and retain every earlier fixture.
+  A natural finite machine stop can leave native instruction debt and one
+  new sub ISR active; later execution is outside observation, with no
+  supplied completions or state replacements. Full credits, other reset/
+  suspension states and game integration remain task 6. See ENGINE_NOTES
+  for the exact results, reproduction and validation logs.
+
+### Whole-host acceptance and application checkpoint
+
+- [x] Dispatch both CPUs autonomously from retained PC/state and physical
+  IRQ/RESET selection; captures assert rather than initiate instructions.
+- [x] Share one arbiter, RAM, I/O, banks, renderer, Z80/YM/PCM and speaker
+  across cold 121/603-frame and expanded 781-frame physical gameplay captures.
+- [x] Reject fifteen mutations across CPU/reset/IRQ/producer, peripheral,
+  scheduler/deadline, renderer/bank and sound owners.
+- [x] Replace the live reconstruction loop with `XBoardGame`; preserve the
+  original Stage 1 and all independent oracle fixtures as regression gates.
+- [x] Check native application inputs, RGB/audio output and cold restart
+  equality; keep unported/full-credit paths explicit.

@@ -7103,3 +7103,281 @@ declared and unchanged; every new CPU fixture and the new joint gate have
 zero differences/skips. `git diff --check` passes. No ROM images, captures,
 plan data or probe binaries are tracked, and no commit was made. Task 5
 (fixture edges and cold boot) is next; whole-game acceptance remains open.
+
+## Cold native startup and retained capture boundaries (2026-10-09)
+
+Task 5 now has a continuous cold gate instead of importing the frame-32
+CPU/RAM/video boundary. `AB2ARB10` starts before either 68000 executes and
+adds main reset-entry snapshots to the existing instruction/exception
+assertions. `AB2PIN03` carries initial physical buttons/axes and the three
+other IO1 input ports, including the boot-read DIP switches. Those are
+external physical inputs, not read-value seeds. Fresh NVRAM/config and the
+same ROM/gameplay input script remain required.
+
+The additional main graph is 352 address-labelled instructions in
+`omainbootschedule.inc`, generated from runtime ROM images and the checked-in
+PC-only list `main_boot_pcs.txt`. It includes checksum/RAM-clear work and boot
+I/O/video producers. PEA absolute-long now has its literal extension,
+stack-write and prefetch phases. The five separate startup exception sites
+are TRAP #10 at `$13820/$13884`, TRAP #12 at `$144F4`, and RTE at
+`$144EA/$14828`. Main reset uses the same MAME `state_reset_df` vector/prefetch
+microcode already verified for sub reset. Every added PC must occur in the
+cold gate; the previous 8,500-main/1,136-sub independent coverage contract
+and its fixtures remain unchanged.
+
+Power-on CPU registers, stack banks, clocks, work/shared/video RAM, math
+chips and hidden sprite/road banks are native initial values. Captured
+initial values only assert them. There are zero supplied CPU contexts,
+execution phases, producer writes, initial tile latches or boot sound host
+writes. Scheduler clocks start at zero; main/sub and held-reset sound consume
+native grants. Captured enabled masks are assertions, not grant controls in
+cold mode. A suspend without clock consumption is outside this corpus and
+fails the cold gate. All device heads and IRQ/RESET boosts are computed from
+time zero. The first tile latch is 37 lines (2,368,000 ns) after power-on,
+before the board's first line-0 callback at 2,432,000 ns; `XBoardVideoTiming`
+owns that initialization as well as later scanline latches/render frontiers.
+
+Calling `machine:exit()` from a CPU bus tap is unsuitable for checking final
+continuations: MAME's `running_machine::schedule_exit()` calls
+`eat_all_cycles()`, changing the remaining microcode clocks. The cold
+capture therefore requests exit from the next frame device callback, with
+no CPU executing, and keeps its taps active until the machine-stop notifier.
+It closes the last grant there. The replay also delivers the final device
+callback batch after the last CPU grant; those timer, bank and RGB assertions
+are checked rather than dropped.
+
+The focused capture requests 120 frames and stops at the natural frame-121
+callback. It matches 4,279,315 instruction/IRQ records, 11,514,112 phases,
+8,673,280 RGB pixels and 241,279 device heads, zero differences/skips.
+The long capture requests 602 frames and stops at frame 603:
+
+| Assertion | Identical / total |
+| --- | ---: |
+| CPU grant groups and native device heads | 1,378,296 / 1,378,296 |
+| Main/sub instruction/IRQ records | 21,722,588 / 21,722,588 |
+| Ordered main/sub bus phases | 56,831,338 / 56,831,338 |
+| Native Z80 transactions and timestamps | 10,686,524 / 10,686,524 |
+| Joint RGB pixels | 43,223,040 / 43,223,040 |
+| Tile latches / physical hidden sprite writebacks | 603 / 603 each |
+| Mixed speaker stereo frames / batches | 484,801 / 484,801; 505 / 505 |
+
+The run includes 2,939 native I/O writes on both chips, 2,517 compare/timer
+writes, 1,185 bank swaps, 569 road-control writes, 615 partial updates,
+3,113 native sound host writes, and 175 NMI/RETN pairs. Continuous PCM/FM
+matches 315,835/631,944 raw stereo samples and 6,236/424,660 batch
+timestamps/indexes. Six computed main RESET deliveries cancel sub work;
+seven sub vector/prefetch entries include initial power-on. No retained RAM
+is cleared merely because the CPU resets.
+
+`check_joint_cold_boundaries.py` independently matches the retained
+`joint_speaker_full` capture's 46 initial partial-ISR phases and both CPUs'
+last observed grant phases against the passed cold stream. Each CPU then
+reaches a later instruction/IRQ snapshot without a reset replacement. The
+old two parked continuations are inside the new native window. This is an
+overlap/continuation assertion, not an independent state fixture.
+
+The new finite machine-stop boundary remains explicit: both CPUs can have
+pending instruction debt, and one new sub ISR is active after its verified
+entry. The long run verifies 603 entries and 602 exact retained RTE
+restorations; the last ISR's later completion is outside observation. This
+supplies no future CPU completion or replacement state. Legacy joint
+fixtures still require their original fully closed ISR windows. Every added
+PC is exercised, but alternate boot checksums/DIP settings, other operands
+and branch outcomes, hard-reset combinations, unobserved suspension states,
+future execution after machine stop and a complete credit remain unverified.
+Task 6 must establish its declared whole-host coverage and wire the verified
+host into the game. Stage 1 remains the existing reconstruction loop.
+
+Eight private mutations reject by actual MAME comparisons: nonzero power-on
+RAM, nonzero hidden sprite bank, reset internal clocks, startup PEA stack
+value, startup SR mask, TRAP #10 vector, omitted first tile latch and changed
+physical DIP values. Build failures and coverage-only failures do not count.
+All old boot/shared, CPU, audio and video fixtures/mutations remain required.
+ROM images, captures, temporary mutation sources and logs remain ignored.
+
+```sh
+python3 tools/workflow.py run oracle-capture-joint-cold oracle-joint-cold
+python3 tools/workflow.py run oracle-capture-joint-cold-full oracle-joint-cold-boundaries
+python3 tools/workflow.py run oracle-joint-cold-mutations
+python3 tools/workflow.py run required -j4
+```
+
+Capture completion must precede comparisons. The cold positive, full overlap
+and eight mutations are part of `oracle-test`; CMake registers the positive
+checks, overlap and mutation script. See the validation continuation below.
+
+Validation: `python3 tools/workflow.py run required -j4` passed ROM-free
+`test`, `verify-stage1` and the complete `oracle-test`, including the two cold
+gates, overlap and all eight new mutations. Logs are in
+`build/workflow/20261009T060235.220987Z/`; `oracle-test` took 798.40 s. Existing
+routine-local race exclusions remain unchanged; cold/native windows have
+zero differences/skips. The final scheduler assertion refinement (native
+zero clocks and fixed consumed-grant masks rather than imported initial
+clocks/enabled flags) was recompiled and passed the full cold/overlap gate
+again in `build/workflow/20261009T061630.470418Z/` (160.27 s), with identical
+counts. The game build, 120-frame dummy video/audio smoke run and
+`git diff --check` pass. CMake registrations remain untested because CMake
+is unavailable here. No ROM/capture files are tracked and no game-loop
+integration is promoted by this checkpoint.
+
+## Autonomous whole-host acceptance and game integration (2026-10-09)
+
+Task 6 accepts the complete joint owner contract within the declared finite
+cold and expanded physical-input captures. This is separate from universal
+full-credit/operand/reset coverage. `XBoardHost` is now the application host,
+through `XBoardGame`; the earlier `OEngine` reconstruction is retained only
+in historical/regression tools and the original Stage 1 test.
+
+### Autonomous dispatch and owners
+
+The old joint replay used captured snapshots to initiate each instruction,
+even when its retained state and all computed phases matched. Cold replay
+now initiates successors from native PC/state and independently latched
+IRQ/RESET signals. The reusable `src/main/engine/xboard_host.hpp` contains
+that dispatch, private instruction debt and common board scheduling. Its
+API receives ROM regions, video hardware, a sound owner and physical inputs;
+it has no capture, instruction list, state-seed or completion-time provider.
+The ports remain the literal address-labelled `OMainIrqService` and
+`OSubIrq`/`OSubProgress` translations, including boot, TRAP/RTE and RESET.
+An unknown instruction fails explicitly instead of entering a reconstruction.
+
+One `MainBus::Memory` instance owns both CPUs' shared RAM and hidden banks.
+The native arbiter selects main, sub and sound grants in board order, using
+independently computed periodic, scanline, ADC, IRQ-line, sound synchronization
+and YM/audio deadlines. Main IRQ polls and sub VBLANK polls select entries;
+retained PC/SR/USP/SSP/registers and E-clock origins supply their context.
+The last executing instruction PC supplies exception bus attribution, while
+the retained successor supplies its return PC. The main RESET opcode owns
+sub cancellation, queue draining, clock rephasing and vector/prefetch restart.
+No later snapshot is used to repair a state or choose an exception sequence.
+
+`XBoardSoundBoard` executes the original Z80 in those same arbiter grants,
+with main I/O RESET and the actual compare/timer command latch. It owns
+synchronized NMI delivery/acknowledgement, YM timers, FM/PCM stream batches
+and fixed 20 ms speaker updates. The test runs this production sound owner,
+not a separate playback scheduler. Native video timing owns initial and
+line-261 tile latches, display/text-write partial frontiers and VBLANK frame
+completion. The compositor consumes the current native RAM/banks and retains
+sprite scaler feedback in the real hidden bank. The application presents
+those already completed clips without invoking an additional render pass.
+
+### Passive whole-host MAME comparison
+
+`tests/oracle_whole_host.cpp` reads the task-5 cold capture format as assertions.
+Expected snapshots are consumed only when the host emits its first bus phase;
+they never initiate its job. Scheduler starts, targets, budgets, completions,
+quantum requests and device heads are assertions on `host.step()`, whose
+selection remains native. Initial CPU/RAM/math/video-bank/sound-RAM state,
+physical bus data, stack banks, bank/control/frame bytes, render/latch clips,
+pixel indices/priorities/RGB, Z80 transactions and host command/reset writes,
+per-owner callbacks, raw stream sample/index/batch data and mixed float bits
+are all compared. Source trace time decoding uses source chronology; it does
+not unwrap timestamps against the native scheduler. External physical DIP,
+button and ADC inputs are the only capture values delivered to the board.
+
+All positive corpora have zero supplied execution phases, state replacements,
+initial latches, CPU contexts or read seeds; zero differences/skips:
+
+| Corpus | Scheduler groups/heads | CPU snapshots | Main/sub phases | RGB pixels | Mixed stereo frames/batches |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Cold 121 frames | 241,279 | 4,279,315 | 11,514,112 | 8,673,280 | 96,961 / 101 |
+| Cold 603 frames | 1,378,296 | 21,722,588 | 56,831,338 | 43,223,040 | 484,801 / 505 |
+| Expanded 781 frames | 1,801,247 | 28,128,435 | 73,593,282 | 55,982,080 | 627,841 / 654 |
+
+The passive native-entry census observes 2,929 main/693 sub instruction PCs
+in the focused window, 6,046/706 in the full window and 6,247/706 in the
+expanded window. Main IRQ2/4/6 entry counts are 364/119/3, 2,322/601/18 and
+3,046/779/23 respectively; sub IRQ entries are 121, 603 and 781. Those are
+whole-host observations, not all-port coverage claims. The larger independent
+8,500-main/1,136-sub instruction and 995 branch-direction fixtures remain
+required, and their other combinations remain unverified in the whole host.
+
+The expanded capture uses only the physical gameplay script's coin/start,
+ADC endpoints and all four weapon-button combinations. It extends gameplay
+past both previous cold/retained terminal boundaries. Its 4,671,054 native
+CPU grants, 6,814 owner callbacks, 2,891 bank/control/frame assertions and
+781 tile latches match. It also matches 13,765,117 Z80 transactions and
+4,195 native sound-host writes, 818,431 FM samples/517,813 batches,
+408,751 PCM samples/7,509 batches, six synchronized sub RESET deliveries
+and seven native reset sequences including power-on. Capture logs count the
+sound-host writes together with Z80 transactions; the table/report separates
+these owners. No total is inferred from an incomplete capture.
+
+### Directed owner rejection
+
+`check_whole_host_mutations.py` builds isolated private overlays and requires
+an actual passive MAME comparison failure. Compile failures, coverage-only
+failures and unported-instruction exceptions are not successful rejections.
+All fifteen mutations reject: main and sub reset clocks; successor bus-PC
+dispatch; main and sub IRQ selection; DIP inputs; initial hidden bank;
+initial renderer latch; arbiter quantum; periodic device deadline; Z80 bus
+clock; YM and PCM writes; mixed speaker gain; and native publication re-arm
+producer value. The speaker gain mutation runs against the 603-frame corpus:
+the 121-frame cold speaker stream is entirely silent, so changing gain there
+cannot establish rejection. The full stream has 351,511 nonzero channel
+samples, with peak magnitude 0.1854326874. All earlier startup, CPU-coverage,
+branch, video, audio, speaker and independent routine mutants remain required.
+
+### Live game and integration
+
+`XBoardGame` creates a fresh board without Stage 1 setup writes or native
+object/HUD/audio producers. It advances until the next completed physical
+frame and drains real speaker batches. The SDL loop uses the 16.768 ms
+262-line board frame period instead of an assumed 60 Hz clock. Defaults are
+the MAME `aburner2` input definition's FF/FF/DD switches (upright 1, throttle,
+three lives, normal difficulty, demo sounds). Arrow keys feed the documented
+raw ADC ranges (X 20..E0, reversed Y 40..C0); Z/X are active-low weapon pins,
+Space/Left Shift feed throttle FF/00, 5 feeds Coin 1, Enter feeds Start 1,
+F5 creates a fresh cold board and Escape exits. Inputs alter no gameplay RAM.
+
+`whole_host_integration` executes 781 physical frames with coin/start,
+endpoint/throttle and weapon combinations, checks nonzero native screen/audio
+and retained CPU/reset activity, then destroys the active board and compares
+a restarted board against an independent fresh boot. RAM, both hidden banks,
+RGB and speaker samples match. Measured PCM output RMS is 742.315; that is a
+local corpus observation, not a tuning constant. Worker destruction cancels
+parked jobs before their ports and buses are destroyed. No old queues, chip,
+renderer or private instruction-debt state is imported into the new board.
+The original 7,200-tick reconstruction Stage 1 assertions and standalone
+irregular-chunk sound checks remain in `verify-stage1`; this target also
+requires the new native integration check. The application headless test
+uses SDL dummy video/audio and completes 120 physical frames from power-on.
+
+### Acceptance limits and evidence
+
+The finite MAME machine-stop boundary can still cut active native instructions
+or an ISR. Their observed phases are accepted; future completion is outside
+that finite comparison. The host itself can keep executing without a capture.
+Full-credit stage progression/refueling, all possible operands and branch
+outcomes, other DIP/cabinet settings, arbitrary hardware-wide warm reset,
+watchdog expiry, non-consuming CPU suspension and unobserved instructions
+remain Phase 3e work. F5 recreation proves fresh cold restart, not arbitrary
+MAME warm-reset semantics. Independent directed instruction fixtures do not
+turn their unobserved whole-game combinations into accepted gameplay paths.
+Real-time playback performance is not implied by exact emulated timing;
+cooperative CPU handoffs remain a host performance cost.
+
+Focused/full/expanded comparisons, fifteen owner mutations and every older
+oracle are registered in Make; CMake guards oracle tests with `ORACLE_TESTS`
+and native game integration with `STAGE1_ROM_TESTS`. ROMs, captures, images,
+mutation binaries and full logs remain gitignored local artifacts. The
+expanded capture completed in `build/workflow/20261009T062557.099604Z/`;
+initial focused/full/expanded acceptance logs are respectively
+`20261009T063024.969020Z`, `20261009T063104.597147Z` and
+`20261009T063459.423240Z`. Native adapter acceptance is
+`20261009T063500.548115Z`; the nonzero-speaker/publication mutations are
+`20261009T063830.173490Z`. Final required-suite and headless validation are
+recorded below after completion. CMake is unavailable on this host.
+
+Final validation: `python3 tools/workflow.py run required -j4` passes in
+`build/workflow/20261009T064134.111408Z/`: ROM-free `test` 0.20 s,
+`verify-stage1` 41.67 s (both native whole-host and legacy reconstruction
+integration), and complete `oracle-test` 906.64 s. All three autonomous-host
+positive corpora and all fifteen owner mutations pass in this final suite.
+Older isolated fixtures retain their documented race exclusions (including
+two sprite passes and 263 scenery records); these are not skips in any new
+whole-host corpus. The live game builds, and
+`verify-whole-host-headless` passes in `20261009T064203.914065Z` (7.77 s,
+SDL dummy video/audio, 120 frames). `git diff --check` passes. CMake test
+registrations are source-reviewed but not executed because CMake is absent.
+No ROM/capture data is tracked or committed.

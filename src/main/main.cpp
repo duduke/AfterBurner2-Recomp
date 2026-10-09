@@ -1,7 +1,7 @@
 // AfterBurner2-Recomp
 //
-// Application entry point for the ROM-backed flight/combat prototype.
-// Simulation advances at 60 Hz independently of the display refresh rate.
+// Application entry point for the literal joint X-Board host.
+// Physical frame/CPU/device clocks are independent of display refresh.
 
 #include <SDL.h>
 #include <algorithm>
@@ -15,8 +15,7 @@
 #include "hwvideo/hwsprites.hpp"
 #include "hwvideo/hwtiles.hpp"
 #include "hwvideo/screen.hpp"
-#include "engine/oengine.hpp"
-#include "hwaudio/arcade_audio.hpp"
+#include "engine/xboard_game.hpp"
 
 namespace
 {
@@ -25,7 +24,7 @@ namespace
 
 }
 
-int main(int argc, char** argv)
+int main(int argc, char** argv)try
 {
     unsigned frame_limit = 0;
     if (argc != 1)
@@ -46,22 +45,9 @@ int main(int argc, char** argv)
     }
     std::cout << "ROM set loaded OK." << std::endl;
 
-    HWPalette palette(8192);
-    HWRoad road(0x1700, 0x1720, 0x1780, -166);
-    road.init(roms.road.rom, roms.road.length);
-
-    HWSprites sprites;
-    sprites.init(roms.sprites.rom, roms.sprites.length);
-
-    HWTiles tiles;
-    tiles.init_gfx(roms.tiles.rom, roms.tiles.length);
-
-    OEngine engine;
-    engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length, roms.subcpu.rom, roms.subcpu.length);
-
-    Screen screen(SCREEN_WIDTH, SCREEN_HEIGHT, palette, road, sprites, tiles);
-    std::vector<RGB888> frame(static_cast<size_t>(SCREEN_WIDTH) * SCREEN_HEIGHT);
-    std::vector<uint32_t> texture_pixels(frame.size());
+    XBoardGame game(roms);
+    const size_t frame_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
+    std::vector<uint32_t> texture_pixels(frame_pixels);
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
     {
@@ -108,11 +94,11 @@ int main(int argc, char** argv)
     }
 
     SDL_AudioDeviceID audio_device = 0;
-    auto audio = std::make_unique<ArcadeAudio>(roms);
+    constexpr int sample_rate = 48000;
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
     {
         SDL_AudioSpec spec{};
-        spec.freq = ArcadeAudio::SAMPLE_RATE;
+        spec.freq = sample_rate;
         spec.format = AUDIO_S16SYS; spec.channels = 2; spec.samples = 1024;
         audio_device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
         if (audio_device)
@@ -122,7 +108,7 @@ int main(int argc, char** argv)
     }
     if (!audio_device) std::cerr << "Audio unavailable: " << SDL_GetError() << '\n';
 
-    const double tick_seconds = 1.0 / 60.0;
+    const double tick_seconds = XBoardTimeline::FRAME_NS / 1.0e9;
     const double counter_frequency = static_cast<double>(SDL_GetPerformanceFrequency());
     uint64_t previous_counter = SDL_GetPerformanceCounter();
     double accumulated_seconds = tick_seconds;
@@ -134,12 +120,10 @@ int main(int argc, char** argv)
         {
             if (event.type == SDL_QUIT)
                 running = false;
-            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_RETURN)
+            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F5)
             {
-                engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length,
-                            roms.subcpu.rom, roms.subcpu.length);
+                game.restart();
                 if (audio_device) SDL_ClearQueuedAudio(audio_device);
-                audio = std::make_unique<ArcadeAudio>(roms);
             }
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
                 running = false;
@@ -147,16 +131,21 @@ int main(int argc, char** argv)
 
         if (!running) break;
         const uint8_t* keys = SDL_GetKeyboardState(nullptr);
-        int stick_x = 0;
-        int stick_y = 0;
-        if (keys[SDL_SCANCODE_LEFT])  stick_x -= 1;
-        if (keys[SDL_SCANCODE_RIGHT]) stick_x += 1;
-        if (keys[SDL_SCANCODE_UP])    stick_y -= 1;
-        if (keys[SDL_SCANCODE_DOWN])  stick_y += 1;
-
-        bool fire_vulcan = keys[SDL_SCANCODE_Z];
-        bool fire_missile = keys[SDL_SCANCODE_X];
-        int throttle = keys[SDL_SCANCODE_SPACE] ? 2 : 1;
+        XBoardGame::Host::Input input;
+        input.analog.fill(0x10);
+        for (unsigned i=0;i<5;++i) input.analog[i]=0x80;
+        // MAME aburner2's physical ADC ranges; Y is reversed. These are
+        // peripheral input values, never player angles or gameplay writes.
+        if (keys[SDL_SCANCODE_LEFT]) input.analog[0]=0x20;
+        if (keys[SDL_SCANCODE_RIGHT]) input.analog[0]=0xe0;
+        if (keys[SDL_SCANCODE_UP]) input.analog[1]=0xc0;
+        if (keys[SDL_SCANCODE_DOWN]) input.analog[1]=0x40;
+        if (keys[SDL_SCANCODE_SPACE]) input.analog[2]=0xff;
+        if (keys[SDL_SCANCODE_LSHIFT]) input.analog[2]=0;
+        if (keys[SDL_SCANCODE_Z]) input.buttons &= ~0x10;
+        if (keys[SDL_SCANCODE_X]) input.buttons &= ~0x20;
+        if (keys[SDL_SCANCODE_5]) input.buttons &= ~0x40;
+        if (keys[SDL_SCANCODE_RETURN]) input.buttons &= ~0x08;
 
         const uint64_t counter = SDL_GetPerformanceCounter();
         // Bound catch-up after a suspended window or debugger pause.
@@ -169,18 +158,13 @@ int main(int argc, char** argv)
         }
         while (accumulated_seconds >= tick_seconds)
         {
-            engine.handle_input(stick_x, stick_y, fire_vulcan, fire_missile, throttle);
-            engine.tick(palette, road, sprites, tiles);
+            game.tick(input);
             // Backpressure bounds playback latency without dropping sound.
             // The board still advances when no speaker device is available.
-            constexpr unsigned queue_limit_bytes = ArcadeAudio::SAMPLE_RATE * 2 * sizeof(int16_t) / 10;
-            for (const auto command : engine.take_sound_commands())
-                if (audio) audio->command(command);
-            for (const auto command : engine.get_objects().take_audio_commands())
-                if (audio) audio->command(command);
-            if (audio)
+            constexpr unsigned queue_limit_bytes = sample_rate * 2 * sizeof(int16_t) / 10;
+            const auto samples = game.take_audio();
+            if (!samples.empty())
             {
-                const auto samples = audio->render(ArcadeAudio::SAMPLE_RATE / 60);
                 if (audio_device)
                 {
                     while (SDL_GetQueuedAudioSize(audio_device) > queue_limit_bytes)
@@ -205,7 +189,7 @@ int main(int argc, char** argv)
             { running = false; break; }
         }
 
-        screen.render_frame(frame.data());
+        const auto& frame = game.pixels();
         for (size_t i = 0; i < frame.size(); i++)
         {
             const RGB888& p = frame[i];
@@ -226,4 +210,10 @@ int main(int argc, char** argv)
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
+}
+catch(const std::exception& error)
+{
+    std::cerr << "X-Board host stopped: " << error.what() << '\n';
+    SDL_Quit();
+    return 1;
 }
