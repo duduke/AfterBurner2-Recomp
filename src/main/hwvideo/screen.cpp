@@ -39,6 +39,8 @@ void Screen::render_partial(RGB888* output, int top, int bottom, bool display, u
     tiles.draw_text(pixels.data(), priority.data(), width, height, /*category=*/0, 0x04);
     tiles.draw_text(pixels.data(), priority.data(), width, height, /*category=*/1, 0x08);
 
+    if(layers_rendered)layers_rendered(top,bottom,pixels,priority,palette);
+
     const uint32_t num_entries = palette.num_entries();
 
     for (int i = top * width; i < (bottom+1) * width; i++)

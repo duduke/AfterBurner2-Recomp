@@ -76,6 +76,7 @@ local function launch()
  if case.counter_reg==nil then cpu.state.D0.value=case.d0;cpu.state.D1.value=case.d1;cpu.state.D2.value=case.d2 or 0 end
  for offset=0,0xfe,2 do space:write_u16(case.cpu==1 and 0x3ffc00+offset or 0x9c000+0x300+offset,0)end
  for n=0,6 do cpu.state['A'..n].value=case.cpu==1 and 0x3ffc00 or 0x9c000 end
+ if case.memory_word_address then space:write_u16(case.memory_word_address,case.memory_word_value)end
  for _,sp in ipairs({ssp,usp})do space:write_u32(sp,base+0x80)end
  -- A supervisor RTE consumes an explicit valid exception frame at IPL7.
  -- User RTE cases still fault before reading it.

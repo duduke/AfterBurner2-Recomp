@@ -118,6 +118,16 @@ alternate DIP settings and arbitrary hardware reset/suspend states. Those
 paths are not implied by finite whole-host acceptance. See the final
 ENGINE_NOTES section for the contract, owner mutations and test evidence.
 
+Live-stop follow-up: `$5CEA` and `$C4F6` plus their observed downstream
+continuations have a merge checkpoint of 5,011 additional literal ports,
+23,654 independent MAME fixtures, 56,530 exact bus phases and both outcomes
+at all 453 new branches.
+The 2,400-frame neutral native attract smoke also passes; ongoing additions
+to the declared manifest need their own MAME proof. The CPU adapter
+batches work within existing grants and defers startup; SDL catch-up batches
+are bounded to preserve input/presentation responsiveness. These checks extend
+finite coverage and do not establish full-credit or real-time acceptance.
+
 **Retained joint baseline**: Physical main selection, observed main
 producers/callees and sub reset startup now pass together in the 600-frame
 joint corpus: 20,532,168 native records, 53,449,620 phases, zero differences/
@@ -873,6 +883,22 @@ See the Stage 1 fidelity notes for the verified command and memory maps.
 ## Phase 5 — Enhancements Phase
 
 Optional features, visual upgrades, and quality-of-life additions for After Burner II:
+
+The foundation retains translated ROM logic. `GameSession` now provides
+normalized controls, pause/restart, frame notifications and output audio
+processing for application enhancements. See
+[ENHANCEMENT_ARCHITECTURE.md](ENHANCEMENT_ARCHITECTURE.md) for current contracts
+and the subsystem interfaces required for gameplay, widescreen and asset
+enhancements. This does not close Phase 3e/full-credit coverage or complete
+the menus and content features below.
+
+A local [Three.js direct-scene prototype](../prototypes/threejs/README.md)
+now draws individual original-art sprite meshes and indexed ground/tile
+geometry from native partial-clip state. GPU composition preserves palette,
+priority and shadow semantics and reports a native RGB checksum diagnostic.
+It retains the arcade projection; 3D world geometry, true widescreen and a
+standalone WebAssembly build remain future work. This prototype does not
+promote full-credit gameplay acceptance.
 
 ### 1. Menus, UI & Convenience
 - [ ] **Frontend and Configuration Menus (Seamless In-Game Integration):**

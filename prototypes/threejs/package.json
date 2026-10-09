@@ -1,0 +1,7 @@
+{
+  "name": "afterburner2-threejs-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "python3 server.py", "test": "python3 ../../tools/workflow.py run test-threejs-scene" },
+  "dependencies": { "three": "0.186.1" }
+}

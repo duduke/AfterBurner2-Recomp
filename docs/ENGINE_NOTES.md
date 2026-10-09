@@ -7381,3 +7381,305 @@ whole-host corpus. The live game builds, and
 SDL dummy video/audio, 120 frames). `git diff --check` passes. CMake test
 registrations are source-reviewed but not executed because CMake is absent.
 No ROM/capture data is tracked or committed.
+
+
+## Reported live stops and CPU handoff cost (2026-10-09)
+
+The reported decimal PCs 23786 and 50422 are `$5CEA` and `$C4F6`.
+They were missing caller cases. The literal
+recovery schedule now covers `$5CEA/$5CEE/$5CF4`, the `$C4F6..$C5A6`
+continuations, and additional paths exposed by extended neutral attract play:
+`$5D72/$5DE6`, `$7A8E..$7AD6`, `$1583A/$1583C`, `$AE50..$AE6C`,
+`$E0EE/$E0F2`, the remaining `$A90E..$A9C0` branch-table continuations,
+and the normal `$A6D6..$A712` branch table plus its `$A728..$A762/$A88C`
+selections, and the `$68DA..$69EE` script-dispatch table with
+`$6B00..$6B86` settings writers. The special `$A716..$A724` CHK sites are
+not part of this set. Script object selectors `$6B88..$6CDC` and their
+`$6D24/$6F5A..$7122` formation/allocation continuations are also covered.
+The `$786C..$79B6` formation update and motion helpers are also covered.
+Horizontal-motion/sprite-selection helpers `$7EAC..$7F3A` are also covered.
+The `$A5F0` signed-motion negate branch is also covered.
+Secondary-object allocation `$AD9C..$AE16`, initialization/update
+`$8D44..$9044`, and release `$9556..$9574` are also covered.
+The `$14FB6` hit-response clamp, `$CBD2/$CBD8/$CBDE` HUD formatting
+continuations and `$068E..$096C` script setup/initialization/update were
+subsequently exposed and ported as literal instruction sites. The
+`$060E..$068C` script allocator/selectors are also covered.
+The accepted recovery checkpoint covers 3,165 new instruction addresses, kept
+in a separate declared manifest
+rather than reducing or redefining the retained 8,500-PC acceptance corpus.
+The generator's added `ST d16(An)` form follows MAME's `st_das_df`: extension
+prefetch, byte read, program prefetch, IPL selection and byte write; CCR is
+unchanged. Added register TAS and displacement memory ASL follow MAME
+`tas_ds_df` and `asl_das_df`. TAS fixtures include old zero/negative bytes
+and preserved upper register bytes; ASL fixtures cover sign-change overflow,
+carry/X and zero result with explicit independent RAM operands.
+The `$7EFA` indexed word-table fixture uses an even D1 offset: `$7ED8`
+clears it and `$7EF0` advances it by two. The `$0926` longword table uses a multiple-of-four D1 offset, as produced
+by the two preceding doubles at `$0922/$0924`. Generic odd offsets instead enter
+MAME's address-error exception; those exception contexts remain outside this
+normal-instruction acceptance set. The ROM remains an external runtime input.
+
+`oracle-capture-recovery` executes independent original-ROM instructions in
+MAME. It exercises all 32 CCR patterns at conditional branches, both DBF counter outcomes,
+and nonzero data-register operands at the other sites. `oracle-recovery`
+compares bus address/data/mask/time, post-registers, stack banks, SR, next PC
+and completion time. All 14,352 fixtures and 33,540 bus phases match, with zero
+differences/skips. The census requires every declared PC and both outcomes of
+all 266 branches. `oracle-recovery-mutations` rejects a wrong `$5CEA` data
+write and a wrong `$C504` ST result through the actual bus comparison, plus
+wrong TAS output and ASL carry/X through the post-state comparison.
+Captures and flat ROM images remain ignored under `build/oracle/`.
+
+Later observed paths add stage-script transitions, palette/road setup, road
+allocation/placement, sprite positioning, collision/effect continuations,
+object motion and hit updates, and the `$D358/$D3E8` game-state transitions.
+The PC-only manifest lists their exact bounded code ranges and excluded inline
+data. Immediate signed MULS follows MAME `muls_w_imm16_dd_df`: word prefetch,
+signed low-word product, Booth-transition-dependent internal clocks and final
+NZVC with preserved X. Directed fixtures cover zero, both signs and signed word
+limits; an unsigned-popcount clock mutation is rejected. Additional fixtures
+exercise nonzero register shift counts, byte rotate carry/sign/high-byte
+preservation and normal/overflow immediate DIVU. Indexed longword tables at
+`$17B0/$53B4` use multiples of four, as produced by the preceding doubles.
+The accepted checkpoint and all six recovery mutations pass in
+`build/workflow/20261009T112127.810934Z/`, using the isolated ignored
+`build/oracle/cpu_recovery_native.bin`. `RECOVERY_CAPTURE` selects a private
+capture path without changing the default fixture path. This avoids concurrent
+writers corrupting replay records. Ongoing work can extend the declared
+manifest beyond this checkpoint; new addresses require their own MAME proof.
+
+The CPU continuation now runs consecutive microsteps within the same granted
+budget without returning to the host thread at every checkpoint. It yields
+at the existing bus-debt, VPA wait and synchronized-abort boundaries. The live
+host prepares each instruction without an initial worker round trip; its first
+grant starts it. RESET can cancel such a prepared instruction without running
+it. Sleeping waiters register and recheck the turn using sequentially
+consistent atomics, allowing hot handoffs to omit unnecessary kernel wakeups.
+The original release/acquire publication and instruction-tail debt contract
+remain intact. Regression checks include deferred cancellation and bus effects,
+retained RMW, overrun debt, VPA, aborts, idle sleep and error propagation.
+
+An isolated 120-frame board benchmark, with SDL pacing excluded, measured
+baseline 6.77/6.80 seconds and updated 3.45/3.71 seconds after the acceptance
+suite finished: about 1.8–2.0 times faster. With the suite running, the same
+comparison was 12.45/11.43 versus 7.30/6.01 seconds. This is not real-time
+acceptance: 120 physical frames represent about 2.012 seconds. The SDL loop
+additionally caps each catch-up batch at two frames and bounds wall-time backlog, so slower execution cannot
+monopolize input polling and presentation. Every emulated frame still executes
+all of its CPU and device work.
+
+The rebuilt Apple Silicon host benchmark subsequently measures 120 unpaced
+frames in 1.32 seconds (`build/game_speed_latest.txt`), versus the original
+6.77/6.80 seconds. This initial-window throughput exceeds the corresponding
+2.012-second arcade interval, but is not a full-credit peak-load guarantee.
+The native 2,400-frame neutral attract smoke passes in
+`build/workflow/20261009T112206.823409Z/` and is retained in `verify-stage1`.
+It proves extended native execution without an unsupported-PC stop; it is
+not a 2,400-frame independent pixel/audio oracle. Final `test`, `verify-stage1`
+(including both CPU backends and retained integration/session fixtures) and
+`oracle-whole-host` pass in `build/workflow/20261009T112457.520018Z/`.
+The original full oracle suite also passed earlier in this session at
+`build/workflow/20261009T091720.040685Z/`; later recovery additions have the
+independent instruction proof above. CMake registrations remain unexecuted
+because CMake is unavailable. No ROM/capture data is tracked.
+
+These independent instruction checks extend finite acceptance. They do not
+prove an arbitrary credit, all later stages, or every operand/input trajectory.
+Use the retained whole-host pixel/audio/scheduler corpus and the full oracle
+suite in addition to the recovery fixtures. Full-game coverage and further
+CPU synchronization optimization remain necessary.
+
+## Application extension boundary (2026-10-09)
+
+The application now uses `GameSession` around the unchanged translated-game
+adapter. `GameControls` supplies normalized device axes and named buttons;
+the mapping preserves the native application's physical ADC endpoints and
+active-low pins. Keyboard precedence is retained. No flight angles, object
+positions, gameplay timers or shared RAM are supplied by the session.
+
+Extensions receive completed read-only RGB frames, can process outgoing PCM
+without altering chip state, and receive an explicit restart notification.
+The session owns pause and pending output audio; pause performs no board
+advance and restart discards that output and recreates the board. The SDL
+application exposes P to pause/resume, pauses the playback device, clears
+wall-time backlog and continues presenting the frozen frame while paused.
+F5 clears playback and starts a fresh unpaused board. No translated routine
+or CPU timing is changed by this boundary. See `ENHANCEMENT_ARCHITECTURE.md`
+for lifetime contracts and the future typed subsystem interfaces needed for
+content, asset replacement, widescreen, music routing and gameplay policies.
+
+ROM-free controls checks pass for neutral/endpoints, saturation, all 16 button
+combinations and nonfinite rejection. The new integration compares `GameSession`
+against `XBoardGame` for the 781-frame endpoint/weapon fixture: exact RGB,
+frame/time frontiers and identity audio match. It pauses/resumes mid-game,
+mutes a nonzero audio section through the extension then resumes exact native
+audio, and verifies restart notifications and fresh-board RGB/audio equality.
+Both checks are included in the existing `test`/`verify-stage1` targets.
+Focused validation passes in `build/workflow/20261009T092341.350121Z/`,
+including the 120-frame headless application launch. The broader ROM-free and
+Stage 1/native/session integration also pass in
+`build/workflow/20261009T092409.518783Z/`. CMake registrations have not run
+because CMake is unavailable. These checks establish an application boundary,
+not additional full-credit MAME coverage or completion of Phase 5 features.
+After keeping paused presentation active, `test` and the headless application
+pass again in `build/workflow/20261009T092902.667511Z/`; `git diff --check`
+passes. No new ROM port was added by this change, no full oracle-suite result
+is claimed here, and no ROM/capture data is included.
+
+## Direct Three.js scene prototype (2026-10-09)
+
+`tools/threejs_bridge.cpp` runs the existing `XBoardGame` and observes native
+completed partial clips. It reads published sprite/road banks, tile/text RAM,
+latched tile registers and resolved palette pens at the rendering frontier.
+`XBoardGame::video_registers()` is a read-only snapshot getter. No CPU/device
+scheduling, producer writes or gameplay logic is replaced. Native internal
+rendering remains necessary for scaler writeback feedback.
+
+`ThreeScene::sprites` converts the published descriptors and runtime ROM into
+indexed source images and screen-space quad transforms. It follows the existing
+scaler's bank/address wrap, signed pitch, vertical address accumulator, marker,
+nibble-order and direction rules, without modifying the published bank.
+Three.js performs horizontal source sampling and writes per-object indexed
+words into its sprite render target. Indexed road/tile/HUD scanline strips
+are batched geometry in a separate render target. The GPU composition pass
+implements the native strict priority comparison and palette effects selection;
+it does not display a C++ composite framebuffer texture. Original ground/tile
+sampling remains native in this first prototype. World coordinates, 3D models,
+true widescreen and a standalone Wasm execution host are not claimed.
+
+The local Python transport binds 127.0.0.1:8765, reads the user's ROMs in the
+native process, and serves only explicit frontend/library files. Sources contain
+no original assets. Runtime images, PCM, screenshots and logs remain local;
+node_modules is ignored and Three.js is pinned to 0.186.1 in the npm lockfile.
+Browser audio is optional and not a new audio-oracle acceptance claim.
+
+`test-threejs-scene` passes 80 synthetic exact comparisons with `HWSprites`,
+covering zoom, both directions, ROM nibble order, signed pitch, address wrapping
+and clip bounds. A private row-step mutation is rejected by that native pixel
+comparison; it is included in `test`. Focused evidence is in
+`build/workflow/20261009T095114.607737Z/`. `test` and `verify-stage1` pass in
+`build/workflow/20261009T094907.282157Z/`, including native/session and retained
+reconstruction integration. JS syntax and Python compile checks pass. CMake is
+unavailable; its new ROM-free test registration is not executed.
+
+Live WebGL2 browser testing showed native RGB checksum MATCH during observed
+attract/gameplay frames, including frame 1079, and no shader error/warning.
+This is a rendered-frame FNV-1a diagnostic, not a full MAME coverage claim.
+Extended play reached unported main PC $CBD8 (52184) and stopped explicitly.
+Restart recreates the bridge process so the known failure is recoverable.
+Simulation throughput is below arcade rate under the observed load. Full-credit
+coverage, broader renderer comparisons and browser performance remain open.
+
+Final browser recovery check recreated the stopped native process, executed
+Boot to flight, then exercised resume, right-stick input, pause and object
+outlines. The run from frame 600 through 730 reports 131 rendered-frame RGB
+checksum checks and zero mismatches. The final view remains paused at frame
+730 with 92 sprite meshes and native checksum MATCH. The local preview is
+`build/threejs-prototype.jpg` (ignored); no capture/art is tracked. Boot to
+flight now pauses at its completed scene so the user can resume explicitly.
+Final ROM-free checks (including the mutation) and the native headless launch
+pass in `build/workflow/20261009T095437.152637Z/`; `git diff --check` passes.
+
+## Browser hit-response and object-motion stops (2026-10-09)
+
+The browser stopped after frame 1340 at decimal PC 29402 (`$72DA`).
+The literal recovery manifest adds 24 instruction sites in `$72DA..$7330`,
+including the `$7E5A` call, ROM-table lookup, multiplier operands, velocity
+writes, zero-velocity branch and return to `$5AF2`. Extended neutral gameplay
+then exposed decimal PC 87008 (`$153E0`) after frame 1850. Its connected
+`$153E0..$1574A` motion lifecycle and `$14E14..$14E1C` helper add another
+223 missing sites. These are generated instruction translations from the
+external ROM; existing schedules and fixtures remain retained.
+The next extended run reached the collision-success branch `$15178` in the
+existing `$150C0` helper. Four additional sites `$15178..$15184` set D6 and
+write the original collision position/status. Its mutation clears D6 instead
+of setting it, requiring a fixture mismatch.
+
+The current recovery union contains 3,101 PCs and 259 conditional branches.
+All 14,014 independent original-ROM fixtures match, with 32,726 bus phases,
+zero differences and zero skips. Both outcomes occur at every declared branch.
+Evidence is in `build/workflow/20261009T111410.777576Z/`. Separate mutations
+target the `$7330` return and `$153E0` entry prefetch in addition to the retained
+recovery mutations. This extends finite instruction coverage; it does not
+establish full-credit gameplay acceptance.
+
+The local server now retains physical bridge commands in memory and writes
+ignored `build/threejs_failure_replay.txt` only when execution stops. The
+error identifies the ROM PC and last completed response frame, excluding
+diagnostics from older process instances. No graphics, audio or ROM data are
+saved in that replay. Stop, broken-pipe and stale-log diagnostics were checked
+with isolated fake process streams.
+
+The collision extension matches 14,022 fixtures in
+`build/oracle/browser_recovery.bin`; all eight then-declared recovery mutations
+reject. Its aggregate coverage command detected a concurrent 60-PC manifest
+expansion, rather than a CPU difference. The independent concurrent
+`cpu_recovery_native.bin` capture covers that larger 3,165-PC union: 14,352
+fixtures, 266 branches and 33,540 phases match. No declared PCs were removed.
+
+The next live stop occurs after frame 1937 at `$19CC0` (105664), in the
+stage-indicator selection/update path. Its 53 missing instruction sites through
+`$19D86` are generated, excluding the data starting at `$19D90`. An incremental
+MAME plan selects these sites from the same independent ROM-classified recovery
+plan. All 286 fixtures and 612 phases match, and the `$19CC6` wrong branch-target
+mutation rejects. Combined coverage from `cpu_recovery_native.bin` and
+`browser_indicator.bin` includes all 3,218 declared PCs and both outcomes of
+272 branches (14,638 fixtures). The coverage checker now accepts multiple
+captures while retaining exact PC/branch census and both-outcome requirements;
+negative checks reject an omitted PC and an omitted branch outcome. The
+mutation tool's optional `--only` supports a named incremental test; default
+whole-corpus runs still execute every retained mutation.
+
+After resolving the indicator, the same first-crash transition reached
+`$E662`. Its connected static control-flow graph contains 1,776 additional
+instruction sites, including literal branch-table entries at `$E91E`, `$E99A`
+and `$F374`, object callback addresses, debris, crash animation/recovery,
+`$9576` allocation, `$10002..$10346` helpers and the `$188A8` caller. Inline
+pointer data at `$E89E..$E8A4` is excluded. Both DBF loop bodies are included.
+The fixture plan uses the ROM-produced aligned indices: `$E778/$E77A` shift
+debris indices left six, `$F578/$F57A` and `$F630/$F632` double longword table
+indices twice, and `$FA90` masks the ring-buffer word offset to `$E`.
+
+The initial comparison exposed eight differences at four indexed immediate
+BSET sites `$E782/$E788/$E78E/$E794`. The generator omitted their two internal
+index clocks. MAME's `bset_imm8_dais_df` performs immediate prefetch, two index
+clocks, extension prefetch, byte read, final prefetch/IPL and byte write. The
+generator now emits that sequence; no previously generated graph contains
+these indexed bit forms. The corrected source matches all 8,922 crash fixtures
+and 22,148 phases, with zero differences/skips. The earlier failing comparison
+remains local in `build/oracle/browser_crash_compare_pre_fix.log`.
+
+The complete current recovery union is 4,994 PCs, 451 branches with both
+outcomes, and 23,560 original-ROM fixtures across the retained native capture,
+the indicator increment, and `browser_crash_aligned.bin`. Each capture passes
+CPU state/bus comparison separately. The mutation runner can compare a single
+mutated executable against multiple captures; every default mutation remains
+required, and a non-fixture error is rejected as mutation evidence. Wrong crash
+descriptor and dispatch-target mutations reject after the baseline passes.
+
+
+### Verified playable-host merge snapshot (2026-10-09)
+
+The merge freezes 5,011 recovery instruction sites, independently replayed as
+23,654 original-ROM fixtures and 56,530 exact bus phases, with zero differences
+or skips. All 453 conditional branches have both outcomes; all twelve recovery
+mutations reject after the baseline passes. The capture is
+`build/oracle/cpu_recovery_release_complete.bin`, generated with a 32-second
+emulation limit so the complete declared set is captured.
+
+Concurrent gameplay work continued in the shared checkout. Verification used
+an isolated copy matching every staged Git blob, with separate build outputs
+and retained local ROM/capture inputs. On that snapshot, `test` passed in
+32.11 seconds, `verify-stage1` in 89.09 seconds, the complete `oracle-test` in
+628.64 seconds, and `verify-threejs-core` in 104.34 seconds. The latter checks
+the browser release compiler/options against the cold and expanded whole-host
+corpora, including 781 frames, 55,982,080 exact RGB pixels and mixed audio.
+Logs are retained locally in `build/workflow/release-snapshot-20261009/`.
+
+Later uncommitted continuations remain outside this merge checkpoint. The
+2,400-frame native attract smoke and finite MAME acceptance do not close
+full-credit gameplay, arbitrary input trajectories, later stages or peak-load
+real-time performance. CMake test registrations were added but CMake was
+unavailable locally; these results use Make. No ROM data or captures are
+committed.

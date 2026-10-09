@@ -3,8 +3,49 @@
 #include <thread>
 #include <stdexcept>
 #include "hwmath/xboard_cpu_continuation.hpp"
+#include "engine/osubprogress_manifest.hpp"
+#include <cfenv>
 namespace {void check(bool value){if(!value)throw std::runtime_error("CPU continuation regression");}}
 int main()try{
+    // The live host defers an instruction until its first grant. It must not
+    // touch the bus when merely prepared, or after RESET cancels that job.
+    {XBoardCpuContinuation deferred;unsigned visits=0;
+     auto instruction=[&]{deferred.clock(0);++visits;deferred.bus_completed(0);
+         deferred.clock(320);++visits;deferred.bus_completed(320);
+         deferred.clock(640);deferred.instruction_completed(640);};
+     deferred.start(0,instruction,false);check(visits==0);
+     deferred.reset(0);check(deferred.done()&&visits==0);
+     deferred.start(0,instruction,false);check(visits==0);
+     check(deferred.advance(80)==80&&visits==1&&!deferred.done());
+     check(deferred.advance(720)==640&&visits==2&&deferred.done());}
+    // Lookup must retain exactly the generated whitelist, including odd PCs
+    // and gaps. Compare every address with a single monotonic manifest cursor.
+    size_t cursor=0;
+    for(uint32_t pc=0;pc<=sub_instructions.back().pc+2;++pc){
+        while(cursor<sub_instructions.size()&&sub_instructions[cursor].pc<pc)++cursor;
+        const auto* expected=cursor<sub_instructions.size()&&sub_instructions[cursor].pc==pc?&sub_instructions[cursor]:nullptr;
+        check(sub_instruction(pc)==expected);
+    }
+    // Independent stacks must preserve live locals and floating-point control
+    // state across interleaved grants, RESET unwinding and destruction.
+    {XBoardCpuContinuation first,second;int unwound=0;
+     struct Guard{int& count;~Guard(){++count;}};
+     auto operation=[&](XBoardCpuContinuation& c,int mode){
+         c.clock(0);Guard guard{unwound};std::fesetround(mode);
+         volatile double value=1.25;
+         c.bus_completed(0);c.clock(320);
+         check(std::fegetround()==mode&&value==1.25);
+         c.bus_completed(320);c.clock(640);c.instruction_completed(640);
+     };
+     const auto rounding=std::fegetround();
+     first.start(0,[&]{operation(first,FE_DOWNWARD);});
+     second.start(0,[&]{operation(second,FE_UPWARD);});
+     check(first.advance(80)==80&&second.advance(80)==80);
+     check(std::fegetround()==rounding);
+     check(first.advance(400)==400&&second.advance(400)==400);
+     first.reset(400);second.reset(400);check(unwound==2);
+     check(std::fegetround()==rounding);
+    }
     XBoardCpuContinuation cpu;
     uint16_t shared=7,latched=0;unsigned reads=0,writes=0;
     cpu.start(0,[&]{

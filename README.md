@@ -20,9 +20,10 @@ Cannonball's proven approach:
 - The original arcade ROM's **graphics tiles, sprites, background/road data,
   and audio (Z80 program + YM2151/SegaPCM samples) are reused as-is** as
   data, read straight out of the ROM images.
-- The **68000 game logic is being studied from disassembly and re-authored
-  as readable, modern C++**; the current Stage 1 behavior also contains native
-  reconstructions. It drives reimplementations
+- The **68000 game logic is translated from disassembly into address-labelled
+  C++**, with verified subsystems available for later readable refactoring.
+  The live application runs these translations; the earlier Stage 1
+  reconstruction remains in regression tools. The logic drives reimplementations
   of the X-Board hardware (sprite scaler, background generator, tilemap,
   palette) instead of an emulated CPU core.
 - The result runs natively (no CPU emulation for the game logic itself),
@@ -78,6 +79,17 @@ unverified. Unknown program instructions stop explicitly. The earlier Stage 1
 reconstruction remains in regression fixtures. See [docs/ROADMAP.md](docs/ROADMAP.md)
 and the final [engine notes](docs/ENGINE_NOTES.md) for coverage and exclusions.
 
+The SDL application uses `GameSession`, an application API for normalized
+controls, pause/restart, completed frame notifications and output audio
+processing. It keeps the translated logic as the reference while Phase 5
+features are added. See [Extending the translated game](docs/ENHANCEMENT_ARCHITECTURE.md)
+for extension contracts and the deeper interfaces needed for new gameplay modes.
+
+A separate [Three.js rendering prototype](prototypes/threejs/README.md) is
+available with `make threejs-prototype` after installing its npm dependency.
+It draws original-art sprite meshes and ground/tile geometry from the native
+core through a local server; it is not yet a standalone browser build.
+
 ## Building
 
 Requires SDL2 and a C++20 compiler.
@@ -90,7 +102,7 @@ cmake --build build
 
 Controls: arrow keys move/bank/pitch, Z fires the cannon, X launches missiles,
 Space increases throttle and Left Shift reduces it. Press 5 to insert a coin,
-Enter to start, F5 to cold-restart, and Escape to exit. The board advances at
+Enter to start, P to pause/resume, F5 to cold-restart, and Escape to exit. The board advances at
 its physical 16.768 ms frame period; logic cadence comes from the ROM.
 
 The Makefile is an alternative when CMake is unavailable: `make -j4`.

@@ -18,6 +18,8 @@ public:
     const std::vector<RGB888>& pixels()const{return state->host.pixels;}
     std::vector<int16_t> take_audio(){auto out=std::move(state->audio);state->audio.clear();return out;}
     Host& board(){return state->host;}
+    const Host& board()const{return state->host;}
+    HWTiles::FrameRegisters video_registers()const{return state->tiles.frame_registers();}
 private:
     struct State {
         HWPalette palette{8192};HWRoad road{0x1700,0x1720,0x1780,-166};HWSprites sprites;HWTiles tiles;
