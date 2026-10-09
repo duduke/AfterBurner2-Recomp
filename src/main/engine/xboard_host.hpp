@@ -25,6 +25,7 @@ public:
     XBoardTimeline board;XBoardMainIrqLines lines;XBoardDeviceDeadlines devices;XBoardVideoTiming video;
     std::vector<RGB888> pixels=std::vector<RGB888>(320*224);
     std::function<void(const Phase&)> phase;
+    Screen::LayerObserver layers;
     std::function<void(uint64_t,unsigned,unsigned,bool)> rendered;
     std::function<void(uint64_t)> latched,frame;
     std::function<void(Time)> boosted;
@@ -49,6 +50,9 @@ public:
         bus.compare_timer.schedule_sound=[&](uint8_t d){commands.emplace_back(main_ns,d);if(running[0])maincpu.abort_grant(main_ns);};
         board.scanline=[&](uint64_t ns,unsigned line){if(line==223||line==224){lines.update(bus.compare_timer.state().irq,board.vblank(),ns);if(board.main_irq_level())boost(ns);}lines.deliver(ns);video.scanline(ns,line);};
         video.latch=[&](uint64_t ns){sync_text();tiles.latch_frame_registers();if(latched)latched(ns);};
+        screen.layers_rendered=[&](auto top,auto bottom,auto indices,auto priority,const HWPalette& pens){
+            if(layers)layers(top,bottom,indices,priority,pens);
+        };
         video.render=[&](uint64_t ns,unsigned top,unsigned bottom,bool display){render(top,bottom,display);if(rendered)rendered(ns,top,bottom,display);};
         video.frame=[&](uint64_t ns){++frames;if(frame)frame(ns);};
         devices.callback=[&](XBoardDeviceDeadlines::Owner owner,uint64_t ns){if(owner==XBoardDeviceDeadlines::SoundUpdate)sound.update_speaker(ns);};
@@ -93,7 +97,7 @@ private:
     uint32_t usp{},ssp{};OSubIrq::State substate{},live_sub{};
     uint64_t main_ns{};Time device_head{};bool advancing{};uint8_t mux{},buttons=0xff;std::array<uint8_t,8> analog{};
     std::deque<Input> inputs;std::deque<uint64_t> resets;std::deque<std::pair<uint64_t,uint8_t>> commands;
-    // Workers are last: other members stay alive until both are joined.
+    // Continuations are last: other members stay alive while their stacks unwind.
     XBoardCpuContinuation maincpu,subcpu;
     static bool rte(uint32_t pc){return pc==0x1466a||pc==0x14672||pc==0x147c6||pc==0x147e6||pc==0x14842||pc==0x144ea||pc==0x14828;}
     void boost(uint64_t ns){const auto at=Time(ns)*AS_PER_NS;arbiter.boost(at);if(boosted)boosted(at);}
@@ -126,7 +130,11 @@ private:
         if(!reset&&!irq)bus_pc[c]=state.pc;
         entries[c]={state,c?substate.usp:usp,c?substate.ssp:ssp,c?substate.cycle_bias:0,reset?(c?3u:7u):irq?(c?2u:3+irq/2):1u};
         first_phase[c]=true;running[c]=true;reset_ready[c]=false;++instructions;
-        if(c==0)maincpu.start(state.ns,[&,state,reset,irq]{
+        // Entry state stays immutable until this continuation completes. Capture
+        // only its owner and flags; copying the register file into std::function
+        // forced a heap allocation for every literal instruction.
+        if(c==0)maincpu.start(state.ns,[this,reset,irq]{
+            const auto state=entries[0].state;
             auto clock=[&](uint64_t ns){maincpu.clock(ns);main_ns=ns;};auto poll=[&](uint64_t ns){return main_poll(ns);};
             OMainIrqService::Context ctx{};ctx.registers=state.registers;ctx.boundary_ns=state.ns;ctx.interrupted_pc=state.pc;ctx.supervisor_sp=state.sp;ctx.sr=state.sr;ctx.exception_supervisor_sp=ssp;
             if(reset)states[0]=mainport.reset_joint(bus,state,bus_pc[0],clock);
@@ -137,14 +145,15 @@ private:
             else if(rte(state.pc)){const auto r=mainport.return_joint(bus,state,usp,clock,poll,ssp);states[0]=r.state;pending[0]=r.irq;if(state.sr&0x2000)ssp=state.sp+6;}
             else{const auto r=mainport.caller_step(bus,ctx,clock,poll,[&](uint64_t ns){boost(ns);resets.push_back(resets.empty()?ns:resets.front());maincpu.abort_grant(ns);});states[0]=r.state;pending[0]=r.irq;}
             if(states[0].sr&0x2000)ssp=states[0].sp;else usp=states[0].sp;maincpu.instruction_completed(states[0].ns);
-        });
-        else{const auto state=substate;live_sub=state;subcpu.start(state.ns,[&,state,reset,irq]{
+        },false);
+        else{const auto state=substate;live_sub=state;subcpu.start(state.ns,[this,reset,irq]{
+            const auto state=substate;
             auto clock=[&](uint64_t ns){subcpu.clock(ns);};auto phase=[&](bool w,uint32_t a,uint16_t d,uint16_t m,uint32_t pc,uint64_t ns){observe(1,w,a,d,m,pc,ns);};
             if(reset){substate=subport.reset(bus.sub,state,bus_pc[1],clock,phase);++reset_sequences;}
             else if(irq){pending[1]=0;substate=subport.enter(bus.sub,state,bus_pc[1],clock,phase,[&](uint64_t ready){subcpu.hold_until(ready);observe(1,false,0xfffff8,28,0xffff,bus_pc[1],ready,1);subcpu.bus_completed(ready,400);});}
             else{const auto r=subport.instruction(bus.sub,state,clock,phase,[&](uint64_t ns){return sub_poll(ns);},[&](const auto& s){live_sub=s;});substate=r.state;pending[1]=r.irq;}
             states[1]={{substate.d,substate.a},substate.pc,substate.sp,substate.sr,substate.ns};subcpu.instruction_completed(substate.ns);
-        });}
+        },false);}
     }
     void sync_text(){for(unsigned i=0;i<0x800;++i)tiles.write_text(i,word(MainBus::TEXT+2*i));}
     uint16_t word(unsigned offset)const{return (memory.bytes[offset]<<8)|memory.bytes[offset+1];}

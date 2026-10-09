@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <algorithm>
 #include <cstdint>
 struct OSubInstruction { uint32_t pc; unsigned phases; int offset; unsigned tail,source; int branch; unsigned variable; };
 inline constexpr std::array<OSubInstruction,1136> sub_instructions{{
@@ -1140,4 +1141,16 @@ inline constexpr std::array<OSubInstruction,1136> sub_instructions{{
     {0x19e2,3,2,0,5,-2,0},
     {0x19e6,4,0,0,0,0,0},
 }};
-inline const OSubInstruction* sub_instruction(uint32_t pc){for(const auto& i:sub_instructions)if(i.pc==pc)return &i;return nullptr;}
+// The generated manifest is ordered by PC. Keep lookup logarithmic in the
+// instruction count; this runs for every sub-CPU instruction, even in play.
+static_assert([]{
+    for(size_t n=1;n<sub_instructions.size();++n){
+        if(sub_instructions[n-1].pc>=sub_instructions[n].pc)return false;
+    }
+    return true;
+}());
+inline const OSubInstruction* sub_instruction(uint32_t pc){
+    const auto i=std::lower_bound(sub_instructions.begin(),sub_instructions.end(),pc,
+        [](const OSubInstruction& instruction,uint32_t address){return instruction.pc<address;});
+    return i!=sub_instructions.end()&&i->pc==pc?&*i:nullptr;
+}

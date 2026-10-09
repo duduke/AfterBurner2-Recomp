@@ -51,7 +51,7 @@ clean:
 TEST_SRCS = tests/engine_regression.cpp $(filter src/main/engine/% src/main/hwvideo/%,$(SRCS))
 
 # Dependency files include transitive headers and generated .inc files.
-CHECK_SRCS = $(sort $(TEST_SRCS) tests/mainbus_regression.cpp tests/xboard_timeline_regression.cpp tests/xboard_irq_lines_regression.cpp tests/cpu_continuation_regression.cpp tests/sound_cpu_regression.cpp tests/stage1_integration.cpp tests/whole_host_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+CHECK_SRCS = $(sort $(TEST_SRCS) tests/mainbus_regression.cpp tests/xboard_timeline_regression.cpp tests/xboard_irq_lines_regression.cpp tests/cpu_continuation_regression.cpp tests/sound_cpu_regression.cpp tests/stage1_integration.cpp tests/whole_host_integration.cpp tests/game_controls_regression.cpp tests/game_session_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
 CHECK_OBJS = $(addprefix build/check_obj/,$(CHECK_SRCS:.cpp=.o))
 check_objs = $(addprefix build/check_obj/,$(1:.cpp=.o))
 -include $(CHECK_OBJS:.o=.d)
@@ -1278,3 +1278,87 @@ verify-stage1: verify-whole-host
 verify-whole-host-headless: all
 	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 120
 .PHONY: verify-whole-host-headless
+
+# Extended neutral-input smoke test; independent of finite MAME acceptance.
+verify-whole-host-attract: all
+	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 2400
+.PHONY: verify-whole-host-attract
+verify-stage1: verify-whole-host-attract
+
+# Application extensions retain the native host as their behavioural reference.
+build/game_controls_regression: $(call check_objs,tests/game_controls_regression.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+build/game_session_integration: $(call check_objs,tests/game_session_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+test-game-controls: build/game_controls_regression
+	./build/game_controls_regression
+verify-game-session: build/game_session_integration
+	./build/game_session_integration
+test: test-game-controls
+verify-stage1: verify-game-session
+.PHONY: test-game-controls verify-game-session
+
+# Browser play uses a release build with whole-program optimization. Keep its
+# objects separate from acceptance builds and never enable fast-math.
+THREEJS_CXXFLAGS ?= $(CXXFLAGS) -O3 -flto
+THREEJS_SRCS = tools/threejs_bridge.cpp $(filter-out src/main/main.cpp,$(SRCS))
+THREEJS_OBJS = $(addprefix build/threejs_obj/,$(THREEJS_SRCS:.cpp=.o))
+-include $(THREEJS_OBJS:.o=.d) build/threejs_obj/tests/oracle_whole_host.d
+THREEJS_CONFIG_CHANGED := $(shell printf '%s\n' '$(CXX)' '$(THREEJS_CXXFLAGS)' '$(INCLUDES)' | cmp -s - build/threejs_obj/config || echo FORCE_THREEJS_REBUILD)
+.PHONY: FORCE_THREEJS_REBUILD
+build/threejs_obj/config: FORCE_CHECK_CONFIG
+	@mkdir -p $(dir $@)
+	@printf '%s\n' '$(CXX)' '$(THREEJS_CXXFLAGS)' '$(INCLUDES)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else rm -f $(THREEJS_OBJS); mv $@.tmp $@; fi
+build/threejs_obj/%.o: %.cpp build/threejs_obj/config $(THREEJS_CONFIG_CHANGED)
+	@mkdir -p $(dir $@)
+	$(CXX) $(THREEJS_CXXFLAGS) $(INCLUDES) -pthread -MMD -MP -c $< -o $@
+build/threejs_bridge: $(THREEJS_OBJS)
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+build/threejs_scene_regression: tests/threejs_scene_regression.cpp tools/threejs_scene.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/threejs_scene_regression.cpp src/main/hwvideo/hwsprites.cpp -o $@
+test-threejs-scene: build/threejs_scene_regression
+	./build/threejs_scene_regression
+test-threejs-scene-mutations: test-threejs-scene
+	python3 tools/oracle/check_threejs_scene_mutation.py
+test: test-threejs-scene-mutations
+threejs-prototype: build/threejs_bridge
+	python3 prototypes/threejs/server.py
+.PHONY: threejs-prototype test-threejs-scene test-threejs-scene-mutations
+
+# Reported live gameplay frontiers; retain the older whole-host corpora.
+RECOVERY_CAPTURE ?= build/oracle/cpu_recovery.bin
+oracle-recovery-generated-check:
+	python3 tools/build_rom_image.py maincpu build/oracle/main_recovery_image.bin
+	python3 tools/generate_input_schedule.py build/oracle/main_recovery_image.bin --graph recovery --check
+oracle-capture-recovery: oracle-scheduler-probe oracle-recovery-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_CAPTURE)" 100 32
+oracle-recovery: build/oracle_cpu_coverage oracle-recovery-generated-check
+	./build/oracle_cpu_coverage "$(RECOVERY_CAPTURE)"
+	python3 tools/oracle/check_recovery_coverage.py "$(RECOVERY_CAPTURE)"
+oracle-recovery-mutations: oracle-recovery
+	python3 tools/oracle/check_cpu_coverage_mutations.py --recovery "$(RECOVERY_CAPTURE)"
+oracle-test: oracle-recovery-mutations
+.PHONY: oracle-recovery-generated-check oracle-capture-recovery oracle-recovery oracle-recovery-mutations
+
+# Keep the portable worker backend covered alongside Apple Silicon stacks.
+build/cpu_continuation_thread_regression: tests/cpu_continuation_regression.cpp src/main/hwmath/xboard_cpu_continuation.hpp src/main/engine/osubprogress_manifest.hpp
+	$(CXX) $(CXXFLAGS) -pthread -DAB2_FORCE_THREAD_CONTINUATION -Isrc/main $< -o $@
+test-cpu-continuation-backends: build/cpu_continuation_regression build/cpu_continuation_thread_regression
+	./build/cpu_continuation_regression
+	./build/cpu_continuation_thread_regression
+test: test-cpu-continuation-backends
+.PHONY: test-cpu-continuation-backends
+
+# Validate the exact release compiler/options used by the local browser core.
+build/threejs_obj/tests/oracle_whole_host.o: tests/oracle_whole_host.cpp
+build/oracle_threejs_release: build/threejs_obj/tests/oracle_whole_host.o $(filter-out build/threejs_obj/tools/threejs_bridge.o,$(THREEJS_OBJS))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+verify-threejs-core: build/oracle_threejs_release
+	./build/oracle_threejs_release build/oracle/joint_cold_full.bin build/oracle/joint_cold_full.txt
+	./build/oracle_threejs_release build/oracle/whole_host_expanded.bin build/oracle/whole_host_expanded.txt
+.PHONY: verify-threejs-core
+
+benchmark-threejs: build/threejs_bridge
+	python3 tools/benchmark_threejs_bridge.py
+.PHONY: benchmark-threejs

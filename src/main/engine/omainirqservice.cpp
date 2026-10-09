@@ -551,6 +551,14 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         read16(target+2);idle(32+2*ones);latch();idle(2);
         r.d[reg]=value;sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000u?8:0);next=target;
     };
+    // MAME muls_w_imm16_dd_df: signed Booth transitions determine clocks.
+    auto multiply_signed=[&](unsigned reg,uint16_t operand,uint32_t target){
+        unsigned transitions=0;
+        for(auto v=uint16_t(operand^(operand<<1));v;v>>=1)transitions+=v&1;
+        const uint32_t value=int32_t(int16_t(r.d[reg]))*int32_t(int16_t(operand));
+        read16(target+2);idle(32+2*transitions);latch();idle(2);
+        r.d[reg]=value;sr=(sr&0xfff0)|(value?0:4)|(value&0x80000000u?8:0);next=target;
+    };
     // MAME divu_w_*_dd: zero branches to trap3 after eight clocks;
     // overflow leaves Dn unchanged and sets N/V after six clocks.
     auto divide_unsigned=[&](unsigned reg,uint16_t divisor,uint32_t target){
@@ -615,6 +623,7 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
 #include "engine/omainirqjointcalleeschedule.inc"
 #include "engine/omainremainingschedule.inc"
 #include "engine/omainbootschedule.inc"
+#include "engine/omainrecoveryschedule.inc"
 #include "engine/omainproducerschedule.inc"
 #include "engine/omainirqwrapperschedule.inc"
 #include "engine/omaininputschedule.inc"

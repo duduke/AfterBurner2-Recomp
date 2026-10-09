@@ -15,7 +15,7 @@ from m68k_disasm import disasm_one
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('image', type=Path)
 parser.add_argument('--check', action='store_true')
-parser.add_argument('--graph', choices=['input','flight','companion','weapons','host','irqwrapper','producers','callees','remaining','boot'], default='input')
+parser.add_argument('--graph', choices=['input','flight','companion','weapons','host','irqwrapper','producers','callees','remaining','boot','recovery'], default='input')
 args = parser.parse_args()
 rom = args.image.read_bytes()
 
@@ -85,7 +85,7 @@ if args.graph=='callees':
         pcs.update(int(p,16) for p in re.findall(r'case 0x([0-9a-f]+):',Path('src/main/engine/'+name).read_text()))
     ranges=[(p,disasm_one(rom,0,p)[0]) for p in sorted(pcs-known)]
 if args.graph=='producers': ranges=[(0xb7c2,0xb7f8),(0x1487a,0x148fc),(0x1495c,0x14976),(0x18902,0x18918)]
-if args.graph in ('remaining','boot'):
+if args.graph in ('remaining','boot','recovery'):
     pcs=[int(p,16) for p in Path('tools/oracle/main_'+args.graph+'_pcs.txt').read_text().splitlines() if p and not p.startswith('#')]
     ranges=[(p,disasm_one(rom,0,p)[0]) for p in pcs]
 if args.graph=='irqwrapper': ranges=[(0x1461c,0x147c6),(0xb7f8,0xb840)]
@@ -178,7 +178,7 @@ for start, stop in ranges:
             # two destination extension phases around the write.
             read(src, size)
             if dst[0]=='pre':
-                assert args.graph in ('irqwrapper','callees','remaining','boot') and name=='MOVE' and size in (1,2,4)
+                assert args.graph in ('irqwrapper','callees','remaining','boot','recovery') and name=='MOVE' and size in (1,2,4)
                 prefetch();emit('latch();');flags(size)
                 emit(f'r.a[{dst[1]}]-={2 if size==1 and dst[1]==7 else size};')
                 if size==4:emit(f'write16(r.a[{dst[1]}]+2,value);write16(r.a[{dst[1]}],value>>16);');phases+=2
@@ -191,6 +191,13 @@ for start, stop in ranges:
             else:
                 if dst[0] == 'index': emit('idle(2);'); offset = 2
                 prefetch(extensions(dst, size)); flags(size); write(dst, size, ext=False); finish()
+        elif name == 'TAS':
+            dst=ea(operands[0]);assert dst[0]=='d'
+            read(dst,1,'old');flags(1,'old');emit(f'byte(r.d[{dst[1]}],old|0x80);');finish()
+        elif name == 'ST':
+            dst=ea(operands[0]);assert dst[0]=='disp'
+            read(dst,1,'old');emit('(void)old;');prefetch();emit('latch();')
+            write(dst,1,'0xff',ext=False);emit(f'next=0x{end:x};')
         elif name in ('CLR', 'TST', 'NOT', 'NEG', 'EXT'):
             dst = ea(operands[0]); mem = dst[0] != 'd'
             if name == 'EXT':
@@ -217,7 +224,7 @@ for start, stop in ranges:
                     else:finish()
         elif name in ('BTST', 'BCLR', 'BSET','BCHG'):
             src, dst = map(ea, operands)
-            if dst[0]=='d' and args.graph in ('callees','remaining','boot'):
+            if dst[0]=='d' and args.graph in ('callees','remaining','boot','recovery'):
                 bit=str(src[1]&31) if src[0]=='i' else f'(r.d[{src[1]}]&31)'
                 emit(f'const auto bit={bit};const auto old=r.d[{dst[1]}];')
                 if src[0]=='i':prefetch()
@@ -234,6 +241,8 @@ for start, stop in ranges:
             else:
                 if src[0]=='i':prefetch(1)
                 else:emit(f'const auto bitmask=1u<<(r.d[{src[1]}]&7);')
+                if dst[0] in ('index','pcindex','indexlong'):
+                    emit('idle(2);');offset=2
                 prefetch(extensions(dst, 1)); read(dst, 1, 'old', ext=False)
             if dst[0]!='d':
                 bitmask=f'0x{1<<src[1]:x}' if src[0]=='i' else 'bitmask'
@@ -291,6 +300,11 @@ for start, stop in ranges:
             emit(f'r.a[{dst[1]}]={address(src)};');prefetch(extensions(src,2))
             if src[0] in ('index','indexlong','pcindex'):emit('idle(2);')
             finish()
+        elif name == 'ASL' and len(operands)==1:
+            dst=ea(operands[0]);assert size==2 and dst[0]=='disp'
+            read(dst,2,'old');emit('const uint16_t value=old<<1;')
+            emit('sr=(sr&0xffe0)|(old&0x8000?17:0)|((old^value)&0x8000?2:0)|(value?0:4)|(value&0x8000?8:0);')
+            prefetch();emit('latch();');write(dst,2,ext=False);emit(f'next=0x{end:x};')
         elif name in ('ASR','ASL'):
             src,dst=map(ea,operands);assert size in (2,4) and src[0] in ('i','d')
             count=str(src[1]) if src[0]=='i' else f'(r.d[{src[1]}]&63)'
@@ -306,12 +320,13 @@ for start, stop in ranges:
                 count=str(src[1]) if src[0]=='i' else f'(r.d[{src[1]}]&63)'
                 emit(f'logical_shift({dst[1]},{size},{count},{"true" if name in ("LSL","ROL") else "false"},{"true" if name in ("ROR","ROL") else "false"});')
                 phases=1;tail=(4 if size==4 else 2)+(2*src[1] if src[0]=='i' else 0);source=dst[1]
-        elif name=='MULU':
+        elif name in ('MULU','MULS'):
             src,dst=map(ea,operands);assert dst[0]=='d'
-            read(src,2,'operand');emit(f'multiply_unsigned({dst[1]},operand,0x{end:x});');phases+=1
+            if name=='MULS':assert args.graph=='recovery' and src[0]=='i'
+            read(src,2,'operand');emit(f'multiply_{"unsigned" if name=="MULU" else "signed"}({dst[1]},operand,0x{end:x});');phases+=1
         elif name == 'DIVU':
             src,dst=map(ea,operands)
-            if args.graph in ('callees','remaining','boot'):
+            if args.graph in ('callees','remaining','boot','recovery'):
                 assert dst[0]=='d';read(src,2,'operand');emit(f'divide_unsigned({dst[1]},operand,0x{end:x});');phases+=1
             else:
                 assert src==('d',1,0) and dst==('d',0,0);emit('decimal_divu();');phases=1
@@ -345,7 +360,7 @@ for start, stop in ranges:
         elif name == 'RTS':
             emit('next=read32(sp);sp+=4;read16(next);final(next+2);');phases=4
         elif name == 'MOVEM':
-            assert args.graph in ('irqwrapper','callees','remaining','boot') and size==4
+            assert args.graph in ('irqwrapper','callees','remaining','boot','recovery') and size==4
             prefetch()
             saving=operands[1]=='-(A7)'
             assert saving or operands[0]=='(A7)+'
@@ -413,6 +428,9 @@ if args.graph=='callees':
     outputs={path.replace('input','irqjointcallee'):text.replace('OMainInputInstruction','OMainJointCalleeInstruction').replace('main_input','main_irqjointcallee') for path,text in outputs.items()}
 if args.graph=='remaining':
     outputs={path.replace('input','remaining'):text.replace('OMainInputInstruction','OMainRemainingInstruction').replace('main_input','main_remaining') for path,text in outputs.items()}
+
+if args.graph=='recovery':
+    outputs={path.replace('input','recovery'):text.replace('OMainInputInstruction','OMainRecoveryInstruction').replace('main_input','main_recovery') for path,text in outputs.items()}
 
 if args.graph=='boot':
     outputs={path.replace('input','boot'):text.replace('OMainInputInstruction','OMainBootInstruction').replace('main_input','main_boot') for path,text in outputs.items()}

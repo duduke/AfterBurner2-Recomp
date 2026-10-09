@@ -40,7 +40,10 @@ The default is `-j min(8, logical CPU count)` (eight jobs on the current
 Make runs independent gates concurrently while each joint oracle preserves
 its ordered CPU/device grants. The CPU continuation uses release/acquire
 atomic handoffs, spins briefly for short checkpoints, then parks with C++20
-atomic wait for longer delays. This changes host synchronization cost only;
+atomic wait for longer delays. Consecutive microsteps within one granted
+budget now avoid handoffs, and the live host defers instruction startup to
+the first grant. Sleeping-waiter registration avoids kernel notifications
+for hot handoffs. This changes host synchronization cost only;
 emulated clocks, bus order, comparisons and mutation coverage stay intact.
 GPU/NPU offload does not serve this bottleneck: each literal instruction and
 bus checkpoint depends on the preceding emulated state.
@@ -49,7 +52,9 @@ bus checkpoint depends on the preceding emulated state.
 python3 tools/workflow.py run benchmark-cpu-continuation
 ```
 
-This ROM-free benchmark measures 100,000 checkpoint handoffs. Its wall time
+This ROM-free benchmark measures 100,000 checkpoints within one grant.
+The continuation can batch these without thread handoffs; this microbenchmark
+is not a whole-game frame-rate measurement. Its wall time
 depends on machine load and must never become an emulated clock input. The
 complete `oracle-test` measured 407.91 seconds on this host after optimization;
 the earlier successful suite measured 1380.15 seconds, before the added native

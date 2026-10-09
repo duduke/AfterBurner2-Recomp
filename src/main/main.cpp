@@ -15,12 +15,12 @@
 #include "hwvideo/hwsprites.hpp"
 #include "hwvideo/hwtiles.hpp"
 #include "hwvideo/screen.hpp"
-#include "engine/xboard_game.hpp"
+#include "engine/game_session.hpp"
 
 namespace
 {
-    constexpr int SCREEN_WIDTH = 320;
-    constexpr int SCREEN_HEIGHT = 224;
+    constexpr int SCREEN_WIDTH = GameSession::width;
+    constexpr int SCREEN_HEIGHT = GameSession::height;
 
 }
 
@@ -45,7 +45,7 @@ int main(int argc, char** argv)try
     }
     std::cout << "ROM set loaded OK." << std::endl;
 
-    XBoardGame game(roms);
+    GameSession game(roms);
     const size_t frame_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
     std::vector<uint32_t> texture_pixels(frame_pixels);
 
@@ -94,7 +94,7 @@ int main(int argc, char** argv)try
     }
 
     SDL_AudioDeviceID audio_device = 0;
-    constexpr int sample_rate = 48000;
+    constexpr int sample_rate = GameSession::sample_rate;
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
     {
         SDL_AudioSpec spec{};
@@ -108,7 +108,7 @@ int main(int argc, char** argv)try
     }
     if (!audio_device) std::cerr << "Audio unavailable: " << SDL_GetError() << '\n';
 
-    const double tick_seconds = XBoardTimeline::FRAME_NS / 1.0e9;
+    const double tick_seconds = GameSession::frame_seconds;
     const double counter_frequency = static_cast<double>(SDL_GetPerformanceFrequency());
     uint64_t previous_counter = SDL_GetPerformanceCounter();
     double accumulated_seconds = tick_seconds;
@@ -120,10 +120,22 @@ int main(int argc, char** argv)try
         {
             if (event.type == SDL_QUIT)
                 running = false;
-            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F5)
+            if (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_F5)
             {
                 game.restart();
                 if (audio_device) SDL_ClearQueuedAudio(audio_device);
+                if (audio_device) SDL_PauseAudioDevice(audio_device, 0);
+                accumulated_seconds = 0;
+                previous_counter = SDL_GetPerformanceCounter();
+                SDL_SetWindowTitle(window, "AfterBurner2-Recomp");
+            }
+            if (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_p)
+            {
+                game.set_paused(!game.paused());
+                if (audio_device) SDL_PauseAudioDevice(audio_device, game.paused());
+                accumulated_seconds = 0;
+                previous_counter = SDL_GetPerformanceCounter();
+                SDL_SetWindowTitle(window, game.paused() ? "AfterBurner2-Recomp — Paused (P to resume)" : "AfterBurner2-Recomp");
             }
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
                 running = false;
@@ -131,34 +143,41 @@ int main(int argc, char** argv)try
 
         if (!running) break;
         const uint8_t* keys = SDL_GetKeyboardState(nullptr);
-        XBoardGame::Host::Input input;
-        input.analog.fill(0x10);
-        for (unsigned i=0;i<5;++i) input.analog[i]=0x80;
-        // MAME aburner2's physical ADC ranges; Y is reversed. These are
-        // peripheral input values, never player angles or gameplay writes.
-        if (keys[SDL_SCANCODE_LEFT]) input.analog[0]=0x20;
-        if (keys[SDL_SCANCODE_RIGHT]) input.analog[0]=0xe0;
-        if (keys[SDL_SCANCODE_UP]) input.analog[1]=0xc0;
-        if (keys[SDL_SCANCODE_DOWN]) input.analog[1]=0x40;
-        if (keys[SDL_SCANCODE_SPACE]) input.analog[2]=0xff;
-        if (keys[SDL_SCANCODE_LSHIFT]) input.analog[2]=0;
-        if (keys[SDL_SCANCODE_Z]) input.buttons &= ~0x10;
-        if (keys[SDL_SCANCODE_X]) input.buttons &= ~0x20;
-        if (keys[SDL_SCANCODE_5]) input.buttons &= ~0x40;
-        if (keys[SDL_SCANCODE_RETURN]) input.buttons &= ~0x08;
+        GameControls input;
+        // Preserve the existing keyboard precedence when opposite keys are
+        // held. Other devices supply normalized axes through the same API.
+        input.stick_x = keys[SDL_SCANCODE_RIGHT] ? 1 : keys[SDL_SCANCODE_LEFT] ? -1 : 0;
+        input.stick_y = keys[SDL_SCANCODE_DOWN] ? -1 : keys[SDL_SCANCODE_UP] ? 1 : 0;
+        input.throttle = keys[SDL_SCANCODE_LSHIFT] ? -1 : keys[SDL_SCANCODE_SPACE] ? 1 : 0;
+        input.cannon = keys[SDL_SCANCODE_Z];
+        input.missile = keys[SDL_SCANCODE_X];
+        input.coin = keys[SDL_SCANCODE_5];
+        input.start = keys[SDL_SCANCODE_RETURN];
 
-        const uint64_t counter = SDL_GetPerformanceCounter();
-        // Bound catch-up after a suspended window or debugger pause.
-        accumulated_seconds += std::min(0.25, (counter - previous_counter) / counter_frequency);
-        previous_counter = counter;
-        if (accumulated_seconds < tick_seconds)
+        if (game.paused())
         {
-            SDL_Delay(1);
-            continue;
+            previous_counter = SDL_GetPerformanceCounter();
+            SDL_Delay(10);
         }
-        while (accumulated_seconds >= tick_seconds)
+        else
         {
-            game.tick(input);
+            const uint64_t counter = SDL_GetPerformanceCounter();
+            // Bound catch-up after a suspended window or debugger pause.
+            accumulated_seconds = std::min(0.25, accumulated_seconds + (counter - previous_counter) / counter_frequency);
+            previous_counter = counter;
+            if (accumulated_seconds < tick_seconds)
+            {
+                SDL_Delay(1);
+                continue;
+            }
+        }
+        // Keep input polling and presentation responsive when the native
+        // board takes longer than real time. Every simulated frame still
+        // executes all CPU/device work; wall-time backlog cannot monopolize UI.
+        unsigned catchup_frames = 0;
+        while (!game.paused() && accumulated_seconds >= tick_seconds && catchup_frames++ < 2)
+        {
+            game.advance(input);
             // Backpressure bounds playback latency without dropping sound.
             // The board still advances when no speaker device is available.
             constexpr unsigned queue_limit_bytes = sample_rate * 2 * sizeof(int16_t) / 10;
@@ -189,7 +208,7 @@ int main(int argc, char** argv)try
             { running = false; break; }
         }
 
-        const auto& frame = game.pixels();
+        const auto frame = game.frame().pixels;
         for (size_t i = 0; i < frame.size(); i++)
         {
             const RGB888& p = frame[i];

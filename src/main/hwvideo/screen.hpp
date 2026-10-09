@@ -35,6 +35,8 @@
 
 #include <cstdint>
 #include <vector>
+#include <functional>
+#include <span>
 #include "hwvideo/hwpalette.hpp"
 #include "hwvideo/hwroad.hpp"
 #include "hwvideo/hwsprites.hpp"
@@ -43,6 +45,10 @@
 class Screen
 {
 public:
+    // Passive indexed road/tile planes before sprite composition. Consumers
+    // must copy data synchronously; it belongs to the next native render too.
+    using LayerObserver=std::function<void(unsigned,unsigned,std::span<const uint16_t>,std::span<const uint8_t>,const HWPalette&)>;
+    LayerObserver layers_rendered;
     Screen(int width, int height, HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles& tiles);
 
     // Renders one full frame into `output` (width*height RGB888 pixels,
