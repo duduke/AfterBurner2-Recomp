@@ -1,5 +1,6 @@
 #include "hwaudio/xboard_sound_cpu.hpp"
 #include "hwaudio/xboard_pcm_startup.hpp"
+#include "hwaudio/xboard_ym_timers.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -15,6 +16,10 @@ void put(std::vector<uint8_t>& p,unsigned a,std::initializer_list<uint8_t> code)
 }
 }
 int main() try {
+    XBoardYmTimers incomplete_ym;
+    bool timer_b_rejected=false;
+    try{incomplete_ym.mode(2,1000);}catch(const std::runtime_error& e){timer_b_rejected=std::string(e.what())=="unbound YM timer B FM clock owner";}
+    check(timer_b_rejected,"unowned YM timer B phase silently accepted");
     XBoardPcmStartup stopped_pcm;
     check(stopped_pcm.read(0)==0xff&&stopped_pcm.read(0x86)==0xff,"PCM stopped startup state");
     stopped_pcm.write(0x84,0x12);check(stopped_pcm.read(0x84)==0x12,"PCM stopped register write");

@@ -40,7 +40,7 @@ unverified paths still prevent whole-host acceptance:
 | --- | --- |
 | IRQ services and retained caller resumptions | Closed in the 600-frame corpus: all 2,893 main entries/services/returns/resumptions and 568 sub services/returns use computed selection and retained state |
 | Main producers and sub sprite/road progress | Zero supplied main phases; one initial context per CPU; all 17 sub startup PCs computed, zero later sub supplied phases/writes. Initial partial sub ISR and unexercised main/sub paths remain boundaries |
-| ADC/buttons, device deadlines and sound timing | Main ADC/mux/buttons, grant aborts and RESET cancellation pass; synchronized sound command/latch handshake matches 1,278 reads. Z80/YM/PCM execution, other head deadlines and boost owners remain open |
+| ADC/buttons, device deadlines and sound timing | Native Z80, PCM/FM stream clocks, pending input/ADC/YM timers, periodic device heads and IRQ/RESET boosts pass in the joint window. Mixed/resampled speaker output and Stage 1 audio wiring now pass; boot CPU/frontier edges and unobserved paths remain explicit |
 | Video ownership and compositor inputs | 854 bank swaps, 278 road controls, 568 sprite feedback frames and 575 natural partial updates match. Line-261 latches and joint RGB now match in natural/directed corpora: 53,329,920 pixels, 744 latches, zero differences/skips. Initial video boundaries, unobserved states and game integration remain open |
 
 The preceding checkpoint and its exclusions are historical; the current main
@@ -65,40 +65,52 @@ writes and no later reseeding. Main coverage is 5,628/7,786 PCs and sub
 generated coverage is 658/1,136, plus the 17 startup PCs. Unobserved paths
 remain unverified. Strict targets require main closure, sub continuity,
 sound handshake and video frontier assertions; full replay requires RESET.
-The sound oracle computes latch values at supplied Z80 transaction clocks;
-it does not establish native audio CPU or YM/PCM timing. Native Stage 1
-remains active. See the final `ENGINE_NOTES.md` section for all boundaries.
+The latest joint sound/audio gates compute Z80 transactions and PCM/FM stream
+batches from continuous state. Device head times and boosts are assertions
+inside the joint CPU window; pre-window boot frontiers remain supplied.
+Native Stage 1 remains active. See the final `ENGINE_NOTES.md` section for all boundaries.
 
 ## Next tasks for whole-host acceptance
 
 Complete these in dependency order; each port needs MAME comparisons,
 explicit coverage exclusions and a rejected mutation before game wiring.
 
-1. **Native sound CPU progress and interrupt delivery.** Replace supplied
-   Z80 grant/transaction clocks with ROM-derived execution, retaining caller
-   state through NMI/IRQ entry, service and return. Compute sound reset and
-   synchronized NMI assertion/clearing. Check command delivery, latch reads,
-   YM writes and PCM accesses against the joint stream without reseeding.
-   A separate cycle-stepped sound runner now matches 556/556 cold-boot bus
-   transactions before the first active PCM channel, including one computed
-   latch read, 134 PCM reads and 134 PCM writes; three mutations are rejected.
-   ROM-free checks cover reset,
-   mirrored endpoints and caller retention through NMI/RETN and IRQ/RETI.
-   These do not close joint sound progress, device timing or natural
-   interrupt delivery; see the sound-reference continuation in ENGINE_NOTES.
-2. **Native audio/device deadlines and scheduler ownership.** Compute YM
-   mode/timer callbacks, PCM stepping and sound update deadlines, then all
-   remaining head-timer and boost owners. Preserve synchronized input queue
-   ordering and late delivery semantics. Treat trace deadlines as assertions,
-   with no supplied device frontier driving native scheduling. The device
-   inventory currently shows 7,199 YM-timer head grants, 2,717 sound-update
-   head grants and 11,289 tile-latch head grants to cover.
-   Isolated PCM sample stepping now matches 943,128/943,128 raw stereo
-   samples and 18,770/18,770 register/fraction write-back states across
-   natural, directed arcade-ROM and synthetic-ROM MAME captures, zero
-   differences/skips; eight mutations are rejected. These retain supplied
-   CPU register transactions and stream batch sizes. Native PCM deadlines,
-   YM ownership and mixed/resampled audio remain open.
+1. **Native sound CPU progress and interrupt delivery — accepted for the
+   current joint contract.** The 600-frame joint run computes Z80 grant
+   completions and all sound transactions from reset: 10,634,678/10,634,678
+   bus records and nanosecond timestamps match, zero differences/skips;
+   819,024 computed sound grants, 172 NMI entries and 172 RETN. Main supplies
+   3,049 checked sound host writes; 45 pre-window boot host writes remain
+   explicit external inputs. No sound CPU/register/RAM state is reseeded.
+   Computed latch/reset callbacks preserve synchronized NMI assert/clear.
+   The separate original-program MAME fixture matches 44,767/44,767 bus
+   records, 2 IRQ entries/RETI and retained caller registers. Seven sound
+   execution mutations are rejected. Main/sub's 53,449,620 accepted phases
+   and 40,714,240 RGB pixels still match. Unobserved instruction/interrupt
+   combinations, IM0/IM2, HALT interrupt timing remain explicit; native device deadlines/FM stream ownership are covered
+   by task 2 below. See the native sound
+   continuation in ENGINE_NOTES for the exact contract and reproduction.
+2. **Native audio/device deadlines and scheduler ownership — accepted for
+   the current joint window.** The new 600-frame gate computes all 1,338,472 device head
+   deadlines after the initial joint context, including pending input queues,
+   ADC, YM, scanline, screen, tile-latch and 50 Hz sound-update timers. IRQ and
+   RESET callbacks own boosts. Trace heads, outer delivery markers and quantum
+   requests are assertions in that window, with no supplied device frontier
+   driving it. Continuous PCM/FM state yields 314,376 raw PCM and 628,796 raw
+   FM stereo samples, 6,216/423,102 batch timestamps/indexes, 1,159 synchronized
+   mode callbacks (1,158 late) and 1,170 timer-A callbacks, all identical to
+   MAME. Timer-A and timer-B diagnostics each match two IRQ/RETI entries;
+   timer B phase comes from generated FM samples. Thirteen owner mutations
+   reject; the complete required suite passes. Existing standalone PCM
+   captures and their mutations remain required. The 33,030 pre-window boot
+   grant groups still use supplied main/sub/frontier edges; the 45 boot sound
+   host writes remain external. Mixed/resampled speaker output now passes 482,881 stereo frames/503
+   batches bit-for-bit, including a coupled native replay, directed panning
+   and clipping, and ten rejected mutations. Stage 1 audio wiring uses the
+   verified devices, fixed speaker cadence and a 20 ms playback buffer.
+   Its command FIFO is an external reconstruction transport, not acceptance
+   of main/sub gameplay producers. Unobserved combinations and whole-game
+   wiring still require tasks 4–6.
 3. **Tile/text latches and full video composition.** Compute tile latch
    timing and latched scroll/page state. Feed independently owned text/tile,
    road, sprite, palette, priority and shadow inputs into the compositor at
@@ -131,7 +143,9 @@ explicit coverage exclusions and a rejected mutation before game wiring.
    bank/render and CPU initialization rather than promoting the current
    fixtures to startup acceptance. Retain only the explicitly defined ROM
    and external physical-input fixtures in the final acceptance contract.
-6. **Whole-host acceptance and game integration.** Run the complete joint
+6. **Whole-host acceptance and game integration.** Audio subsystem wiring
+   into Stage 1 is complete and independently verified; the reconstruction
+   gameplay producers remain outside that audio contract. Run the complete joint
    CPU/device/video/audio oracle with native grants, deadlines, IRQs and
    producers, zero supplied execution/state replacements/read seeds, and
    zero differences/skips within the declared coverage. Include directed

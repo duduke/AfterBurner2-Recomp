@@ -83,9 +83,12 @@ The stage has fighter waves, target tracking, cannon/homing missiles, enemy
 missiles, hits and temporary invulnerability. Surviving reaches a clear screen;
 there is no lives/game-over loop or later-stage progression yet. Carrier
 introduction, refueling, attract mode and all remaining stages are excluded.
-Tilemap row/column fine-scroll is implemented and video-oracle verified. Sound output is exercised
-with real ROMs, but exact original command timing, balance and waveform have
-not been verified against arcade audio.
+Tilemap row/column fine-scroll is implemented and video-oracle verified. The sound CPU, native FM/PCM
+streams and mixed/resampled 48 kHz speaker output now match MAME exactly
+in the joint corpus and directed mixer tests. Stage 1 uses those verified
+components with independent audio deadlines and a 20 ms playback buffer.
+Its gameplay sound-command producers and FIFO transport remain external
+reconstruction inputs; their timing is not whole-game arcade acceptance.
 
 ## Reproduce checks
 

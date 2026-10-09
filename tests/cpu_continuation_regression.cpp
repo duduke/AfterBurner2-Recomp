@@ -1,4 +1,6 @@
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include <stdexcept>
 #include "hwmath/xboard_cpu_continuation.hpp"
 namespace {void check(bool value){if(!value)throw std::runtime_error("CPU continuation regression");}}
@@ -57,6 +59,21 @@ int main()try{
     {XBoardCpuContinuation stopped;stopped.start(0,[&]{stopped.clock(80);throw std::runtime_error("must not reach cancelled bus");});}
     {XBoardCpuContinuation failed;failed.start(0,[&]{failed.clock(0);throw std::runtime_error("port failure");});
      bool caught=false;try{failed.advance(80);}catch(const std::runtime_error& e){caught=std::string(e.what())=="port failure";}check(caught);}
+    // Idle RESET must not wake an empty job. Exercise actual sleep fallback
+    // as well as rapid repeated release/acquire publication of plain bus data.
+    {XBoardCpuContinuation idle;idle.reset(800);check(idle.done()&&idle.time()==800);
+     unsigned published=0;
+     for(unsigned i=0;i<2000;++i){const auto base=800+640ULL*i;
+         idle.start(base,[&,base,i]{idle.clock(base);check(published==i);
+             published=i+1;idle.bus_completed(base);idle.clock(base+320);
+             idle.instruction_completed(base+640);});
+         check(idle.advance(base+640)==base+640&&idle.done()&&published==i+1);
+     }
+     idle.reset(0);check(idle.done()&&idle.time()==0);
+     idle.start(0,[&]{std::this_thread::sleep_for(std::chrono::milliseconds(5));
+         idle.clock(0);published=42;idle.bus_completed(0);idle.instruction_completed(320);});
+     std::this_thread::sleep_for(std::chrono::milliseconds(5));
+     check(idle.advance(320)==320&&idle.done()&&published==42);}
     std::cout<<"CPU continuation: indivisible internal clocks, private bus/tail debt, retained RMW, reuse, cancellation and error propagation passed\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

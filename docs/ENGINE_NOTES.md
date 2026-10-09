@@ -6473,3 +6473,409 @@ Pilot admission and ELF validation, script syntax, `oracle-subreset`, artifact i
 `git diff --check` passed. No native code was changed, no REA/provider package
 was installed, and no agent registration/skill was applied. The earlier full
 required-suite checkpoint remains applicable to the unchanged native code.
+
+
+## Tooling pilot: trace-assisted Z80 sound-ROM analysis
+
+Ran unmodified `maziac/z80dismblr` source at commit
+`2ff52822f0d706f9f39762e079f300f45cfd451d` in a temporary checkout.
+Locked dependencies were installed with lifecycle scripts disabled, then the
+TypeScript source compiled successfully. No upstream code was imported into
+the game. `tools/z80_analysis_pilot.mjs` checks the revision and clean source,
+recompiles it, and runs both reset-only and MAME-trace-assisted analysis.
+The input is the user's `epr-11112.17`, truncated to the board's ROM mapping
+below `$F000`; PCM and RAM addresses are not presented as static ROM.
+
+`tools/oracle/capture_z80_analysis.lua` records a read-only debugger trace,
+with fresh NVRAM/config through the existing capture wrapper. There are no
+register setters, synthetic sound commands or device-state replacements.
+The wrapper uses `-sound none`, so this is specifically a sound-disabled
+cold-boot analysis window, not an audio-enabled gameplay capture. The script
+closes the trace and writes completion metadata before exiting. Its trace
+format is directly compatible with the upstream four-digit-address reader.
+
+The initial 30-frame trace recorded 184,177 instructions at 158 unique PCs.
+Extending to 120 frames recorded 789,553 instructions at the same 158 PCs;
+the final 300-frame capture recorded 2,009,361 instructions, still at 158 PCs.
+The retained capture is the 300-frame one. Upstream single-instruction decoding
+matches MAME's mnemonics and operands at **158/158 unique observed PCs,
+zero differences/skips**, normalizing only whitespace, case and equivalent
+numeric notation. A private in-memory reset `DI` to `EI` mutation is rejected.
+This is decoder agreement, not instruction execution or access-phase proof.
+
+Both analyses produce 1,423 candidate instruction starts and 39 call-graph
+nodes, plus a reset flowchart. Both include all 158 observed PCs; trace import
+adds **zero** instruction starts. The remaining static candidates are not
+validated merely because they appear in the listing or graph. No indirect
+`JP (HL)` or `RETN`/`RETI` was observed. Reset/startup and polling are covered;
+command dispatch, natural NMI/IRQ service, runtime RAM code and indirect-target
+recovery are not established by this corpus. Static labels/comments remain
+heuristics (for example, a stack address can be labelled as code); use the
+ROM and MAME evidence to interpret them.
+
+Reproduce from the repository root, after fetching the pinned upstream
+checkout into a temporary directory:
+
+```sh
+npm ci --ignore-scripts --no-audit --no-fund --prefix /tmp/ab2-z80dismblr-pilot
+mkdir -p build/oracle/z80_pilot
+AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_z80_analysis.lua build/oracle/z80_pilot/sound.tr 300 10
+node tools/z80_analysis_pilot.mjs /tmp/ab2-z80dismblr-pilot
+```
+
+Listings, graph files, ROM mapping, trace, completion metadata and
+`analysis.json` stay under ignored `build/oracle/z80_pilot/`. The pilot is
+optional and adds no build/runtime dependency. Validation passed
+`python3 tools/workflow.py run oracle-sound-boot-mutations` (556/556 existing
+transactions identical, zero differences/skips; all three mutations rejected)
+and `python3 tools/workflow.py run test-sound-cpu`, plus Node syntax and diff
+whitespace checks. These are focused checks, not whole-host or full-suite
+acceptance; no production runner or scheduling code changed.
+
+**Decision:** retain this as an optional inspection aid. The graph output may
+reduce manual navigation, but this pilot measured no additional code discovery
+from the trace and no engineering speedup. Before adopting it for command/NMI
+analysis, obtain a bounded audio-enabled capture with actual command delivery
+and compare its observed paths. The current Z80 access-phase mismatch, native
+interrupt scheduling, YM/PCM deadlines and game integration remain open.
+
+
+## Native sound CPU continuation and joint execution (2026-10-08)
+
+The trace-assisted disassembler pilot supplied no extra code starts, so this
+continuation uses the existing decoder, ROM loader, MAME probes and bus oracle.
+`XBoardSoundCpu::run` now computes each grant completion, including private
+machine-cycle debt and synchronized callback aborts. The adapter previews at
+most two private decoder ticks, stopping before any unknown read, to issue
+memory and I/O callbacks at the MAME machine-cycle start. The result remains
+latched until the real decoder pins request it; divergent previews fail.
+The third-party decoder is unchanged. Boot now matches all 556 transactions
+**and** their relative timestamps, with zero nanoseconds of phase difference.
+
+MAME `z80_device::device_start/device_reset` supplies the reset contract:
+power-on general/alternate registers are zero, Z is set, IX/IY are FFFF;
+reset retains those banks, SP, IX/IY and IM while resetting PC/WZ/I/R/IFF and
+pending NMI. Board RAM and YM/PCM are retained. The adapter suppresses the
+pin decoder's discarded NMI M1 read because MAME performs five private clocks
+before the two stack writes. IRQ acknowledge is observed at accepted entry,
+followed by MAME's separate two- and five-clock latency groups. NMI edge
+latching and synchronized assertion/clear ordering retain the caller.
+
+The continuous oracle starts at sound power-on, asserts initial RAM rather
+than loading it, and never loads sound registers, return addresses or device
+read values from a capture. Standalone main I/O/command records are explicitly
+external providers. The joint mode changes to computed main bus callbacks at
+the existing main/sub initial-context boundary; it checks latch continuity
+without reseeding the CPU, sound RAM, YM or PCM. Every sound bus record checks
+grant, nanosecond time, kind, instruction PC, address and value. Grant budgets
+and returned completion are computed by the production arbiter/runner in
+joint mode; captured fields are assertions. The full sound sidecar closes at
+machine stop so the scheduler's terminal padding remains covered.
+
+Standalone MAME results:
+
+| Corpus | Identical sound transactions and timestamps | Interrupt coverage |
+| --- | --- | --- |
+| 16-frame ROM startup | 267,407/267,407 | Reset and device initialization |
+| 600-frame ROM boot/coin/start | 10,634,620/10,634,620 | 172 NMI entries and 172 RETN |
+| Hand-authored YM timer/IM1 fixture | 44,767/44,767 | 2 IRQ entries and 2 RETI |
+
+All have zero differences/skips. The directed program is original test code,
+not ROM bytes. It arms the physical YM timer through Z80 instructions, saves
+and restores AF/BC, stops/acknowledges the timer, and returns via RETI. A
+read-only MAME probe separately asserts both IRQ timestamps, interrupted and
+return PCs, SP, AF, BC, DE and HL. The natural ROM corpus accepts no maskable
+IRQs. IM0/IM2, HALT interrupt timing, other unseen opcodes/flag combinations
+and reset/NMI edge coincidences are not promoted by these captures.
+
+`XBoardYmTimers` implements the OPM timer/status/busy subset from MAME/ymfm;
+timer A and synchronized mode/status behavior are exercised here. Timer B
+requires an actual FM sample-clock owner and fails if it is unbound; its
+phase and FM audio synthesis remain unverified. PCM reads
+advance the existing verified PCM engine to their bus sample index. Captured
+global timer delivery frontiers still drive the oracle's device delivery;
+independent head timers, YM synthesis and audio batch/deadline ownership are
+the next acceptance task. This closes neither whole-host/game-loop acceptance
+nor unobserved CPU/device behavior.
+
+Reproduction (captures and ROMs remain ignored):
+
+```sh
+python3 tools/workflow.py run oracle-capture-sound-execution
+python3 tools/workflow.py run oracle-capture-sound-execution-full
+python3 tools/workflow.py run oracle-capture-sound-irq
+python3 tools/workflow.py run oracle-capture-joint-sound-full
+python3 tools/workflow.py run oracle-sound-execution-mutations
+python3 tools/workflow.py run oracle-joint-sound-full
+python3 tools/workflow.py run required
+```
+
+The mutation harness builds private copies and rejects wrong bus phases,
+discarded-NMI bus accesses, latch values, disabled IRQs, reset register loss,
+NMI clearing and YM timer-A periods. No production edit is
+left behind. ROM-free tests and Stage 1 integration pass. The full 600-frame joint result
+is **10,634,678/10,634,678 sound bus records and nanosecond timestamps
+identical**, zero differences/skips; 819,024 computed sound grants, 172 NMI
+entries and 172 RETN. All 3,049 native main sound host writes match;
+45 pre-window main boot writes are labelled external providers. The shared
+stream retains 20,532,168 native main/sub instruction records,
+53,449,620 accepted phases, 40,714,240 exact RGB pixels and one initial context
+per main/sub CPU. The only supplied sub execution remains the initial partial
+ISR's 46 phases, with no writes or later supplied sub phases. The full sound
+sidecar also covers scheduler padding outside the main/sub final accepted grant:
+53,449,666 total ordered phases and 1,371,502 computed grant groups match.
+There are zero supplied YM/PCM transaction clocks in the joint acceptance window.
+
+The complete `oracle-test` run at `build/workflow/20261008T203251.615168Z/`
+passed its MAME comparisons and sound/PCM mutations, then failed to compile a
+temporary video mutation copy because its include path lacked `tests/`.
+The harness now includes that shared fixture directory. Its repaired mutation
+verification is recorded below; this build issue did not change any oracle
+flags or remove fixtures. CMake targets were updated but could not be exercised
+because this host has no CMake executable.
+
+
+The repaired video mutation harness subsequently rejects all ten mutations
+against the same natural/directed MAME fixtures (exit 0; observed result lines
+recorded in ignored `build/oracle/joint_video_mutations_repaired.txt`). Thus
+all comparison and mutation gates exercised by the required suite pass.
+The complete make target was not repeated after this include-only harness fix;
+its first run retains the compile-failure exit status described above.
+The latest ROM-free/Stage 1 checks are in
+`build/workflow/20261008T203932.219427Z/`, and the seven sound mutation checks
+are in `build/workflow/20261008T203842.928748Z/`. No captures or ROM data are
+tracked, and no game-loop wiring or whole-host acceptance is claimed.
+
+### Oracle host synchronization optimization (2026-10-09)
+
+Profiling identified mutex/condition-variable handoffs at each literal CPU
+checkpoint as the dominant cost. `XBoardCpuContinuation` now exchanges one
+atomic turn with release/acquire ordering. A single host and its worker
+exchange exclusive ownership of the existing plain CPU/bus state; up to 2048
+short spin iterations avoid kernel parking on hot handoffs, followed by
+`atomic::wait` for long delays. Idle RESET leaves the worker parked; active
+RESET still cancels the retained instruction. Grant ordering, private step
+debt, RMW locals, VPA waits and abort clocks remain unchanged. The workflow
+runner now defaults to at most eight independent make jobs, using more of
+this host's ten CPU cores and 32 GiB RAM.
+
+The ROM-free continuation regression adds 2000 repeated jobs with shared-state
+publication checks, idle RESET/reuse, and delayed host/worker handoffs reaching
+the sleep fallback. ThreadSanitizer passes the regression. A private copy
+replacing acquire loads/waits with relaxed ordering is rejected by a TSan
+data-race report (exit 66); evidence remains ignored at
+`build/oracle/continuation_order_mutation.log`. The reproducible
+`benchmark-cpu-continuation` target checks 100,000 handoffs; an isolated initial
+before/after sample measured 0.319456/0.0213953 seconds (about 15x). This is
+host wall time, load dependent, and never feeds emulated timing.
+
+The complete `oracle-test` now passes in **407.91 seconds**, with eight jobs,
+at `build/workflow/20261008T210826.889022Z/`. The previous successful full run
+at `build/workflow/20261008T174422.903992Z/` took **1380.15 seconds** before
+the new sound gates were added: the observed whole-suite reduction is about
+3.4x despite those additional gates. No captures were regenerated, no fixtures
+removed and no comparison flags weakened. All ten video mutations and seven
+native sound mutations reject, alongside the existing boot/shared, sound-boot
+and PCM mutations. This successful complete run supersedes the earlier video
+mutation include-path failure described above.
+
+The focused 600-frame native joint sound gate also passes in 105.74 seconds
+at `build/workflow/20261008T210556.951208Z/`: 10,634,678 sound transactions and
+timestamps, 53,449,666 total ordered phases, 53,449,620 accepted main/sub phases
+and 40,714,240 RGB pixels retain the exact previously accepted result, with
+zero differences/skips. ROM-free tests and Stage 1 verification pass at
+`build/workflow/20261008T210805.188792Z/`. This is an oracle execution speed
+improvement; it advances no additional emulation acceptance boundary.
+
+### Independent audio/device head ownership (2026-10-09)
+
+`oracle-joint-audio-full` extends the 600-frame native main/sub/sound contract
+with native device heads and raw audio stream batches. The MAME observer now
+records PCM/FM output immediately after each stream callback, before speaker
+gains/resampling. Record times, first sample indexes, batch sizes and stereo
+samples are assertions only: none determine a native batch or replace device
+state. Its fresh capture is recorded at
+`build/workflow/20261009T014251.102717Z/`.
+
+`XBoardAudioDeadlines` uses the unmodified BSD-3-Clause YMFM OPM core from
+MAME source commit `6b511c0a858b8de0499d38cf382f0ef666ebf2cc`; provenance and
+license accompany the five source files. Its interface follows
+`ymfm_mame.h`: mode writes enqueue synchronization and abort sound grants,
+callbacks retain their posted expiry on late delivery, busy spans 64 chip
+clocks, and YM timers schedule chip-clock durations. Timer B's free-running
+phase comes from generated FM samples, including stream updates before CPU
+register accesses. `sound.cpp` supplies the exact stream rule: skip time zero,
+then generate through `floor(time*rate)+1`; skip already generated samples
+when a CPU's private time leads a periodic global update. PCM clocks at
+4 MHz/128, FM at 4 MHz/64. The existing verified PCM algorithm supplies raw
+samples and fraction/register write-back continuously; there is no reseeding.
+
+`XBoardDeviceDeadlines` owns reset-phased tile, first-scanline, VBLANK and
+50 Hz sound-flush timers. The joint driver chooses its head from those timers,
+board scanlines, ADC completion, main input queues, sub RESET, sound latch
+publication, sound input queues and native YM callbacks. It determines outer
+timer delivery from that head reaching the computed arbiter base. IRQ/RESET
+callbacks produce the quantum boosts from `segaxbd.cpp`; captured requests
+only assert their number, timestamps, duration and quantum. Sound device reads,
+CPU grants/completions and all existing video assertions remain coupled.
+
+The focused gate passes at `build/workflow/20261009T014901.251096Z/` in
+113.07 seconds:
+
+- **1,338,472/1,338,472 native head deadlines identical** after the initial
+  joint context; outer delivery markers agree. The regular device owners
+  execute 600 tile, 600 first-scanline, 600 VBLANK-begin, 599 VBLANK-end and
+  503 sound-update callbacks over the cold capture.
+- **628,796/628,796 FM and 314,376/314,376 PCM raw stereo samples identical**,
+  with 423,102 FM and 6,216 PCM independently computed batch times/indexes.
+  All expected batches are consumed; zero differences/skips. Natural coverage
+  includes 171,085 nonzero FM and 113,153 nonzero PCM stereo samples, both
+  signs and distinct left/right output.
+- 1,159 mode callbacks (1,158 delivered late), 1,170 timer-A callbacks;
+  these counts agree with the independent device inventory. The natural
+  program does not run timer B. Within the owned window, 2,913 IRQ/RESET
+  boosts are native; 45 earlier boot boosts retain their labelled provider.
+- Native sound retains **10,634,678/10,634,678** bus records/timestamps,
+  819,024 grants and 172 NMI/RETN. The shared CPU/video result retains
+  20,532,168 records, 53,449,620 accepted phases and 40,714,240 RGB pixels,
+  zero differences/skips. Total ordered phases, including padding, remain
+  53,449,666 across 1,371,502 grant groups.
+
+Original-program timer-A and timer-B diagnostics pass at
+`build/workflow/20261009T015026.396810Z/`: respectively 44,767 and 44,759
+checked sound transactions, two checked IRQ entries/RETI each, and retained
+caller registers. Both compare 3,751 FM and 1,876 PCM stereo samples with
+native stream indexes/batches. These diagnostic streams are silent; nonzero
+synthesis evidence comes from the natural corpus. ROM-free checks cover
+zero-time behavior, timer B phase, late mode delivery, status/busy and
+periodic clocks. The latest ROM-free and Stage 1 passes are at
+`build/workflow/20261009T014934.016528Z/`.
+
+Acceptance remains bounded: the **33,030 pre-window boot grant groups** use
+the existing supplied main/sub/frontier edges while the sound CPU runs from
+reset with 45 external boot main writes. The live joint window supplies no
+device head frontier or boost. One initial CPU context per main/sub CPU,
+the initial partial sub ISR's 46 supplied phases, initial RAM/video state,
+physical inputs and the final parked CPU edges retain their prior labels.
+Unobserved chip/interrupt combinations (including CSM and additional
+simultaneous/reset patterns), expanded gameplay, cold main/sub execution,
+mixed/resampled speaker output and game-loop wiring remain unaccepted.
+This closes observed deadline/raw-stream ownership, not whole-host startup
+or audio-output integration. Old PCM and sound/video gates stay required;
+no fixture, mutation, oracle flag or ROM/capture discipline is weakened.
+
+Reproduction:
+
+```sh
+python3 tools/workflow.py run test-audio-deadlines
+python3 tools/workflow.py run oracle-capture-joint-audio-full
+python3 tools/workflow.py run oracle-capture-sound-audio-irq oracle-capture-sound-audio-timer-b
+python3 tools/workflow.py run oracle-joint-audio-full oracle-sound-audio-irq oracle-sound-audio-timer-b
+python3 tools/workflow.py run oracle-audio-deadline-mutations
+python3 tools/workflow.py run required
+```
+
+The first complete suite at `build/workflow/20261009T015120.117584Z/`
+failed (449.07 seconds) because shifting the tile deadline by one scanline
+was not detected: both times coincided with an already due scanline timer,
+so the composite head stayed unchanged. The gate now independently asserts
+posted expiry and actual delivery time for each periodic owner and YM
+mode/timer callback, consuming every matching read-only device trace record.
+Those records never set a native deadline or callback time. The strengthened
+periodic-owner gate passes at `build/workflow/20261009T020026.141210Z/` in
+114.71 seconds, and the tile mutation is rejected. First-scanline and both
+VBLANK owners have additional directed mutations for this same coincidence
+risk. The final required run, including YM callback assertions and all
+thirteen new mutations, **passes** at
+`build/workflow/20261009T020341.060731Z/`: ROM-free tests 2.41 seconds,
+Stage 1 0.38 seconds (unchanged RMS 903.949), and complete `oracle-test`
+533.70 seconds. All existing sound/PCM/boot/video gates remain enabled and
+pass. The thirteen new rejected mutations cover FM/PCM sample indexes,
+YM timer periods, late mode timestamps, sound-update cadence, each of the
+four periodic screen/tile owners, omitted PCM flushes, IRQ/RESET boosts and
+timer B phase. Private copies are removed; rejection logs remain ignored at
+`build/oracle/audio_mutation_*.log`. This final complete success supersedes
+the earlier unrejected tile mutation. Task 2 is accepted for the joint window
+with the exclusions above. CMake targets are updated; this host still has no
+CMake executable, so validation uses the complete make workflow. No ROMs,
+output audio, captures or generated logs are tracked.
+
+## Mixed/resampled speaker and Stage 1 audio integration (2026-10-09)
+
+The native raw stream contract now extends through the board speaker mixer.
+`XBoardSpeaker` adapts MAME's BSD-3-Clause `resampler.cpp` LoFi implementation,
+`sound.cpp` mixing/PCM conversion and `segaxbd.cpp` routes at source commit
+`6b511c0a858b8de0499d38cf382f0ef666ebf2cc` (MAME 0.287). MAME defaults to
+LoFi, not HQ: its polynomial interpolation table, source averaging when
+reducing FM rate, history, initial zero padding and batch-start phase are
+preserved. FM is 62,500 Hz at gain 0.15; PCM is 31,250 Hz at gain 0.35.
+Both route channel 0 left/channel 1 right. Speaker output is 48 kHz stereo,
+with float mixing followed by truncation toward zero and int16 saturation.
+This is the speaker/recording stream before optional OS effects, with unity
+host gain. LICENSES/MAME-Audio.txt retains attribution and license.
+
+The isolated MAME observer records exact speaker float bits without altering
+CPU/device state. The fresh 600-frame natural capture yields 482,881 stereo
+frames in 503 batches: 347,379 nonzero channel samples, both signs and 170,000
+asymmetric stereo frames, no clipping. All float bits and PCM conversion
+match the independent resampler. `--require-speaker` in the native joint gate
+feeds only native FM/PCM outputs into the same mixer and compares computed
+speaker times, first indexes, counts and float bits: 482,881 frames/503 batches
+identical, zero differences/skips. Existing 1,338,472 head assertions, raw
+streams, CPU grants, main/sub phases and RGB checks stay intact.
+
+The explicitly synthetic PCM test fills its local sample region with an
+arithmetic square wave and programs all 16 channels. Left-only, right-only
+and paired channels yield 50,881 frames/53 batches, 31,257 saturated channel
+samples, 16,102 positive and 15,469 negative float samples, and 18,719
+asymmetric stereo frames. These stimuli are device tests, not arcade data.
+Ten private mutations reject: FM gain, PCM gain, channel swap, history delay,
+initial phase, fixed-point step, interpolation coefficients, output index,
+saturation endpoint and integer conversion scale. No ROM or capture is tracked.
+
+`XBoardAudioRuntime` hosts the verified machine-cycle sound CPU, full YMFM
+and native PCM independently of render calls. CPU bus accesses update the
+appropriate native stream; synchronized mode/NMI acknowledgements end a grant;
+posted timer deadlines advance separately. The real 315-5250 latch delivers
+commands and acknowledges NMI. The Stage 1 producer API has an external FIFO
+transport with no silent 256-command drop and no invented 32-clock delay.
+This FIFO is not a claim that reconstructed gameplay commands have arcade
+producer timing. Whole main/sub cold boot and remaining gameplay/exception
+coverage remain the ordered whole-host work.
+
+Speaker batches retain MAME's fixed 20 ms cadence. The playback FIFO begins
+with 960 silent stereo frames (20 ms), allowing a game-tick render to stop at
+its actual simulated time rather than executing into a future command tick.
+Native stream histories are bounded after each mix. `ArcadeAudio` now uses
+this path instead of the legacy per-T-state/125 Hz audio backend, FM channel
+swap and reconstruction gains. ROM PCM regions now start ERASEFF, including
+the unused tail, as in MAME. Legacy device fixtures remain available.
+
+The SDL game loop advances the sound board even if audio-device creation
+fails, recreates all chip/CPU/filter/playback state on restart, and waits for
+queue space instead of discarding generated sound. The Stage 1 integration
+check compares 800-frame renders against 1/13/127/659-frame chunks at identical
+command times for four seconds, bit-for-bit, with RMS 1054.67. Reset after
+prior music must reproduce fresh-board output. Both dummy-speaker and
+unavailable-speaker 120-frame headless game runs finish successfully.
+
+Reproduce with the mixed-speaker targets in WORKFLOW.md. Final required gate
+results are recorded below.
+
+The first final suite attempt passed speaker comparisons/mutations and the
+existing owner checks through RESET, then exposed a harness-only failure:
+adding YMFM to the game build creates `ymfm_opm.o` beside the vendor sources;
+the timer-B mutation helper tried reading every directory entry as UTF-8.
+The helper now copies only `.h`, `.cpp` and `.ipp` sources, retaining the full
+timer-B phase mutation and its oracle rather than excluding that coverage.
+
+Final required suite is green in `build/workflow/20261009T034358.283333Z/`:
+`test` 0.35 s, `verify-stage1` 0.83 s (RMS 1054.67) and `oracle-test`
+516.47 s, all exit 0. Timer-B phase rejection is included, as are all thirteen
+audio/device and ten speaker mutations, existing video/CPU/PCM fixtures,
+and their mutation gates. The game build passes in
+`build/workflow/20261009T034214.187983Z/`; final dummy/unavailable audio
+120-frame runs both exit 0. `git diff --check` is clean. The CMake targets
+and CTest entries are synchronized, but CMake remains unavailable on this
+host and was not run. The five YMFM source files remain byte-identical to
+MAME; compiled objects, ROMs and all capture outputs remain ignored.

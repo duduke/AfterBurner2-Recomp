@@ -1,0 +1,7 @@
+# Hand-authored Z80 diagnostic; these are not arcade ROM bytes.
+# Startup: SP=FF00, IM1, BC=3456; timer A period 16 us, enable IRQ; EI, NOP, JR self.
+0000 31 00 FF ED 56 01 56 34 3E 10 D3 00 3E FF D3 01 3E 11 D3 00 3E 03 D3 01 3E 14 D3 00 3E 05 D3 01 3E 12 FB 00 18 FE
+# IM1: preserve AF/BC; clear timer flag and stop; marker; restore, EI, RETI.
+0038 F5 C5 3E 14 D3 00 3E 10 D3 01 3E A7 32 01 F8 C1 F1 FB ED 4D
+# NMI: preserve AF/BC; consume latch; marker; restore, RETN.
+0066 F5 C5 DB 40 32 00 F8 C1 F1 ED 45

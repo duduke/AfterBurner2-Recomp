@@ -35,6 +35,26 @@ ran; absent later targets have not passed. Checks are not cached or skipped.
 The `full` profile supplements, rather than replaces, the required profile.
 Profiles do not automatically capture or regenerate missing fixtures.
 
+The default is `-j min(8, logical CPU count)` (eight jobs on the current
+10-core, 32-GiB host); override it with `-j N` when sharing the machine.
+Make runs independent gates concurrently while each joint oracle preserves
+its ordered CPU/device grants. The CPU continuation uses release/acquire
+atomic handoffs, spins briefly for short checkpoints, then parks with C++20
+atomic wait for longer delays. This changes host synchronization cost only;
+emulated clocks, bus order, comparisons and mutation coverage stay intact.
+GPU/NPU offload does not serve this bottleneck: each literal instruction and
+bus checkpoint depends on the preceding emulated state.
+
+```sh
+python3 tools/workflow.py run benchmark-cpu-continuation
+```
+
+This ROM-free benchmark measures 100,000 checkpoint handoffs. Its wall time
+depends on machine load and must never become an emulated clock input. The
+complete `oracle-test` measured 407.91 seconds on this host after optimization;
+the earlier successful suite measured 1380.15 seconds, before the added native
+sound gates. These are whole-run observations, not a fixed performance promise.
+
 `make test` and `make verify-stage1` now share incremental C++ objects under
 `build/check_obj/`. Compiler dependency files cover transitive headers and
 generated includes; changing compiler/options invalidates these objects.
@@ -59,3 +79,59 @@ before launching large captures. No cleanup runs automatically.
 No additional service or dependency is needed for this workflow: Python,
 make and compiler dependency files provide the improvements locally. Full
 logs, ROM images and captures remain under gitignored `build/`.
+
+
+## Native sound execution
+
+The focused sound gates are `oracle-sound-execution`,
+`oracle-sound-execution-full`, `oracle-sound-irq` and
+`oracle-sound-execution-mutations`. Their capture counterparts use the isolated
+scheduler probe. `oracle-joint-sound-full` checks the 600-frame shared
+main/sub/sound run with native Z80 grants and full video comparisons; regenerate
+it with `oracle-capture-joint-sound-full`. All gates are included in
+`oracle-test`; previous fixtures remain required. These gates assert device
+read values and bus timestamps, while independent audio/device head-deadline
+ownership remains the subsequent roadmap task.
+
+
+## Independent audio/device scheduling
+
+`oracle-joint-audio-full` checks all device head deadlines and IRQ/RESET
+boosts after the joint initial context, with continuous raw PCM/FM samples
+and independently computed stream batches. `oracle-sound-audio-irq` and
+`oracle-sound-audio-timer-b` cover original-program IRQ diagnostics;
+`oracle-audio-deadline-mutations` requires those gates before rejecting private
+owner mutations. All are included in `oracle-test`; older gates remain.
+Capture counterparts are `oracle-capture-joint-audio-full`,
+`oracle-capture-sound-audio-irq` and `oracle-capture-sound-audio-timer-b`.
+Complete capture commands before launching dependent comparisons. The read-only
+probe records raw stream output before speaker gain/resampling, and all captures
+remain ignored. `test-audio-deadlines` is the focused ROM-free clock/queue gate.
+See ENGINE_NOTES for the remaining pre-window and mixed-output boundaries.
+
+## Mixed speaker and game audio
+
+`oracle-speaker` compares MAME's default LoFi 48 kHz speaker stream, including
+float bits and signed PCM conversion. `oracle-speaker-edges` additionally
+requires synthetic panning, both signs and clipping. `oracle-joint-speaker-full`
+compares the same speaker batches produced by native CPU/device execution;
+`oracle-speaker-mutations` requires these gates and rejects ten private changes.
+All remain in `oracle-test`. Reproduce captures with
+`oracle-capture-joint-speaker-full` and `oracle-capture-speaker-edges`; wait for
+capture completion before running comparisons. The isolated scheduler probe
+observes raw streams and speaker inputs without changing devices or scheduling.
+Speaker capture is before optional OS effects, at unity host gain.
+
+`verify-stage1` checks audible ROM execution, irregular render chunk equivalence,
+and full sound-state recreation. The game loop uses 800 stereo frames per 60 Hz
+tick; native speaker updates remain at 50 Hz behind a 20 ms playback buffer.
+Commands from Stage 1 remain external transport inputs. Headless smoke checks:
+
+```sh
+python3 tools/workflow.py run all
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 120
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=unavailable ./afterburner2 --frames 120
+```
+
+The second run should log audio-device unavailability and still advance the
+sound board and finish normally. Audio queue backpressure does not drop samples.

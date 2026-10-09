@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "roms.hpp"
 
 Roms roms;
@@ -53,8 +54,9 @@ bool Roms::load_aburner2()
     status += LOAD(soundcpu, ("epr-11112.17", 0x00000, 0x10000, 0xd777fc6d, RomLoader::NORMAL));
 
     // SegaPCM sample data: 3x 0x20000 sequential -> 0x60000 of a 0x80000 region
-    // (the remaining 0x20000 is unused on aburner2 and left zeroed)
+    // (MAME defines the complete region as ROMREGION_ERASEFF)
     pcm.init(0x80000);
+    std::fill_n(pcm.rom, pcm.length, uint8_t(0xff));
     status += LOAD(pcm, ("mpr-10931.11", 0x00000, 0x20000, 0x9209068f, RomLoader::NORMAL));
     status += LOAD(pcm, ("mpr-10930.12", 0x20000, 0x20000, 0x6493368b, RomLoader::NORMAL));
     status += LOAD(pcm, ("epr-11102.13", 0x40000, 0x20000, 0x6c07c78d, RomLoader::NORMAL));

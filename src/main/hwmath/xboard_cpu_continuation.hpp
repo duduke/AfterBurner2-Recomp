@@ -1,10 +1,9 @@
 #pragma once
 #include <algorithm>
-#include <condition_variable>
+#include <atomic>
 #include <cstdint>
 #include <exception>
 #include <functional>
-#include <mutex>
 #include <stdexcept>
 #include <thread>
 
@@ -20,22 +19,20 @@ public:
     XBoardCpuContinuation():worker([this]{work();}){}
     XBoardCpuContinuation(const XBoardCpuContinuation&)=delete;
     ~XBoardCpuContinuation(){
-        {std::lock_guard lock(mutex);stopping=true;cv.notify_all();}
+        stopping=true;publish(Stopping);
         worker.join();
     }
     void start(uint64_t ns,std::function<void()> instruction){
-        std::unique_lock lock(mutex);
         if(job||!finished||local<bus_end)throw std::runtime_error("CPU continuation still active");
         local=bus_end=ns;finished=false;parked=false;job=std::move(instruction);
-        cv.notify_all();cv.wait(lock,[&]{return parked||finished;});rethrow();
+        publish(Running);wait_change(Running);rethrow();
     }
     // Called by the port at every existing clock checkpoint, before accessing
     // shared state. Repeated selection/prefetch checkpoints at one time are OK.
     void clock(uint64_t ns){
-        std::unique_lock lock(mutex);
         if(ns<bus_end)throw std::runtime_error("CPU clock precedes completed bus");
-        next=ns;parked=true;cv.notify_all();
-        cv.wait(lock,[&]{return !parked||stopping;});
+        next=ns;parked=true;publish(Parked);
+        wait_change(Parked);
         if(stopping||cancelling)throw Stop{};
     }
     // Called after each actual bus access, before the next clock checkpoint.
@@ -47,7 +44,7 @@ public:
         bus_end=ns;clock(ns);
     }
     uint64_t advance(uint64_t target){
-        std::unique_lock lock(mutex);rethrow();
+        rethrow();
         if(target<local)throw std::runtime_error("CPU grant behind local clock");
         while(!finished){
             // A synchronized device request steals the remaining public
@@ -58,7 +55,7 @@ public:
             // observable CPU local clock stops at target, while the effective
             // microcode clock can already be beyond it.
             if(bus_end>=target){local=target;return local;}
-            parked=false;cv.notify_all();cv.wait(lock,[&]{return parked||finished;});rethrow();
+            parked=false;publish(Running);wait_change(Running);rethrow();
         }
         if(aborted){local=std::min(target,abort_ns);aborted=false;return local;}
         local=std::min(target,std::max(local,bus_end));return local;
@@ -66,7 +63,6 @@ public:
     // Called by an executing port's hardware callback, before its next clock
     // checkpoint; mirrors device_execute_interface::abort_timeslice.
     void abort_grant(uint64_t ns){
-        std::lock_guard lock(mutex);
         if(finished||ns<local)throw std::runtime_error("invalid CPU grant abort");
         if(!aborted){abort_ns=ns;abort_step_start=bus_end;}
         else if(ns<abort_ns)abort_ns=ns;
@@ -75,10 +71,12 @@ public:
     // RESET replaces the instruction state and clears private step debt
     // (m68000_device::device_reset). Invoke only between CPU grants.
     void reset(uint64_t ns){
-        std::unique_lock lock(mutex);rethrow();
+        rethrow();
         if(!finished&&!parked)throw std::runtime_error("reset of executing CPU");
-        cancelling=true;parked=false;cv.notify_all();
-        cv.wait(lock,[&]{return finished;});rethrow();
+        if(!finished){
+            cancelling=true;parked=false;publish(Running);
+            wait_change(Running);rethrow();
+        }
         cancelling=false;aborted=false;local=bus_end=next=ns;
     }
     void instruction_completed(uint64_t ns){bus_end=ns;}
@@ -87,19 +85,36 @@ public:
     uint64_t time()const{return local;}
 private:
     struct Stop{};
-    std::mutex mutex;std::condition_variable cv;
+    // A single host and one worker exchange exclusive ownership. Release/
+    // acquire publishes the port's plain state and shared bus effects at each
+    // checkpoint. Brief hot handoffs spin on spare CPU cores; long waits park.
+    enum Turn : unsigned {Finished,Running,Parked,Stopping};
+    std::atomic<unsigned> turn{Finished};
+    void publish(Turn value){turn.store(value,std::memory_order_release);turn.notify_one();}
+    void wait_change(Turn value){
+        for(unsigned n=0;n<2048;++n){
+            if(turn.load(std::memory_order_acquire)!=value)return;
+#if defined(__aarch64__)
+            asm volatile("yield");
+#elif defined(__x86_64__) || defined(__i386__)
+            asm volatile("pause");
+#else
+            if(!(n&63))std::this_thread::yield();
+#endif
+        }
+        while(turn.load(std::memory_order_acquire)==value)turn.wait(value,std::memory_order_acquire);
+    }
     std::function<void()> job;std::exception_ptr error;
     bool parked=false,finished=true,stopping=false,cancelling=false,aborted=false;
     uint64_t local{},bus_end{},next{},abort_ns{},abort_step_start{};
     std::thread worker; // start only after all synchronization/state fields exist
     void rethrow(){if(error)std::rethrow_exception(error);}
     void work(){
-        std::unique_lock lock(mutex);
         while(true){
-            cv.wait(lock,[&]{return job||stopping;});if(stopping)return;
-            auto run=std::move(job);job={};lock.unlock();
+            wait_change(Finished);if(stopping)return;
+            auto run=std::move(job);job={};
             try{run();}catch(const Stop&){}catch(...){error=std::current_exception();}
-            lock.lock();finished=true;parked=false;cv.notify_all();if(stopping)return;
+            finished=true;parked=false;if(stopping)return;publish(Finished);
         }
     }
 };

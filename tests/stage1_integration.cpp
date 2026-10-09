@@ -76,15 +76,29 @@ int main()
                 roms.subcpu.rom, roms.subcpu.length);
     ArcadeAudio audio(roms);
     for (auto command : engine.get_objects().take_audio_commands()) audio.command(command);
+    ArcadeAudio split_audio(roms);
+    // Both backends receive the same commands at identical simulation times.
+    // Irregular render calls must not change CPU timing or resampler batches.
+    engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length,
+                roms.subcpu.rom, roms.subcpu.length);
+    for(auto command:engine.get_objects().take_audio_commands())split_audio.command(command);
     double energy = 0;
     for (int tick = 0; tick < 240; ++tick)
     {
-        if (tick == 120) audio.command(0x90);
-        if (tick == 180) audio.command(0x40);
+        if (tick == 120) {audio.command(0x90);split_audio.command(0x90);}
+        if (tick == 180) {audio.command(0x40);split_audio.command(0x40);}
         const auto samples = audio.render(800);
+        std::vector<int16_t> split;
+        for(unsigned n:{1u,13u,127u,659u}){auto part=split_audio.render(n);split.insert(split.end(),part.begin(),part.end());}
+        require(samples==split,"Audio must be identical across irregular render chunks");
         require(samples.size() == 1600, "Audio output must contain 800 stereo frames per game tick");
         for (auto sample : samples) energy += double(sample) * sample;
     }
+    auto reset_audio=std::make_unique<ArcadeAudio>(roms);
+    reset_audio->command(0x91);reset_audio->render(4800);
+    reset_audio.reset();reset_audio=std::make_unique<ArcadeAudio>(roms);
+    ArcadeAudio fresh_audio(roms);
+    require(reset_audio->render(4800)==fresh_audio.render(4800),"Restart must discard prior chip, filter and playback state");
     require(energy > 1000000, "Original sound ROM must generate audible output");
     std::cout << "Stage 1 integration passed; audio RMS " << std::sqrt(energy / (240 * 1600)) << '\n';
 }

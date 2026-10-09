@@ -18,6 +18,7 @@ public:
         uint8_t i, r, im;
         bool iff1, iff2;
     };
+    struct Coverage {uint64_t instructions{},nmi_entries{},irq_entries{},retn{},reti{};};
     // PCM offsets are 8 bits; YM offsets are A0. The latch callback owns
     // the 315-5250 acknowledgement and synchronized NMI clearing request.
     std::function<uint8_t(uint8_t)> pcm_read, ym_read;
@@ -34,8 +35,11 @@ public:
     void nmi_line(bool asserted);
     void irq_line(bool asserted);
     void tick(); // one 4 MHz input clock; host owns when it is granted
+    unsigned run(unsigned budget); // MAME machine-cycle completion/overrun
+    void abort_grant(); // synchronization keeps pending cycle debt
     Registers registers() const;
     uint64_t clocks() const;
+    Coverage coverage() const;
 private:
     struct State;
     std::unique_ptr<State> state;

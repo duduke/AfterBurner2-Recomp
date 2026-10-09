@@ -108,7 +108,7 @@ int main(int argc, char** argv)
     }
 
     SDL_AudioDeviceID audio_device = 0;
-    std::unique_ptr<ArcadeAudio> audio;
+    auto audio = std::make_unique<ArcadeAudio>(roms);
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
     {
         SDL_AudioSpec spec{};
@@ -117,7 +117,6 @@ int main(int argc, char** argv)
         audio_device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
         if (audio_device)
         {
-            audio = std::make_unique<ArcadeAudio>(roms);
             SDL_PauseAudioDevice(audio_device, 0);
         }
     }
@@ -139,12 +138,8 @@ int main(int argc, char** argv)
             {
                 engine.init(palette, road, sprites, tiles, roms.maincpu.rom, roms.maincpu.length,
                             roms.subcpu.rom, roms.subcpu.length);
-                if (audio_device)
-                {
-                    SDL_ClearQueuedAudio(audio_device);
-                    audio.reset();
-                    audio = std::make_unique<ArcadeAudio>(roms);
-                }
+                if (audio_device) SDL_ClearQueuedAudio(audio_device);
+                audio = std::make_unique<ArcadeAudio>(roms);
             }
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
                 running = false;
@@ -176,6 +171,9 @@ int main(int argc, char** argv)
         {
             engine.handle_input(stick_x, stick_y, fire_vulcan, fire_missile, throttle);
             engine.tick(palette, road, sprites, tiles);
+            // Backpressure bounds playback latency without dropping sound.
+            // The board still advances when no speaker device is available.
+            constexpr unsigned queue_limit_bytes = ArcadeAudio::SAMPLE_RATE * 2 * sizeof(int16_t) / 10;
             for (const auto command : engine.take_sound_commands())
                 if (audio) audio->command(command);
             for (const auto command : engine.get_objects().take_audio_commands())
@@ -183,8 +181,24 @@ int main(int argc, char** argv)
             if (audio)
             {
                 const auto samples = audio->render(ArcadeAudio::SAMPLE_RATE / 60);
-                if (SDL_GetQueuedAudioSize(audio_device) < ArcadeAudio::SAMPLE_RATE)
-                    SDL_QueueAudio(audio_device, samples.data(), static_cast<uint32_t>(samples.size() * sizeof(int16_t)));
+                if (audio_device)
+                {
+                    while (SDL_GetQueuedAudioSize(audio_device) > queue_limit_bytes)
+                    {
+                        if (SDL_GetAudioDeviceStatus(audio_device) != SDL_AUDIO_PLAYING)
+                        {
+                            std::cerr << "Audio device stopped; continuing without a speaker.\n";
+                            SDL_CloseAudioDevice(audio_device); audio_device = 0;
+                            break;
+                        }
+                        SDL_Delay(1);
+                    }
+                    if (audio_device && SDL_QueueAudio(audio_device, samples.data(), static_cast<uint32_t>(samples.size() * sizeof(int16_t))) < 0)
+                    {
+                        std::cerr << "Audio queue failed: " << SDL_GetError() << '\n';
+                        SDL_CloseAudioDevice(audio_device); audio_device = 0;
+                    }
+                }
             }
             accumulated_seconds -= tick_seconds;
             if (frame_limit && ++simulated_frames >= frame_limit)

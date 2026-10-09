@@ -93,6 +93,12 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
+The bounded `z80dismblr` sound-ROM analysis pilot is complete: 158/158
+observed instruction decodes match MAME, but trace import adds no code starts
+in the 300-frame cold-boot window. Static graphs remain inspection aids;
+no timing, interrupt or whole-host acceptance is advanced. See the tooling
+pilot section at the end of `ENGINE_NOTES.md` for reproduction and exclusions.
+
 **Current checkpoint and next task**: Physical main selection, observed main
 producers/callees and sub reset startup now pass together in the 600-frame
 joint corpus: 20,532,168 native records, 53,449,620 phases, zero differences/
@@ -100,8 +106,18 @@ skips, one initial context per CPU and zero later supplied sub phases.
 Main supplies zero phases; sub supplies only the initial partial ISR's 46
 phases at three PCs, with zero writes. Sound latch handshakes, sprite/road
 bank swaps, sprite scaler feedback and partial screen frontiers also match.
-Next close native Z80/YM/PCM timing and remaining device deadline/boost owners,
-remaining game/video integration and unverified main/sub paths. Tile/text
+Native Z80 progress now joins that contract: 10,634,678 sound bus records and
+nanosecond timestamps, 819,024 computed sound grants, 172 NMI/RETN, and a
+separate 2-entry MAME IRQ/RETI fixture all match. Sound state is never reseeded;
+45 pre-window main boot writes remain external inputs. Native audio/device
+head deadlines and IRQ/RESET boost owners now match in the joint window,
+along with 314,376 PCM and 628,796 FM raw stereo samples and independently
+computed batch timestamps/indexes. Thirteen owner mutations reject and
+the complete required suite passes. Next extend unverified main/sub/sound
+paths and cold-boot edges,
+remaining whole-game/video integration. Mixed/resampled speaker output and
+Stage 1 audio wiring now pass exact MAME comparisons; see the audio completion
+checkpoint below. Tile/text
 latches and partial RGB now match MAME in the joint natural/directed corpora;
 see the current video acceptance result in ENGINE_NOTES.
 Directed visible-area display, pending-global, scroll-table and effect-pen
@@ -935,3 +951,40 @@ are rejected; the existing 300-frame video oracle stays pixel-identical.
 Sound CPU/YM/PCM execution and device deadlines, tile/text latches and full
 RGB composition, and unexercised paths remain acceptance requirements.
 See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.
+
+
+### Independent audio/device deadline checkpoint (before speaker integration)
+
+- [x] Native heads and IRQ/RESET boost ownership in the current joint window:
+  1,338,472 head assertions plus direct per-owner expiry/delivery checks match.
+  Continuous PCM/FM clocks produce 314,376/628,796 raw stereo samples and
+  6,216/423,102 batch times/indexes, zero differences/skips. Timer A/B IRQ
+  diagnostics, thirteen new mutations and the complete required suite pass.
+  The initial 33,030 boot grant groups and their 45 boosts, 45 boot main
+  sound writes, initial CPU/video states, unobserved paths and mixed/resampled
+  speaker output remain explicit boundaries. Game wiring is unchanged.
+  See the independent audio/device ownership section in ENGINE_NOTES.
+
+
+### Mixed speaker and game audio completion
+
+- [x] MAME default LoFi resampling from native 62,500 Hz FM and 31,250 Hz
+  PCM to 48,000 Hz stereo. Board gains are 0.15 FM and 0.35 PCM with direct
+  left/right routing. All 482,881 stereo frames in 503 natural batches match
+  MAME float bits; coupled native CPU/device execution produces these batches
+  independently. Directed synthetic PCM tests cover both signs, left/right
+  panning and clipping; ten mixer/resampler mutations reject.
+- [x] `ArcadeAudio` uses the verified native sound CPU, YMFM, PCM and speaker
+  path. Independent timer/mode callbacks, latch acknowledgement and fixed
+  20 ms speaker updates replace the old 125 Hz audio block and invented
+  command gap. A 20 ms playback buffer preserves speaker phase across
+  irregular render requests. Stage 1 commands remain explicit external
+  transport inputs; this does not promote reconstructed gameplay producers
+  or main/sub cold boot to whole-host acceptance.
+- [x] The game loop advances audio without a speaker device, recreates all
+  sound state on restart, and applies SDL queue backpressure without silently
+  dropping samples. PCM ROM tail bytes use MAME's ERASEFF region definition.
+  Existing raw stream, deadline, IRQ, video and whole-host gates stay required.
+  Final required `test`, `verify-stage1` and `oracle-test` all pass; the
+  complete oracle suite takes 516.47 s. See ENGINE_NOTES for reproduction
+  and final validation.
