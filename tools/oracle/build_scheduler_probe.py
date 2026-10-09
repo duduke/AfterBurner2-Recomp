@@ -5,7 +5,9 @@ Uses existing MAME objects; never changes its source, objects, or installed
 binary. Trace output is an ignored oracle capture. CPU budgets, returns,
 quantum assertions and next timer boundaries contain no ROM bytes. The
 optional CPU observer saves instruction-entry registers for Lua without
-changing CPU state or execution timing. AB2_DISPLAY_FIXTURE explicitly
+changing CPU state or execution timing. AB2_CPU_IRQ_FIXTURE explicitly
+drives directed main IRQ pins after a real SR write/VPA lookup; normal
+captures leave it disabled. AB2_DISPLAY_FIXTURE explicitly
 enables separately recorded test display changes; natural runs omit it.
 """
 from pathlib import Path
@@ -95,8 +97,16 @@ cpusource=cpusource.replace(needle,needle+'''
                     v[1]=total_cycles(); v[2]=machine().time().as_ticks(1000000000);
                     v[3]=m_ipc; v[4]=m_sr;
                     for(unsigned i=0;i<17;++i)v[5+i]=m_da[i];
+                    if(std::getenv("AB2_CPU_IRQ_FIXTURE") && ab2_slot(tag())==0 && m_ipc==0x3ffd00){
+                        set_input_line(4,CLEAR_LINE);set_input_line(6,CLEAR_LINE);set_input_line(2,ASSERT_LINE);
+                    }
                 }
 ''')
+# Assert the higher pin after the first VPA/vector lookup, whose normal
+# microcode clears the previous selection. No microcode/state patch.
+irq_end='\tm_int_vector = (m_edb & 0xff) << 2;\n\tm_int_next_state = 0;'
+assert cpusource.count(irq_end)==1
+cpusource=cpusource.replace(irq_end,irq_end+'\n\tif(std::getenv("AB2_CPU_IRQ_FIXTURE") && ab2_slot(tag())==0 && m_int_vector==26*4)execute_set_input(6,ASSERT_LINE);')
 cpupath=out/'m68000.cpp';cpupath.write_text(cpusource)
 command=dry('optional.make','../../../../osx_clang/obj/x64/Release/src/devices/cpu/m68000/m68000.o','../../../../../src/devices/cpu/m68000/m68000.cpp')
 for i,a in enumerate(command):

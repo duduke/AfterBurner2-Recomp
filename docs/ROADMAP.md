@@ -99,7 +99,17 @@ in the 300-frame cold-boot window. Static graphs remain inspection aids;
 no timing, interrupt or whole-host acceptance is advanced. See the tooling
 pilot section at the end of `ENGINE_NOTES.md` for reproduction and exclusions.
 
-**Current checkpoint and next task**: Physical main selection, observed main
+**Current checkpoint and next task**: Main/sub PC and directed exception
+coverage now includes all 2,158 main and 478 generated sub PCs absent from
+natural 600. The combined corpus reaches 8,500/8,500 main and 1,136/1,136
+sub PCs; 995 conditional Bcc/DBF sites have both outcomes. All 5,340 expanded
+and 52 wrapper/exception fixtures pass exact bus/state comparisons, and
+IRQ2 -> IRQ6 retains CPU/stack state. The longer joint gameplay gate keeps
+initial boot/partial-ISR/final parked boundaries explicit. Next is task 5,
+**Remove or explicitly bound fixture edges**, in PHASE3D_PLAN. Independent
+fixtures do not establish continuous whole-game or cold-boot acceptance.
+
+**Retained joint baseline**: Physical main selection, observed main
 producers/callees and sub reset startup now pass together in the 600-frame
 joint corpus: 20,532,168 native records, 53,449,620 phases, zero differences/
 skips, one initial context per CPU and zero later supplied sub phases.
@@ -121,7 +131,11 @@ checkpoint below. Tile/text
 latches and partial RGB now match MAME in the joint natural/directed corpora;
 see the current video acceptance result in ENGINE_NOTES.
 Directed visible-area display, pending-global, scroll-table and effect-pen
-coverage now passes; initial boundaries and unobserved states remain explicit.
+coverage now passes with native sound/device/speaker scheduling. The reusable
+video timing owner computes clips and write/latch/frame transitions; the
+coupled natural/directed corpora match 47,022,080 pixels and 656 latches.
+Initial video/boot boundaries and unobserved states remain explicit; next
+extend remaining CPU/exception and cold-boot paths in tasks 4–5.
 Stage 1 remains the game loop. Earlier checkpoints below are historical; see the current
 result in `PHASE3D_PLAN.md` and the last `ENGINE_NOTES.md` section.
 Follow the [ordered remaining acceptance tasks](PHASE3D_PLAN.md#next-tasks-for-whole-host-acceptance).
@@ -988,3 +1002,28 @@ See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.
   Final required `test`, `verify-stage1` and `oracle-test` all pass; the
   complete oracle suite takes 516.47 s. See ENGINE_NOTES for reproduction
   and final validation.
+
+
+### Main/sub coverage expansion
+
+- [x] Exercise all 2,158 absent main PCs and 478 absent generated sub PCs
+  using independent original-ROM instruction fixtures. All 5,340 records
+  and 12,735 bus phases match; both outcomes of all 995 conditional branch
+  and DBF sites pass. Together with natural 600, coverage reaches
+  8,500/8,500 main and 1,136/1,136 generated sub PCs.
+- [x] Verify the five missing wrappers, DIVU zero/overflow and startup user
+  RTE privilege faults: 52/52 cases, 218 phases, no differences/skips.
+  Directed IRQ2 -> IRQ6 retains the first entry's CPU and stack into the
+  second; nine source mutations reject against MAME comparisons.
+- [x] Add a longer physical-input gameplay gate: 42,142,844 records,
+  109,932,641 native phases and 83,722,240 RGB pixels match, with zero
+  supplied main phases or later CPU contexts. RESET/TRAP and sound
+  handshakes pass. Independent
+  fixtures remain explicit initial contexts, and the joint stream retains
+  its initial partial ISR/boot/final parked boundaries. Cold boot, every
+  operand/state and whole-game coverage remain open. Next: task 5,
+  **Remove or explicitly bound fixture edges**, in PHASE3D_PLAN.
+  Final `test`, `verify-stage1` and complete `oracle-test` pass; the oracle
+  suite takes 1,182.62 s. Earlier declared race exclusions remain unchanged;
+  all new coverage gates have zero differences/skips. See ENGINE_NOTES for
+  the exact contract, capture commands and validation logs.

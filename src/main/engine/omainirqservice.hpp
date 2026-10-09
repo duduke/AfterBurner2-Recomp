@@ -16,6 +16,7 @@ public:
         uint32_t interrupted_pc, return_pc, supervisor_sp;
         uint16_t sr;
         unsigned level;
+        uint32_t exception_supervisor_sp = 0; // retained SSP for user-mode faults
     };
     struct Result { OMainObjects::Registers registers; uint32_t pc, sp; uint16_t sr; uint64_t ns; };
     using Clock = std::function<void(uint64_t)>;
@@ -57,7 +58,7 @@ public:
     Result enter_joint(MainBus&, const Context&, const Clock&, uint64_t cycle_bias, const Clock& acknowledge, const ReturnSelection& = {});
     // Literal RTE at the main IRQ and RESET return sites. USP is retained by
     // the scheduler; the completed supervisor stack advances by six bytes.
-    Instruction return_joint(MainBus&, const Result&, uint32_t usp, const Clock&, const Poll&);
+    Instruction return_joint(MainBus&, const Result&, uint32_t usp, const Clock&, const Poll&, uint32_t retained_ssp = 0);
     Instruction trap_joint(MainBus&, const Result&, uint32_t ssp, const Clock&, const Poll&);
     uint32_t current_pc() const { return pc; }
 private:

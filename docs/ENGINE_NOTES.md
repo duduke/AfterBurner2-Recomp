@@ -6879,3 +6879,227 @@ and their mutation gates. The game build passes in
 and CTest entries are synchronized, but CMake remains unavailable on this
 host and was not run. The five YMFM source files remain byte-identical to
 MAME; compiled objects, ROMs and all capture outputs remain ignored.
+
+
+## Video timing owner and coupled directed acceptance (2026-10-09)
+
+`XBoardVideoTiming` now owns the partial-render cursor, display transitions,
+text-register write frontiers, line-261 latch dispatch and visible frame
+completion outside the oracle harness. It translates the existing MAME
+`screen_device::vpos/update_partial/first_scanline_tick/vblank_begin` and
+`segaic16_video_device::set_display_enable/textram_w` policy: round to the
+nearest 160 ns pixel, render the old display/register state before a write,
+retain inclusive clips across grants, reset the cursor at line zero, and
+complete the visible area at VBLANK. CPU text mirrors and directed fixture
+writes use the same before-write endpoint. Graphics decoding, palette,
+priority, effect pens, bank swaps and sprite feedback retain their existing
+verified implementations. No ROM tables or captured data were added.
+
+The natural 600-frame `joint_speaker_full` capture is reused, and the new
+120-frame `joint_video_owned_directed` capture combines the existing video
+fixture with continuous native sound, audio and speaker observation. Both
+replays require native device heads and boosts; their screen/latch/pixel
+streams are assertions. Directed video writes remain explicitly supplied
+stimulus, applied at computed scanline callbacks. The old natural/directed
+video and standalone pixel gates remain required.
+
+| Coupled corpus | RGB pixels identical | Native latches | Native device head assertions |
+| --- | ---: | ---: | ---: |
+| 600, natural coin/start/flight | 40,714,240 | 568 | 1,338,472 |
+| 120, directed with CPUs and sound active | 6,307,840 | 88 | 206,147 |
+
+Total: 47,022,080 pixels and 656 latches, zero differences/skips. Directed
+coverage retains 180 fixture events, 60 blank clips, 60 enabled clips with
+pending globals, 180 clips in each row/column mode, 174,670 shadow and
+176,198 hilight pixels. Its 130 bank swaps, 39 road controls and 88 hidden
+sprite-bank writebacks also match. Native audio independently compares
+62,727 raw PCM and 125,764 raw FM stereo samples and 96,001 mixed speaker
+frames in 100 batches. Main/sub retain one initial context each, zero
+supplied main phases and only the initial partial sub ISR's 46 supplied
+read phases. Later CPU state and compositor inputs are never reseeded.
+
+Reproduction (capture once, wait for completion, then reuse it):
+
+```bash
+python3 tools/workflow.py run oracle-capture-joint-video-owned-directed
+python3 tools/workflow.py run oracle-joint-video-owned
+python3 tools/workflow.py run oracle-joint-video-mutations
+python3 tools/workflow.py run required -j2
+```
+
+The video mutation harness now runs the original ten cases with native
+sound/device/speaker scheduling, and adds omitted text-register partial
+updates, omitted line-zero cursor reset and omitted VBLANK completion.
+All thirteen are rejected by actual MAME comparisons: latch-line by the
+latch assertion, first-scanline by hidden sprite scaler-feedback bank equality,
+text/display/VBLANK frontiers by clip/time assertions, and the remaining
+cases by RGB equality. The original ten retain the latch/pixel rejection
+criterion; only the new frame-cursor/completion cases additionally permit
+bank comparison failure. Header overlays precede production include paths
+so timing-owner mutations exercise the actual owner. Compile/runtime/coverage
+failures do not count. The older `jointvideotextpartial` mutation also rejects
+on the reset-focused corpus after updating its current compositor/sound
+compile dependencies and shared test-header include path.
+
+This completes video ownership for these observed post-boundary corpora.
+It does not remove the supplied initial RAM/banks/latch/partial-render
+boundary, pre-window boot scheduling and sound writes, physical inputs,
+directed stimulus, or unobserved CPU/graphics/reset states. Cold-boot video
+initialization still depends on tasks 4–5; whole-host acceptance and replacing
+the Stage 1 reconstruction loop still depend on task 6. Stage 1 wiring is
+unchanged by this video checkpoint.
+
+
+Final validation: `python3 tools/workflow.py run test verify-stage1 all -j2`
+passes; Stage 1 audio RMS is 1054.67. The complete
+`python3 tools/workflow.py run oracle-test -j2` passes in 1031.62 seconds,
+including all thirteen coupled video mutations, native sound/audio/speaker
+mutations and the existing 300/300 pixel-identical standalone video frames.
+Full logs are in `build/workflow/20261009T040014.106606Z/` and
+`build/workflow/20261009T040106.835312Z/`. Routine-local race exclusions remain
+unchanged; the coupled video gates skip zero pixels/latches. The focused
+legacy text-frontier mutation also passes its rejection check. CMake test
+registration is updated, but CMake is unavailable on this host.
+`git diff --check` passes; captures, ROMs and probe binaries remain ignored.
+
+## Expanded main/sub PC, branch and exception coverage (2026-10-09)
+
+This closes task 4 for explicitly declared instruction fixtures. It does
+not promote their independent initial contexts into a continuous whole-game
+claim. The required `oracle-main-sub-coverage` target preserves every earlier
+oracle and adds original-ROM instruction, nested-entry and longer gameplay
+comparisons. Captures, runtime images, plans and successful census JSON live
+only under ignored `build/oracle/`. The canonical plan uses the successful
+natural speaker JSON census; the original passed-log importer remains available.
+
+`plan_cpu_coverage.py` subtracts the successful natural speaker census from
+`joint_main_schedule.lua` and `osubprogress_manifest.hpp`: 2,158 absent main
+and 478 absent generated sub PCs. It also classifies runtime original ROM
+Bcc/DBF instructions, generating true/false CCRs or loop counters 0/1 for
+all 995 sites. The longer gameplay census additionally reaches 714 previously unported
+main PCs. They translate through the existing instruction generator, with
+one new memory ABCD form at `$CD26`. There are now 3,350 PC fixtures plus
+1,990 branch fixtures, giving 5,340 cases. No instruction table or ROM image is committed. The coverage gate
+rejects a stale membership plan, absent PC or missing branch direction.
+Two conditional branches have their target equal to fall-through; their
+outcomes are classified from the captured pre-CCR after exact phase/time
+comparison, rather than incorrectly inferred from successor PC alone.
+
+Each case executes a real RAM `MOVE.W #SR,SR; JMP.l original-PC` trampoline,
+then the original ROM instruction. Operands, scratch RAM, USP/SSP and return
+frames are explicit independent test stimuli. Only the first memory/context
+of each independent case is supplied. The successor PC, all D/A registers,
+SR, both stack banks, nanoseconds and every ordered program-bus address,
+read/write value and byte mask must match the literal port. No returned
+read values are seeded during the instruction; no mismatch is skipped.
+The expanded capture passes **5,340/5,340 records and 12,735/12,735 phases,
+zero differences/skips**. Its union with natural 600 reaches **8,500/8,500
+main PCs and 1,136/1,136 generated sub PCs**. This union is not the unique-PC
+count of any one continuous joint run.
+
+A separate default 52-case capture verifies `$B836/$B83A/$B83E/$146D8/$14702`
+with two CCRs, all six main DIVU sites with normal/overflow/zero stimuli as
+applicable, negative/positive high-word zero-divide flags in both modes,
+sub startup user RTE at `$040C/$063E` and main startup user RTE at `$14842`.
+It passes **52/52 records, 218/218 phases, zero differences/skips**.
+Supervisor RTE fixtures use a valid IPL7 return frame; user RTE faults
+before reading that frame. Faults use the retained SSP and preserve USP.
+
+The previously rejected exceptions now translate MAME's `divu_w_*_dd` and
+`state_priviledge` microcode. DIVU overflow leaves Dn unchanged and sets N/V
+with six internal clocks. Zero divide establishes the microcode CCR from
+the dividend high word, spends eight internal clocks, stacks low return
+PC/SR/high PC, fetches vector 5 and both handler words with the intervening
+two clocks. User RTE spends four internal clocks, stacks the fault opcode
+PC and original SR on SSP, and fetches vector 8 plus both handler words.
+The new captures pin the stack-bank transitions, flags and clock positions.
+The first 4,464-case capture remains required as `oracle-cpu-coverage-legacy`;
+all 10,343 phases still match. The newer capture supplements its exact inputs
+and does not discard them. `$CD26` memory ABCD translates MAME
+`abcd_pais_paid_df`: two internal clocks, source predecrement/read,
+destination predecrement/read, BCD flags, prefetch, IPL selection, then the
+byte-lane destination write. Its changed clock is rejected by a separate
+mutation. All added 714 cases are address-labelled generator outputs; no
+runtime opcode interpreter or guessed callee timing is introduced.
+
+These are exception entry checks; subsequent fault-handler execution and
+unobserved fault/operand combinations remain outside this fixture contract.
+
+`AB2_CPU_IRQ_FIXTURE` explicitly asserts IRQ2 for a real SR-writing RAM
+instruction and asserts IRQ6 after the first VPA/vector lookup. This mode
+only exists in the isolated probe; natural captures omit it. MAME's ordinary
+microcode/pin logic supplies all execution, SR and stack changes. The nested
+oracle initializes RAM/CPU once, then compares the second pre-state and RAM
+against the computed first entry before continuing. **2/2 IRQ2 -> IRQ6
+entries and 16/16 program/CPU-space phases match**, including VPA phase,
+selection with the new handler SR and masked IRQ6 at the second selection.
+No captured second context is installed. This proves the directed nested
+entry, not natural board producer timing for a complete nested handler.
+
+Nine temporary source overlays change divide return PC/clock/overflow
+flags, main/sub privilege vectors, the newly covered `$9626` ADDQ operand,
+`$19E2` DBF decrement, the new memory ABCD internal clock, and the nested entry mask. Every mutation fails an
+actual MAME bus/state/selection comparison. Original source is never
+modified by the mutation runner. Make and CMake register the new oracles;
+Make's complete `oracle-test` requires their coverage/mutation/long replay.
+
+The physical-input gameplay extension lasts 1,200 frames and retains main
+and sub state after the same frame-32 boundary as natural 600. It requires
+main closure, sub continuity, RESET/TRAP, native RGB frontiers and computed
+sound latch handshakes. Its device deadline and Z80/audio execution ownership
+remain those of this supplied-deadline gate; the earlier native speaker and
+coupled video gates remain required. It is not a replacement for them.
+The original probe prints low-64 attoseconds, wrapping at
+18.446744073709551616 seconds. Its trace reader now reconstructs epochs from
+captured source chronology with 128-bit times; it never uses native predicted
+times to choose an epoch. Absolute retained CPU/bus nanoseconds are still
+compared. Compile-time checks cover forward wrap, a lagging CPU just before
+wrap and time zero. Adjacent source clocks must differ by less than half
+an epoch; this is an explicit capture-format bound.
+
+Unverified: every operand/CCR/memory combination, continuous gameplay
+execution of all fixture PCs/branch directions, all later stages/credits,
+all reset sequences, exception handler continuation, cold-boot CPU/video
+initialization, the initial partial sub ISR's supplied phases and final
+parked continuations. Task 5 must remove or bound these fixture edges before
+whole-host acceptance. Native Stage 1 remains the game loop.
+
+
+The fresh expanded 1,200-frame gate now passes **42,142,844/42,142,844
+instruction/IRQ records and 109,932,641/109,932,641 native phases**, zero
+differences/skips. All 109,932,687 captured bus phases are delivered in
+computed CPU order across 2,795,644 exact grant groups; only the explicitly
+bounded initial 46 sub phases remain supplied. Main supplies **zero phases,
+zero writes and one initial context**; sub also has one initial context and
+zero later replacements. All **5,949 main and 1,168 sub IRQ entries,
+acknowledgements and returns** retain their callers and stack banks. Main
+TRAP #12 and RESET-handler RTE pass. This window reaches **6,384/8,500 main
+and 819/1,136 generated sub PCs** continuously; the independent fixtures
+cover the remainder. It compares 15,985,121 shared reads without seeds,
+computes 2,402,533 shared writes with zero supplied writes, and checks
+**83,722,240 exact RGB pixels, 1,168 latches and 22 disabled clips**.
+There are 778 synchronized sound command deliveries and 3,057 computed latch
+reads/NMI acknowledgements; 1,582,571 YM/PCM transactions retain supplied
+Z80 clocks in this longer gate. The earlier native sound/audio/speaker gates
+remain required. The strict first 1,200-frame attempt exposed 714 absent
+main PCs and was rejected; fresh snapshots and literal translations close
+them instead of relaxing closure or installing replacement contexts.
+
+Focused acceptance logs: `build/workflow/20261009T050338.511045Z` (5,340-case
+coverage, coverage gate, nine mutations, ROM-free tests and Stage 1),
+`build/workflow/20261009T050530.405373Z` (legacy 4,464 cases and generated
+manifest checks), `build/workflow/20261009T051041.918418Z` (fresh nested
+capture replay), and `build/workflow/20261009T051449.306245Z` (strict longer
+joint replay, 205.11 s). All report zero differences/skips where applicable.
+
+Final required validation: `python3 tools/workflow.py -j 2 run required`
+passes `test` (0.20 s), `verify-stage1` (0.81 s, audio RMS 1054.67) and the
+complete `oracle-test` (1,182.62 s). Full logs are in
+`build/workflow/20261009T051450.457435Z`. The complete suite includes all
+previous video/sound/deadline/speaker gates, original routine fixtures,
+the legacy and expanded CPU captures, all nine new mutations and the strict
+long joint replay. Earlier standalone sprite/scenery race exclusions remain
+declared and unchanged; every new CPU fixture and the new joint gate have
+zero differences/skips. `git diff --check` passes. No ROM images, captures,
+plan data or probe binaries are tracked, and no commit was made. Task 5
+(fixture edges and cold boot) is next; whole-game acceptance remains open.

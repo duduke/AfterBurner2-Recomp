@@ -1033,7 +1033,7 @@ oracle-joint-video-directed: build/oracle_publication_schedule
 	./build/oracle_publication_schedule build/oracle/joint_video_directed.bin build/oracle/joint_video_directed.txt --require-video-fixture --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake
 .PHONY: oracle-capture-joint-video-directed oracle-joint-video-directed
 
-oracle-joint-video-mutations: oracle-joint-video oracle-joint-video-directed
+oracle-joint-video-mutations: oracle-joint-video oracle-joint-video-directed oracle-joint-video-owned
 	python3 tools/oracle/check_joint_video_mutations.py
 oracle-test: oracle-joint-video-mutations
 .PHONY: oracle-joint-video-mutations
@@ -1135,3 +1135,68 @@ oracle-speaker-mutations: oracle-speaker oracle-speaker-edges oracle-joint-speak
 	python3 tools/oracle/check_speaker_mutations.py
 oracle-test: oracle-speaker-mutations
 .PHONY: oracle-speaker-mutations
+
+# Coupled directed video acceptance: device heads/sound/speaker are native.
+oracle-capture-joint-video-owned-directed: oracle-scheduler-probe oracle-joint-main-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_video_owned_directed.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_video_owned_directed.devices" AB2_AUDIO_TRACE="$(CURDIR)/build/oracle/joint_video_owned_directed.bin.audio" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_video_owned_directed.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_video_owned_directed.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_video_owned_directed.bin.latches" AB2_DISPLAY_FIXTURE="$(CURDIR)/build/oracle/joint_video_owned_directed.bin.fixture" AB2_ORACLE_GAMEPLAY=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 AB2_JOINT_SOUND_EXECUTION=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_video_owned_directed.bin 120 15
+oracle-joint-video-owned-directed: build/oracle_publication_schedule oracle-joint-main-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_video_owned_directed.bin build/oracle/joint_video_owned_directed.txt --require-video-fixture --require-main-closed --require-sub-continuity --require-video-rgb --require-native-deadlines --require-speaker
+oracle-joint-video-owned: oracle-joint-speaker-full oracle-joint-video-owned-directed
+.PHONY: oracle-capture-joint-video-owned-directed oracle-joint-video-owned-directed oracle-joint-video-owned
+
+# Additional physical gameplay inputs; CPU state is retained after frame 32.
+oracle-capture-joint-coverage-flight: oracle-scheduler-probe oracle-joint-main-generated-check
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_SCHED_TRACE="$(CURDIR)/build/oracle/joint_coverage_flight_expanded.txt" AB2_DEVICE_TRACE="$(CURDIR)/build/oracle/joint_coverage_flight_expanded.devices" AB2_SCREEN_TRACE="$(CURDIR)/build/oracle/joint_coverage_flight_expanded.bin.screen" AB2_PIXEL_TRACE="$(CURDIR)/build/oracle/joint_coverage_flight_expanded.bin.pixels" AB2_LATCH_TRACE="$(CURDIR)/build/oracle/joint_coverage_flight_expanded.bin.latches" AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_INPUT_ENDPOINTS=1 AB2_CPU_PROBE=1 AB2_JOINT_MAIN_PROGRESS=1 tools/oracle/capture.sh tools/oracle/capture_host_publication_schedule.lua build/oracle/joint_coverage_flight_expanded.bin 1200 25
+oracle-joint-coverage-flight: build/oracle_publication_schedule oracle-joint-main-generated-check
+	./build/oracle_publication_schedule build/oracle/joint_coverage_flight_expanded.bin build/oracle/joint_coverage_flight_expanded.txt --require-reset --require-main-closed --require-sub-continuity --require-video-rgb --require-sound-handshake
+.PHONY: oracle-capture-joint-coverage-flight oracle-joint-coverage-flight
+
+oracle-capture-cpu-coverage: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua build/oracle/cpu_coverage.bin 100 4
+.PHONY: oracle-capture-cpu-coverage
+
+build/oracle_cpu_coverage: $(wildcard src/main/engine/osub*.hpp src/main/engine/osub*.inc) tests/oracle_cpu_coverage.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_cpu_coverage.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp -o $@
+oracle-cpu-coverage: build/oracle_cpu_coverage
+	./build/oracle_cpu_coverage build/oracle/cpu_coverage.bin
+.PHONY: oracle-cpu-coverage
+
+oracle-cpu-coverage-expanded: build/oracle_cpu_coverage
+	./build/oracle_cpu_coverage build/oracle/cpu_coverage_expanded_full.bin
+.PHONY: oracle-cpu-coverage-expanded
+
+oracle-capture-cpu-nested-irq: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_IRQ_FIXTURE=1 tools/oracle/capture.sh tools/oracle/capture_cpu_nested_irq.lua build/oracle/cpu_nested_irq.bin 100 4
+.PHONY: oracle-capture-cpu-nested-irq
+
+build/oracle_cpu_nested_irq: tests/oracle_cpu_nested_irq.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS))
+	$(CXX) $(CXXFLAGS) -pthread -Isrc/main tests/oracle_cpu_nested_irq.cpp $(filter-out build/oracle_obj/tests/oracle_caller.o,$(CALLER_OBJS)) -o $@
+oracle-cpu-nested-irq: build/oracle_cpu_nested_irq
+	./build/oracle_cpu_nested_irq build/oracle/cpu_nested_irq.bin
+.PHONY: oracle-cpu-nested-irq
+
+oracle-cpu-coverage-plan: oracle-joint-speaker-full
+	python3 tools/build_rom_image.py maincpu build/oracle/coverage-main.bin
+	python3 tools/build_rom_image.py subcpu build/oracle/coverage-sub.bin
+	python3 tools/oracle/plan_cpu_coverage.py build/oracle/joint_speaker_full.bin.coverage.json build/oracle/cpu_coverage_plan.lua --main-image build/oracle/coverage-main.bin --sub-image build/oracle/coverage-sub.bin
+oracle-capture-cpu-coverage-expanded: oracle-scheduler-probe oracle-cpu-coverage-plan
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/build/oracle/cpu_coverage_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua build/oracle/cpu_coverage_expanded_full.bin 700 15
+oracle-cpu-coverage-check: oracle-cpu-coverage-expanded
+	python3 tools/oracle/check_cpu_coverage.py build/oracle/cpu_coverage_plan.json build/oracle/cpu_coverage_expanded_full.bin.coverage.json
+.PHONY: oracle-cpu-coverage-plan oracle-capture-cpu-coverage-expanded oracle-cpu-coverage-check
+oracle-cpu-coverage-mutations: oracle-cpu-coverage oracle-cpu-coverage-check oracle-cpu-nested-irq
+	python3 tools/oracle/check_cpu_coverage_mutations.py
+oracle-main-sub-coverage: oracle-cpu-coverage-mutations oracle-joint-coverage-flight
+oracle-test: oracle-main-sub-coverage
+.PHONY: oracle-cpu-coverage-mutations oracle-main-sub-coverage
+# Preserve the first 4,464-case capture alongside its expanded superset.
+oracle-cpu-coverage-legacy: build/oracle_cpu_coverage
+	./build/oracle_cpu_coverage build/oracle/cpu_coverage_expanded.bin
+oracle-main-sub-coverage: oracle-cpu-coverage-legacy
+.PHONY: oracle-cpu-coverage-legacy
+oracle-capture-cpu-coverage-legacy: oracle-scheduler-probe oracle-joint-speaker-full
+	python3 tools/build_rom_image.py maincpu build/oracle/coverage-main.bin
+	python3 tools/build_rom_image.py subcpu build/oracle/coverage-sub.bin
+	python3 tools/oracle/plan_cpu_coverage.py build/oracle/joint_speaker_full.bin.coverage.json build/oracle/cpu_coverage_plan_legacy.lua --legacy --main-image build/oracle/coverage-main.bin --sub-image build/oracle/coverage-sub.bin
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/build/oracle/cpu_coverage_plan_legacy.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua build/oracle/cpu_coverage_expanded.bin 700 15
+.PHONY: oracle-capture-cpu-coverage-legacy
