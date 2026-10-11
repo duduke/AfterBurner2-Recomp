@@ -92,6 +92,11 @@ core through a local server; it is not yet a standalone browser build.
 
 ## Building
 
+The SDL3 native build and corrected selected-stage canyon colors are available
+on [the play-native branch](https://github.com/duduke/AfterBurner2-Recomp/tree/play-native).
+See [the branch checkpoint](docs/ROADMAP.md#native-play-development-branch-2026-10-11)
+for validation and scope.
+
 Requires SDL2 and a C++20 compiler.
 
 For optimized native desktop play, run `make play-native` from the repository

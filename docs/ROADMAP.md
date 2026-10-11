@@ -5,6 +5,26 @@ data/hardware layer first (since it's verifiable against MAME immediately),
 then the game logic that drives it (which takes much longer and benefits
 from having a working hardware layer to render into while porting).
 
+## Native play development branch (2026-10-11)
+
+The [play-native branch](https://github.com/duduke/AfterBurner2-Recomp/tree/play-native),
+at [commit 2a0c76b](https://github.com/duduke/AfterBurner2-Recomp/commit/2a0c76b),
+contains the SDL3 3.2+ platform migration, repeatable barrel-roll video
+comparisons, and the stage-skip road palette correction. Selected stages
+5, 8, 13 and 17 now run their preceding ROM palette-preparation event before
+advancing, restoring the unset canyon colors reported for stage 8.
+These implementation changes remain on that branch; this main update is
+documentation only. Use that branch's build instructions and SDL3 dependency.
+
+Validation: Make/CMake builds, native platform smoke checks, `test`,
+`verify-stage1` and the complete `oracle-test` pass. The full oracle run took
+1700.13 s, includes all 85 recovery mutations, and retains every earlier
+fixture. The four selected-stage gradients match 56/56 original-MAME words,
+zero skipped; all 23 directed stage/input cases complete 600 frames each
+without a stop. Main's implementation remains at its existing checkpoint.
+Directed stage skipping still does not establish natural full-credit
+progression, complete previous-stage state or an across-stage FPS guarantee.
+
 ## Working on the remaining tasks (read this first)
 
 These instructions are for anyone picking up the next task, including AI
