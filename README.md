@@ -48,7 +48,7 @@ Mirrors Cannonball's structure, adapted for X-Board:
 
 ```
 src/main/
-  main.cpp, romloader.*      — app entry point, ROM chip loader
+  main.cpp, romloader.*      — SDL3 window/input/audio, ROM chip loader
   engine/                    — ported 68000 game logic (one file per
                                original code module, once identified)
   hwvideo/                   — faithful reimplementations of the X-Board
@@ -56,7 +56,6 @@ src/main/
                                tilemap and palette hardware
   hwaudio/                   — YM2151 + SegaPCM sound chip emulation, Z80
                                sound program interpretation
-  sdl2/                      — platform layer: window, input, audio output
   frontend/                  — menus / config (later)
 roms/                        — where you place your ROM dump (gitignored)
 docs/                        — hardware & porting reference notes
@@ -92,7 +91,8 @@ core through a local server; it is not yet a standalone browser build.
 
 ## Building
 
-Requires SDL2 and a C++20 compiler.
+Requires SDL3 3.2 or newer and a C++20 compiler. Make discovers SDL3 through
+`pkg-config sdl3`; CMake uses the installed `SDL3::SDL3` target.
 
 For optimized native desktop play, run `make play-native` from the repository
 root. This builds `build/afterburner2-release` with the verified `-O3 -flto`

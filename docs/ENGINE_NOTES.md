@@ -8269,3 +8269,130 @@ stage progression, accumulated prior-stage state, complete-credit MAME RGB/
 audio equality, alternate DIP settings, arbitrary reset/suspend states or
 60 FPS. The independently accepted finite whole-host corpora and their owner
 mutations remain required; full-credit expansion remains Phase 3e work.
+
+
+## SDL3 native platform migration (2026-10-11)
+
+The native entry point and Make/CMake dependency discovery now use SDL3
+(minimum 3.2). Local verification used SDL 3.4.16. The migration follows the
+[official SDL3 guide](https://wiki.libsdl.org/SDL3/README-migration) and
+[playback stream API](https://wiki.libsdl.org/SDL3/SDL_OpenAudioDeviceStream):
+boolean success returns, `SDL_EVENT_KEY_DOWN`/`event.key.key`, boolean keyboard
+state, renderer selection/vsync, letterboxed logical presentation, nearest
+texture filtering and an owned playback `SDL_AudioStream`. Source PCM remains
+signed 16-bit stereo at `GameSession::sample_rate`; SDL handles conversion to
+the physical output device. Device pause/resume, input-side queue limits,
+restart clearing and no-speaker fallback remain application responsibilities.
+No gameplay instructions, emulated clocks, native RGB or PCM production change.
+
+Both Make builds (`native-release`, `all`) pass in workflow directory
+`build/workflow/20261011T133452.996557Z/`. The executable links `libSDL3.0.dylib`.
+`test` passes in 34.50 s and `verify-stage1` in 43.04 s under
+`build/workflow/20261011T133720.508729Z/`, including 781 exact native RGB/audio
+frames, pause/resume and restart equality, and the 2,400-frame SDL3 dummy-driver
+attract run. A clean Release CMake configure/build also passes under ignored
+`build/sdl3-cmake/`; the verification-only CMake tool is installed under
+`build/sdl3-tools/`, without modifying system packages.
+
+Additional ignored logs under `build/oracle/sdl3_smoke/` record stage 7 plus
+90 frames with dummy audio, 120 frames with an unavailable audio driver, and
+120 frames on the native macOS Metal/audio backend. The original application
+entry point also passes a scripted SDL3 event smoke: P pause/resume, repeated
+P/F5 suppression, F5 selected-stage restart, real stream pause/resume and PCM
+queue clearing, key-up handling and Escape exit. Its ignored harness supplies
+events and observes SDL calls while invoking the original application code.
+This is finite platform validation, not later-stage/full-credit MAME acceptance
+or an across-stage 60 FPS claim. The earlier full oracle suite remains retained;
+it is not rerun for this platform-only migration, and the repository's required
+checks still apply before committing.
+
+### Blue horizon wedge during barrel rolls (2026-10-11)
+
+Investigated the reported blue triangle above the horizon when reversing
+horizontal input into a roll. A fresh original-ROM MAME run reproduces a
+dark blue wedge beside the tilted horizon (for example, captured frame
+1155). It is part of the arcade's rendered image, not SDL frame presentation
+tearing. No horizon smoothing or renderer correction is applied.
+
+`AB2_ORACLE_ROLLS=1` selects alternating full horizontal input every 60
+frames in the existing physical-input script. Coin/start timing and the
+vertical, throttle and weapon phases remain scripted physical controls;
+this mode does not patch RAM or video state. Reproduce with:
+
+```
+python3 tools/workflow.py run capture-video-rolls oracle-video-rolls
+```
+
+The capture takes 160 frames at stride 3 after warm-up frame 960, including
+tilted and near-vertical horizon frames. All 160 are pixel-identical through
+the native video layer, zero differences and zero skipped. Workflow logs:
+`build/workflow/20261011T135331.823981Z/`. A separate ignored mutant changing
+the tilemap scroll origin from `$C0` to `$C1` is rejected by the same corpus.
+Native full/neutral-throttle roll captures also complete without a host stop;
+they are a visual smoke, not an identical-input whole-host comparison.
+Captures and diagnostic images stay under ignored `build/oracle/`.
+This is focused raster evidence; it does not extend whole-host or full-credit
+acceptance. Existing renderer/gameplay code remains unchanged.
+
+### Stage 8 black canyon ground after debug skipping (2026-10-11)
+
+Reproduced with the shared selected-stage startup used by `--stage 8` and
+the stage/input sweep. The road's fourteen alternate-gradient words at
+`$122F02..$122F1D` remained zero after a fresh stage 1 start. The canyon road
+later selects these solid-fill colors, producing black ground below the
+yellow sky. Applying the old skip operands in original MAME reproduces the
+same black ground: 160/160 captured raster frames match, zero skipped.
+That isolates missing debug-startup state rather than a renderer/SDL defect.
+
+The ordered ROM descriptor for the preceding stage supplies its event
+program at offset 16 (`$142D0`). Before the stage-advance command 12, stage 7
+has command 18 (`$E086`): temporarily select the next stage and prepare its
+alternate colors through `$13DF0/$142DC`. Normal IRQs then blend/upload the
+gradient. Jumping directly to command 12 omitted that preparation. A directed
+MAME replay that executes and settles it restores the canyon ground; its
+120/120 captured raster frames also match the native video layer exactly.
+
+`NativeStageSkip::enter` now resolves the preceding stage's actual event
+program through the live ordered selectors and runtime ROM descriptor table.
+When command 18 precedes command 12, it executes that original event and
+waits for the observed `$29C54C` blend flag to set and clear before advancing.
+No RGB/color constant is substituted and no CPU instruction or raster
+implementation changes. Only explicit debug startup is seeded, as before.
+
+`capture_stage_skip_palette.lua` captures the settled fourteen-word gradient
+from independently executing original MAME. `oracle_native_stage_palette`
+cold-boots the native board with physical coin/start input, performs selected
+startup and compares those exact words. All four relevant entries (5, 8, 13,
+17) match: **56/56 words identical, zero skipped**. Workflow logs:
+`build/workflow/20261011T140700.255070Z/`. A private mutant bypassing command
+18 is rejected with all fourteen stage 8 words different. ROM data, captures,
+mutant sources/binaries and diagnostic images remain ignored under `build/`.
+The new captures/comparison are retained by `oracle-capture`/`oracle-test`.
+
+The native release rebuild passes. `test` (4.84 s) and `verify-stage1`
+(44.99 s), including the 781-frame session RGB/audio comparison and dummy
+SDL3 attract run, pass under `build/workflow/20261011T140511.670201Z/`.
+The final stage/input sweep passes all 23 entries with 600 input frames each
+(13,800 total, zero stops), under `build/workflow/20261011T140418.158837Z/`.
+Its `COVERAGE` lines retain actual roll/weapon activation counts after the
+changed debug preparation; completed input frames do not imply active weapons
+or a completed roll in every slot. The Release CMake build also passes, and
+the rebuilt SDL3 app completes `--stage 8 --frames 360` with dummy drivers.
+This directed palette test does not establish natural stage progression,
+the previous stage's complete accumulated state or whole-credit RGB/audio
+acceptance. Full required checks still apply before committing.
+
+### `play-native` publication validation (2026-10-11)
+
+The SDL3 platform changes, roll-capture tooling and selected-stage road
+palette correction are retained on `play-native`, without merging their
+implementation into `main`. Required `test` and `verify-stage1` pass under
+`build/workflow/20261011T140511.670201Z/`; the complete `oracle-test` passes
+in **1700.13 s** under `build/workflow/20261011T141334.295380Z/`.
+This latest run includes all four new selected-stage gradient comparisons
+(56/56 original-MAME words identical, zero skipped), all 85 recovery
+mutations and every earlier fixture. Historical input-race skips remain
+explicit in their respective routine reports; none is counted as a match.
+All 23 directed stage/input cases complete 600 frames each without a stop.
+These checks retain the documented finite acceptance scope; they do not
+establish natural full-credit progression or an across-stage FPS guarantee.

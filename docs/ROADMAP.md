@@ -1116,6 +1116,24 @@ See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.
 - [x] Check native application inputs, RGB/audio output and cold restart
   equality; keep unported/full-credit paths explicit.
 
+### Native stage-skip road palette correction (2026-10-11)
+
+- [x] Restore the alternate-road gradient omitted by direct stage skipping.
+  Resolve the preceding stage's event program from the ROM descriptor, run its
+  palette-preparation event and wait for the original IRQ blend before advancing.
+- [x] Match all 56 original-MAME gradient words across selected stages 5, 8,
+  13 and 17, zero skipped. Omitting preparation rejects all 14 stage 8 words.
+  This verifies directed debug startup, not natural progression or full credits.
+- [x] Rebuild Make/CMake native apps; pass `test`, `verify-stage1` and all
+  23 debug stage entries with 600 input frames each, zero host stops.
+
+### Native SDL3 platform checkpoint (2026-10-11)
+
+- [x] Migrate native window/input/render/audio APIs and Make/CMake discovery
+  to SDL3 3.2+. Verify Make and clean CMake builds, native Metal startup,
+  selected-stage startup, no-speaker fallback, pause/resume and F5 PCM clearing.
+  `test` and `verify-stage1` pass; gameplay ports and clock ownership are unchanged.
+
 ### Directed stage/input closure checkpoint (2026-10-11)
 
 - [x] Pass required `test`, `verify-stage1` and full `oracle-test`, plus

@@ -111,7 +111,7 @@ make render-scene
 ./build/render_scene build/level.ppm level 480
 ./build/render_scene build/right.ppm right 480
 ./build/render_scene build/left.ppm left 480
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 180
+SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=dummy ./afterburner2 --frames 180
 ```
 
 The right/left visual fixtures set an arcade bank target directly, separately
