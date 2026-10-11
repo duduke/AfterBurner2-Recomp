@@ -1,8 +1,8 @@
 .DEFAULT_GOAL := all
 CXX ?= clang++
 CXXFLAGS ?= -std=c++20 -Wall -Wextra -O2
-INCLUDES = -Isrc/main $(shell pkg-config --cflags sdl2 2>/dev/null || echo -I/opt/homebrew/include -I/opt/homebrew/include/SDL2)
-LIBS = $(shell pkg-config --libs sdl2 2>/dev/null || echo -L/opt/homebrew/lib -lSDL2main -lSDL2 -framework Cocoa)
+INCLUDES = -Isrc/main $(shell pkg-config --cflags sdl3 2>/dev/null || echo -I/opt/homebrew/include)
+LIBS = $(shell pkg-config --libs sdl3 2>/dev/null || echo -L/opt/homebrew/lib -lSDL3)
 
 SRCS = \
 	src/main/main.cpp \
@@ -1276,12 +1276,12 @@ oracle-test: oracle-whole-host-mutations oracle-whole-host-full oracle-whole-hos
 verify-stage1: verify-whole-host
 
 verify-whole-host-headless: all
-	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 120
+	SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=dummy ./afterburner2 --frames 120
 .PHONY: verify-whole-host-headless
 
 # Extended neutral-input smoke test; independent of finite MAME acceptance.
 verify-whole-host-attract: all
-	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 2400
+	SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=dummy ./afterburner2 --frames 2400
 .PHONY: verify-whole-host-attract
 verify-stage1: verify-whole-host-attract
 
@@ -1382,6 +1382,22 @@ benchmark-native-full-throttle: build/native_game_benchmark
 	./build/native_game_benchmark --full-throttle
 benchmark-native-rolls: build/native_game_benchmark
 	./build/native_game_benchmark --rolls
+capture-video-rolls:
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_ROLLS=1 AB2_ORACLE_SKIP=960 AB2_ORACLE_STRIDE=3 tools/oracle/capture.sh tools/oracle/capture_frames.lua build/oracle/frames_rolls.bin 160 45
+oracle-video-rolls:
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_video.cpp $(VIDEO_SRCS) -o build/oracle_video
+	./build/oracle_video build/oracle/frames_rolls.bin
+.PHONY: capture-video-rolls oracle-video-rolls
+capture-native-stage-palette:
+	@for stage in 5 8 13 17; do AB2_ORACLE_STAGE=$$stage tools/oracle/capture.sh tools/oracle/capture_stage_skip_palette.lua build/oracle/native_stage$${stage}_palette.bin 1 40 || exit $$?; done
+build/oracle_native_stage_palette: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/oracle_native_stage_palette.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+verify-native-stage-palette: build/oracle_native_stage_palette
+	@for stage in 5 8 13 17; do ./build/oracle_native_stage_palette build/oracle/native_stage$${stage}_palette.bin || exit $$?; done
+-include build/threejs_obj/tests/oracle_native_stage_palette.d
+.PHONY: capture-native-stage-palette verify-native-stage-palette
+oracle-capture: capture-native-stage-palette
+oracle-test: verify-native-stage-palette
 benchmark-native-missiles: build/native_game_benchmark
 	./build/native_game_benchmark --missiles
 build/stage_input_sweep: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tools/stage_input_sweep.cpp $(filter-out src/main/main.cpp,$(SRCS))))

@@ -149,8 +149,8 @@ Commands from Stage 1 remain external transport inputs. Headless smoke checks:
 
 ```sh
 python3 tools/workflow.py run all
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./afterburner2 --frames 120
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=unavailable ./afterburner2 --frames 120
+SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=dummy ./afterburner2 --frames 120
+SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=unavailable ./afterburner2 --frames 120
 ```
 
 The second run should log audio-device unavailability and still advance the
@@ -305,6 +305,14 @@ selected stage. Without `STAGE`/`--stage`, normal startup and F5 stay unchanged.
 This is a debug skip, not natural progression. Any newly reached unported
 path still stops with its original missing-PC diagnostic.
 
+Selected-stage startup also executes a preceding alternate-road palette event
+when the previous stage's ROM program contains one, then waits for the original
+IRQ blend to finish. This avoids unset canyon colors after skipping directly
+to stages 5, 8, 13 or 17. Compare these fourteen-word gradients against original
+MAME with `python3 tools/workflow.py run capture-native-stage-palette verify-native-stage-palette`.
+Reuse the local captures with `verify-native-stage-palette`; the focused check
+does not replace full required acceptance before committing.
+
 
 ## Extending instruction coverage after a live stop
 
@@ -367,3 +375,26 @@ and merger accept at most 100,000 records per corpus. Every planned record
 must still be present and match exactly. Register/displacement MULS fixtures
 cover variable Booth-transition clocks; displacement TAS fixtures retain
 byte neighbours and test old-byte NZ flags and the written high bit.
+
+
+## Native SDL3 platform
+
+The native application requires SDL3 3.2 or newer. Make uses `pkg-config sdl3`
+and CMake uses `find_package(SDL3 3.2 REQUIRED CONFIG COMPONENTS SDL3)` with
+`SDL3::SDL3`. SDL3 supplies the window, keyboard events, texture presentation
+and audio stream; `GameSession` still owns board clocks, RGB and PCM.
+
+Use SDL3's driver environment names for native headless checks:
+
+```sh
+SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=dummy ./build/afterburner2-release --stage 7 --frames 90 --profile
+SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=unavailable ./build/afterburner2-release --frames 120
+```
+
+`tools/oracle/capture.sh` runs the external MAME executable and retains its
+SDL2 driver environment names. Native rendering requests vsync, letterboxes
+the original logical resolution and explicitly uses nearest texture sampling.
+Audio queues original signed 16-bit stereo PCM into an SDL3 playback stream;
+the input-side queue still bounds latency to approximately 100 ms. P pauses
+the stream device, F5 clears queued PCM and restarts the selected board, and
+a missing audio driver permits gameplay without a speaker.

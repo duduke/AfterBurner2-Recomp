@@ -5,23 +5,24 @@ data/hardware layer first (since it's verifiable against MAME immediately),
 then the game logic that drives it (which takes much longer and benefits
 from having a working hardware layer to render into while porting).
 
-## Native play development branch (2026-10-11)
+## Native play integration (2026-10-11)
 
-The [play-native branch](https://github.com/duduke/AfterBurner2-Recomp/tree/play-native),
-at [commit 2a0c76b](https://github.com/duduke/AfterBurner2-Recomp/commit/2a0c76b),
-contains the SDL3 3.2+ platform migration, repeatable barrel-roll video
-comparisons, and the stage-skip road palette correction. Selected stages
+The native implementation from
+[commit 2a0c76b](https://github.com/duduke/AfterBurner2-Recomp/commit/2a0c76b)
+is now integrated into main. It includes the SDL3 3.2+ platform migration,
+repeatable barrel-roll video comparisons, and the stage-skip road palette correction. Selected stages
 5, 8, 13 and 17 now run their preceding ROM palette-preparation event before
 advancing, restoring the unset canyon colors reported for stage 8.
-These implementation changes remain on that branch; this main update is
-documentation only. Use that branch's build instructions and SDL3 dependency.
+Use the main build instructions and SDL3 dependency. The
+`codex/threejs-game-engine` branch is retained for future Three.js work.
 
 Validation: Make/CMake builds, native platform smoke checks, `test`,
 `verify-stage1` and the complete `oracle-test` pass. The full oracle run took
 1700.13 s, includes all 85 recovery mutations, and retains every earlier
 fixture. The four selected-stage gradients match 56/56 original-MAME words,
 zero skipped; all 23 directed stage/input cases complete 600 frames each
-without a stop. Main's implementation remains at its existing checkpoint.
+without a stop. The merge retains the exact validated source, build rules
+and tests; only the branch-status documentation changes.
 Directed stage skipping still does not establish natural full-credit
 progression, complete previous-stage state or an across-stage FPS guarantee.
 
@@ -1135,6 +1136,24 @@ See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.
   original Stage 1 and all independent oracle fixtures as regression gates.
 - [x] Check native application inputs, RGB/audio output and cold restart
   equality; keep unported/full-credit paths explicit.
+
+### Native stage-skip road palette correction (2026-10-11)
+
+- [x] Restore the alternate-road gradient omitted by direct stage skipping.
+  Resolve the preceding stage's event program from the ROM descriptor, run its
+  palette-preparation event and wait for the original IRQ blend before advancing.
+- [x] Match all 56 original-MAME gradient words across selected stages 5, 8,
+  13 and 17, zero skipped. Omitting preparation rejects all 14 stage 8 words.
+  This verifies directed debug startup, not natural progression or full credits.
+- [x] Rebuild Make/CMake native apps; pass `test`, `verify-stage1` and all
+  23 debug stage entries with 600 input frames each, zero host stops.
+
+### Native SDL3 platform checkpoint (2026-10-11)
+
+- [x] Migrate native window/input/render/audio APIs and Make/CMake discovery
+  to SDL3 3.2+. Verify Make and clean CMake builds, native Metal startup,
+  selected-stage startup, no-speaker fallback, pause/resume and F5 PCM clearing.
+  `test` and `verify-stage1` pass; gameplay ports and clock ownership are unchanged.
 
 ### Directed stage/input closure checkpoint (2026-10-11)
 

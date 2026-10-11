@@ -28,8 +28,11 @@ gameplay_inputs = emu.add_machine_frame_notifier(function()
       missile:set_value((phase==8 or phase==9 or phase==10) and 1 or 0)
       return
     end
-    local phase = ((frame - 480) // 120) % 4
-    x:set_value(({0x30, 0x80, 0xd0, 0x80})[phase + 1])
+    -- Optional horizon/roll raster capture: reverse full horizontal input
+    -- every 60 frames. Only physical inputs change; no video/RAM patching.
+    local rolls = os.getenv("AB2_ORACLE_ROLLS") == "1"
+    local phase = ((frame - 480) // (rolls and 60 or 120)) % 4
+    x:set_value((rolls and {0x20, 0xe0, 0x20, 0xe0} or {0x30, 0x80, 0xd0, 0x80})[phase + 1])
     y:set_value(({0x60, 0xa0, 0x80, 0x80})[phase + 1])
     throttle:set_value(phase % 2 == 0 and 0xe0 or 0x40)
     vulcan:set_value(1)

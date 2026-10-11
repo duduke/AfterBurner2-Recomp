@@ -3,7 +3,8 @@
 // Application entry point for the literal joint X-Board host.
 // Physical frame/CPU/device clocks are independent of display refresh.
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 #include <algorithm>
 #include <iostream>
 #include <charconv>
@@ -72,7 +73,7 @@ int main(int argc, char** argv)try
     const size_t frame_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
     std::vector<uint32_t> texture_pixels(frame_pixels);
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
     {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
         return 1;
@@ -81,9 +82,8 @@ int main(int argc, char** argv)try
     constexpr int SCALE = 3;
     SDL_Window* window = SDL_CreateWindow(
         "AfterBurner2-Recomp",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE,
-        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+        SDL_WINDOW_RESIZABLE);
     if (!window)
     {
         std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
@@ -91,9 +91,8 @@ int main(int argc, char** argv)try
         return 1;
     }
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(
-        window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (!renderer) renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
+    if (!renderer) renderer = SDL_CreateRenderer(window, "software");
     if (!renderer)
     {
         std::cerr << "SDL_CreateRenderer failed: " << SDL_GetError() << std::endl;
@@ -101,15 +100,18 @@ int main(int argc, char** argv)try
         SDL_Quit();
         return 1;
     }
+    // SDL3 selects the available backend; software/dummy renderers may not
+    // support vsync. Physical board pacing remains independent of this setting.
+    SDL_SetRenderVSync(renderer, 1);
     if(profile) {
-        SDL_RendererInfo info{};
-        if(SDL_GetRendererInfo(renderer,&info)==0)
-            std::cout<<"Native renderer: "<<info.name
-                     <<" accelerated="<<bool(info.flags&SDL_RENDERER_ACCELERATED)
-                     <<" vsync="<<bool(info.flags&SDL_RENDERER_PRESENTVSYNC)<<'\n';
+        int vsync=0; SDL_GetRenderVSync(renderer, &vsync);
+        std::cout<<"Native renderer: "<<SDL_GetRendererName(renderer)
+                 <<" SDL="<<SDL_GetVersion()<<" vsync="<<vsync<<'\n';
     }
 
-    SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
+    if (!SDL_SetRenderLogicalPresentation(renderer, SCREEN_WIDTH, SCREEN_HEIGHT,
+                                          SDL_LOGICAL_PRESENTATION_LETTERBOX))
+        throw std::runtime_error(std::string("SDL logical presentation failed: ") + SDL_GetError());
 
     SDL_Texture* texture = SDL_CreateTexture(
         renderer, SDL_PIXELFORMAT_ARGB8888,
@@ -122,21 +124,25 @@ int main(int argc, char** argv)try
         SDL_Quit();
         return 1;
     }
+    // SDL3 defaults to linear filtering; retain the arcade pixel presentation.
+    if (!SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST))
+        throw std::runtime_error(std::string("SDL texture scaling failed: ") + SDL_GetError());
 
-    SDL_AudioDeviceID audio_device = 0;
+    SDL_AudioStream* audio_stream = nullptr;
     constexpr int sample_rate = GameSession::sample_rate;
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0)
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO))
     {
         SDL_AudioSpec spec{};
         spec.freq = sample_rate;
-        spec.format = AUDIO_S16SYS; spec.channels = 2; spec.samples = 1024;
-        audio_device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
-        if (audio_device)
+        spec.format = SDL_AUDIO_S16; spec.channels = 2;
+        SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "1024");
+        audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+        if (audio_stream && !SDL_ResumeAudioStreamDevice(audio_stream))
         {
-            SDL_PauseAudioDevice(audio_device, 0);
+            SDL_DestroyAudioStream(audio_stream); audio_stream = nullptr;
         }
     }
-    if (!audio_device) std::cerr << "Audio unavailable: " << SDL_GetError() << '\n';
+    if (!audio_stream) std::cerr << "Audio unavailable: " << SDL_GetError() << '\n';
 
     const double tick_seconds = GameSession::frame_seconds;
     const double counter_frequency = static_cast<double>(SDL_GetPerformanceFrequency());
@@ -151,34 +157,37 @@ int main(int argc, char** argv)try
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            if (event.type == SDL_QUIT)
+            if (event.type == SDL_EVENT_QUIT)
                 running = false;
-            if (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_F5)
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_F5)
             {
                 game.restart();
                 if (start_stage) startup();
-                if (audio_device) SDL_ClearQueuedAudio(audio_device);
-                if (audio_device) SDL_PauseAudioDevice(audio_device, 0);
+                if (audio_stream) SDL_ClearAudioStream(audio_stream);
+                if (audio_stream) SDL_ResumeAudioStreamDevice(audio_stream);
                 accumulated_seconds = 0;
                 previous_counter = SDL_GetPerformanceCounter();
                 profile_start=previous_counter; profile_frames=profile_displays=0; profile_core=profile_present=0;
                 SDL_SetWindowTitle(window, "AfterBurner2-Recomp");
             }
-            if (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_p)
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_P)
             {
                 game.set_paused(!game.paused());
-                if (audio_device) SDL_PauseAudioDevice(audio_device, game.paused());
+                if (audio_stream) {
+                    if (game.paused()) SDL_PauseAudioStreamDevice(audio_stream);
+                    else SDL_ResumeAudioStreamDevice(audio_stream);
+                }
                 accumulated_seconds = 0;
                 previous_counter = SDL_GetPerformanceCounter();
                 profile_start=previous_counter; profile_frames=profile_displays=0; profile_core=profile_present=0;
                 SDL_SetWindowTitle(window, game.paused() ? "AfterBurner2-Recomp — Paused (P to resume)" : "AfterBurner2-Recomp");
             }
-            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+            if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)
                 running = false;
         }
 
         if (!running) break;
-        const uint8_t* keys = SDL_GetKeyboardState(nullptr);
+        const bool* keys = SDL_GetKeyboardState(nullptr);
         GameControls input;
         // Preserve the existing keyboard precedence when opposite keys are
         // held. Other devices supply normalized axes through the same API.
@@ -219,26 +228,29 @@ int main(int argc, char** argv)try
             ++profile_frames;
             // Backpressure bounds playback latency without dropping sound.
             // The board still advances when no speaker device is available.
-            constexpr unsigned queue_limit_bytes = sample_rate * 2 * sizeof(int16_t) / 10;
+            constexpr int queue_limit_bytes = sample_rate * 2 * sizeof(int16_t) / 10;
             const auto samples = game.take_audio();
             if (!samples.empty())
             {
-                if (audio_device)
+                if (audio_stream)
                 {
-                    while (SDL_GetQueuedAudioSize(audio_device) > queue_limit_bytes)
+                    while (audio_stream)
                     {
-                        if (SDL_GetAudioDeviceStatus(audio_device) != SDL_AUDIO_PLAYING)
+                        const int queued = SDL_GetAudioStreamQueued(audio_stream);
+                        if (queued < 0 || !SDL_GetAudioStreamDevice(audio_stream)
+                            || SDL_AudioStreamDevicePaused(audio_stream))
                         {
                             std::cerr << "Audio device stopped; continuing without a speaker.\n";
-                            SDL_CloseAudioDevice(audio_device); audio_device = 0;
+                            SDL_DestroyAudioStream(audio_stream); audio_stream = nullptr;
                             break;
                         }
+                        if (queued <= queue_limit_bytes) break;
                         SDL_Delay(1);
                     }
-                    if (audio_device && SDL_QueueAudio(audio_device, samples.data(), static_cast<uint32_t>(samples.size() * sizeof(int16_t))) < 0)
+                    if (audio_stream && !SDL_PutAudioStreamData(audio_stream, samples.data(), static_cast<int>(samples.size() * sizeof(int16_t))))
                     {
                         std::cerr << "Audio queue failed: " << SDL_GetError() << '\n';
-                        SDL_CloseAudioDevice(audio_device); audio_device = 0;
+                        SDL_DestroyAudioStream(audio_stream); audio_stream = nullptr;
                     }
                 }
             }
@@ -259,7 +271,7 @@ int main(int argc, char** argv)try
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+        SDL_RenderTexture(renderer, texture, nullptr, nullptr);
         const auto present_start=profile ? SDL_GetPerformanceCounter() : 0;
         SDL_RenderPresent(renderer);
         ++profile_displays;
@@ -281,7 +293,7 @@ int main(int argc, char** argv)try
         }
     }
 
-    if (audio_device) SDL_CloseAudioDevice(audio_device);
+    if (audio_stream) SDL_DestroyAudioStream(audio_stream);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
