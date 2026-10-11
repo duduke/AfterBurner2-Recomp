@@ -4,7 +4,7 @@ from pathlib import Path
 import json,sys
 root=Path(__file__).resolve().parents[2]
 pcs={int(p,16) for p in (root/'tools/oracle/main_recovery_pcs.txt').read_text().splitlines() if p and not p.startswith('#')}
-captures=[Path(p) for p in sys.argv[1:]] or [root/'build/oracle/cpu_recovery.bin']
+captures=[Path(p) for p in sys.argv[1:]] or [root/'build/oracle/cpu_recovery.bin', root/'build/oracle/cpu_recovery_complete.bin']
 observed=set();branches={};cases=0
 for capture in captures:
  data=json.loads(Path(str(capture)+'.coverage.json').read_text())

@@ -26,6 +26,8 @@ public:
     std::vector<RGB888> pixels=std::vector<RGB888>(320*224);
     std::function<void(const Phase&)> phase;
     Screen::LayerObserver layers;
+    // Optional passive profiling boundary; never owns emulated time.
+    std::function<void()> rendering_started;
     std::function<void(uint64_t,unsigned,unsigned,bool)> rendered;
     std::function<void(uint64_t)> latched,frame;
     std::function<void(Time)> boosted;
@@ -53,7 +55,7 @@ public:
         screen.layers_rendered=[&](auto top,auto bottom,auto indices,auto priority,const HWPalette& pens){
             if(layers)layers(top,bottom,indices,priority,pens);
         };
-        video.render=[&](uint64_t ns,unsigned top,unsigned bottom,bool display){render(top,bottom,display);if(rendered)rendered(ns,top,bottom,display);};
+        video.render=[&](uint64_t ns,unsigned top,unsigned bottom,bool display){if(rendering_started)rendering_started();render(top,bottom,display);if(rendered)rendered(ns,top,bottom,display);};
         video.frame=[&](uint64_t ns){++frames;if(frame)frame(ns);};
         devices.callback=[&](XBoardDeviceDeadlines::Owner owner,uint64_t ns){if(owner==XBoardDeviceDeadlines::SoundUpdate)sound.update_speaker(ns);};
     }

@@ -8,6 +8,7 @@
 #include <iostream>
 #include <charconv>
 #include <string_view>
+#include <string>
 #include <vector>
 #include "roms.hpp"
 #include "hwvideo/hwpalette.hpp"
@@ -27,11 +28,15 @@ namespace
 int main(int argc, char** argv)try
 {
     unsigned frame_limit = 0;
-    if (argc != 1)
+    bool boot_to_flight = false, profile = false;
+    for (int i=1;i<argc;++i)
     {
-        if (argc != 3 || std::string_view(argv[1]) != "--frames")
-        { std::cerr << "Usage: afterburner2 [--frames positive-count]\n"; return 1; }
-        const std::string_view value(argv[2]);
+        const std::string_view option(argv[i]);
+        if (option == "--boot-to-flight") { boot_to_flight=true; continue; }
+        if (option == "--profile") { profile=true; continue; }
+        if (option != "--frames" || i+1>=argc)
+        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--boot-to-flight] [--profile]\n"; return 1; }
+        const std::string_view value(argv[++i]);
         const auto result = std::from_chars(value.data(), value.data() + value.size(), frame_limit);
         if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || !frame_limit)
         { std::cerr << "Frame count must be a positive integer.\n"; return 1; }
@@ -46,6 +51,15 @@ int main(int argc, char** argv)try
     std::cout << "ROM set loaded OK." << std::endl;
 
     GameSession game(roms);
+    if (boot_to_flight) {
+        // Original cold boot with the same physical coin/start pulses as the
+        // verified bridge. Never seed gameplay state or skip board frames.
+        for(unsigned f=0;f<600;++f) {
+            GameControls input;
+            input.coin=f>=360&&f<372; input.start=f>=420&&f<432;
+            game.advance(input); game.take_audio();
+        }
+    }
     const size_t frame_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
     std::vector<uint32_t> texture_pixels(frame_pixels);
 
@@ -77,6 +91,13 @@ int main(int argc, char** argv)try
         SDL_DestroyWindow(window);
         SDL_Quit();
         return 1;
+    }
+    if(profile) {
+        SDL_RendererInfo info{};
+        if(SDL_GetRendererInfo(renderer,&info)==0)
+            std::cout<<"Native renderer: "<<info.name
+                     <<" accelerated="<<bool(info.flags&SDL_RENDERER_ACCELERATED)
+                     <<" vsync="<<bool(info.flags&SDL_RENDERER_PRESENTVSYNC)<<'\n';
     }
 
     SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -111,6 +132,9 @@ int main(int argc, char** argv)try
     const double tick_seconds = GameSession::frame_seconds;
     const double counter_frequency = static_cast<double>(SDL_GetPerformanceFrequency());
     uint64_t previous_counter = SDL_GetPerformanceCounter();
+    uint64_t profile_start = previous_counter;
+    unsigned profile_frames=0, profile_displays=0;
+    double profile_core=0, profile_present=0;
     double accumulated_seconds = tick_seconds;
     bool running = true;
     while (running)
@@ -127,6 +151,7 @@ int main(int argc, char** argv)try
                 if (audio_device) SDL_PauseAudioDevice(audio_device, 0);
                 accumulated_seconds = 0;
                 previous_counter = SDL_GetPerformanceCounter();
+                profile_start=previous_counter; profile_frames=profile_displays=0; profile_core=profile_present=0;
                 SDL_SetWindowTitle(window, "AfterBurner2-Recomp");
             }
             if (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_p)
@@ -135,6 +160,7 @@ int main(int argc, char** argv)try
                 if (audio_device) SDL_PauseAudioDevice(audio_device, game.paused());
                 accumulated_seconds = 0;
                 previous_counter = SDL_GetPerformanceCounter();
+                profile_start=previous_counter; profile_frames=profile_displays=0; profile_core=profile_present=0;
                 SDL_SetWindowTitle(window, game.paused() ? "AfterBurner2-Recomp — Paused (P to resume)" : "AfterBurner2-Recomp");
             }
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
@@ -177,7 +203,10 @@ int main(int argc, char** argv)try
         unsigned catchup_frames = 0;
         while (!game.paused() && accumulated_seconds >= tick_seconds && catchup_frames++ < 2)
         {
+            const auto core_start=profile ? SDL_GetPerformanceCounter() : 0;
             game.advance(input);
+            if(profile) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency;
+            ++profile_frames;
             // Backpressure bounds playback latency without dropping sound.
             // The board still advances when no speaker device is available.
             constexpr unsigned queue_limit_bytes = sample_rate * 2 * sizeof(int16_t) / 10;
@@ -204,7 +233,8 @@ int main(int argc, char** argv)try
                 }
             }
             accumulated_seconds -= tick_seconds;
-            if (frame_limit && ++simulated_frames >= frame_limit)
+            ++simulated_frames;
+            if (frame_limit && simulated_frames >= frame_limit)
             { running = false; break; }
         }
 
@@ -220,7 +250,25 @@ int main(int argc, char** argv)try
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+        const auto present_start=profile ? SDL_GetPerformanceCounter() : 0;
         SDL_RenderPresent(renderer);
+        ++profile_displays;
+        if(profile) {
+            const auto now=SDL_GetPerformanceCounter();
+            profile_present+=(now-present_start)*1000.0/counter_frequency;
+            const double seconds=(now-profile_start)/counter_frequency;
+            if(seconds>=1.0) {
+                if(!game.paused()) {
+                    const auto title=std::string("AfterBurner2-Recomp — simulation ")+std::to_string(profile_frames/seconds)+" FPS";
+                    SDL_SetWindowTitle(window,title.c_str());
+                    std::cout<<"Application performance: simulation_fps="<<profile_frames/seconds
+                             <<" display_fps="<<profile_displays/seconds
+                             <<" board_ms="<<(profile_frames?profile_core/profile_frames:0)
+                             <<" present_wait_ms="<<profile_present/profile_displays<<'\n';
+                }
+                profile_start=now; profile_frames=profile_displays=0; profile_core=profile_present=0;
+            }
+        }
     }
 
     if (audio_device) SDL_CloseAudioDevice(audio_device);

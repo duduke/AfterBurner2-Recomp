@@ -19,9 +19,14 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--recovery',nargs='*',help='Recovery capture(s); omitted paths use the retained default')
 parser.add_argument('--only',help='One named mutation for an incremental capture; default runs all retained mutations')
 args=parser.parse_args()
-recovery_captures=args.recovery or ['build/oracle/cpu_recovery.bin']
+recovery_captures=args.recovery or ['build/oracle/cpu_recovery.bin', 'build/oracle/cpu_recovery_complete.bin']
 if args.recovery is not None:
  mutations=[
+  ('descriptor-update-pointer','src/main/engine/omainrecoveryschedule.inc','case 0x13bcc: {\n    r.a[1]=0x30cf4;','case 0x13bcc: {\n    r.a[1]=0x30cf6;','cpu_recovery'),
+  ('motion-clamp-subtract','src/main/engine/omainrecoveryschedule.inc','case 0x5c28: {\n    const auto operand=uint16_t(r.d[0]);\n    const auto old=uint16_t(r.d[1]);\n    const auto value=addsub_word(old,operand,true,true);','case 0x5c28: {\n    const auto operand=uint16_t(r.d[0]);\n    const auto old=uint16_t(r.d[1]);\n    const auto value=addsub_word(old,operand,false,true);','cpu_recovery'),
+  ('combat-memory-tas','src/main/engine/omainrecoveryschedule.inc','write8(r.a[0],old|0x80);','write8(r.a[0],old|0x40);','cpu_recovery'),
+  ('bonus-countdown-decrement','src/main/engine/omainrecoveryschedule.inc','case 0xd8ce: {\n    const uint32_t operand=1;','case 0xd8ce: {\n    const uint32_t operand=2;','cpu_recovery'),
+  ('respawn-object-callback','src/main/engine/omainrecoveryschedule.inc','case 0x428: {\n    read16(0x42c);\n    read16(0x42e);\n    const uint32_t value=0x44e;','case 0x428: {\n    read16(0x42c);\n    read16(0x42e);\n    const uint32_t value=0x450;','cpu_recovery'),
   ('recovery-hud-countdown','src/main/engine/omainrecoveryschedule.inc','case 0xdd7a: {\n    read16(0xdd7e);\n    const uint32_t operand=0x1;','case 0xdd7a: {\n    read16(0xdd7e);\n    const uint32_t operand=0x2;','cpu_recovery'),
   ('crash-dispatch-target','src/main/engine/omainrecoveryschedule.inc','case 0xe99a: {\n    branch(true,0xeb5e,4);','case 0xe99a: {\n    branch(true,0xeb60,4);','cpu_recovery'),
   ('crash-descriptor-pointer','src/main/engine/omainrecoveryschedule.inc','case 0xe662: {\n    r.a[0]=0x2bb36;','case 0xe662: {\n    r.a[0]=0x2bb38;','cpu_recovery'),

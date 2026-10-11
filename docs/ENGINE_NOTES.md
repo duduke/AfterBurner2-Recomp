@@ -7658,6 +7658,88 @@ mutated executable against multiple captures; every default mutation remains
 required, and a non-fixture error is rejected as mutation evidence. Wrong crash
 descriptor and dispatch-target mutations reject after the baseline passes.
 
+Extended neutral play subsequently passed the first crash through frame 2350,
+then reached `$DD7A`. Its recovery HUD countdown and `$E192` blinking descriptor
+helper add 17 literal sites. All 94 independent MAME fixtures match; the current
+4-capture union contains 5,011 PCs, 453 branches with both outcomes and 23,654
+fixtures. The eleven pre-HUD recovery mutations all reject across the retained
+native, indicator and crash captures (`build/oracle/browser_recovery_mutations.log`).
+The new countdown mutation changes its decrement from one to two and is checked
+against `browser_recovery_hud.bin`. Aggregate checks never omit older PCs or
+fixture comparisons to accommodate an increment.
+
+The HUD countdown mutation rejects after a passing baseline. The runner now
+checks every supplied recovery baseline before compiling mutations; a negative
+check with the earlier unaligned crash capture confirms that a failing baseline
+cannot produce accepted mutation evidence.
+
+The next respawn reaches main-CPU `$0402`, a different routine from the sub-CPU
+reset at the same numeric address. Its auxiliary-object graph includes 82 new
+sites and its `$043E/$044E/$054C` callbacks. All 374 MAME fixtures pass.
+Combined coverage from the five retained/incremental captures includes 5,093
+PCs and both outcomes of 460 branches, with 24,028 fixtures. The callback
+mutation changes `$044E` to `$0450` in `$0428`.
+
+The respawn callback mutation rejects. Extended play then reaches frame 2850
+before stopping in the `$D89A` bonus/countdown continuation. Its 96 missing
+sites and callees match all 402 MAME fixtures. The six-capture union contains
+5,189 PCs, 467 branches with both outcomes and 24,430 fixtures. The new
+`$D8CE` mutation changes the countdown decrement from one to two.
+
+The bonus mutation rejects, and neutral gameplay completes through frame 3600.
+A fresh run with flight/throttle/cannon/missile inputs reaches frame 1320 before
+exposing `$5B5A`. Its combat-motion graph adds 229 sites, including memory
+`TAS (A0)` at `$6426`. The generator adds only that supported memory addressing
+form: byte read, two internal clocks, NZVC from the old byte with X retained,
+byte write with bit 7 set, IPL selection, and final prefetch. This follows
+MAME `tas_ais_df`; the X-Board driver defines no TAS write override. Directed
+fixtures include `$80A5/$7FA5/$FFA5`, verifying the old sign, bit update and
+neighbor-byte preservation. All 1,334 fixtures match. Aggregate coverage is
+5,418 PCs, 496 branches with both outcomes and 25,764 fixtures across seven
+captures. The new memory-TAS mutation sets bit 6 instead of bit 7.
+
+The memory-TAS mutation rejects after its passing baseline. The active-controls
+run subsequently reaches frame 1440, then encounters positive velocity clamp
+`$5C28`. A literal branch/callback audit of the already verified motion family
+`$5B5A..$679E` finds eleven missing sites, including both clamp directions and
+their neighboring continuations. All 52 independent fixtures match, and changing
+the `$5C28` subtraction to addition rejects. The eight-capture recovery union
+contains all 5,429 declared PCs and both outcomes of 497 branches, with 25,816
+matching original-ROM fixtures. Earlier captures and default mutations remain
+retained.
+
+Final optimized-bridge live smoke passes 5,160 physical frames: original boot
+and 3,000 neutral gameplay frames (through frame 3600), then cold restart/boot
+and 960 sustained flight/throttle/cannon/missile frames (through frame 1560).
+The commands and result remain ignored in `build/threejs_extended_play.py` and
+`build/threejs_extended_result.log`. This verifies the reported stop and the
+observed first-crash/respawn/combat continuations together; it is not a full
+credit or whole-host MAME comparison. All sixteen retained/new recovery
+mutations reject across their explicit captures. Final `test`, `verify-stage1`
+and optimized `verify-threejs-core` pass in
+`build/workflow/20261009T122421.411456Z/`, retaining both the 603- and 781-frame
+whole-host MAME gates. `git diff --check` passes. No ROM data/captures are tracked.
+
+The live Three.js run subsequently verifies 3,790 rendered board frames with
+zero native RGB checksum mismatches, including crash and recovery, before a
+later descriptor update stops after frame 4372 at `$13BCC`. Its fifteen literal
+sites through `$13BF8` select a ROM descriptor and copy four longwords to video
+RAM. All thirty MAME fixtures match. The nine-capture recovery union includes
+5,444 PCs, both outcomes of 497 branches and 25,846 matching fixtures. A new
+pointer mutation selects `$30CF6` instead of `$30CF4` and rejects after its
+baseline passes, bringing the retained recovery mutation total to seventeen.
+
+The final rebuilt bridge passes 6,160 native physical frames: cold boot and
+4,000 neutral gameplay frames through frame 4600, then restart/boot and 960
+flight/throttle/cannon/missile frames through frame 1560. All nine retained
+recovery captures recompare with zero differences or skips (25,846 fixtures),
+and the aggregate coverage check passes all 5,444 PCs and both outcomes of
+497 branches. Final `test`, `verify-stage1` and `verify-threejs-core` pass in
+`build/workflow/20261009T123856.834272Z/`. This retains the 603/781-frame
+whole-host MAME gates; the longer smoke does not establish full-credit
+acceptance. The browser is returned to a fresh flight scene with diagnostic
+pixel verification disabled for normal play.
+
 
 ### Verified playable-host merge snapshot (2026-10-09)
 
@@ -7683,3 +7765,49 @@ full-credit gameplay, arbitrary input trajectories, later stages or peak-load
 real-time performance. CMake test registrations were added but CMake was
 unavailable locally; these results use Make. No ROM data or captures are
 committed.
+
+## Native rendering and playable release continuation (2026-10-11)
+
+`make play-native` builds `build/afterburner2-release` with the same `-O3 -flto`
+options as the verified bridge (ordinary floating-point semantics). It runs
+600 original cold board frames with the bridge's physical coin/start pulses,
+drains startup audio, and hands flight to the existing keyboard controls.
+`--profile` reports completed simulation/display frames per wall-clock second,
+board cost, SDL presentation call time and selected renderer. P/F5 clear timing
+statistics; F5 retains the original fresh cold restart. No browser/server,
+capture-driven execution, direct game-state seed or gameplay rule is introduced.
+
+The first unpaced release profile over 181 flight/weapon frames measured
+10.9555 ms average board work (11.326 ms p95), of which rendering and video
+synchronization cost 1.04048 ms. The remaining board work was 9.91499 ms;
+rendering was not the dominant cost in that window. An optional passive
+`rendering_started` observer brackets existing render completion without owning
+board time. `benchmark-native` measures this window; `benchmark-native-extended`
+replays the retained eight 120-frame flight/throttle/weapon segments, sampling
+960 flight frames after the same boot. Benchmarks exclude window presentation.
+
+Road, tile and text draws now accept inclusive clip bounds. Screen clears only
+the current priority/sprite rows and draws only those road/tile/text rows.
+Sprite clipping and scaler writeback are unchanged. Only the supplied clip's
+rows belong to the passive layer-observer frontier. Tile/text categories are
+disjoint opaque pixels: a combined traversal writes each pixel once with the
+original category-dependent priority mark instead of recomputing coordinates
+twice. Palette pens retain the original resistor-DAC conversion; unchanged
+words reuse both resolved pens, with an explicit initial sentinel.
+
+The ROM-free clipping check compares 384 layer/road clips against full rasters,
+including single rows, tile boundaries, row/column/alternate scroll state, all
+eight road controls and untouched outside rows. Three further comparisons
+check combined categories against the original two-pass ordering. Two private
+mutations (missing last road row and wrong category priority) reject. The
+existing MAME RGB, video timing, sprite feedback and audio checks remain required.
+
+The first real macOS-window run after physical boot completed 180 flight frames
+at 59.6287–59.9087 simulation/display FPS, with 11.3219–11.4128 ms average board
+cost per reporting window. The final release-core 603/781-frame comparisons
+match, including 55,982,080 expanded RGB pixels and 627,841 mixed stereo frames,
+with zero differences/skips. ROM-free and Stage 1/native integration checks
+pass. Full-suite and final extended performance results are recorded below when
+complete. These finite observations do not close full-credit progression,
+arbitrary input trajectories, every-stage real-time performance or unported
+instructions. No scheduler approximation or CPU timing shortcut was needed.

@@ -87,7 +87,7 @@ void HWTiles::latch_frame_registers()
 // register's bit 15 is set. Both tables are read live. The X scroll is
 // mirrored about the hardware's $C0 origin.
 void HWTiles::draw_layer(uint16_t* pixels, uint8_t* priority, int width, int height,
-                          int which, int category, uint8_t priority_mark) const
+                          int which, int category, uint8_t priority_mark, int clip_top, int clip_bottom) const
 {
     const uint16_t xscroll = latched_xscroll[which];
     const uint16_t yscroll = latched_yscroll[which];
@@ -96,7 +96,7 @@ void HWTiles::draw_layer(uint16_t* pixels, uint8_t* priority, int width, int hei
     const uint32_t row_table = 0xf80 / 2 + 0x20 * static_cast<uint32_t>(which);
     const uint32_t column_table = 0xf16 / 2 + 0x20 * static_cast<uint32_t>(which);
 
-    for (int y = 0; y < height; y++)
+    for (int y = std::max(0, clip_top); y <= std::min(height-1, clip_bottom < 0 ? height-1 : clip_bottom); y++)
     {
         const uint16_t rowscroll = text_ram[row_table + static_cast<uint32_t>(y / 8)];
         const bool alternate = (rowscroll & 0x8000) != 0;
@@ -125,25 +125,26 @@ void HWTiles::draw_layer(uint16_t* pixels, uint8_t* priority, int width, int hei
             const uint32_t vy = (static_cast<uint32_t>(y) + ey) & 0x1ff;
             const uint32_t page = (ep >> ((((vy >> 8) * 2) + (vx >> 9)) * 4)) & 0xf;
             const uint16_t entry = tile_ram[page * PAGE_WORDS + ((vy & 255) >> 3) * PAGE_COLS + ((vx & 511) >> 3)];
-            if (static_cast<int>((entry >> 15) & 1) != category)
+            const int entry_category = (entry >> 15) & 1;
+            if (category >= 0 && entry_category != category)
                 continue;
 
             const uint8_t pix = tile_pixel(entry & 0x1fff, static_cast<int>(vx & 7), static_cast<int>(vy & 7));
             if (pix == 0)
                 continue; // transparent
             prow[x] = static_cast<uint16_t>(COLOR_BASE + ((entry >> 6) & 0x7f) * 8 + pix);
-            prirow[x] |= priority_mark;
+            prirow[x] |= category < 0 ? priority_mark << entry_category : priority_mark;
         }
     }
 }
 
 void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int height,
-                         int category, uint8_t priority_mark) const
+                         int category, uint8_t priority_mark, int clip_top, int clip_bottom) const
 {
-    for (int ty = 0; ty < TEXT_ROWS; ty++)
+    for (int ty = std::max(0, clip_top) / 8; ty < TEXT_ROWS; ty++)
     {
         const int py0 = ty * 8;
-        if (py0 >= height)
+        if (py0 >= height || (clip_bottom >= 0 && py0 > clip_bottom))
             break;
 
         for (int tx = 0; tx < TEXT_COLS; tx++)
@@ -153,7 +154,8 @@ void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int heig
                 break;
 
             const uint16_t entry = text_ram[ty * TEXT_COLS + tx];
-            if (static_cast<int>((entry >> 15) & 1) != category)
+            const int entry_category = (entry >> 15) & 1;
+            if (category >= 0 && entry_category != category)
                 continue;
 
             const int color = (entry >> 9) & 0x07;
@@ -162,7 +164,7 @@ void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int heig
             for (int y = 0; y < 8; y++)
             {
                 const int py = py0 + y;
-                if (py >= height)
+                if (py >= height || py < clip_top || (clip_bottom >= 0 && py > clip_bottom))
                     continue;
                 uint16_t* prow = pixels + py * width;
                 uint8_t* prirow = priority + py * width;
@@ -176,7 +178,7 @@ void HWTiles::draw_text(uint16_t* pixels, uint8_t* priority, int width, int heig
                     if (pix == 0)
                         continue;
                     prow[px] = static_cast<uint16_t>(COLOR_BASE + color * 8 + pix);
-                    prirow[px] |= priority_mark;
+                    prirow[px] |= category < 0 ? priority_mark << entry_category : priority_mark;
                 }
             }
         }

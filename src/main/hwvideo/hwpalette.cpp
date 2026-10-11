@@ -11,7 +11,7 @@ namespace
     }
 }
 
-HWPalette::HWPalette(uint32_t num_entries) : entries(num_entries), pens(num_entries * 2, RGB888{0, 0, 0})
+HWPalette::HWPalette(uint32_t num_entries) : entries(num_entries), pens(num_entries * 2, RGB888{0, 0, 0}), last_words(num_entries, 0x10000)
 {
     build_weight_tables();
 }
@@ -62,6 +62,8 @@ void HWPalette::build_weight_tables()
 
 void HWPalette::write(uint32_t offset, uint16_t data)
 {
+    if (last_words[offset] == data) return;
+    last_words[offset] = data;
     // sBGR BBBB GGGG RRRR: each channel is its "5th" (doubling) bit from the
     // top nibble plus its 4 weighted bits from its own nibble.
     const int r = ((data >> 12) & 0x01) | ((data << 1) & 0x1e);

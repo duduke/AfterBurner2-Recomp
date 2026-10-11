@@ -192,8 +192,14 @@ for start, stop in ranges:
                 if dst[0] == 'index': emit('idle(2);'); offset = 2
                 prefetch(extensions(dst, size)); flags(size); write(dst, size, ext=False); finish()
         elif name == 'TAS':
-            dst=ea(operands[0]);assert dst[0]=='d'
-            read(dst,1,'old');flags(1,'old');emit(f'byte(r.d[{dst[1]}],old|0x80);');finish()
+            dst=ea(operands[0]);assert dst[0] in ('d','ind')
+            read(dst,1,'old')
+            if dst[0]=='ind':
+                emit('idle(2);');offset=2
+                flags(1,'old');write(dst,1,'old|0x80',ext=False)
+            else:
+                flags(1,'old');emit(f'byte(r.d[{dst[1]}],old|0x80);')
+            finish()
         elif name == 'ST':
             dst=ea(operands[0]);assert dst[0]=='disp'
             read(dst,1,'old');emit('(void)old;');prefetch();emit('latch();')

@@ -103,11 +103,11 @@ void HWRoad::write_road_control(uint8_t control)
     road_control = control;
 }
 
-void HWRoad::render_background(uint16_t* pixels, int width, int height) const
+void HWRoad::render_background(uint16_t* pixels, int width, int height, int clip_top, int clip_bottom) const
 {
     const uint16_t* roadram = ram_buffer;
 
-    for (int y = 0; y < height; y++)
+    for (int y = std::max(0, clip_top); y <= std::min(height-1, clip_bottom < 0 ? height-1 : clip_bottom); y++)
     {
         const int data0 = roadram[0x000 + y];
         const int data1 = roadram[0x100 + y];
@@ -141,11 +141,11 @@ void HWRoad::render_background(uint16_t* pixels, int width, int height) const
     }
 }
 
-void HWRoad::render_foreground(uint16_t* pixels, int width, int height) const
+void HWRoad::render_foreground(uint16_t* pixels, int width, int height, int clip_top, int clip_bottom) const
 {
     const uint16_t* roadram = ram_buffer;
 
-    for (int y = 0; y < height; y++)
+    for (int y = std::max(0, clip_top); y <= std::min(height-1, clip_bottom < 0 ? height-1 : clip_bottom); y++)
     {
         const uint32_t data0 = roadram[0x000 + y];
         const uint32_t data1 = roadram[0x100 + y];

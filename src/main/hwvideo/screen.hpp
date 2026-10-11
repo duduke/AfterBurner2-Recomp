@@ -45,8 +45,9 @@
 class Screen
 {
 public:
-    // Passive indexed road/tile planes before sprite composition. Consumers
-    // must copy data synchronously; it belongs to the next native render too.
+    // Passive indexed road/tile planes before sprite composition. Only rows
+    // top..bottom belong to this frontier; other rows retain previous clips.
+    // Consumers must copy data synchronously before the next native render.
     using LayerObserver=std::function<void(unsigned,unsigned,std::span<const uint16_t>,std::span<const uint8_t>,const HWPalette&)>;
     LayerObserver layers_rendered;
     Screen(int width, int height, HWPalette& palette, HWRoad& road, HWSprites& sprites, HWTiles& tiles);

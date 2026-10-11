@@ -60,13 +60,17 @@ public:
     // — call twice per layer, once per category, each with its own
     // `priority_mark` to OR into the priority buffer on every opaque pixel
     // drawn (see docs/HARDWARE.md's compositing notes for the exact
-    // per-layer priority_mark values to use).
+    // per-layer priority_mark values to use). Category -1 draws both in one
+    // pass: priority_mark is category 0's mark, shifted once for category 1.
+    // The categories are disjoint opaque pixels, so their passes commute.
     void draw_layer(uint16_t* pixels, uint8_t* priority, int width, int height,
-                     int which, int category, uint8_t priority_mark) const;
+                     int which, int category, uint8_t priority_mark,
+                     int clip_top = 0, int clip_bottom = -1) const;
 
     // Draw the (non-paged, non-scrolling-surface) text layer.
     void draw_text(uint16_t* pixels, uint8_t* priority, int width, int height,
-                    int category, uint8_t priority_mark) const;
+                    int category, uint8_t priority_mark,
+                    int clip_top = 0, int clip_bottom = -1) const;
 
 private:
     static constexpr int COLOR_BASE = 0x1c00;

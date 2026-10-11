@@ -21,23 +21,20 @@ void Screen::render_partial(RGB888* output, int top, int bottom, bool display, u
         std::fill(output+top*width, output+(bottom+1)*width, RGB888{0,0,0});
         return;
     }
-    std::fill(priority.begin(), priority.end(), uint8_t{0});
-    std::fill(sprite_pixels.begin(), sprite_pixels.end(), uint16_t{0xffff});
+    std::fill(priority.begin()+top*width, priority.begin()+(bottom+1)*width, uint8_t{0});
+    std::fill(sprite_pixels.begin()+top*width, sprite_pixels.begin()+(bottom+1)*width, uint16_t{0xffff});
 
     if(sprite_bank) sprites.render_bank(sprite_bank, sprite_pixels.data(), width, height, top, bottom);
     else sprites.render(sprite_pixels.data(), width, height, 0, 0, 0xf, top, bottom);
 
-    road.render_background(pixels.data(), width, height);
+    road.render_background(pixels.data(), width, height, top, bottom);
     // After Burner II forces road_priority = 0: the road's textured
     // foreground layer is drawn low-priority, before any tilemap.
-    road.render_foreground(pixels.data(), width, height);
+    road.render_foreground(pixels.data(), width, height, top, bottom);
 
-    tiles.draw_layer(pixels.data(), priority.data(), width, height, /*which=*/1, /*category=*/0, 0x01); // BG cat0
-    tiles.draw_layer(pixels.data(), priority.data(), width, height, /*which=*/1, /*category=*/1, 0x02); // BG cat1
-    tiles.draw_layer(pixels.data(), priority.data(), width, height, /*which=*/0, /*category=*/0, 0x02); // FG cat0
-    tiles.draw_layer(pixels.data(), priority.data(), width, height, /*which=*/0, /*category=*/1, 0x04); // FG cat1
-    tiles.draw_text(pixels.data(), priority.data(), width, height, /*category=*/0, 0x04);
-    tiles.draw_text(pixels.data(), priority.data(), width, height, /*category=*/1, 0x08);
+    tiles.draw_layer(pixels.data(), priority.data(), width, height, /*which=*/1, /*category=*/-1, 0x01, top, bottom);
+    tiles.draw_layer(pixels.data(), priority.data(), width, height, /*which=*/0, /*category=*/-1, 0x02, top, bottom);
+    tiles.draw_text(pixels.data(), priority.data(), width, height, /*category=*/-1, 0x04, top, bottom);
 
     if(layers_rendered)layers_rendered(top,bottom,pixels,priority,palette);
 

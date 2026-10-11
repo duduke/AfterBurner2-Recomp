@@ -52,6 +52,14 @@ for _,pc in ipairs(pcs)do
    for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,counter_reg=op&7,counter_value=value}end
   end
  end
+ -- Memory TAS derives NZ from the old byte and preserves its word neighbour.
+ if op&0xfff8==0x4ad0 then
+  for _,value in ipairs({0x80a5,0x7fa5,0xffa5})do
+   for _,ccr in ipairs({0,31})do
+    cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,memory_word_address=0x3ffc00,memory_word_value=value}
+   end
+  end
+ end
  -- ASL.W 46(A5): sign changes, carry/X, overflow and zero result.
  if op==0xe1ed then
   for _,value in ipairs({0x4000,0x8000,0xc000,0xffff})do

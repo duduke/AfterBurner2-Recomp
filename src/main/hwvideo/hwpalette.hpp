@@ -46,6 +46,8 @@ public:
 private:
     uint32_t entries;
     std::vector<RGB888> pens;
+    // Sentinel keeps the first zero write distinct from an uninitialized pen.
+    std::vector<uint32_t> last_words;
 
     // Per-channel weight tables (0-31 raw 5-bit value -> weighted 0-255 brightness).
     uint8_t normal_weighted[32];

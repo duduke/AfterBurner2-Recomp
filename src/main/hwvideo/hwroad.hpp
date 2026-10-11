@@ -42,8 +42,10 @@ public:
 
     // Render into a 320x224 buffer of logical color-index pixels (not yet
     // resolved to RGB — that happens in the shared palette resolve pass).
-    void render_background(uint16_t* pixels, int width, int height) const;
-    void render_foreground(uint16_t* pixels, int width, int height) const;
+    void render_background(uint16_t* pixels, int width, int height,
+                           int clip_top = 0, int clip_bottom = -1) const;
+    void render_foreground(uint16_t* pixels, int width, int height,
+                           int clip_top = 0, int clip_bottom = -1) const;
 
 private:
     static constexpr int ROAD_RAM_WORDS = 0x1000 / 2;

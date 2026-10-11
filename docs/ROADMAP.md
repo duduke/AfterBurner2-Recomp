@@ -924,6 +924,14 @@ promote full-credit gameplay acceptance.
   - *Moving Cabinet Emulation:* Translate arcade motor signals (ADC3/ADC4 feedback and Moving Deluxe cabinet motor commands) into motion rig telemetry (e.g. SimHub / UDP telemetry) or FFB output.
 
 ### 3. Graphics, Resolution & Display
+- [x] Native desktop performance entry point (`make play-native`): verified
+  release compiler options, physical cold boot to flight, and live simulation/
+  display FPS diagnostics. Renderer clips road/tile/text work to the native
+  partial rows, combines disjoint category passes and caches unchanged palette
+  conversions. Original scheduler and sprite feedback remain authoritative.
+  Short windowed flight reaches the original 59.64 Hz cadence; this does not
+  establish full-credit or every-stage peak-load performance. See the native
+  performance continuation in `ENGINE_NOTES.md` for checks and measurements.
 - [ ] **Wide-Screen Support (16:9, 16:10, 21:9 Ultrawide):**
   - *Expanded Viewport:* Expand horizontal raster from 320×224 to 398×224 (16:9) or 526×224 (21:9) without stretching.
   - *Extended Road/Ground Raster:* Extend Sub CPU / `hwroad` scanline banking and horizon curves across wider display bounds.
@@ -1094,3 +1102,18 @@ See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.
   original Stage 1 and all independent oracle fixtures as regression gates.
 - [x] Check native application inputs, RGB/audio output and cold restart
   equality; keep unported/full-credit paths explicit.
+
+### Browser gameplay continuation checkpoint (2026-10-09)
+
+- [x] Translate the reported `$72DA` stop and the subsequently observed
+  first-crash, recovery, respawn, bonus and combat-motion continuations.
+  The declared recovery union has 5,444 PCs and 497 branches with both outcomes;
+  25,846 original-ROM fixtures match across retained/incremental captures.
+- [x] Reject seventeen recovery mutations; retain earlier instruction and
+  whole-host fixtures. Indexed BSET clocks and memory TAS follow MAME.
+- [x] Pass 6,160 native physical-frame smoke steps, including neutral crash/
+  recovery through frame 4600 and fresh flight/weapons input through frame 1560.
+  This smoke extends live reach; it does not claim full-credit MAME acceptance.
+- [x] Preserve stop diagnostics with ROM PC, last completed response frame and
+  an ignored physical-input replay. Final `test`, `verify-stage1` and optimized
+  `verify-threejs-core` pass; complete credits and later paths remain open.

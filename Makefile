@@ -1327,17 +1327,20 @@ threejs-prototype: build/threejs_bridge
 .PHONY: threejs-prototype test-threejs-scene test-threejs-scene-mutations
 
 # Reported live gameplay frontiers; retain the older whole-host corpora.
-RECOVERY_CAPTURE ?= build/oracle/cpu_recovery.bin
+RECOVERY_CAPTURE ?= build/oracle/cpu_recovery_complete.bin
+RECOVERY_BASELINE_CAPTURE ?= build/oracle/cpu_recovery.bin
 oracle-recovery-generated-check:
 	python3 tools/build_rom_image.py maincpu build/oracle/main_recovery_image.bin
 	python3 tools/generate_input_schedule.py build/oracle/main_recovery_image.bin --graph recovery --check
 oracle-capture-recovery: oracle-scheduler-probe oracle-recovery-generated-check
 	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_CAPTURE)" 100 32
+	@if [ ! -f "$(RECOVERY_BASELINE_CAPTURE)" ]; then MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_BASELINE_CAPTURE)" 100 32; fi
 oracle-recovery: build/oracle_cpu_coverage oracle-recovery-generated-check
+	./build/oracle_cpu_coverage "$(RECOVERY_BASELINE_CAPTURE)"
 	./build/oracle_cpu_coverage "$(RECOVERY_CAPTURE)"
-	python3 tools/oracle/check_recovery_coverage.py "$(RECOVERY_CAPTURE)"
+	python3 tools/oracle/check_recovery_coverage.py "$(RECOVERY_BASELINE_CAPTURE)" "$(RECOVERY_CAPTURE)"
 oracle-recovery-mutations: oracle-recovery
-	python3 tools/oracle/check_cpu_coverage_mutations.py --recovery "$(RECOVERY_CAPTURE)"
+	python3 tools/oracle/check_cpu_coverage_mutations.py --recovery "$(RECOVERY_BASELINE_CAPTURE)" "$(RECOVERY_CAPTURE)"
 oracle-test: oracle-recovery-mutations
 .PHONY: oracle-recovery-generated-check oracle-capture-recovery oracle-recovery oracle-recovery-mutations
 
@@ -1362,3 +1365,38 @@ verify-threejs-core: build/oracle_threejs_release
 benchmark-threejs: build/threejs_bridge
 	python3 tools/benchmark_threejs_bridge.py
 .PHONY: benchmark-threejs
+
+build/native_game_benchmark: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tools/benchmark_native_game.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+benchmark-native: build/native_game_benchmark
+	./build/native_game_benchmark
+benchmark-native-extended: build/native_game_benchmark
+	./build/native_game_benchmark --extended
+.PHONY: benchmark-native benchmark-native-extended
+-include build/threejs_obj/tools/benchmark_native_game.d build/threejs_obj/src/main/main.d
+
+# Native desktop play uses the same verified release options as the bridge.
+build/afterburner2-release: $(addprefix build/threejs_obj/,$(SRCS:.cpp=.o))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+native-release: build/afterburner2-release
+play-native: native-release
+	./build/afterburner2-release --boot-to-flight --profile
+.PHONY: native-release play-native
+
+build/oracle_native_release_recovery: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/oracle_cpu_coverage.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+verify-native-release-recovery: build/oracle_native_release_recovery oracle-recovery-generated-check
+	./build/oracle_native_release_recovery "$(RECOVERY_BASELINE_CAPTURE)"
+	./build/oracle_native_release_recovery "$(RECOVERY_CAPTURE)"
+	python3 tools/oracle/check_recovery_coverage.py "$(RECOVERY_BASELINE_CAPTURE)" "$(RECOVERY_CAPTURE)"
+.PHONY: verify-native-release-recovery
+-include build/threejs_obj/tests/oracle_cpu_coverage.d
+
+build/video_clip_regression: tests/video_clip_regression.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwroad.hpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwtiles.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/video_clip_regression.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp -o $@
+test-video-clips: build/video_clip_regression
+	./build/video_clip_regression
+test-video-clip-mutations: test-video-clips
+	python3 tools/oracle/check_video_clip_mutations.py
+test: test-video-clip-mutations
+.PHONY: test-video-clips test-video-clip-mutations

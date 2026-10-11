@@ -94,6 +94,23 @@ core through a local server; it is not yet a standalone browser build.
 
 Requires SDL2 and a C++20 compiler.
 
+For optimized native desktop play, run `make play-native` from the repository
+root. This builds `build/afterburner2-release` with the verified `-O3 -flto`
+options, cold-boots 600 original board frames with physical coin/start pulses,
+then hands flight controls to the keyboard. No browser or server is needed.
+Arrows fly, Z/X fire cannon/missiles, Space/Left Shift control throttle,
+P pauses, F5 cold-restarts, and Escape exits. After a cold restart, use 5 for
+coin and Enter for start. The window title and console show measured simulation
+FPS; `--profile` also reports display FPS, board cost and presentation wait.
+Launch the release binary without `--boot-to-flight` for the original attract
+and coin/start sequence. Full-credit coverage remains incomplete; unported
+instructions still stop explicitly.
+
+`python3 tools/workflow.py run benchmark-native benchmark-native-extended`
+measures unpaced native flight/weapon execution and rendering separately.
+These benchmarks exclude window presentation and do not establish MAME
+acceptance or performance across every stage and input trajectory.
+
 ```bash
 cmake -S . -B build
 cmake --build build
