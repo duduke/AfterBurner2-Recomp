@@ -68,15 +68,14 @@ Z80 sound program through one native X-Board scheduler. The ROM drives attract
 mode, coin/start, flight, weapons, HUD, scenery and sound commands; the host
 presents the hardware renderer and mixed speaker output.
 
-Whole-host acceptance covers the declared 121-, 603- and expanded 781-frame
-MAME corpora. The expanded window matches 73,593,282 main/sub bus phases,
-55,982,080 RGB pixels and 627,841 stereo frames, with zero supplied execution,
-state replacements or read seeds, and zero differences/skips. Fifteen owner
-mutations reject. Full-credit progression, all operand/branch outcomes,
-alternate DIP settings and arbitrary hardware reset/suspension paths remain
-unverified. Unknown program instructions stop explicitly. The earlier Stage 1
-reconstruction remains in regression fixtures. See [docs/ROADMAP.md](docs/ROADMAP.md)
-and the final [engine notes](docs/ENGINE_NOTES.md) for coverage and exclusions.
+The SDL3 native implementation is on `main`; `make play-native` is the primary
+desktop launch target. All 23 debug-selected stage slots complete approximately
+10 seconds of scripted inputs without a host stop. Whole-host MAME comparisons
+pass for finite cold/gameplay corpora, and the instruction recovery manifest
+passes its fixtures and mutations. **Natural full-credit progression and
+across-stage peak-load performance remain unverified.** Unknown instructions
+stop explicitly. See the [current checkpoint and next acceptance tasks](docs/ROADMAP.md#current-checkpoint-2026-10-11)
+for exact coverage and limits.
 
 The SDL application uses `GameSession`, an application API for normalized
 controls, pause/restart, completed frame notifications and output audio
@@ -86,6 +85,7 @@ for extension contracts and the deeper interfaces needed for new gameplay modes.
 
 A separate [Three.js rendering prototype](prototypes/threejs/README.md) is
 available with `make threejs-prototype` after installing its npm dependency.
+The `codex/threejs-game-engine` branch is preserved locally and on origin.
 It draws original-art sprite meshes and ground/tile geometry from the native
 core through a local server; it is not yet a standalone browser build.
 
@@ -128,7 +128,7 @@ its physical 16.768 ms frame period; logic cadence comes from the ROM.
 
 The Makefile is an alternative when CMake is unavailable: `make -j4`.
 Run ROM-free engine checks with `make test` (or CTest with a CMake build).
-For reproducible ROM-backed screenshots, run `make render-scene`, then
+For historical reconstruction screenshots, run `make render-scene`, then
 `./build/render_scene build/level.ppm`. Append `left` or `right` to capture
 banking, or `combat` for weapon fire; an optional final argument selects the
 tick count (for example, `./build/render_scene build/right.ppm right 480`).
@@ -141,3 +141,15 @@ MAME: `make oracle-capture` records reference snapshots from your ROMs into
 `build/oracle/` (needs a MAME binary; set `MAME=` and `ROMPATH=`), and
 `make oracle-test` checks the ports against them byte-for-byte. See
 "Oracle testing" in [docs/ENGINE_NOTES.md](docs/ENGINE_NOTES.md).
+
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Roadmap](docs/ROADMAP.md) | Working rules, current acceptance, next tasks and enhancement backlog |
+| [Workflow](docs/WORKFLOW.md) | Build/check/capture commands and missing-instruction recovery |
+| [Engine notes](docs/ENGINE_NOTES.md) | Chronological ROM discoveries, fixtures, mutations and historical exclusions |
+| [Hardware](docs/HARDWARE.md) | X-Board hardware reference |
+| [Enhancement architecture](docs/ENHANCEMENT_ARCHITECTURE.md) | Available extension hooks and required deeper interfaces |
+| [Historical Stage 1 tests](docs/STAGE1_FIDELITY.md) | Reconstruction regression scope and reproduction |
+| [Third-party notices](docs/THIRD-PARTY-NOTICES.md) | Vendored/derived code and license references |

@@ -1,15 +1,26 @@
 # Third-party code
 
-Most of this project is original code written specifically for After
-Burner II's X-Board hardware, following algorithms reimplemented from
-MAME's driver (see each file's header comment and `docs/HARDWARE.md` for
-citations — algorithm only, no MAME code copied, in each of those cases).
+This project includes original X-Board implementations, licensed third-party
+cores and MAME-derived device algorithms. See each source header and the
+license files linked below for attribution. ROM data is supplied by the user
+and is not distributed.
 
-Two source files are a direct exception, carried over near-verbatim rather
-than reimplemented, because they emulate generic Sega/Yamaha sound chips
-that are the literal same hardware across many Sega arcade boards of this
-era (OutRun, X-Board, Y-board, System 24, ...) — there is nothing
-X-Board-specific to reimplement:
+## Native audio path
+
+- `src/third_party/ymfm/`: Aaron Giles's YMFM synthesis core (BSD-3-Clause);
+  the live FM owner uses `ymfm::ym2151`. See [YMFM license](../LICENSES/YMFM.txt).
+- `src/main/hwaudio/xboard_ym_timers.hpp`: YMFM/MAME-derived timer/status
+  behavior; see [timer license](../LICENSES/YMFM-Timers.txt).
+- `src/main/hwaudio/xboard_pcm.hpp`: MAME SegaPCM device algorithm, attributed
+  to Hiromitsu Shioya and Olivier Galibert (BSD-3-Clause); see
+  [SegaPCM license](../LICENSES/MAME-SegaPCM.txt).
+- Native audio scheduling/mixing references MAME audio behavior; retained
+  attribution is in [MAME audio license](../LICENSES/MAME-Audio.txt).
+
+## Retained Cannonball-derived code
+
+The older generic sound classes remain in the repository; they do not describe
+the live YMFM synthesis owner:
 
 - `src/main/hwaudio/ym2151.cpp` / `.hpp` — Yamaha YM2151 FM synthesis chip
   emulator. Original author: Jarek Burczynski, 1997-2002, distributed as
@@ -35,3 +46,9 @@ Vendored header SHA-256: `6ca70ffd91b1bdbaf00f7a41e7092b326145fd1c95dcdd7bb01183
 E-clock synchronization behavior of MAME's `m68000` core (BSD-3-Clause,
 Olivier Galibert) for its original bounded IRQ service translation. The
 MAME CPU core is not vendored or copied into this project.
+
+## Three.js prototype
+
+The npm dependency is pinned in `prototypes/threejs/package.json` and its
+lockfile. Three.js is MIT-licensed; its installed package carries the upstream
+license. `node_modules/` and ROM-derived runtime assets are not committed.

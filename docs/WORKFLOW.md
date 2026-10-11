@@ -8,7 +8,8 @@ rg -n 'topic|ROM-address' docs/ENGINE_NOTES.md src/main tests tools/oracle
 sed -n 'START,ENDp' path/to/relevant/file
 ```
 
-The context command extracts current text from ROADMAP and PHASE3D_PLAN;
+The context command extracts the rules, current checkpoint and next tasks
+from ROADMAP;
 there is no separate checkpoint to keep synchronized. Follow the roadmap's
 instruction-level translation, MAME comparison, mutation and coverage rules.
 Read relevant engine notes before making a port. Search first and read bounded
@@ -35,30 +36,11 @@ ran; absent later targets have not passed. Checks are not cached or skipped.
 The `full` profile supplements, rather than replaces, the required profile.
 Profiles do not automatically capture or regenerate missing fixtures.
 
-The default is `-j min(8, logical CPU count)` (eight jobs on the current
-10-core, 32-GiB host); override it with `-j N` when sharing the machine.
-Make runs independent gates concurrently while each joint oracle preserves
-its ordered CPU/device grants. The CPU continuation uses release/acquire
-atomic handoffs, spins briefly for short checkpoints, then parks with C++20
-atomic wait for longer delays. Consecutive microsteps within one granted
-budget now avoid handoffs, and the live host defers instruction startup to
-the first grant. Sleeping-waiter registration avoids kernel notifications
-for hot handoffs. This changes host synchronization cost only;
-emulated clocks, bus order, comparisons and mutation coverage stay intact.
-GPU/NPU offload does not serve this bottleneck: each literal instruction and
-bus checkpoint depends on the preceding emulated state.
-
-```sh
-python3 tools/workflow.py run benchmark-cpu-continuation
-```
-
-This ROM-free benchmark measures 100,000 checkpoints within one grant.
-The continuation can batch these without thread handoffs; this microbenchmark
-is not a whole-game frame-rate measurement. Its wall time
-depends on machine load and must never become an emulated clock input. The
-complete `oracle-test` measured 407.91 seconds on this host after optimization;
-the earlier successful suite measured 1380.15 seconds, before the added native
-sound gates. These are whole-run observations, not a fixed performance promise.
+The default is `-j min(8, logical CPU count)`; override with `-j N` when
+sharing the machine. Do not change emulated clocks or weaken fixture/mutation
+coverage to reduce wall time. The full oracle suite measured 1823.36 seconds
+for the current native checkpoint; runtime varies with coverage and load.
+`benchmark-cpu-continuation` measures host synchronization overhead, not game FPS.
 
 `make test` and `make verify-stage1` now share incremental C++ objects under
 `build/check_obj/`. Compiler dependency files cover transitive headers and
@@ -101,140 +83,26 @@ The capture target preserves an existing baseline. Both captures must replay
 successfully before their combined coverage/mutations count as evidence.
 
 
-## Native sound execution
+## Focused oracle targets
 
-The focused sound gates are `oracle-sound-execution`,
-`oracle-sound-execution-full`, `oracle-sound-irq` and
-`oracle-sound-execution-mutations`. Their capture counterparts use the isolated
-scheduler probe. `oracle-joint-sound-full` checks the 600-frame shared
-main/sub/sound run with native Z80 grants and full video comparisons; regenerate
-it with `oracle-capture-joint-sound-full`. All gates are included in
-`oracle-test`; previous fixtures remain required. These gates assert device
-read values and bus timestamps, while independent audio/device head-deadline
-ownership remains the subsequent roadmap task.
+These retained subsystem gates help investigate failures. They supplement the
+required full suite and keep their original fixture boundaries; see the matching
+ENGINE_NOTES sections for inputs, skipped races, mutations and capture details.
 
+| Area | Replay targets |
+| --- | --- |
+| Z80 execution | `oracle-sound-execution`, `oracle-sound-execution-full`, `oracle-sound-irq`, `oracle-sound-execution-mutations`, `oracle-joint-sound-full` |
+| Audio/device deadlines | `test-audio-deadlines`, `oracle-joint-audio-full`, `oracle-sound-audio-irq`, `oracle-sound-audio-timer-b`, `oracle-audio-deadline-mutations` |
+| Mixed speaker | `oracle-speaker`, `oracle-speaker-edges`, `oracle-joint-speaker-full`, `oracle-speaker-mutations` |
+| Video ownership | `oracle-joint-video-owned`, `oracle-joint-video-owned-directed`, `oracle-joint-video-mutations` |
+| Instruction/exception coverage | `oracle-cpu-coverage`, `oracle-cpu-coverage-check`, `oracle-cpu-coverage-legacy`, `oracle-cpu-nested-irq`, `oracle-main-sub-coverage` |
+| Cold boot | `oracle-joint-cold`, `oracle-joint-cold-full`, `oracle-cold-generated-check`, `oracle-joint-cold-boundaries`, `oracle-joint-cold-mutations` |
 
-## Independent audio/device scheduling
-
-`oracle-joint-audio-full` checks all device head deadlines and IRQ/RESET
-boosts after the joint initial context, with continuous raw PCM/FM samples
-and independently computed stream batches. `oracle-sound-audio-irq` and
-`oracle-sound-audio-timer-b` cover original-program IRQ diagnostics;
-`oracle-audio-deadline-mutations` requires those gates before rejecting private
-owner mutations. All are included in `oracle-test`; older gates remain.
-Capture counterparts are `oracle-capture-joint-audio-full`,
-`oracle-capture-sound-audio-irq` and `oracle-capture-sound-audio-timer-b`.
-Complete capture commands before launching dependent comparisons. The read-only
-probe records raw stream output before speaker gain/resampling, and all captures
-remain ignored. `test-audio-deadlines` is the focused ROM-free clock/queue gate.
-See ENGINE_NOTES for the remaining pre-window and mixed-output boundaries.
-
-## Mixed speaker and game audio
-
-`oracle-speaker` compares MAME's default LoFi 48 kHz speaker stream, including
-float bits and signed PCM conversion. `oracle-speaker-edges` additionally
-requires synthetic panning, both signs and clipping. `oracle-joint-speaker-full`
-compares the same speaker batches produced by native CPU/device execution;
-`oracle-speaker-mutations` requires these gates and rejects ten private changes.
-All remain in `oracle-test`. Reproduce captures with
-`oracle-capture-joint-speaker-full` and `oracle-capture-speaker-edges`; wait for
-capture completion before running comparisons. The isolated scheduler probe
-observes raw streams and speaker inputs without changing devices or scheduling.
-Speaker capture is before optional OS effects, at unity host gain.
-
-`verify-stage1` checks audible ROM execution, irregular render chunk equivalence,
-and full sound-state recreation. The game loop uses 800 stereo frames per 60 Hz
-tick; native speaker updates remain at 50 Hz behind a 20 ms playback buffer.
-Commands from Stage 1 remain external transport inputs. Headless smoke checks:
-
-```sh
-python3 tools/workflow.py run all
-SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=dummy ./afterburner2 --frames 120
-SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=unavailable ./afterburner2 --frames 120
-```
-
-The second run should log audio-device unavailability and still advance the
-sound board and finish normally. Audio queue backpressure does not drop samples.
-
-
-## Coupled video ownership
-
-`oracle-joint-video-owned` combines the existing 600-frame native speaker
-capture with `oracle-joint-video-owned-directed`, which checks display changes,
-pending globals, live scroll tables and effect pens with native sound/device
-heads and mixed speaker output. Create its new fixture with
-`oracle-capture-joint-video-owned-directed`, wait for successful completion,
-then reuse it. The old video/pixel gates remain in `oracle-test`, alongside
-`oracle-joint-video-mutations` with thirteen cases. To investigate only the
-new timing-owner cases without rerunning unrelated mutations:
-
-```sh
-python3 tools/oracle/check_joint_video_mutations.py text-frontier first-scanline vblank-frontier
-```
-
-The complete mutation target and all required checks still run for final
-acceptance. Initial video/CPU/boot boundaries and directed writes remain
-explicit fixtures; this gate does not establish whole-host cold boot.
-
-
-## Expanded main/sub coverage
-
-`oracle-main-sub-coverage` is required by `oracle-test`. It combines the
-independent 52-case wrapper/exception fixtures, expanded original-ROM
-instruction/branch fixtures, retained nested IRQ entries, nine mutation
-checks and the longer 1,200-frame joint gameplay replay. Reuse captures:
-
-```sh
-python3 tools/workflow.py run oracle-cpu-coverage oracle-cpu-coverage-check oracle-cpu-nested-irq
-python3 tools/workflow.py run oracle-main-sub-coverage
-```
-
-To regenerate locally, use `oracle-capture-cpu-coverage`,
-`oracle-capture-cpu-coverage-expanded`, `oracle-capture-cpu-nested-irq` and
-`oracle-capture-joint-coverage-flight`. The expanded capture first plans
-against the passed natural speaker census and runtime ROM images; all plan
-metadata/images/captures stay in ignored `build/oracle/`. A stale plan or
-missing PC/branch outcome fails `oracle-cpu-coverage-check`. The nested
-fixture explicitly drives an IRQ6 pin after IRQ2 VPA lookup in the isolated
-MAME build (`AB2_CPU_IRQ_FIXTURE`); normal captures leave this mode disabled.
-Independent instruction contexts do not replace any state in the continuous
-joint replay. Its timestamps decode the probe's legacy low-64 attoseconds
-against source chronology, avoiding the 18.446-second wrap while preserving
-absolute CPU nanosecond and bus assertions. Adjacent trace clocks must be
-less than half an epoch apart; this is a capture-format bound.
-
-The expanded manifest additionally translates 714 main PCs reached after the
-old natural window, including the `$CD26` ABCD memory form. Preserve both
-`oracle-cpu-coverage-legacy` (the original 4,464-case capture) and the current
-5,340-case gate. Regenerate the former with `oracle-capture-cpu-coverage-legacy`;
-its planner's `--legacy` option excludes only the explicitly labelled 714
-new PCs and reproduces the previous instruction/branch plan. The newer capture
-uses `cpu_coverage_expanded_full.bin`; the strict long replay uses
-`joint_coverage_flight_expanded.bin` with fresh snapshots for all new PCs.
-
-## Cold native startup and capture boundaries
-
-`oracle-joint-cold` checks the focused power-on stream; `oracle-joint-cold-full`
-checks the longer 603-frame observation window. Both require native CPU
-execution, sound/device heads, speaker output and RGB from reset, with zero
-supplied CPU contexts or execution phases. Physical DIP switches join the
-button/axis fixtures in the cold input format. `oracle-cold-generated-check`
-validates the 352 added boot translations against the local ROM image.
-
-Regenerate with `oracle-capture-joint-cold` and
-`oracle-capture-joint-cold-full`; complete each capture before its comparison.
-The capture requests exit from a frame device callback and retains every
-CPU phase through machine stop. Never call exit from a CPU tap to extend
-final continuations: MAME eats the executing CPU's remaining clocks.
-
-`oracle-joint-cold-boundaries` runs the full gate then matches the retained
-initial 46 sub ISR phases and both terminal CPU bus boundaries, requiring
-later native instruction/IRQ snapshots. `oracle-joint-cold-mutations` rejects
-eight startup owner changes. All are required by `oracle-test`; older
-fixtures and mutations remain. The finite stop can cut a new ISR; no future
-state or completion is supplied. See ENGINE_NOTES for the exact bounds and
-unobserved paths. Stage 1 game-loop replacement remains a subsequent task.
-
+Find the specific capture target in Makefile before regenerating; names are
+not uniformly derived from the replay target. Finish captures before dependent
+comparisons. Cold captures must retain CPU phases through machine stop: exiting
+from a CPU tap consumes the executing CPU's remaining clocks and invalidates
+continuation evidence. Never seed a replacement context to hide a mismatch.
 
 ## Autonomous whole host and live game
 
@@ -260,25 +128,11 @@ uses the 603-frame gameplay fixture's nonzero stream. A silent gain mutation
 is not counted as a successful rejection. CMake exposes the new oracles under
 `ORACLE_TESTS` and the native game integration under `STAGE1_ROM_TESTS`.
 
-For the Space-input `$E514` stop, the retained recovery oracle and its
-`full-throttle-speed-clamp` mutation pin the exact instruction. Run
-`python3 tools/workflow.py run benchmark-native-full-throttle` for a separate
-960-frame physical input smoke; its finite path does not naturally cover
-the clamp. Rebuild with `native-release`, then launch `make play-native`.
-
-For the left/right `$7784` stop, run
-`python3 tools/workflow.py run benchmark-native-rolls`: 960 flight frames
-alternate full horizontal endpoints with full then neutral throttle.
-The exact orientation bit and neighbouring table selection are independently
-pinned by recovery fixtures and mutations; the replay's passive entry counts
-report which new paths it actually reaches.
-
-For the missile-input `$19C78` stop, run
-`python3 tools/workflow.py run benchmark-native-missiles`: 32 press/release
-windows over 960 flight frames, neutral then full throttle. Its passive
-indicator entry count distinguishes natural reach from the independently
-verified exact-PC countdown fixtures. Rebuild `native-release` before
-launching `make play-native`.
+The resolved throttle, roll and missile stops retain their exact-PC fixtures
+and mutations. Focused input smokes are `benchmark-native-full-throttle`,
+`benchmark-native-rolls` and `benchmark-native-missiles`; each covers 960 flight
+frames and reports observed entries. These are finite discovery/performance
+runs, not whole-credit acceptance.
 
 For later-stage instruction discovery, run
 `python3 tools/workflow.py run stage-input-sweep`. Each ordered ROM stage
@@ -338,13 +192,6 @@ names; ordinary recovery acceptance runs all retained mutations. Concurrent
 mutations use separate source overlays and binaries, with passing baselines
 checked first. No mutation is accepted merely because its baseline fails.
 
-Operand seeds are applied after stack setup so a fixture whose A5 aliases
-the supervisor stack retains its intended memory value. Indexed word/long
-fixtures use the original path's aligned index; address errors are a separate
-exception contract. The scripted-flight `DIVS.W #3,D0` fixtures cover signed
-quotient/remainder, early and late overflow, flags and MAME cycle counts;
-they do not establish support for zero or negative divisors.
-
 After the new instructions and mutations pass, run the directed stage sweep,
 refresh the complete recovery capture with `oracle-capture-recovery`, and run
 `test`, `verify-stage1` and the complete `oracle-test` before committing. The
@@ -368,13 +215,6 @@ and records input hashes in an ignored `.merge.json`. It removes any stale
 output census. The merged file is not accepted until replay and the complete
 manifest/branch gate pass; mutation and whole-host checks remain required.
 A fresh `oracle-capture-recovery` can always recreate the complete manifest.
-
-
-The expanded recovery plan exceeds 50,000 individual fixtures, so the replay
-and merger accept at most 100,000 records per corpus. Every planned record
-must still be present and match exactly. Register/displacement MULS fixtures
-cover variable Booth-transition clocks; displacement TAS fixtures retain
-byte neighbours and test old-byte NZ flags and the written high bit.
 
 
 ## Native SDL3 platform

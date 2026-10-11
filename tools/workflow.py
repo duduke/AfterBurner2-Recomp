@@ -24,12 +24,9 @@ RESULT = re.compile(r"identical|different|skipped|passed|PASS|FAIL|error:|fatal 
 def context():
     """Read the authoritative checkpoint without copying historical sections."""
     roadmap = (ROOT / "docs/ROADMAP.md").read_text()
-    print(roadmap.split("## Working on the remaining tasks (read this first)", 1)[1]
-          .split("**Picking the next task**", 1)[0].strip())
-    plan = (ROOT / "docs/PHASE3D_PLAN.md").read_text()
-    title = "## Next tasks for whole-host acceptance"
-    section = plan.split(title, 1)[1].split("\n## ", 1)[0]
-    print("\n" + title + section)
+    section = roadmap.split("## Working on the remaining tasks (read this first)", 1)[1]
+    section = section.split("## Phase overview", 1)[0]
+    print(section.strip())
     print("\nWorking tree:", flush=True)
     subprocess.run(["git", "status", "--short"], cwd=ROOT, check=True)
 

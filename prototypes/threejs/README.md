@@ -1,5 +1,9 @@
 # After Burner II — Three.js rendering prototype
 
+The native SDL3 game is the primary engine on `main`. This optional renderer
+and its `codex/threejs-game-engine` branch are retained for future work; current
+core acceptance is documented in [ROADMAP](../../docs/ROADMAP.md).
+
 Run from the repository root:
 
 ```sh
@@ -49,8 +53,9 @@ contain library code/metadata only; `node_modules/` is ignored.
 
 Known limits:
 
-- Native whole-credit coverage is incomplete. Extended live play still reaches
-  unported instructions beyond the finite accepted fixtures. This stops explicitly; Restart or
+- Native whole-credit coverage is incomplete. The previously reported live
+  instruction stops are fixed in main, but unobserved paths may expose more
+  instructions. Such stops remain explicit; Restart or
   Boot to flight starts a fresh process. No substitute behaviour is generated.
   A stop reports its ROM PC and last completed frame. The server saves the
   physical input commands in ignored `build/threejs_failure_replay.txt` so

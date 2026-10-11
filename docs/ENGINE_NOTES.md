@@ -7,6 +7,24 @@ ROM, and is expected to grow incrementally as more of it gets mapped out.
 Treat everything here as "best current understanding," not verified fact,
 until it's actually been exercised by a running port.
 
+## Reading these notes
+
+This is a chronological reverse-engineering journal. A checkpoint's pending
+work and supplied boundaries describe that checkpoint, and may be superseded
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-11) for current
+status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
+on main; the historical reconstruction no longer drives the application.
+
+Current evidence entry points:
+
+- [Autonomous whole host](#autonomous-whole-host-acceptance-and-game-integration-2026-10-09)
+- [Extension contracts](../docs/ENHANCEMENT_ARCHITECTURE.md)
+- [Native performance](#native-rendering-and-playable-release-continuation-2026-10-11)
+- [Stage and instruction closure](#stage-and-gameplay-instruction-closure-2026-10-11)
+- [SDL3 platform](#sdl3-native-platform-migration-2026-10-11)
+- [Stage-skip palette correction](#stage-8-black-canyon-ground-after-debug-skipping-2026-10-11)
+- [Full native validation](#play-native-publication-validation-2026-10-11)
+
 ## Tooling
 
 - `tools/build_rom_image.py {maincpu|subcpu} <out>` — reconstructs a flat,
@@ -844,7 +862,7 @@ Captures/ROMs remain local and ignored. `make oracle-capture-road-setup`
 regenerates the new captures; `make oracle-test` includes them.
 
 Phase 3c implementation/results follow below. The completed plan is recorded
-in [PHASE3C_PLAN.md](PHASE3C_PLAN.md); next work is [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
+in [PHASE3C_PLAN.md](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3C_PLAN.md); next work is [PHASE3D_PLAN.md](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3D_PLAN.md).
 
 ## Open threads to pick up next
 
@@ -984,7 +1002,7 @@ HUD remains native. Flight input still does not drive arcade road attitude.
 Make build, engine/bus checks, Stage 1 combat/restart/audio integration, the
 full oracle suite, rendered-scene generation and headless launch pass.
 CMake targets are updated but CMake remains unavailable on this host.
-No ROM data or captures are committed. Next: [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
+No ROM data or captures are committed. Next: [PHASE3D_PLAN.md](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3D_PLAN.md).
 
 
 ## Phase 3d — verified foundations; phase remains incomplete
@@ -996,7 +1014,7 @@ producer entries `$00B840/$00B84C` and timer-interrupt consumer `$00B7F8`.
 They are built and independently verified, but **not wired into OEngine**:
 untranslated live handlers still prevent replacement of `OLevelObjs` and
 its sprite adapter. No new gameplay/flight or sound-cadence equivalence is
-claimed. See [PHASE3D_PLAN.md](PHASE3D_PLAN.md).
+claimed. See [PHASE3D_PLAN.md](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3D_PLAN.md).
 
 The initializer reads the count and template pointers from `$01C176` at
 runtime, copies 32 words per record, then overwrites byte +20 with its slot
@@ -1078,7 +1096,7 @@ The four directed dispatcher cases do not exercise every handler transition.
 SR output flags and full interrupt timing remain outside this oracle.
 
 This foundation checkpoint predates the independent handler ports described
-below. The remaining 3d work is tracked in `PHASE3D_PLAN.md`; Phase 3e
+below. The remaining 3d work is tracked in [historical PHASE3D PLAN](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3D_PLAN.md); Phase 3e
 has not started.
 
 
@@ -1514,7 +1532,7 @@ merging this checkpoint before Phase 3d host acceptance is complete. Combined
 new-graph results are 7,409/7,424 identical, zero differences, 15 sub-input
 races skipped; all ten new mutations are rejected. Resume with the input/IRQ
 caller, host integration, sound cadence and paired player/weapon acceptance
-in `PHASE3D_PLAN.md`. These ports remain unwired.
+in [historical PHASE3D PLAN](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3D_PLAN.md). These ports remain unwired.
 
 `OMainSequence` translates carrier `$10348..$10E68`: pool initialization,
 selector wait, all sixteen runtime controller states, speed/pitch goals,
@@ -2857,7 +2875,7 @@ scheduling and paired host acceptance remain unchecked in Phase 3d.
 
 ### Oracle instructions for agents continuing this work
 
-1. Read the roadmap's working rules and `PHASE3D_PLAN.md` before editing. Port
+1. Read the roadmap's working rules and [historical PHASE3D PLAN](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3D_PLAN.md) before editing. Port
    actual CPU callers instruction by instruction; do not replace the removed
    six-call loop with another arbitrary frame count or ideal-edge IRQ service.
    Use the verified board, CPU visibility and bounded IRQ/caller ports, keeping
@@ -6392,7 +6410,7 @@ instructions, shared producer values, completion frontiers, device deadlines,
 boost requests and reset tags remain observed inputs in this bus-only test.
 It does not close native main/sub cold-boot instruction execution, boot I/O,
 render/bank initialization, the initial partial sub ISR or the final parked
-continuations. Those remain task 5 in `PHASE3D_PLAN.md`; whole-host acceptance
+continuations. Those remain task 5 in [historical PHASE3D PLAN](https://github.com/duduke/AfterBurner2-Recomp/blob/1f584d75aef22bf6e487a502235bc61065738e94/docs/PHASE3D_PLAN.md); whole-host acceptance
 and the retained Stage 1 loop are unchanged. ROM/capture bytes remain ignored.
 
 Validation passed `python3 tools/workflow.py run required -j2` (full logs in
