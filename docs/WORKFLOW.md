@@ -22,7 +22,7 @@ to put into an assistant's context.
 python3 tools/workflow.py run quick       # ROM-free tests + Stage 1
 python3 tools/workflow.py run joint       # current 120-frame joint oracle
 python3 tools/workflow.py run full        # 600-frame joint + reset window
-python3 tools/workflow.py run required    # all three required pre-commit checks
+python3 tools/workflow.py run required    # full gameplay/core merge or milestone gate
 python3 tools/workflow.py run oracle-subirq -j 4  # any focused make target
 ```
 
@@ -36,10 +36,27 @@ ran; absent later targets have not passed. Checks are not cached or skipped.
 The `full` profile supplements, rather than replaces, the required profile.
 Profiles do not automatically capture or regenerate missing fixtures.
 
+Use the [validation cadence in ROADMAP](ROADMAP.md#working-on-the-remaining-tasks-read-this-first)
+to choose the gate. Local commits use applicable focused checks; documentation
+edits need diff/command/link inspection. Gameplay/core merges and acceptance
+milestones require the complete `required` profile. Shared execution, timing,
+generator implementation, compiler or oracle changes require the full suite before accepting
+the change. After ten code merges without a full pass, run a full integration
+checkpoint. Milestones also require `full` and applicable natural recordings.
+
+New or changed ports and gates still need passing independent MAME fixtures
+and relevant rejected mutations before acceptance. Keep all existing fixtures
+and mutation definitions. Reuse a logged result only when its relevant sources
+and transitive dependencies, compiler/options, fixtures, probe and harness are
+unchanged; report reused evidence explicitly. The runner has no automatic
+result cache. `oracle-test` currently includes all retained mutations, so full
+regression gates still run them; `--only` is available for focused mutation work.
+
 The default is `-j min(8, logical CPU count)`; override with `-j N` when
 sharing the machine. Do not change emulated clocks or weaken fixture/mutation
-coverage to reduce wall time. The full oracle suite measured 1823.36 seconds
-for the current native checkpoint; runtime varies with coverage and load.
+coverage to reduce wall time. The latest complete oracle suite measured
+2270.84 seconds for the natural-transition checkpoint; runtime varies with
+coverage and load.
 `benchmark-cpu-continuation` measures host synchronization overhead, not game FPS.
 
 `make test` and `make verify-stage1` now share incremental C++ objects under
@@ -165,8 +182,102 @@ IRQ blend to finish. This avoids unset canyon colors after skipping directly
 to stages 5, 8, 13 or 17. Compare these fourteen-word gradients against original
 MAME with `python3 tools/workflow.py run capture-native-stage-palette verify-native-stage-palette`.
 Reuse the local captures with `verify-native-stage-palette`; the focused check
-does not replace full required acceptance before committing.
+does not replace a full merge or milestone gate when the cadence requires one.
 
+
+## Natural recordings and transition observations
+
+Record manual play from cold boot with
+`./build/afterburner2-release --record build/oracle/manual.inputs`.
+Coin/Start and every control are recorded against physical board-frame
+numbers, including automatic `--boot-to-flight` inputs when requested.
+Pausing adds no frames; F5 starts a separate `.restartN` recording.
+`--stage` is rejected when recording. A stopped recording retains the
+attempted failing frame. Its JSON sidecar identifies the loaded ROM regions
+by length/FNV-1a digest and declares fresh persistent state and switch bytes.
+
+`AB2PHYS1` is a text format: magic line; declared frame count followed by
+three decimal switch bytes; then exactly one row per frame containing the
+zero-based frame index, active-low button byte and eight raw ADC bytes.
+Recordings and observations belong under ignored `build/oracle/`.
+There is no gameplay RAM, CPU context, stage selector or invulnerability input.
+
+Generate a discovery attempt and observe it in MAME:
+
+```sh
+python3 tools/natural_inputs.py build/oracle/neutral.inputs --scenario neutral --frames 12000
+NATURAL_INPUT=build/oracle/neutral.inputs NATURAL_REFERENCE=build/oracle/neutral.mame.csv \
+  python3 tools/workflow.py run capture-natural-credit
+python3 tools/workflow.py run build/natural_credit
+NATURAL_INPUT=build/oracle/neutral.mame.csv.inputs NATURAL_OUTPUT=build/oracle/neutral.native.csv \
+  python3 tools/workflow.py run natural-credit-replay
+NATURAL_INPUT=build/oracle/neutral.mame.csv.inputs NATURAL_OUTPUT=build/oracle/neutral.native.csv \
+  NATURAL_REFERENCE=build/oracle/neutral.mame.csv python3 tools/workflow.py run oracle-natural-transitions
+```
+
+MAME field overrides have input-update latency. Keep the original requested
+controls separate from the actual port observations in `.mame.csv.inputs`;
+native comparison uses those observed physical pins. The replay script
+rejects unsupported service buttons/ADC channels and mismatched switch values.
+`natural-credit` builds then replays; build once and use
+`natural-credit-replay` for independent concurrent runs because ordinary
+make invocations share release configuration/object files.
+
+The CSV compares **every** frame's timestamp, mode, ordered stage index,
+lives, damage-controller state, raw score word, packed credit byte and the
+carrier/refuel selectors at `$FFFF90B0/$FFFF90E0` (ROM dispatch reads
+`$103F2/$1624E`).
+Native observations use backing memory, not timed bus transactions.
+`.events.csv` separately retains the first carrier/refuel, shared `$E224`, stage-advance,
+lives and weapon producer entry per stage; entry does not establish sequence
+completion or every action requested. The comparison rejects missing,
+extra, shifted or changed intervals, with five deliberate gate mutations.
+An equal CSV does not establish whole-credit CPU/bus/device/RGB/audio identity,
+collision cause, high-score name entry or NVRAM persistence. No ending is
+inferred from a completed input window or from directed stage discovery.
+
+Other discovery scenarios are `continue`, `weave` (weapons and controls),
+and `credit-stock` (Easy / 3× Credits, repeated physical coins before Start).
+The latter is an unusual multi-credit configuration, not default-credit
+acceptance. `NATURAL_SECONDS` bounds the emulated MAME window; use 1515 for
+90000 frames. `tools/oracle/export_natural_prefix.py` can declare a
+contiguous prefix ending at an observed transition while preserving its
+source input/ROM metadata and hashes. Retain the original discovery attempts
+and report any stops beyond that window separately.
+
+For a successful ending capture, declare the window through its first return
+to attract, replay that entire prefix from cold boot, then require the actual
+mode/stage sequence as well as equal observations:
+
+```sh
+python3 tools/oracle/export_natural_prefix.py build/oracle/stock.inputs \
+  build/oracle/stock.mame.csv build/oracle/ending --frames 74452
+NATURAL_INPUT=build/oracle/ending.inputs NATURAL_OUTPUT=build/oracle/ending.native.csv \
+  python3 tools/workflow.py run natural-credit-replay
+NATURAL_INPUT=build/oracle/ending.inputs NATURAL_OUTPUT=build/oracle/ending.native.csv \
+  NATURAL_REFERENCE=build/oracle/ending.mame.csv python3 tools/workflow.py run oracle-natural-ending
+```
+
+The ending gate requires ordered flight slots 0–22, modes 17–22, ranking
+25/26 and return 0/1, without gaps, plus observed carrier selectors 0–12 and
+refuel selectors 0–7. Five additional mutations remove a stage, ending mode,
+attract return or terminal sequence selector while keeping both CSVs
+equal; all must fail the semantic check. This remains acceptance of the named observation
+stream, not continuous whole-host acceptance. The endpoint above applies to
+the documented `credit-stock` recording; inspect a different run's actual
+transitions before declaring its endpoint.
+
+For passive instruction discovery across a natural window, use
+`capture-natural-census` with the same original requested controls and
+`NATURAL_REFERENCE`/`NATURAL_SECONDS` settings. The isolated MAME probe
+retains a 32-bit-word bitmap per 68000 and exports `.main.pcs` / `.sub.pcs`
+at the endpoint. It observes instruction entry without writing game RAM,
+registers, pins or clocks. It mirrors PCs to physical 22-bit addresses and
+retains every even site, including RAM. The original MAME build is untouched.
+Compare its actual pins and every named frame observation against the
+ordinary reference before using its PC list to extend literal ports. This
+is discovery coverage, not a CPU/bus/timing comparison. Reset and interrupt
+vector sites plus unchanged observations are checked in the short smoke.
 
 ## Extending instruction coverage after a live stop
 
@@ -188,13 +299,14 @@ python3 tools/oracle/check_cpu_coverage_mutations.py --jobs 3 \
 select nonempty sites already in the recovery manifest. It changes only the
 focused capture; the normal coverage gate still requires every declared PC
 and both measured branch outcomes. `--only` also accepts comma-separated
-names; ordinary recovery acceptance runs all retained mutations. Concurrent
+names; full recovery mutation acceptance runs all retained mutations. Concurrent
 mutations use separate source overlays and binaries, with passing baselines
 checked first. No mutation is accepted merely because its baseline fails.
 
 After the new instructions and mutations pass, run the directed stage sweep,
 refresh the complete recovery capture with `oracle-capture-recovery`, and run
-`test`, `verify-stage1` and the complete `oracle-test` before committing. The
+the checks required by the validation cadence above. Full merge and milestone
+gates still include `test`, `verify-stage1` and the complete `oracle-test`. The
 full capture now allows 64 emulated seconds for the expanded fixture roster;
 focused captures keep their bounded window. Keep older captures and coverage.
 
@@ -213,7 +325,8 @@ The merger requires passing input replay censuses newer than their captures,
 keeps the exact original plan entries and record bytes, writes atomically,
 and records input hashes in an ignored `.merge.json`. It removes any stale
 output census. The merged file is not accepted until replay and the complete
-manifest/branch gate pass; mutation and whole-host checks remain required.
+manifest/branch gate pass; relevant mutations and whole-host checks at the
+applicable acceptance gate remain required.
 A fresh `oracle-capture-recovery` can always recreate the complete manifest.
 
 

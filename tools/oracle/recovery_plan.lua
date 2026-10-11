@@ -32,6 +32,13 @@ for _,pc in ipairs(pcs)do
   -- $922/$924 double D1 twice before this longword-table load.
   if pc==0x926 or pc==0x53b4 or pc==0x17b0 then c.d1=16 end
   if pc==0xc4e then c.d1=16 end
+  -- $1204/$1206/$1208 shift and double the longword-table offset.
+  -- Match that producer's aligned index; odd-address exception execution
+  -- is outside these normal instruction fixtures.
+  if pc==0x120a then c.d1=16 end
+  -- $4782/$4790 select in steps of four; $479C..$47B6 move the
+  -- object's table offset in steps of +/-4 before $4806 loads it.
+  if pc==0x4810 then c.d1=16 end
   if pc==0xc60 then c.d0=16 end
   if pc==0x12a12 then c.d1=12 end
   if pc==0x16b4c or pc==0x25c8 or pc==0x8ada or pc==0x11e60 or pc==0x12084 or pc==0x130b2 then c.d1=16 end
@@ -49,6 +56,17 @@ for _,pc in ipairs(pcs)do
   if pc==0x19cb4 then c.memory_word_address=0x3f910c;c.memory_word_value=0 end
   if op&0xf0f8==0x50c8 then c.counter_reg=op&7;c.counter_value=n&1 end
   cases[#cases+1]=c
+ end
+ -- $BC22 masks the cyclic attract selector to $C, yielding exactly the
+ -- four branch-table offsets consumed by $BC2A. Keep generic cases and
+ -- independently capture all valid targets and masked input bits.
+ if pc==0xbc22 or pc==0xbc2a then
+  local values=pc==0xbc22 and {0,4,8,12,0xffff} or {0,4,8,12}
+  for _,value in ipairs(values)do
+   for _,ccr in ipairs({0,31})do
+    cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|value,d1=17}
+   end
+  end
  end
  -- Preserve the neighbouring condition byte and cover both selected bits.
  if pc==0x11116 or pc==0x11aa8 or pc==0x2e2e then

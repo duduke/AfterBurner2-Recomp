@@ -68,9 +68,14 @@ subprocess.run(['ar','r',str(archive),str(out/'schedule.o')],check=True)
 # Lua reads these saved observer arrays; no debugger focus or CPU setters.
 cpusource=(root/'src/devices/cpu/m68000/m68000.cpp').read_text()
 cpusource=cpusource.replace('#include "m68000.h"', '#include "m68000.h"\n#include <cstdlib>\n#include <cstring>\nnamespace { std::array<std::array<u64,22>,2> ab2_snapshots{},ab2_reset_snapshots{}; std::array<std::array<u64,24>,2> ab2_irq_snapshots{};\nint ab2_slot(const char* tag){return !std::strcmp(tag,":mainpcb:maincpu")?0:!std::strcmp(tag,":mainpcb:subcpu")?1:-1;} }')
+# A bounded passive bitmap avoids logging billions of instruction records
+# merely to discover which PCs a natural trajectory reaches. Physical X-Board
+# addresses are mirrored to 22 bits; retain every even address, including RAM.
+cpusource=cpusource.replace('int ab2_slot(', 'std::array<std::array<u32,0x10000>,2> ab2_pc_visits{};\nconst bool ab2_pc_census_enabled=std::getenv("AB2_PC_CENSUS")!=nullptr;\nint ab2_slot(')
 needle='\tsave_item(NAME(m_da));'
 assert cpusource.count(needle)==1
 cpusource=cpusource.replace(needle,needle+'\n\tif(std::getenv("AB2_CPU_PROBE") && ab2_slot(tag())>=0){auto& ab2_cpu_snapshot=ab2_snapshots[ab2_slot(tag())]; save_item(NAME(ab2_cpu_snapshot));}')
+cpusource=cpusource.replace(needle,needle+'\n\tif(ab2_pc_census_enabled && ab2_slot(tag())>=0){auto& ab2_pc_census=ab2_pc_visits[ab2_slot(tag())]; save_item(NAME(ab2_pc_census));}')
 cpusource=cpusource.replace(needle,needle+'\n\tif(std::getenv("AB2_CPU_PROBE") && ab2_slot(tag())>=0){auto& ab2_reset_snapshot=ab2_reset_snapshots[ab2_slot(tag())]; save_item(NAME(ab2_reset_snapshot));}')
 cpusource=cpusource.replace(needle,needle+'\n\tif(std::getenv("AB2_CPU_PROBE") && ab2_slot(tag())>=0){auto& ab2_irq_snapshot=ab2_irq_snapshots[ab2_slot(tag())]; save_item(NAME(ab2_irq_snapshot));}')
 needle='\t\t\t(this->*(m_handlers_f[m_inst_state]))();'
@@ -92,6 +97,10 @@ cpusource=cpusource.replace(needle,'''\t\t\tif(m_inst_state==S_INTERRUPT && std:
 needle='\t\t\t\tm_irdi = m_ird;'
 assert cpusource.count(needle)==1
 cpusource=cpusource.replace(needle,needle+'''
+                if(ab2_pc_census_enabled){
+                    const int slot=ab2_slot(tag());
+                    if(slot>=0){const u32 pc=m_ipc&0x3ffffe;ab2_pc_visits[slot][pc>>6]|=u32(1)<<((pc>>1)&31);}
+                }
                 if(std::getenv("AB2_CPU_PROBE") && ab2_slot(tag())>=0){
                     auto& v=ab2_snapshots[ab2_slot(tag())]; ++v[0];
                     v[1]=total_cycles(); v[2]=machine().time().as_ticks(1000000000);

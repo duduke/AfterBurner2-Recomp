@@ -8414,3 +8414,190 @@ explicit in their respective routine reports; none is counted as a match.
 All 23 directed stage/input cases complete 600 frames each without a stop.
 These checks retain the documented finite acceptance scope; they do not
 establish natural full-credit progression or an across-stage FPS guarantee.
+
+
+### Natural physical recordings and transition recovery (2026-10-11)
+
+`--record` records normal SDL play from cold boot as `AB2PHYS1`: physical
+board-frame indices, active-low buttons and all eight ADC bytes. Pause
+produces no rows; F5 creates a separate cold `.restartN` recording. Stage
+skips are refused when recording. The frame count is flushed after each
+attempt, retaining a failing frame rather than silently losing it. JSON
+sidecars retain switch bytes, fresh persistent-state declaration and loaded
+ROM-region length/FNV-1a identifiers. The discovery input generator also
+retains original ROM-file SHA-256 identifiers and request hashes.
+
+`natural_credit` cold-boots `XBoardGame` and supplies only physical pins and
+DIP bytes. It records every completed frame's time, game mode `$29C09C`,
+ordered stage index `$29C060`, lives `$FFFF88E0`, damage-controller state
+`$FFFF9124`, raw score longword `$FFFF8884` and packed credit byte
+`$FFFF8052`, carrier selector `$FFFF90B0` and refuel selector `$FFFF90E0`.
+`$103F2/$1624E` dispatch on those selectors in the original ROM. The mode/stage/lives producers are the existing ROM game-flow
+controllers; `$17610` reads the score for ranking and `$E1BA` reads credits
+for scaled starting lives. These observations read backing RAM, never timed
+bus transactions. A passive phase observer separately retains the first
+carrier `$10348`, refuel `$16236`, shared helper `$E224`, stage advance `$DFC4`, lives `$EC78`
+and weapon `$9ED8/$9F7C` producer entry per stage. Entry is not proof of a
+completed action or sequence. A stop records the exact unported PC, last
+completed frame, attempted input frame and last main/sub instruction PCs;
+after each fix the entire affected prefix is replayed from cold boot.
+
+The MAME script uses fresh NVRAM/config via `capture.sh`, applies physical
+controls and reads the same observation words. MAME input-field updates have
+latency: preserve requested controls separately and replay its dense actual
+port recording (`.mame.csv.inputs`) in native. This is an input observation,
+not a game-state or execution seed. Unsupported service/ADC inputs are
+rejected. `check_natural_credit.py` requires equal timestamps and all nine
+state/frame fields on **every** declared frame, including unchanged frames;
+missing, extra, shifted or changed intervals fail. Five deliberate mutations
+reject. `oracle-natural-ending` additionally requires ordered flight slots
+0–22, ending modes 17–22, ranking 25/26 and return 0/1. Five semantic mutations
+remove a stage, ending mode, attract return or terminal carrier/refuel
+selector while preserving equal CSVs;
+the ending-path gate rejects each. Commands and formats are in WORKFLOW.
+
+Natural attempts exposed literal missing game-over `$133A8..$13628`, ending
+mode/display controllers, credit-scaled lives/start/display/graphics edges,
+attract continuations, exhausted object-pool return, scripted object setup
+`$F54/$FB0` and callback `$1020`, scripted aircraft `$1882` and callback
+`$18EA`, and attract screen/motion controllers
+`$D11A..$D12E/$D4BA..$D54E/$BA38/$C41A/$BC1E`, plus stage object
+initialization `$4392` and its literal `$4470` callback, stage-9 motion
+selectors `$34FA/$3502/$350A/$3512`, enemy turn `$338C/$33B4`, and
+later `$68D2/$7334/$121D0` event/flight/object edges. Only missing PCs and their
+verified ROM successors/callbacks were appended. `$FB0` literally publishes the
+`$1020` callback; ROM data tables remain runtime reads. The generator now
+accepts ST with absolute-short addressing for `$D6D2`; existing instruction
+bodies remain unchanged. Every new group receives an independent MAME
+instruction corpus and rejected constants/branch/callback mutations before
+native replay. All older fixture sources are retained when merging corpora.
+
+The `$120A` longword-table fixture initially used the generic synthetic odd
+D1=17 and entered a separate address-error exception. `$1204/$1206/$1208`
+shift and double this index twice on the real path; normal fixtures now use
+aligned D1=16, retaining both CCR extremes and the same fixture count. The
+failed odd-address discovery capture is preserved locally. Address-error
+execution for that synthetic operand remains outside this normal port's
+fixture contract; it is not counted as a passing fixture or skipped interval.
+
+The recovery union currently checks **12,382 PCs, both outcomes at 1,252
+branches and 77,786 original-ROM fixtures**, all identical with zero skips.
+The 10,525 earlier instruction bodies are byte-identical; 1,857 PCs were
+appended. The complete recovery mutation plan has 120 retained mutations;
+the 35 additions have each rejected against their independently passing
+incremental corpora. The original 14,014-case baseline and 54,280-case
+pre-natural complete capture are retained, along with every passing increment;
+the expanded complete capture contains 63,772 unmodified fixture records.
+Recovery logs: `build/workflow/20261011T184312.125153Z/`.
+The `$BC22` mask selects exactly four `$BC2A` branch-table
+offsets; all four are captured independently alongside the retained generic
+fixtures. Literal record-handler callbacks beyond RTS are included; data
+tables are still runtime ROM reads. The CMake target is
+provided beside the existing ROM-dependent tools; CMake is unavailable in
+this shell, so its new definition has not been compiled here.
+
+Passive PC discovery uses a new optional bitmap in the isolated MAME
+scheduler probe, enabled only by `AB2_PC_CENSUS`. At each original 68000
+instruction-entry hook it marks the physical even PC in an observer-owned
+32-bit-word array. It does not log every instruction, change any CPU state,
+issue emulated bus reads or alter virtual time. Lua exports `.main.pcs` and
+`.sub.pcs` at the declared endpoint. 32-bit words avoid Lua's unsigned-64-bit
+representation limit; incomplete/failed captures never count as evidence.
+The short smoke includes the actual main/sub reset PCs and all three main
+interrupt-vector entries, and leaves every original observation unchanged.
+
+The 12,000-frame neutral census observes **14,229 main / 900 sub sites**;
+the 74,452-frame ending census observes **16,985 main / 1,031 sub sites**.
+Their complete physical pins and all ten frame-observation columns match the
+ordinary MAME references exactly. The census closes discovery gaps beyond
+native's first stop; both relevant direct branch outcomes and literal record
+callbacks are translated/tested independently before replay. All observed
+sites now have existing or new mapped code, including the earlier manually
+ported RTE/TRAP handlers. This is an executed-PC census, not comparison of
+instruction state, bus phases, scheduling, devices, pixels or audio.
+Census logs: `build/workflow/20261011T182942.763340Z/` and
+`build/workflow/20261011T183105.744844Z/`; smoke:
+`build/workflow/20261011T182740.850574Z/`.
+
+Default-switch (`FF/FF/DD`) continue and weapons/control recordings match
+**10,000/10,000** and **8,000/8,000** frames respectively, zero differences or
+skips. The continue recording observes zero lives at frame 4691, damage state
+11 at 4815, restored three lives at 4847, continued stage progression, game
+over 8117, ranking 8495 and return to attract 8814. The weapons/control run
+observes changing raw score, death/lives transitions, stage progression,
+game over 5013, ranking 5391 and return to attract 5710. It does not establish
+collision causes or every requested weapon action. Both complete streams
+reject all five observation mutations. Replay logs are under
+`build/workflow/20261011T172459.286194Z/` and
+`build/workflow/20261011T172459.298695Z/`; comparison/mutation logs are under
+`build/workflow/20261011T172934.042736Z/` and
+`build/workflow/20261011T172934.936724Z/`.
+
+The default-switch neutral failure recording now passes **12,000/12,000**
+frames with all ten columns identical and zero skipped. It covers three
+lives exhausted at 4691, game-over modes 23/24 at 5373/5375, ranking
+25/26 at 5749/5751, return to attract 6068/6070, subsequent attract modes
+2–11, reset to mode 0 at 10932 and the next demo start at 10934. No failed
+prefix is counted as complete acceptance. Its final replay log is
+`build/workflow/20261011T184425.302039Z/`; comparison/mutations:
+`build/workflow/20261011T184718.531179Z/`.
+The continue and weapons streams also pass after adding both sequence
+selectors: `build/workflow/20261011T181351.982436Z/` and
+`build/workflow/20261011T181352.797006Z/`. All earlier named observations
+and physical pins are unchanged by the expanded MAME capture.
+
+An uninterrupted MAME `credit-stock` run, with Easy / 3× Credits switches
+`FF/FF/8D`, receives 100 physical coin pulses before Start, accumulates the
+capped 99 credits and begins with 297 lives. It naturally visits all 23
+ordered flight slots, reaches ending mode 17 at
+frame 71347, progresses through modes 18–22, ranking 26 at 72813 and returns
+to attract at 74452 with 221 lives. No RAM patches, invulnerability, stage
+skips or replacement CPU state are used. The full 90,000-frame discovery
+request/reference is preserved. Its declared ending window is the complete
+74,452-frame prefix, exported with source/request/reference hashes and ROM
+metadata. **This unusual multi-credit setting does not establish standard
+three-life, single-credit completion.** The complete native window now passes
+**74,452/74,452** frames, all ten columns identical, zero differences/skips.
+The ending-path assertion and all ten observation/semantic mutations reject
+wrong/missing data. Replay: `build/workflow/20261011T184425.280719Z/`
+(923.72 s); comparison/mutations: `build/workflow/20261011T190037.588224Z/`.
+The native path observes all 22 ordinary stage-advance entries, carrier
+initialization at completed frame 2831 and refuel entry in ordered slots
+2, 8, 10, 15, 18 and 20. Each refuel slot samples the complete ordered 0–7
+selector progression, matching MAME frame for frame. The initial carrier
+progresses through 0–12, with 12 first visible at return to flight. There
+are 76 life decrements during flight, leaving 221 lives at the endpoint.
+Carrier states 13–15 remain directed fixture coverage; they were not
+observed in these natural recordings.
+
+The SDL dummy video/audio desktop recorder smoke completes 120 cold-board
+frames. Its declared count, dense frame indices, seven loaded ROM-region
+fingerprints and fresh-state metadata are valid; its physical pins match
+the MAME actual-input stream. Native replay and ordinary MAME match all ten
+observation columns for 120/120 frames, zero skipped, and all five
+observation mutations reject. Local artifacts use the
+`build/oracle/native_recorder_final` prefix.
+The final native release rebuild passes in 42.44 s:
+`build/workflow/20261011T193032.556916Z/`.
+
+The first full required run passes `test` (34.89 s) and `verify-stage1`
+(79.10 s), then stops in the recovery mutation harness after 116 successful
+rejections: the old `attract-st` substring now matches five literal ST
+instructions. Its selector is anchored to the unchanged original `$C504`
+body, retaining the same mutation and fixture coverage. All mutation
+selectors are now checked before expensive builds. The final four retained
+mutations reject in a focused rerun. The clean complete `oracle-test` rerun
+passes in **2270.84 s**, including all **120 recovery mutations** and all
+**15 whole-host ownership mutations**:
+`build/workflow/20261011T193215.016295Z/`.
+The first run is retained at `build/workflow/20261011T184425.284224Z/`;
+the focused completion is `build/oracle/natural_mutation_selector_check.log`.
+
+These finite observation comparisons do not establish continuous full-credit
+CPU/bus/device/RGB/audio identity. High-score name entry, NVRAM persistence,
+additional DIP trajectories and reset/suspend acceptance remain open. The
+retained 121/603/781-frame whole-host and earlier routine oracles still apply;
+older documented input-race skips are not erased by zero-skip recovery or
+observation results. The required `test`, `verify-stage1` and complete
+`oracle-test` results above are all passing. No ROM bytes or capture files
+are added to the tracked changes.

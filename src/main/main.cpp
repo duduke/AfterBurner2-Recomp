@@ -18,6 +18,7 @@
 #include "hwvideo/hwtiles.hpp"
 #include "hwvideo/screen.hpp"
 #include "engine/game_session.hpp"
+#include "engine/physical_recording.hpp"
 
 namespace
 {
@@ -31,13 +32,15 @@ int main(int argc, char** argv)try
     unsigned frame_limit = 0;
     unsigned start_stage = 0;
     bool boot_to_flight = false, profile = false;
+    std::string recording_path;
     for (int i=1;i<argc;++i)
     {
         const std::string_view option(argv[i]);
         if (option == "--boot-to-flight") { boot_to_flight=true; continue; }
         if (option == "--profile") { profile=true; continue; }
+        if (option == "--record" && i+1<argc) { recording_path=argv[++i]; continue; }
         if ((option != "--frames" && option != "--stage") || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number] [--boot-to-flight] [--profile]\n"; return 1; }
+        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number] [--boot-to-flight] [--record path] [--profile]\n"; return 1; }
         const std::string_view value(argv[++i]);
         auto& count = option == "--stage" ? start_stage : frame_limit;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
@@ -45,6 +48,8 @@ int main(int argc, char** argv)try
         { std::cerr << (option == "--stage" ? "Stage" : "Frame count") << " must be a positive integer.\n"; return 1; }
     }
     unsigned simulated_frames = 0;
+    if (!recording_path.empty() && start_stage)
+        throw std::runtime_error("Natural recording requires normal cold boot without --stage");
     if (!roms.load_aburner2())
     {
         std::cerr << "Failed to load one or more ROM files from roms/ "
@@ -56,13 +61,20 @@ int main(int argc, char** argv)try
         throw std::runtime_error("Stage number out of range (1.." + std::to_string(NativeStageSkip::stage_count(roms)) + ")");
 
     GameSession game(roms);
+    unsigned recording_session=0;
+    std::unique_ptr<PhysicalRecording> recording;
+    if (!recording_path.empty()) recording=std::make_unique<PhysicalRecording>(recording_path,roms);
+    auto advance = [&](const GameControls& input) {
+        if (recording && !game.paused()) recording->append(game.info().number,input);
+        return game.advance(input);
+    };
     auto startup = [&] {
         // Original cold boot with the same physical coin/start pulses as the
         // verified bridge. Never seed gameplay state or skip board frames.
         for(unsigned f=0;f<600;++f) {
             GameControls input;
             input.coin=f>=360&&f<372; input.start=f>=420&&f<432;
-            game.advance(input); game.take_audio();
+            advance(input); game.take_audio();
         }
         if (start_stage) {
             game.debug_skip_to_stage(start_stage);
@@ -162,6 +174,7 @@ int main(int argc, char** argv)try
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_F5)
             {
                 game.restart();
+                if (recording) recording=std::make_unique<PhysicalRecording>(recording_path+".restart"+std::to_string(++recording_session),roms);
                 if (start_stage) startup();
                 if (audio_stream) SDL_ClearAudioStream(audio_stream);
                 if (audio_stream) SDL_ResumeAudioStreamDevice(audio_stream);
@@ -223,7 +236,7 @@ int main(int argc, char** argv)try
         while (!game.paused() && accumulated_seconds >= tick_seconds && catchup_frames++ < 2)
         {
             const auto core_start=profile ? SDL_GetPerformanceCounter() : 0;
-            game.advance(input);
+            advance(input);
             if(profile) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency;
             ++profile_frames;
             // Backpressure bounds playback latency without dropping sound.

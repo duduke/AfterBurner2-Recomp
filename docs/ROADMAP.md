@@ -42,16 +42,47 @@ bar is "matches MAME byte-for-byte", not "looks right".
    Lua script captures the state before and the writes after the routine
    in MAME, and a C++ test replays the "before" state through the port and
    compares. Report results as "N of M identical, K skipped (reason)".
-4. **Prove the test can fail.** Change one constant in the port, check the
-   test fails, then revert. Check coverage too: a path the capture never
-   exercised is unverified, and must be listed as such in `ENGINE_NOTES.md`.
+4. **Prove each new or changed oracle can fail.** Run relevant deliberate
+   mutations against a passing baseline before accepting the port or test
+   change. Retain earlier mutations; use the validation cadence below rather
+   than rebuilding every unchanged mutant during each edit. Check coverage
+   too: a path the capture never exercised is unverified, and must be listed
+   as such in `ENGINE_NOTES.md`.
 5. **Never commit ROM data or captures.** ROMs live in `roms/`, captures in
    `build/oracle/`; both are gitignored. Don't paste ROM bytes or large
    tables into source files either: read them from the ROM at runtime.
 6. **Keep the docs current**: tick roadmap items off with their results,
    and add what you learned to `ENGINE_NOTES.md`.
-7. **Before committing**, run `make test`, `make verify-stage1` and
-   `make oracle-test`, and confirm nothing got worse.
+7. **Validate according to the change and acceptance gate.** Local commits
+   require the applicable focused checks in the cadence below. Gameplay/core
+   merges, releases and acceptance milestones require `make test`,
+   `make verify-stage1` and the complete `make oracle-test`. Preserve all
+   fixtures and mutations; a focused pass is not whole-host acceptance.
+
+**Validation cadence**
+
+| Change or gate | Required validation |
+| --- | --- |
+| Documentation only | `git diff --check`; inspect changed links, commands and policy consistency. No engine suites unless executable behavior also changes. |
+| Development and local code commits | Run `test` and affected oracle targets; add `verify-stage1` for engine, game-session or integration changes, and a relevant build/smoke for platform/UI changes. Record the targets and results; do not rerun unrelated long recordings after each edit. |
+| New or changed literal ports, fixtures or comparison gates | Passing independent MAME baselines, relevant branch/operand coverage and relevant rejected mutations before wiring/accepting. For recovery ports, retain and replay the complete corpus with its manifest/branch gate; repeat the affected natural recording. |
+| Shared CPU/flags/timing, bus, scheduler, device logic, generator implementation, compiler/options or oracle instrumentation changes | Full regression and all retained mutations before accepting the change, plus affected natural recordings. Regenerate captures when their semantics or instrumentation changed. Adding generated instruction bodies alone follows the literal-port row. |
+| Gameplay/core merge, release or declared acceptance milestone | Run the complete `required` profile (`test`, `verify-stage1`, `oracle-test`) on the final tree. Milestones also run the supplemental `full` profile and applicable complete natural recordings. |
+| Periodic integration checkpoint | Run the complete regression/mutation suite after ten code merges since the last full pass, even when each merge only required narrow checks. Documentation-only merges do not count. This is a validation trigger, not a scheduled automation. |
+
+Reuse an earlier pass only while its relevant sources and transitive
+dependencies, compiler/options, fixtures, capture probe and comparison/mutation
+harness are unchanged. Cite its log and scope explicitly; do not present it
+as a new run or carry it across an affected change. A failure requires repair
+and rerunning the failed gate and dependent checks. Before a merge or milestone,
+a focused repair does not replace a clean complete run when that gate requires
+one. Existing tools do not implement automatic result caching.
+
+The current `oracle-test` includes all retained mutation checks, so the full
+regression gates above still execute them. Selective mutations are for focused
+work; splitting the full regression and mutation commands or adding validated
+hash-based caching is separate tooling work. Never delete fixtures, weaken
+comparisons or skip unexplained failures to meet this cadence.
 
 **Commands** (from the repository root)
 
@@ -102,34 +133,43 @@ target; there is no longer a separate play-native branch. The retained
 
 | Area | Verified status | Limits |
 | --- | --- | --- |
-| Live game | `XBoardGame` / `XBoardHost` cold-boots the literal main/sub 68000 translations and original Z80 program; ROM code drives attract, coin/start, flight, weapons, HUD and sound | Unknown instructions stop explicitly; a complete natural credit is not yet accepted |
+| Live game | `XBoardGame` / `XBoardHost` cold-boots the literal main/sub 68000 translations and original Z80 program; ROM code drives attract, coin/start, flight, weapons, HUD and sound | Unknown instructions stop explicitly; the declared natural ending/state stream passes, while whole-credit CPU/device/RGB/audio acceptance remains open |
 | Whole host | Cold 121-/603-frame and expanded 781-frame MAME corpora; the expanded run matches 28,128,435 CPU snapshots, 73,593,282 bus phases, 55,982,080 RGB pixels and 627,841 stereo frames, zero supplied execution/state/read seeds and zero differences/skips; 15 owner mutations reject | Finite input/state coverage, not every operand, branch, DIP setting or reset/suspend path |
-| Instruction recovery | 10,525 instruction PCs, both outcomes at 1,060 branches, 68,294 MAME fixtures identical with zero skips; 85 recovery mutations reject; optimized native and Three.js core replays pass | Declared manifest only; future gameplay may expose more instructions |
+| Instruction recovery | 12,382 recovery PCs, both outcomes at 1,252 branches, 77,786 MAME fixtures identical with zero skips; all 120 recovery mutations reject, including 35 new ones; optimized native natural replays pass | Declared manifest only; future gameplay may expose more instructions |
+| Natural transitions | Cold 74,452-frame Easy / 99-credit run visits all 23 ordered slots, six refuels, ending, ranking and return to attract; every frame matches MAME across ten observation columns. Default three-life failure/continue/weapons runs match 12,000/10,000/8,000 frames, zero skipped | Named RAM/timestamp stream only; standard single-credit completion, continuous whole-credit CPU/device/RGB/audio, name entry and NVRAM persistence remain open; carrier states 13–15 are directed-only |
 | Stage discovery | All 23 ordered ROM slots complete 600 scripted input frames each, 13,800 frames total with zero stops | Debug entries bypass natural progression and do not recreate every previous-stage state; special stages can suppress actions |
 | Selected-stage palettes | Stages 5, 8, 13 and 17 execute preceding ROM palette preparation; 56/56 gradient words match MAME, zero skipped | Directed debug startup, not full-credit acceptance |
 | Native platform | SDL3 3.2+, Make/CMake builds, window/input/audio, pause/restart and no-speaker smoke checks pass | Short flight reaches the arcade's approximately 59.64 Hz cadence; every-stage peak-load performance remains unproved |
 | Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames and output PCM processing | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
 | Three.js | Optional original-art scene prototype shares the native core through a local bridge | Arcade projection; true 3D world geometry, true widescreen and standalone WASM remain future work |
 
-Before publishing this documentation consolidation, all required checks passed
-again on main: `test` (33.50 s), `verify-stage1` (73.68 s), and the complete
+The documentation-consolidation baseline required checks passed
+on main: `test` (33.50 s), `verify-stage1` (73.68 s), and the complete
 `oracle-test` (1823.36 s), including all 85 recovery mutations and retained
 fixtures. Local logs are in `build/workflow/20261011T150418.391037Z/`.
-Game source, build rules and oracle fixtures are unchanged from the merged
-native implementation. Older routine fixtures retain their documented input-race
-skips; zero-skip whole-host and recovery results do not erase those exclusions.
+The current natural-recording work adds literal ports and observation tools
+while retaining every earlier fixture and all 10,525 earlier recovery bodies.
+The current required checks pass: `test` (34.89 s) and `verify-stage1`
+(79.10 s) at `build/workflow/20261011T184425.284224Z/`, and a clean complete
+`oracle-test` (2270.84 s) at `build/workflow/20261011T193215.016295Z/`.
+The oracle rerun follows a repair to an ambiguous mutation selector; all
+120 recovery mutations and 15 whole-host ownership mutations reject.
+Older routine fixtures retain their documented input-race skips; zero-skip
+whole-host and recovery results do not erase those exclusions.
 
 The historical `OEngine` Stage 1 reconstruction remains in regression tools,
 not the live game. See [STAGE1_FIDELITY.md](STAGE1_FIDELITY.md).
 
 ## Next acceptance tasks
 
-1. **Natural full-credit progression:** run uninterrupted physical coin/start
-   and controls through the ordered stage sequence, refueling and carrier
-   sequences to the ending. Do not substitute `--stage` for progression.
-2. **Failure and recovery paths:** cover collisions, death/respawn, exhausted
-   lives, game over, continue, scoring and high-score/NVRAM behavior in natural
-   runs. Report exactly which transitions and states were observed.
+1. **Standard single-credit completion:** the uninterrupted Easy / 99-credit
+   recording reaches the ending naturally and matches every named observation.
+   Obtain a successful default three-life physical recording as well. Keep
+   the declared settings; do not substitute `--stage` for progression.
+2. **Remaining transition paths:** the default failure, continue and scoring
+   recordings pass. Extend collision-cause, high-score name entry, NVRAM
+   persistence and alternate carrier/lifecycle coverage, reporting actual
+   states/actions rather than assuming requested inputs succeeded.
 3. **Close newly exposed instruction paths:** translate from ROM, add
    independent MAME fixtures and rejected mutations, preserve older coverage,
    then repeat the affected gameplay and required regression gates.
@@ -193,7 +233,8 @@ successful recording; an automated input controller is optional later work.
 ending and matches MAME throughout its declared CPU/device/video/audio streams,
 with zero unexplained differences or skipped intervals. Separate transition
 and failure recordings also pass, and all retained regression/mutation gates
-remain required. Report exactly which settings and paths were exercised; one
+remain required at the validation cadence above. Report exactly which settings
+and paths were exercised; one
 successful credit does not establish every possible operand or input trajectory.
 Publish commands, fixture metadata, results and exclusions in ENGINE_NOTES,
 then update this roadmap. Do not commit ROM data, recordings or captures.

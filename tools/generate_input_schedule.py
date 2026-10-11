@@ -207,7 +207,7 @@ for start, stop in ranges:
                 flags(1,'old');emit(f'byte(r.d[{dst[1]}],old|0x80);')
             finish()
         elif name == 'ST':
-            dst=ea(operands[0]);assert dst[0]=='disp'
+            dst=ea(operands[0]);assert dst[0]=='disp' or (dst[0]=='abs' and dst[2]==1)
             read(dst,1,'old');emit('(void)old;');prefetch();emit('latch();')
             write(dst,1,'0xff',ext=False);emit(f'next=0x{end:x};')
         elif name in ('CLR', 'TST', 'NOT', 'NEG', 'EXT'):

@@ -1405,6 +1405,28 @@ build/stage_input_sweep: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,too
 stage-input-sweep: build/stage_input_sweep
 	./build/stage_input_sweep $(STAGE_SWEEP_ARGS)
 .PHONY: stage-input-sweep
+build/natural_credit: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tools/natural_credit.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+natural-credit: build/natural_credit
+	./build/natural_credit $(NATURAL_INPUT) $(NATURAL_OUTPUT)
+# Build once, then use this target for concurrent independent recordings;
+# release configuration/object files are shared by ordinary make invocations.
+natural-credit-replay:
+	./build/natural_credit $(NATURAL_INPUT) $(NATURAL_OUTPUT)
+.PHONY: natural-credit natural-credit-replay
+-include build/threejs_obj/tools/natural_credit.d
+capture-natural-credit:
+	AB2_NATURAL_INPUT="$(abspath $(NATURAL_INPUT))" tools/oracle/capture.sh tools/oracle/capture_natural_credit.lua "$(NATURAL_REFERENCE)" 1 $(NATURAL_SECONDS)
+capture-natural-census: oracle-scheduler-probe
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_PC_CENSUS=1 AB2_NATURAL_INPUT="$(abspath $(NATURAL_INPUT))" tools/oracle/capture.sh tools/oracle/capture_natural_credit.lua "$(NATURAL_REFERENCE)" 1 $(NATURAL_SECONDS)
+oracle-natural-transitions:
+	python3 tools/oracle/check_natural_credit.py "$(NATURAL_INPUT)" "$(NATURAL_OUTPUT)" "$(NATURAL_REFERENCE)"
+	python3 tools/oracle/check_natural_mutations.py "$(NATURAL_INPUT)" "$(NATURAL_OUTPUT)" "$(NATURAL_REFERENCE)"
+oracle-natural-ending:
+	python3 tools/oracle/check_natural_credit.py "$(NATURAL_INPUT)" "$(NATURAL_OUTPUT)" "$(NATURAL_REFERENCE)" --require-ending
+	python3 tools/oracle/check_natural_mutations.py "$(NATURAL_INPUT)" "$(NATURAL_OUTPUT)" "$(NATURAL_REFERENCE)" --require-ending
+NATURAL_SECONDS ?= 210
+.PHONY: capture-natural-credit capture-natural-census oracle-natural-transitions oracle-natural-ending
 -include build/threejs_obj/tools/stage_input_sweep.d
 .PHONY: benchmark-native benchmark-native-extended benchmark-native-full-throttle benchmark-native-rolls benchmark-native-missiles
 -include build/threejs_obj/tools/benchmark_native_game.d build/threejs_obj/src/main/main.d
