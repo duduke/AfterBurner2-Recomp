@@ -59,6 +59,9 @@ public:
     // sprite scaler feedback; disabled display neither draws nor changes it.
     void render_partial(RGB888* output, int top, int bottom, bool display,
                         uint8_t* sprite_bank = nullptr);
+    // Passive raw sprite raster from the last clip; reading it never reruns
+    // the hardware scaler or its RAM feedback.
+    std::span<const uint16_t> sprite_words() const { return sprite_pixels; }
     const std::vector<uint16_t>& indices() const { return pixels; }
     const std::vector<uint8_t>& priorities() const { return priority; }
 

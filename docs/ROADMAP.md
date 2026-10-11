@@ -124,7 +124,7 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-11)
+## Current checkpoint (2026-10-12)
 
 `main` contains the SDL3 native engine, merged at `1f584d7` from the validated
 `play-native` implementation `2a0c76b`. `make play-native` remains the launch
@@ -135,12 +135,12 @@ target; there is no longer a separate play-native branch. The retained
 | --- | --- | --- |
 | Live game | `XBoardGame` / `XBoardHost` cold-boots the literal main/sub 68000 translations and original Z80 program; ROM code drives attract, coin/start, flight, weapons, HUD and sound | Unknown instructions stop explicitly; the declared natural ending/state stream passes, while whole-credit CPU/device/RGB/audio acceptance remains open |
 | Whole host | Cold 121-/603-frame and expanded 781-frame MAME corpora; the expanded run matches 28,128,435 CPU snapshots, 73,593,282 bus phases, 55,982,080 RGB pixels and 627,841 stereo frames, zero supplied execution/state/read seeds and zero differences/skips; 15 owner mutations reject | Finite input/state coverage, not every operand, branch, DIP setting or reset/suspend path |
-| Instruction recovery | 12,382 recovery PCs, both outcomes at 1,252 branches, 77,786 MAME fixtures identical with zero skips; all 120 recovery mutations reject, including 35 new ones; optimized native natural replays pass | Declared manifest only; future gameplay may expose more instructions |
-| Natural transitions | Cold 74,452-frame Easy / 99-credit run visits all 23 ordered slots, six refuels, ending, ranking and return to attract; every frame matches MAME across ten observation columns. Default three-life failure/continue/weapons runs match 12,000/10,000/8,000 frames, zero skipped | Named RAM/timestamp stream only; standard single-credit completion, continuous whole-credit CPU/device/RGB/audio, name entry and NVRAM persistence remain open; carrier states 13–15 are directed-only |
+| Instruction recovery | 12,404 recovery PCs, both outcomes at 1,255 branches, 77,940 MAME fixtures identical with zero skips; all 143 retained recovery mutations reject at the daily main checkpoint; optimized native natural replays pass | Declared manifest only; future gameplay may expose more instructions |
+| Natural transitions | Cold 74,452-frame Easy / 99-credit run visits all 23 ordered slots, six refuels, ending, ranking and return to attract; every frame matches MAME across ten observation columns. Default three-life failure/continue/weapons runs match 12,000/10,000/8,000 frames; new multi-credit continue recording matches 10,000 frames, zero skipped | Named RAM/timestamp stream only; standard single-credit completion, continuous whole-credit CPU/device/RGB/audio, name entry and NVRAM persistence remain open; carrier states 13–15 are directed-only |
 | Stage discovery | All 23 ordered ROM slots complete 600 scripted input frames each, 13,800 frames total with zero stops | Debug entries bypass natural progression and do not recreate every previous-stage state; special stages can suppress actions |
 | Selected-stage palettes | Stages 5, 8, 13 and 17 execute preceding ROM palette preparation; 56/56 gradient words match MAME, zero skipped | Directed debug startup, not full-credit acceptance |
-| Native platform | SDL3 3.2+, Make/CMake builds, window/input/audio, pause/restart and no-speaker smoke checks pass | Short flight reaches the arcade's approximately 59.64 Hz cadence; every-stage peak-load performance remains unproved |
-| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames and output PCM processing | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
+| Native platform | SDL3 3.2+, Make/CMake builds, window/input/audio, pause/restart, ROM-font settings menu (window scaling/sprite filters/fullscreen/stats), persisted preferences and no-speaker smoke checks pass | Short flight reaches the arcade's approximately 59.64 Hz cadence; every-stage peak-load performance remains unproved |
+| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames, passive sprite presentation planes and output PCM processing | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
 | Three.js | Optional original-art scene prototype shares the native core through a local bridge | Arcade projection; true 3D world geometry, true widescreen and standalone WASM remain future work |
 
 The documentation-consolidation baseline required checks passed
@@ -149,7 +149,7 @@ on main: `test` (33.50 s), `verify-stage1` (73.68 s), and the complete
 fixtures. Local logs are in `build/workflow/20261011T150418.391037Z/`.
 The current natural-recording work adds literal ports and observation tools
 while retaining every earlier fixture and all 10,525 earlier recovery bodies.
-The current required checks pass: `test` (34.89 s) and `verify-stage1`
+The natural-transition checkpoint required checks passed: `test` (34.89 s) and `verify-stage1`
 (79.10 s) at `build/workflow/20261011T184425.284224Z/`, and a clean complete
 `oracle-test` (2270.84 s) at `build/workflow/20261011T193215.016295Z/`.
 The oracle rerun follows a repair to an ambiguous mutation selector; all
@@ -157,8 +157,55 @@ The oracle rerun follows a repair to an ambiguous mutation selector; all
 Older routine fixtures retain their documented input-race skips; zero-skip
 whole-host and recovery results do not erase those exclusions.
 
+The subsequent `$C618` multi-credit continue display fix adds three literal
+ports, preserves all 12,382 preceding instruction bodies and all retained
+fixtures, and passes the focused validation cadence. Its complete recovery
+corpus and 10,000-frame multi-credit continue observations match MAME;
+the three new instruction mutations reject. `test` (48.02 s) and
+`verify-stage1` (78.07 s) pass at `build/workflow/20261011T202613.753296Z/`.
+The rebuilt native game and complete 23-slot directed stage sweep also pass
+at `build/workflow/20261011T202719.311646Z/`, with 13,800 input-window
+frames and no stops. The natural comparison log is
+`build/workflow/20261011T203052.179492Z/`.
+The preceding complete oracle result above remains the last full checkpoint;
+this local fix does not claim a fresh 123-mutation or full-suite run.
+
 The historical `OEngine` Stage 1 reconstruction remains in regression tools,
 not the live game. See [STAGE1_FIDELITY.md](STAGE1_FIDELITY.md).
+
+The subsequent `$14D62` stage-1 full-throttle/cannon report adds one literal
+`MOVEQ` fallback. Independent MAME fixtures pass and both operand/flag mutations
+reject; the complete recovery corpus now covers 12,386 PCs and 77,794 fixtures
+with zero differences/skips. The scripted input window does not reproduce the
+user's exact trajectory; see ENGINE_NOTES for scope and validation.
+
+The `$E570` canyon ground-target report exposes a nonempty award-queue
+consumer. Its 18 missing instructions now match 146 independent MAME fixtures,
+including all branch outcomes and countdown boundaries. Complete recovery
+covers 12,404 PCs and 77,940 fixtures; see ENGINE_NOTES for shooting replay
+and mutation validation scope.
+
+### Daily progress — 2026-10-12
+
+Today's native build includes the multi-credit continue fix (`$C618`),
+full-throttle/cannon fallback (`$14D62`) and canyon ground-award consumer
+(`$E570..$E5AE`), with independent MAME fixtures and retained mutations.
+The ROM-font menu adds persistent window scaling, fullscreen and FPS/timing
+settings. Its separate Sprites row provides Off, EPX, Scale3x, 2xSaI,
+Super2xSaI and ScaleFX; native road/text coverage and palette shadows are
+preserved. xBRZ awaits a compatible license. A finite Metal smoke measures
+about 30 displayed FPS with CPU ScaleFX, so EPX is the lighter starting option.
+
+Focused evidence and the remaining full-game acceptance limits are recorded in
+[ENGINE_NOTES](ENGINE_NOTES.md#sprite-only-native-presentation-filters-2026-10-12).
+The complete required main-push gate passes: `test` (4.74 s),
+`verify-stage1` (45.51 s), and `oracle-test` (2653.29 s), including all 143
+recovery mutations and 15 ownership mutations. Logs:
+`build/workflow/20261011T220049.037304Z/`. Older routine fixtures retain their
+documented input-race exclusions; recovery and whole-host checks have zero
+unexplained differences/skips. Final filter/menu/build checks also pass after
+formatting cleanup at `build/workflow/20261011T220319.186745Z/`.
+ROMs, captures, screenshots and validation logs remain excluded from Git.
 
 ## Next acceptance tasks
 
@@ -273,6 +320,11 @@ standalone WebAssembly build remain future work. This prototype does not
 promote full-credit gameplay acceptance.
 
 ### 1. Menus, UI & Convenience
+- [x] Initial native settings menu: ROM-font Start/Options/Quit, pause/resume,
+  SDL nearest/linear/integer/Pixel Art scaling, desktop fullscreen, FPS/frame-time
+  statistics and persisted presentation settings. Esc/F1 opens the menu; F11/F3
+  provide fullscreen/statistics shortcuts. Audio/shaders/input calibration and
+  cabinet options remain part of the broader menu work below.
 - [ ] **Frontend and Configuration Menus (Seamless In-Game Integration):**
   - *Native Visual Aesthetic:* Render menus directly through the engine's tilemap/sprite/text pipeline (or a cohesive HUD/cockpit overlay) using arcade font tiles and palette themes, avoiding external OS windows or generic popups.
   - *In-Game Pause & Settings Overlay:* Instant in-game pause menu with real-time previews for audio volume sliders, CRT shader toggles, and stick deadzone visualizers.
@@ -317,6 +369,7 @@ promote full-credit gameplay acceptance.
   - *Crisp High-DPI HUD:* Optional native 4K text and instrument overlays to eliminate blurriness.
   - *Smooth Presentation:* Zero-copy frame presentation and sub-millisecond pacing for lockstep 60 Hz / 120 Hz refresh rates.
 - [ ] **Upscaled & High-Resolution Sprites:**
+  - *Implemented presentation filters:* The native Options → Sprites row offers Off, EPX 2x, Scale3x, 2xSaI, Super2xSaI and ScaleFX 3x. Road/tiles, foreground text coverage and palette shadows retain their native presentation before the separate SDL window scaler. xBRZ is pending license compatibility. These filters do not implement the replacement-asset or rotation features below.
   - *Extraction CLI Tool:* CLI dump option in main binary (e.g. `--dump-sprites` / `--extract-sprites` to PNG) for AI upscaling or texture repainting.
   - *High-Res Replacement Pipeline:* Transparent loading and scaled rendering of external high-resolution sprite sheets.
   - *Smoother 360° Rotation Steps:* High-granularity roll/rotation steps via additional intermediate sprite banks or runtime software/GPU micro-rotation interpolation.

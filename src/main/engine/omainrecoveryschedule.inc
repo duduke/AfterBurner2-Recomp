@@ -103152,3 +103152,166 @@ case 0x12236: {
     branch(true,0xb628,4);
     break;
 }
+// $00C618: ADDQ.L #2,A0
+case 0xc618: {
+    r.a[0]+=2;
+    read16(0xc61c);
+    idle(2);latch();idle(2);next=0xc61a;
+    break;
+}
+// $00C63C: LEA ($0000C66E).L,A0
+case 0xc63c: {
+    r.a[0]=0xc66e;
+    read16(0xc640);
+    read16(0xc642);
+    final(0xc644);next=0xc642;
+    break;
+}
+// $00C642: BSR $0137D2
+case 0xc642: {
+    idle(2);sp-=4;write16(sp,0x0);write16(sp+2,0xc646);read16(0x137d2);final(0x137d4);next=0x137d2;
+    break;
+}
+// $014D62: MOVEQ #10,D0
+case 0x14d62: {
+    r.d[0]=0xa;
+    sr=(sr&0xfff0)|(uint32_t(r.d[0])?0:4)|(r.d[0]&0x80000000?8:0);
+    final(0x14d66);next=0x14d64;
+    break;
+}
+// $00E570: SUBQ.B #1,($904E).W
+case 0xe570: {
+    const uint32_t operand=1;
+    read16(0xe574);
+    const auto old=read8(0xffff904e);
+    const auto value=addsub_byte(old,operand,true,true);
+    read16(0xe576);
+    latch();
+    write8(0xffff904e,value);
+    next=0xe574;
+    break;
+}
+// $00E574: BCC $00E600
+case 0xe574: {
+    branch(!(sr&1),0xe600,4);
+    break;
+}
+// $00E578: LEA ($9050).W,A0
+case 0xe578: {
+    r.a[0]=0xffff9050;
+    read16(0xe57c);
+    final(0xe57e);next=0xe57c;
+    break;
+}
+// $00E57C: LEA (A0),A1
+case 0xe57c: {
+    r.a[1]=r.a[0];
+    final(0xe580);next=0xe57e;
+    break;
+}
+// $00E57E: MOVE.B (A0)+,D0
+case 0xe57e: {
+    const auto value=read8(r.a[0]);
+    r.a[0]+=1;
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    byte(r.d[0],value);
+    final(0xe582);next=0xe580;
+    break;
+}
+// $00E580: EXT.W D0
+case 0xe580: {
+    word(r.d[0],int8_t(r.d[0]));
+    nz(r.d[0]);
+    final(0xe584);next=0xe582;
+    break;
+}
+// $00E582: EXT.W D7
+case 0xe582: {
+    word(r.d[7],int8_t(r.d[7]));
+    nz(r.d[7]);
+    final(0xe586);next=0xe584;
+    break;
+}
+// $00E584: MOVE.B (A0)+,(A1)+
+case 0xe584: {
+    const auto value=read8(r.a[0]);
+    r.a[0]+=1;
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    write8(r.a[1],value);
+    r.a[1]+=1;
+    final(0xe588);next=0xe586;
+    break;
+}
+// $00E586: DBF D7,$00E584
+case 0xe586: {
+    const auto old=uint16_t(r.d[7]);idle(2);read16(0xe584);word(r.d[7],old-1);
+    if(old){final(0xe586);next=0xe584;}else{read16(0xe58a);final(0xe58c);next=0xe58a;}
+    break;
+}
+// $00E58A: ASL.W #3,D0
+case 0xe58a: {
+    asl_word(0,3);
+    break;
+}
+// $00E58C: LEA $00E606(PC,D0.W),A2
+case 0xe58c: {
+    idle(2);
+    r.a[2]=0xe606+int16_t(r.d[0]);
+    read16(0xe590);
+    idle(2);
+    final(0xe592);next=0xe590;
+    break;
+}
+// $00E590: MOVE.L (A2),($8880).W
+case 0xe590: {
+    const auto value=read32(r.a[2]);
+    read16(0xe594);
+    sr=(sr&0xfff0)|(uint32_t(value)?0:4)|(value&0x80000000?8:0);
+    write16(0xffff8880,value>>16);write16(0xffff8880+2,uint16_t(value));
+    final(0xe596);next=0xe594;
+    break;
+}
+// $00E594: JSR ($0000CD12).L
+case 0xe594: {
+    read16(0xe598);read16(0xcd12);sp-=4;write16(sp,0x0);write16(sp+2,0xe59a);final(0xcd14);next=0xcd12;
+    break;
+}
+// $00E59A: MOVE.W #$F3,D0
+case 0xe59a: {
+    read16(0xe59e);
+    const uint32_t value=0xf3;
+    nz(value);
+    word(r.d[0],value);
+    final(0xe5a0);next=0xe59e;
+    break;
+}
+// $00E59E: JSR ($0000B84C).L
+case 0xe59e: {
+    read16(0xe5a2);read16(0xb84c);sp-=4;write16(sp,0x0);write16(sp+2,0xe5a4);final(0xb84e);next=0xb84c;
+    break;
+}
+// $00E5A4: LEA ($000D01C2).L,A0
+case 0xe5a4: {
+    r.a[0]=0xd01c2;
+    read16(0xe5a8);
+    read16(0xe5aa);
+    final(0xe5ac);next=0xe5aa;
+    break;
+}
+// $00E5AA: SUBQ.B #1,($904F).W
+case 0xe5aa: {
+    const uint32_t operand=1;
+    read16(0xe5ae);
+    const auto old=read8(0xffff904f);
+    const auto value=addsub_byte(old,operand,true,true);
+    read16(0xe5b0);
+    latch();
+    write8(0xffff904f,value);
+    next=0xe5ae;
+    break;
+}
+// $00E5AE: BMI $00E5F2
+case 0xe5ae: {
+    branch(sr&8,0xe5f2,2);
+    break;
+}

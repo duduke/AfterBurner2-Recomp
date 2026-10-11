@@ -24,6 +24,7 @@ coverage is still incomplete and is not advanced by this application API.
 | `GameSession::advance` | Advances one physical board frame; returns false while paused | Frontend pacing, bounded runs and replay drivers |
 | `set_paused`, `restart` | Pause freezes all board owners; restart creates a cold board, discards session audio and unpauses | Pause/settings UI and restart commands |
 | `frame()` | Read-only completed native 320×224 RGB plus frame number and board time | GPU presentation, scaling, shaders, screenshots and overlays |
+| `capture_sprite_presentation`, `sprite_presentation()` | Opt-in read-only native-sized ARGB background/sprite copies and tile/shadow protection; valid after the next completed frame, invalidated on disable/restart | Sprite-only frontend filtering, with original native raster retained |
 | `Extensions::frame_complete` | Called once per completed frame, including each catch-up frame | Capture/recording and frame-driven frontend features |
 | `Extensions::process_audio` | Processes outgoing 48 kHz signed 16-bit stereo after the original devices have mixed it | Master volume, output effects and supplemental audio mixing |
 | `Extensions::restarted` | Called after an explicit restart; registered functions persist | Reset extension playback cursors/history |
@@ -85,3 +86,43 @@ combinations and invalid/out-of-range device axes without ROMs.
 nonzero audio processing and extension restart lifecycle. These checks are
 included in `test` and `verify-stage1` respectively. All existing MAME checks
 remain required; the session comparison supplements them.
+
+## Native settings implementation
+
+`frontend/native_menu.hpp` owns the ROM-font texture cache, navigation and
+presentation-only statistics. `frontend/native_settings.hpp` owns versioned
+preferences. SDL options are applied by the application, with rejection retaining
+the last accepted configuration. The UI draws after the completed board raster;
+it never changes board frame pixels, RAM or device state. Menu entry pauses
+`GameSession` and playback, exit restores the previous pause and clears pacing
+debt. Menu keys are withheld from game controls until released.
+
+`test-native-settings` covers persistence/defaults/invalid input and save failure.
+`verify-native-menu` covers actual SDL filtering, integer presentation, fullscreen,
+navigation, rejected changes and preservation of board frames/time and pause state.
+See [WORKFLOW](WORKFLOW.md#native-settings-menu) for controls and configuration.
+
+## Sprite-only presentation
+
+GameSession copies indexed background colors at the existing partial-render
+observer and determines visible sprite coverage using the hardware raster and
+native priority rule. The existing post-render observer resolves sprite colors.
+It never reruns the hardware scaler, writes sprite feedback or changes native
+composition. Palette shadows are kept on the background plane, with their native
+coverage protected; filtered edges cannot cover foreground tiles/text. The
+capture is opt-in and survives restart through observer rebinding. Borrowed spans
+are invalidated by advance/restart or capture configuration changes.
+
+`frontend/sprite_filter.hpp` owns filters, premultiplied alpha composition and
+reusable buffers. The application uploads a 2x/3x image and reuses it until the
+next physical frame. Off uses the original texture/capture-free path. Existing
+SDL window scaling remains a separate final presentation choice. This smooths
+visible sprite rasters after native sprite zoom; it is not a replacement asset
+pipeline or a change to ROM sprite decoding.
+
+`test-sprite-filters` compares SaI to unchanged upstream RGB565 routines and
+ScaleFX to retained synthetic fingerprints from the original GLSL, plus borders,
+transparency, priority protection and input immutability. The supplemental macOS
+`verify-scalefx-reference` compares all five CPU passes against the actual GLSL
+on an offscreen OpenGL context. Source/license notices live in
+`frontend/scalers/README.md`. xBRZ remains pending licensing compatibility.

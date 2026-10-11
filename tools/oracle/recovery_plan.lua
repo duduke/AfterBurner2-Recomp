@@ -57,6 +57,17 @@ for _,pc in ipairs(pcs)do
   if op&0xf0f8==0x50c8 then c.counter_reg=op&7;c.counter_value=n&1 end
   cases[#cases+1]=c
  end
+ -- Ground award queue countdown and queue length: wrap/carry, zero and sign
+ -- boundaries, preserving the adjacent queue byte in each direction.
+ if pc==0xe570 or pc==0xe5aa then
+  for _,value in ipairs({0,1,0x7f,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do
+    local word=pc==0xe570 and ((value<<8)|0x5a) or (0x5a00|value)
+    cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+     memory_word_address=0x3f904e,memory_word_value=word}
+   end
+  end
+ end
  -- $BC22 masks the cyclic attract selector to $C, yielding exactly the
  -- four branch-table offsets consumed by $BC2A. Keep generic cases and
  -- independently capture all valid targets and masked input bits.

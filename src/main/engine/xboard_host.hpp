@@ -59,6 +59,7 @@ public:
         video.frame=[&](uint64_t ns){++frames;if(frame)frame(ns);};
         devices.callback=[&](XBoardDeviceDeadlines::Owner owner,uint64_t ns){if(owner==XBoardDeviceDeadlines::SoundUpdate)sound.update_speaker(ns);};
     }
+    std::span<const uint16_t> sprite_words() const { return screen.sprite_words(); }
     void input(Input value){if(!inputs.empty()&&value.ns<inputs.back().ns)throw std::runtime_error("nonmonotonic physical input");inputs.push_back(value);}
     uint64_t time()const{return uint64_t(arbiter.state().base/AS_PER_NS);}
     Time deadline()const{

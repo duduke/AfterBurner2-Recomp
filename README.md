@@ -56,7 +56,7 @@ src/main/
                                tilemap and palette hardware
   hwaudio/                   — YM2151 + SegaPCM sound chip emulation, Z80
                                sound program interpretation
-  frontend/                  — menus / config (later)
+  frontend/                  — ROM-font menu, settings, stats and sprite filters
 roms/                        — where you place your ROM dump (gitignored)
 docs/                        — hardware & porting reference notes
 ```
@@ -72,9 +72,12 @@ The SDL3 native implementation is on `main`; `make play-native` is the primary
 desktop launch target. All 23 debug-selected stage slots complete approximately
 10 seconds of scripted inputs without a host stop. Whole-host MAME comparisons
 pass for finite cold/gameplay corpora, and the instruction recovery manifest
-passes its fixtures and mutations. **Natural full-credit progression and
-across-stage peak-load performance remain unverified.** Unknown instructions
-stop explicitly. See the [current checkpoint and next acceptance tasks](docs/ROADMAP.md#current-checkpoint-2026-10-11)
+passes its fixtures and mutations. A 74,452-frame Easy / 99-credit recording
+reaches the ending naturally and
+matches ten MAME observation columns throughout. **Standard single-credit
+completion, whole-credit CPU/device/RGB/audio identity and across-stage peak-load
+performance remain open.** Unknown instructions
+stop explicitly. See the [current checkpoint and next acceptance tasks](docs/ROADMAP.md#current-checkpoint-2026-10-12)
 for exact coverage and limits.
 
 The SDL application uses `GameSession`, an application API for normalized
@@ -99,16 +102,25 @@ root. This builds `build/afterburner2-release` with the verified `-O3 -flto`
 options, cold-boots 600 original board frames with physical coin/start pulses,
 then hands flight controls to the keyboard. No browser or server is needed.
 Arrows fly, Z/X fire cannon/missiles, Space/Left Shift control throttle,
-P pauses, F5 cold-restarts, and Escape exits. After a cold restart, use 5 for
-coin and Enter for start. The window title and console show measured simulation
+P pauses, F5 cold-restarts, and Esc/F1 opens the pause/settings menu. After a cold
+restart, use 5 for coin and Enter for start. The window title and console show measured simulation
 FPS; `--profile` also reports display FPS, board cost and presentation wait.
-Launch the release binary without `--boot-to-flight` for the original attract
-and coin/start sequence. Full-credit coverage remains incomplete; unported
+Run `make native-release` and `./build/afterburner2-release` for the initial
+ROM-font menu with Start Game, Options and Quit. Start Game uses physical
+coin/start pulses. Full-credit coverage remains incomplete; unported
 instructions still stop explicitly. Use `make play-native STAGE=7` to start
 at a selected ordered ROM stage slot (1..23), or pass `--stage 7` directly.
 F5 repeats that selected startup. This debug skip uses fresh first-stage
 accumulated state; it does not reproduce natural progression. See
 [the current coverage checkpoint](docs/ROADMAP.md) for verified scope.
+
+Options provides SDL window scaling, fullscreen, detailed FPS/frame/core/filter
+and presentation timing, plus persistent preferences. The separate Sprites row
+selects Off (default), EPX, Scale3x, 2xSaI, Super2xSaI or ScaleFX. Native road/tile
+coverage, foreground text and palette shadows are preserved before final window
+scaling. EPX is the lighter starting option; CPU ScaleFX can reduce displayed
+FPS. xBRZ awaits a compatible license. See
+[menu controls and configuration](docs/WORKFLOW.md#native-settings-menu).
 
 `python3 tools/workflow.py run benchmark-native benchmark-native-extended`
 measures unpaced native flight/weapon execution and rendering separately.
@@ -123,7 +135,9 @@ cmake --build build
 
 Controls: arrow keys move/bank/pitch, Z fires the cannon, X launches missiles,
 Space increases throttle and Left Shift reduces it. Press 5 to insert a coin,
-Enter to start, P to pause/resume, F5 to cold-restart, and Escape to exit. The board advances at
+Enter to start, P to pause/resume, F5 to cold-restart, and Esc/F1 for the menu.
+Choose Quit from the menu to exit. F11 toggles fullscreen and F3 cycles stats.
+The board advances at
 its physical 16.768 ms frame period; logic cadence comes from the ROM.
 
 The Makefile is an alternative when CMake is unavailable: `make -j4`.

@@ -19,6 +19,8 @@
 #include "hwvideo/screen.hpp"
 #include "engine/game_session.hpp"
 #include "engine/physical_recording.hpp"
+#include "frontend/native_menu.hpp"
+#include "frontend/sprite_filter.hpp"
 
 namespace
 {
@@ -33,20 +35,25 @@ int main(int argc, char** argv)try
     unsigned start_stage = 0;
     bool boot_to_flight = false, profile = false;
     std::string recording_path;
+    std::string settings_path, menu_preview, frame_preview;
     for (int i=1;i<argc;++i)
     {
         const std::string_view option(argv[i]);
         if (option == "--boot-to-flight") { boot_to_flight=true; continue; }
         if (option == "--profile") { profile=true; continue; }
         if (option == "--record" && i+1<argc) { recording_path=argv[++i]; continue; }
+        if (option == "--settings-file" && i+1<argc) { settings_path=argv[++i]; continue; }
+        if (option == "--frame-preview" && i+1<argc) { frame_preview=argv[++i]; continue; }
+        if (option == "--menu-preview" && i+1<argc) { menu_preview=argv[++i]; continue; }
         if ((option != "--frames" && option != "--stage") || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number] [--boot-to-flight] [--record path] [--profile]\n"; return 1; }
+        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number] [--boot-to-flight] [--record path] [--profile] [--settings-file path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
         const std::string_view value(argv[++i]);
         auto& count = option == "--stage" ? start_stage : frame_limit;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
         if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || !count)
         { std::cerr << (option == "--stage" ? "Stage" : "Frame count") << " must be a positive integer.\n"; return 1; }
     }
+    if(!frame_preview.empty() && !frame_limit) throw std::runtime_error("Frame preview requires --frames");
     unsigned simulated_frames = 0;
     if (!recording_path.empty() && start_stage)
         throw std::runtime_error("Natural recording requires normal cold boot without --stage");
@@ -140,6 +147,63 @@ int main(int argc, char** argv)try
     if (!SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST))
         throw std::runtime_error(std::string("SDL texture scaling failed: ") + SDL_GetError());
 
+    if (settings_path.empty()) {
+        if (char* path=SDL_GetPrefPath("AfterBurner2-Recomp","AfterBurner2")) {
+            settings_path=std::string(path)+"settings.cfg"; SDL_free(path);
+        }
+    }
+    auto settings=Frontend::load_settings(settings_path,Frontend::pixel_art_available());
+    if (!Frontend::apply_settings(window,renderer,texture,settings)) {
+        std::cerr << "Saved presentation settings unavailable: " << SDL_GetError() << '\n';
+        settings={};
+        if(!Frontend::apply_settings(window,renderer,texture,settings)) throw std::runtime_error(SDL_GetError());
+    }
+    Frontend::SpriteScaler sprite_scaler;
+    SDL_Texture* sprite_texture=nullptr;
+    unsigned sprite_texture_factor=0;
+    uint64_t last_sprite_frame=UINT64_MAX;
+    const auto configure_sprite_texture=[&](const Frontend::Settings& value) {
+        if(value.sprites==Frontend::SpriteFilter::none) return true;
+        const auto factor=Frontend::sprite_factor(value.sprites);
+        auto* next=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,
+            SDL_TEXTUREACCESS_STREAMING,SCREEN_WIDTH*factor,SCREEN_HEIGHT*factor);
+        if(!next || !Frontend::apply_settings(window,renderer,next,value)) {SDL_DestroyTexture(next);return false;}
+        SDL_DestroyTexture(sprite_texture);sprite_texture=next;sprite_texture_factor=factor;last_sprite_frame=UINT64_MAX;
+        return true;
+    };
+    if(!configure_sprite_texture(settings)) {
+        std::cerr<<"Saved sprite filter unavailable: "<<SDL_GetError()<<'\n';
+        settings.sprites=Frontend::SpriteFilter::none;
+    }
+    game.capture_sprite_presentation(settings.sprites!=Frontend::SpriteFilter::none);
+    auto menu=std::make_unique<Frontend::NativeMenu>(renderer,roms,settings,Frontend::pixel_art_available());
+    menu->apply=[&](const Frontend::Settings& changed) {
+        const auto previous=menu->settings;
+        if(!Frontend::apply_settings(window,renderer,texture,changed)) {
+            std::cerr << "Presentation setting unavailable: " << SDL_GetError() << '\n';
+            Frontend::apply_settings(window,renderer,texture,previous); return false;
+        }
+        if(!configure_sprite_texture(changed)) {
+            Frontend::apply_settings(window,renderer,texture,previous);
+            return false;
+        }
+        game.capture_sprite_presentation(changed.sprites!=Frontend::SpriteFilter::none);
+        menu->notice.clear();
+        if(!Frontend::save_settings(settings_path,changed)) {
+            menu->notice="SETTINGS NOT SAVED";
+            std::cerr << "Cannot save frontend settings to " << settings_path << '\n';
+        }
+        return true;
+    };
+    if(!menu_preview.empty()) {
+        menu->open(game);menu->key(SDLK_DOWN);menu->key(SDLK_RETURN);menu->draw();
+        SDL_Surface* preview=SDL_RenderReadPixels(renderer,nullptr);
+        if(!preview || !SDL_SaveBMP(preview,menu_preview.c_str())) throw std::runtime_error(SDL_GetError());
+        SDL_DestroySurface(preview);menu.reset();SDL_DestroyTexture(sprite_texture);SDL_DestroyTexture(texture);
+        SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();return 0;
+    }
+    if(!frame_limit && !boot_to_flight && !start_stage) menu->open(game);
+
     SDL_AudioStream* audio_stream = nullptr;
     constexpr int sample_rate = GameSession::sample_rate;
     if (SDL_InitSubSystem(SDL_INIT_AUDIO))
@@ -161,9 +225,33 @@ int main(int argc, char** argv)try
     uint64_t previous_counter = SDL_GetPerformanceCounter();
     uint64_t profile_start = previous_counter;
     unsigned profile_frames=0, profile_displays=0;
-    double profile_core=0, profile_present=0;
+    double profile_core=0, profile_present=0, profile_filter=0;
+    unsigned filter_frames=0;
+    Frontend::Performance performance;
     double accumulated_seconds = tick_seconds;
     bool running = true;
+    bool suppress_controls=false;
+    auto reset_pacing=[&] {
+        accumulated_seconds=0; previous_counter=SDL_GetPerformanceCounter();
+        profile_start=previous_counter;profile_frames=profile_displays=0;profile_core=profile_present=0;
+        performance={};last_sprite_frame=UINT64_MAX;profile_filter=0;filter_frames=0;
+    };
+    auto sync_audio=[&] {
+        if(audio_stream) {
+            if(game.paused()) SDL_PauseAudioStreamDevice(audio_stream);
+            else SDL_ResumeAudioStreamDevice(audio_stream);
+        }
+    };
+    sync_audio();
+    auto menu_action=[&](Frontend::NativeMenu::Action action) {
+        if(action==Frontend::NativeMenu::Action::quit) {running=false;return;}
+        if(action==Frontend::NativeMenu::Action::close || action==Frontend::NativeMenu::Action::start) {
+            menu->close(game);
+            if(action==Frontend::NativeMenu::Action::start) {startup();if(audio_stream)SDL_ClearAudioStream(audio_stream);}
+            suppress_controls=true;reset_pacing();sync_audio();
+            SDL_SetWindowTitle(window,game.paused()?"AfterBurner2-Recomp — Paused (P to resume)":"AfterBurner2-Recomp");
+        }
+    };
     while (running)
     {
         SDL_Event event;
@@ -171,6 +259,25 @@ int main(int argc, char** argv)try
         {
             if (event.type == SDL_EVENT_QUIT)
                 running = false;
+            if(menu->is_open()) {
+                if(event.type==SDL_EVENT_KEY_DOWN && (!event.key.repeat || event.key.key==SDLK_UP || event.key.key==SDLK_DOWN))
+                    menu_action(menu->key(event.key.key));
+                if(event.type==SDL_EVENT_MOUSE_MOTION || event.type==SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                    SDL_ConvertEventToRenderCoordinates(renderer,&event);
+                    if(event.type==SDL_EVENT_MOUSE_MOTION) menu_action(menu->pointer(event.motion.x,event.motion.y,false));
+                    else if(event.button.button==SDL_BUTTON_LEFT)menu_action(menu->pointer(event.button.x,event.button.y,true));
+                }
+                continue;
+            }
+            if(event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && (event.key.key==SDLK_ESCAPE || event.key.key==SDLK_F1)) {
+                menu->open(game);reset_pacing();sync_audio();continue;
+            }
+            if(event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key==SDLK_F11) {
+                menu->fullscreen_toggle();reset_pacing();continue;
+            }
+            if(event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key==SDLK_F3) {
+                menu->stats_toggle();reset_pacing();continue;
+            }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_F5)
             {
                 game.restart();
@@ -178,9 +285,7 @@ int main(int argc, char** argv)try
                 if (start_stage) startup();
                 if (audio_stream) SDL_ClearAudioStream(audio_stream);
                 if (audio_stream) SDL_ResumeAudioStreamDevice(audio_stream);
-                accumulated_seconds = 0;
-                previous_counter = SDL_GetPerformanceCounter();
-                profile_start=previous_counter; profile_frames=profile_displays=0; profile_core=profile_present=0;
+                reset_pacing();
                 SDL_SetWindowTitle(window, "AfterBurner2-Recomp");
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_P)
@@ -190,18 +295,19 @@ int main(int argc, char** argv)try
                     if (game.paused()) SDL_PauseAudioStreamDevice(audio_stream);
                     else SDL_ResumeAudioStreamDevice(audio_stream);
                 }
-                accumulated_seconds = 0;
-                previous_counter = SDL_GetPerformanceCounter();
-                profile_start=previous_counter; profile_frames=profile_displays=0; profile_core=profile_present=0;
+                reset_pacing();
                 SDL_SetWindowTitle(window, game.paused() ? "AfterBurner2-Recomp — Paused (P to resume)" : "AfterBurner2-Recomp");
             }
-            if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)
-                running = false;
         }
 
         if (!running) break;
         const bool* keys = SDL_GetKeyboardState(nullptr);
         GameControls input;
+        if(suppress_controls) {
+            const SDL_Scancode controls[]{SDL_SCANCODE_RIGHT,SDL_SCANCODE_LEFT,SDL_SCANCODE_DOWN,SDL_SCANCODE_UP,
+                SDL_SCANCODE_LSHIFT,SDL_SCANCODE_SPACE,SDL_SCANCODE_Z,SDL_SCANCODE_X,SDL_SCANCODE_5,SDL_SCANCODE_RETURN};
+            suppress_controls=std::any_of(std::begin(controls),std::end(controls),[&](auto key){return keys[key];});
+        }
         // Preserve the existing keyboard precedence when opposite keys are
         // held. Other devices supply normalized axes through the same API.
         input.stick_x = keys[SDL_SCANCODE_RIGHT] ? 1 : keys[SDL_SCANCODE_LEFT] ? -1 : 0;
@@ -211,6 +317,7 @@ int main(int argc, char** argv)try
         input.missile = keys[SDL_SCANCODE_X];
         input.coin = keys[SDL_SCANCODE_5];
         input.start = keys[SDL_SCANCODE_RETURN];
+        if(menu->is_open() || suppress_controls) input={};
 
         if (game.paused())
         {
@@ -235,9 +342,10 @@ int main(int argc, char** argv)try
         unsigned catchup_frames = 0;
         while (!game.paused() && accumulated_seconds >= tick_seconds && catchup_frames++ < 2)
         {
-            const auto core_start=profile ? SDL_GetPerformanceCounter() : 0;
+            const bool measure=profile || menu->settings.stats!=Frontend::Stats::off;
+            const auto core_start=measure ? SDL_GetPerformanceCounter() : 0;
             advance(input);
-            if(profile) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency;
+            if(measure) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency;
             ++profile_frames;
             // Backpressure bounds playback latency without dropping sound.
             // The board still advances when no speaker device is available.
@@ -284,16 +392,41 @@ int main(int argc, char** argv)try
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-        SDL_RenderTexture(renderer, texture, nullptr, nullptr);
-        const auto present_start=profile ? SDL_GetPerformanceCounter() : 0;
+        const auto planes=game.sprite_presentation();
+        if(menu->settings.sprites!=Frontend::SpriteFilter::none && planes.ready && !menu->is_open()) {
+            const auto factor=Frontend::sprite_factor(menu->settings.sprites);
+            if(!sprite_texture || sprite_texture_factor!=factor)
+                throw std::runtime_error("Sprite texture configuration lost");
+            if(last_sprite_frame!=game.info().number) {
+                const auto filter_start=SDL_GetPerformanceCounter();
+                const auto pixels=sprite_scaler.compose(planes.background,planes.sprites,SCREEN_WIDTH,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels);
+                if(!SDL_UpdateTexture(sprite_texture,nullptr,pixels.data(),SCREEN_WIDTH*factor*4))
+                    throw std::runtime_error(SDL_GetError());
+                profile_filter+=(SDL_GetPerformanceCounter()-filter_start)*1000.0/counter_frequency;
+                ++filter_frames;
+                last_sprite_frame=game.info().number;
+            }
+            SDL_RenderTexture(renderer,sprite_texture,nullptr,nullptr);
+        } else SDL_RenderTexture(renderer, texture, nullptr, nullptr);
+        if(menu->is_open())menu->draw();
+        else menu->draw_stats(performance,game.paused());
+        if(!frame_preview.empty() && frame_limit && simulated_frames>=frame_limit) {
+            auto* preview=SDL_RenderReadPixels(renderer,nullptr);
+            if(!preview || !SDL_SaveBMP(preview,frame_preview.c_str())) throw std::runtime_error(SDL_GetError());
+            SDL_DestroySurface(preview);frame_preview.clear();
+        }
+        const auto present_start=SDL_GetPerformanceCounter();
         SDL_RenderPresent(renderer);
         ++profile_displays;
-        if(profile) {
+        {
             const auto now=SDL_GetPerformanceCounter();
             profile_present+=(now-present_start)*1000.0/counter_frequency;
             const double seconds=(now-profile_start)/counter_frequency;
             if(seconds>=1.0) {
-                if(!game.paused()) {
+                performance={profile_frames/seconds,profile_displays/seconds,seconds*1000/profile_displays,
+                    profile_frames?profile_core/profile_frames:0,profile_present/profile_displays,
+                    filter_frames?profile_filter/filter_frames:0};
+                if(profile && !game.paused()) {
                     const auto title=std::string("AfterBurner2-Recomp — simulation ")+std::to_string(profile_frames/seconds)+" FPS";
                     SDL_SetWindowTitle(window,title.c_str());
                     std::cout<<"Application performance: simulation_fps="<<profile_frames/seconds
@@ -301,12 +434,14 @@ int main(int argc, char** argv)try
                              <<" board_ms="<<(profile_frames?profile_core/profile_frames:0)
                              <<" present_wait_ms="<<profile_present/profile_displays<<'\n';
                 }
-                profile_start=now; profile_frames=profile_displays=0; profile_core=profile_present=0;
+                profile_start=now; profile_frames=profile_displays=0; profile_core=profile_present=0; profile_filter=0;filter_frames=0;
             }
         }
     }
 
     if (audio_stream) SDL_DestroyAudioStream(audio_stream);
+    menu.reset();
+    SDL_DestroyTexture(sprite_texture);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

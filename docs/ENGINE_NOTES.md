@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-11) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-12) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -8601,3 +8601,289 @@ older documented input-race skips are not erased by zero-skip recovery or
 observation results. The required `test`, `verify-stage1` and complete
 `oracle-test` results above are all passing. No ROM bytes or capture files
 are added to the tracked changes.
+
+### Multi-credit continue display stop at `$C618` (2026-10-11)
+
+Live play reported `unported caller instruction at PC 50712` at a stage-4
+continue screen. Decimal 50712 is `$C618`, the ROM's `ADDQ.L #2,A0` in
+the `$C600` credit display controller. `$C60E/$C614` select it when the
+credit byte is at least two; the earlier one-credit continue recording
+never reached this path. `$C624/$C62A` then select the plural-credit text
+descriptor at `$C63C`, with `$C642` calling the existing `$137D2` text
+renderer. The fix appends exactly these three literal instructions.
+All 12,382 existing recovery instruction bodies remain byte-identical.
+
+A cold-board physical-input reproduction adds two coin pulses to the earlier
+continue sequence. The old native build stops at the same `$C618` after
+7,436 completed frames, ordered slot 2, with two remaining credits. This
+reproduces the instruction failure, not the user's exact stage-4 inputs.
+The retained discovery artifacts use `build/oracle/continue_multi_before`
+and `build/oracle/continue_multi_requested.inputs`.
+The reusable `continue-multi-credit` scenario supplies three coin pulses
+at requested frames 4800–4811, 4824–4835 and 4848–4859, with the existing
+Start pulse at 4860–4871. It uses the default `FF/FF/DD` switches and
+10,000 frames, with no game-state injection. Native replay uses MAME's
+actual observed physical pins, preserving input-update latency.
+
+Independent original-ROM fixtures at `$C618/$C63C/$C642` exercise both CCR
+extremes: **6/6 identical, zero different/skipped, 16 bus phases**.
+All three new pointer/text/call-return mutations reject after a passing
+baseline; logs are `build/oracle/continue_credit.verify.log` and
+`build/oracle/continue_credit.mutations.log`. The original complete corpus
+is preserved as `cpu_recovery_before_multi_credit.bin` before merging
+the six unmodified records. Complete recovery now passes **12,385 PCs,
+1,252 branches with both outcomes and 77,792 MAME fixtures**, zero
+differences/skips (`build/workflow/20261011T202618.505240Z/01-oracle-recovery.log`).
+All 120 earlier mutation definitions remain, alongside the three new ones;
+their last full run is the preceding checkpoint, not a new 123-mutation run.
+
+Focused `test` (48.02 s) and `verify-stage1` (78.07 s) pass at
+`build/workflow/20261011T202613.753296Z/`. The native release rebuild passes
+in 40.99 s and headless replay rebuild in 30.95 s at
+`build/workflow/20261011T202719.311646Z/`; the 120-frame SDL dummy smoke
+also exits successfully. The affected natural replay completes all
+10,000 frames in 111.74 s (`build/workflow/20261011T202840.460216Z/`).
+All ten timestamp/RAM columns match ordinary MAME frame for frame, zero
+differences/skips, and all five observation mutations reject
+(`build/workflow/20261011T203052.179492Z/`). The former `$C618` stop is
+crossed with two remaining credits; this window also completes game-over,
+ranking and the return to the ROM's credit/start modes. The complete directed
+stage sweep passes all 23 ordered slots, 600 input-window frames each,
+**13,800 frames with no stops** (459.04 s,
+`build/workflow/20261011T202719.311646Z/03-stage-input-sweep.log`). This
+retains the sweep's debug-entry/discovery limits. Full merge/milestone gates
+remain governed by the validation cadence; unrelated long ending recordings
+are not repeated for this local literal-port fix.
+
+### Native presentation settings
+
+The SDL frontend now provides a ROM-font Start/Options/Quit menu and presentation
+settings for SDL scaling, fullscreen and statistics. This is separate from the
+translated board and its native raster. Menu pause restores prior pause state,
+clears wall-clock debt on transitions and suppresses held menu controls until
+released. Preferences are frontend-owned and versioned; no ROM data is stored
+in source. Focused validation uses `test-native-settings` and `verify-native-menu`
+(persistence, SDL option application, navigation and board frame/time isolation).
+Commands and controls are in WORKFLOW's Native settings menu section.
+
+Validation: `build/workflow/20261011T210054.925466Z/` records native release,
+menu integration, `test` and `verify-stage1` passes (including 781 exact session
+RGB frames and identity/processed audio). Final presentation-only cursor changes
+were rebuilt and checked by `verify-native-menu` in
+`build/workflow/20261011T210217.486274Z/`. A 120-frame dummy-video, unavailable-audio
+smoke completed with measured simulation around 59.6 FPS; the Options preview is
+`build/oracle/native_options.png`. A macOS desktop launch succeeded outside the
+sandbox, but computer-use inventory could not bind the standalone executable,
+so desktop keyboard/fullscreen interaction remains a manual check. CMake target
+wiring was inspected; CMake is unavailable here. No whole-host oracle acceptance
+is claimed for these frontend checks; the retained continue-screen port evidence
+above is separate.
+
+### Stage-1 full-throttle/cannon report at `$14D62` (2026-10-12)
+
+Live play reported decimal PC 85346 while holding Space and Z (full throttle
+and cannon in the SDL frontend). `$14D62` is `MOVEQ #10,D0`, the fallback
+following `$14D60`'s signed-positive branch in the weapon allocation/launch
+path. When the computed word is nonpositive, the original ROM replaces the
+whole D0 register with ten, clears N/Z/V/C, retains X and continues at `$14D64`.
+Exactly one literal recovery instruction is added; all preceding 12,385 bodies
+are unchanged, including the earlier continue-screen fix.
+
+Independent MAME fixtures exercise both CCR extremes with a nonzero high D0
+word: **2/2 identical, zero different/skipped, two bus phases**.
+Changing ten to eleven or retaining old condition flags is rejected after a
+passing baseline (`build/oracle/stage1_weapon.verify.log` and
+`stage1_weapon.mutations.log`). The previous complete corpus is preserved as
+`cpu_recovery_before_stage1_weapon.bin`, and the unmodified new fixtures are
+merged into the retained corpus. Complete recovery passes **12,386 PCs,
+1,252 branches with both outcomes and 77,794 fixtures**, zero differences/skips.
+The capture log is `build/workflow/20261011T210707.406664Z/`; complete replay
+and coverage are in `build/workflow/20261011T210837.464019Z/01-oracle-recovery.log`.
+All previous mutations remain; this focused repair does not claim a new full
+125-mutation run or whole-host acceptance.
+
+The reusable `cannon-boost` discovery scenario holds cannon and physical
+throttle 255 from frame 480, with default `FF/FF/DD` switches and the existing
+cold-boot coin/Start pulses. A 3,600-frame pre-fix run completes; it does not
+reproduce the user's exact trajectory or demonstrate natural execution of the
+faulting fallback. The missing instruction itself is independently verified
+above. The matching ordinary MAME capture uses fresh persistent state and
+emits actual physical pins for native replay, preserving input update latency.
+Artifacts are under ignored `build/oracle/stage1_cannon_boost*`.
+
+Focused `test` (37.82 s) and `verify-stage1` (79.36 s) pass at
+`build/workflow/20261011T210837.464019Z/`. Native release (41.78 s) and replay
+build (28.51 s) pass at `build/workflow/20261011T210910.539930Z/`; the rebuilt
+release also completes a 120-frame dummy-video/unavailable-audio smoke.
+Replay of MAME's actual pins completes all 3,600 frames in 40.20 s at
+`build/workflow/20261011T211025.138111Z/`. All ten timestamp/RAM columns match
+ordinary MAME frame for frame, **3,600/3,600 identical, zero skipped**; all five
+observation mutations reject at `build/workflow/20261011T211115.728986Z/`.
+This validates the bounded scenario observations, not full CPU/device/RGB/audio
+identity or recreation of the user's fault trajectory. The native executable
+contains the new port and is ready for manual retry; see the daily main
+checkpoint below for commit validation.
+
+### Ground-target award queue stop at `$E570` (2026-10-12)
+
+Live play reported decimal PC 58736 after shooting the first ground object in
+the first canyon. `$E570` is `SUBQ.B #1,($904E).W`, reached from `$E568/$E56C`
+when the award queue at `$904F` is nonempty. Earlier input coverage had verified
+the empty-queue return but not this consumer. The connected `$E570..$E5AE`
+path adds exactly 18 literal instructions: countdown/borrow dispatch, queue pop
+and compaction, signed entry/count extension, table index, score publication
+through `$CD12`, sound command through `$B84C`, queue length decrement and
+selection of the existing display rebuild/clear path. Original ROM tables are
+read at runtime. All preceding 12,386 recovery bodies remain unchanged.
+
+The independent fixture increment covers all 18 PCs, both outcomes of its two
+conditional branches and DBF, plus countdown/queue-count byte values 0, 1,
+$7F, $80 and $FF with both CCR extremes and adjacent-byte sentinels.
+**146/146 fixtures identical, zero different/skipped, 356 bus phases**
+(`build/oracle/ground_award.verify.log`). The capture and build log is
+`build/workflow/20261011T211806.777457Z/`. The previous complete corpus is
+retained as `cpu_recovery_before_ground_award.bin`; the new records are merged
+without modification. Complete recovery passes **12,404 PCs, 1,255 branches
+with both outcomes and 77,940 fixtures**, zero differences/skips at
+`build/workflow/20261011T211945.740666Z/01-oracle-recovery.log`.
+
+The `ground-awards` physical-input discovery scenario uses the existing Easy /
+99-credit stock setup, starts through physical coin/Start pulses, then varies
+stick position while holding full throttle/cannon and pulsing missiles. It
+runs 12,000 frames with fresh persistent state and no game-state injection.
+It attempts ground targets; the scenario name is not proof of a successful hit.
+Ordinary MAME records actual physical pins for native replay. Captures,
+observations and replay logs remain under ignored `build/oracle/ground_awards*`.
+
+Focused `test` (50.01 s) and `verify-stage1` (93.75 s) pass at
+`build/workflow/20261011T211945.740666Z/`; the latter retains 781 exact session
+RGB frames and identity/processed audio. Native release (48.29 s) and replay
+build (36.32 s) pass at `build/workflow/20261011T212146.758307Z/`, followed by
+a successful 120-frame dummy-video/unavailable-audio smoke.
+
+The pre-fix 12,000-frame discovery window completes without reproducing the
+reported stop. Its passive MAME census (`build/workflow/20261011T212103.991541Z/`)
+contains 11,040 main/758 sub instruction sites and none of the new consumer
+PCs (nor `$E542`'s producer). Thus the run does not establish a ground-target
+award or reproduce the user's canyon trajectory. Independent instruction
+fixtures above verify the nonempty consumer. For a manual retry,
+`./build/afterburner2-release --record build/oracle/manual_ground.inputs`
+retains physical input rows, including a failing attempted frame, if another
+path is exposed. ROMs and recordings remain ignored.
+
+All **18 new instruction mutations reject** after the passing MAME baseline
+(`build/oracle/ground_award.mutations.log`), covering countdown, branch, queue
+addresses/increments/copy/loop, signed extension, table indexing, score
+publication/call return, sound command/call return and display/empty-queue
+selection. The previous 125 recovery mutation definitions remain, for 143 total;
+this focused repair does not claim a fresh full mutation or whole-host run.
+
+Final native replay of ordinary MAME's actual pins completes all 12,000 frames
+in 138.42 s (`build/workflow/20261011T212331.787151Z/`). All ten timestamp/RAM
+columns match, **12,000/12,000 identical, zero skipped**, and all five observation
+mutations reject (`build/workflow/20261011T212602.105326Z/`). These bounded
+observations preserve the census limits above; they do not establish natural
+award-consumer execution or full CPU/device/RGB/audio identity. The rebuilt
+native executable includes the connected consumer and is ready for manual
+retry. See the daily main checkpoint below for commit validation.
+
+
+## Sprite-only native presentation filters (2026-10-12)
+
+The native Options menu now has a separate Sprites row: Off, EPX 2x, Scale3x,
+2xSaI, Super2xSaI and ScaleFX 3x. Off remains the default, with no layer capture.
+GameSession's opt-in observers copy the existing pre-sprite background and
+priority-resolved visible sprite plane; they read the native hardware raster
+without rerendering its scaler or writing feedback. Native frame RGB and audio
+remain the reference. Filtered sprite coverage is composited over nearest-scaled
+backgrounds; native foreground tile/text coverage and palette shadows are
+protected. Sprite-based scenery also participates. Final SDL window scaling
+remains independent; Linear can intentionally soften the completed image.
+
+EPX/Scale3x implement published ScaleNx rules. SaI preserves Snes9x's rule order,
+with clamped borders and premultiplied ARGB8888 interpolation; its noncommercial
+license/attribution and unchanged RGB565 reference are retained. ScaleFX adapts
+all five MIT-licensed upstream GLSL passes with float intermediate planes,
+default thresholds and a documented opaque/transparent alpha distance. This is
+not an approximate EPX mode labelled ScaleFX. xBRZ remains unavailable because
+its published GPL implementation's named exceptions do not include this project;
+no incompatible source or project relicensing was introduced.
+
+Validation on the final filter/session tree:
+
+- `test` (4.69 s), `verify-stage1` (45.67 s), `verify-native-menu` (32.54 s), and
+  native optimized build (33.03 s): `build/workflow/20261011T214857.371883Z/`.
+  The session check compares all 781 native RGB frames, reconstructs each from
+  presentation planes, compares original/processed audio, and exercises late
+  capture enable/disable while paused plus restart observer rebinding.
+- ROM-free filter checks cover transparent/solid borders, ScaleNx corners,
+  premultiplied alpha, protected foregrounds, invalid planes and input isolation.
+  Both SaI modes match unchanged upstream RGB565 routines on 12 synthetic inputs.
+  ScaleFX fingerprints retain six independently rendered synthetic GLSL outputs.
+- The offscreen macOS OpenGL reference check compares 6,912 output pixels on
+  each of six synthetic inputs: **41,472/41,472 identical, zero skipped**. Four
+  use unmodified upstream GLSL; two apply only the same documented alpha metric.
+  The optional `verify-scalefx-reference` target reproduces this comparison.
+- Cold and expanded whole-host MAME checks pass (45.39 s and 46.28 s):
+  `build/workflow/20261011T215028.942578Z/`. They retain 603/781 native frames,
+  43,223,040/55,982,080 RGB pixels, CPU/bus/device/audio and bank/control checks,
+  with zero differences/skips. This is focused validation, not a fresh complete
+  oracle/mutation or full-credit acceptance run.
+- The SDL application renders every filter using dummy video/audio after the
+  normal 600-frame physical boot and two subsequent frames. All six runs exit
+  successfully; every filtered image differs from Off, while all 100,800 pixels
+  of the top HUD test region are identical to Off. Captures and configuration
+  files are ignored under `build/oracle/sprite-*`. This does not claim every HUD
+  layout or full-game presentation has been inspected.
+
+Synthetic full-frame CPU scaling/composition measured approximately 0.75 ms
+EPX, 2 ms Scale3x, 1.2 ms 2xSaI, 1.4 ms Super2xSaI and 12 ms ScaleFX here;
+these finite timings exclude gameplay and do not guarantee 60 fps. Detailed
+stats now report filter/upload time. The app reuses the filtered texture across
+unchanged physical frames, including pause. Source/license provenance is in
+`src/main/frontend/scalers/README.md`. Captures are not committed.
+
+The final rebuilt executable also completes a 120-frame native desktop smoke
+using SDL 3.4.16's Metal renderer with ScaleFX and vsync active (log:
+`build/oracle/sprite-scalefx-metal.log`). Its two one-second windows measure
+55.19/59.52 simulation FPS and 27.60/29.76 display FPS, with approximately
+10.7 ms/core frame. This exposes a current presentation cost: ScaleFX can retain
+near-native simulation cadence while displaying fewer frames. EPX is the lighter
+starting option; these measurements are not sustained full-game benchmarks.
+The final cleanup-only optimized rebuild passes in 31.88 s at
+`build/workflow/20261011T215153.459580Z/`.
+
+
+## Daily main checkpoint (2026-10-12)
+
+This checkpoint combines the three reported host-stop repairs (22 new literal
+instructions), the ROM-font settings menu, persisted SDL display/statistics
+preferences, and the optional sprite-only presentation path with five filters.
+The README, roadmap, workflow and enhancement contracts now describe the launch
+controls, completed work, filter licenses/performance and remaining acceptance
+limits. No ROM assets, captures, screenshots or local validation logs are included
+in the commit. xBRZ remains pending compatible licensing; CPU ScaleFX's measured
+presentation cost remains a documented limitation.
+
+The complete `required` profile passes on this checkpoint: `test` 4.74 s,
+`verify-stage1` 45.51 s and `oracle-test` 2653.29 s, at
+`build/workflow/20261011T220049.037304Z/`. All **143 retained recovery mutations**
+and **15 whole-host ownership mutations** reject, alongside the other retained
+oracle mutation checks. The recovery corpus retains 12,404 PCs, both outcomes
+at 1,255 branches and 77,940 fixtures. Existing routine-level input-race skips
+remain documented (for example, 1,198/1,200 sub-sprite passes identical with two
+input-change skips, and 937/1,200 scenery records identical with 263 input-change
+skips in one older corpus); they are not erased by zero-skip whole-host/recovery
+checks. This main-push gate does not close standard single-credit completion,
+whole-credit CPU/device/RGB/audio acceptance, high-score entry or NVRAM coverage.
+
+Whitespace-only normalization of the imported/adapted scaler sources is followed
+by `test-sprite-filters` (3.32 s), `verify-native-menu` (0.48 s), and optimized
+native build (36.46 s), all passing at
+`build/workflow/20261011T220319.186745Z/`. Shader reference and native Metal
+smoke evidence are recorded in the preceding filter section. The engine/oracle
+sources and captures are unchanged by this formatting cleanup.
+
+The complete ROM-free `test` target is rerun after the scaler formatting cleanup
+and passes in 4.31 s at `build/workflow/20261011T224559.697101Z/`. The final staged
+patch passes `git diff --check`; publication excludes ROM-derived outputs.

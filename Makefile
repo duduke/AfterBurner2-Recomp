@@ -1439,6 +1439,19 @@ play-native: native-release
 	./build/afterburner2-release --boot-to-flight --profile $(if $(STAGE),--stage $(STAGE))
 .PHONY: native-release play-native
 
+build/native_settings_regression: tests/native_settings_regression.cpp src/main/frontend/native_settings.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
+test-native-settings: build/native_settings_regression
+	./build/native_settings_regression
+test: test-native-settings
+build/native_menu_integration: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/native_menu_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-native-menu: build/native_menu_integration
+	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/native_menu_integration
+-include build/threejs_obj/tests/native_menu_integration.d
+.PHONY: test-native-settings verify-native-menu
+
 build/oracle_native_release_recovery: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/oracle_cpu_coverage.cpp $(filter-out src/main/main.cpp,$(SRCS))))
 	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
 verify-native-release-recovery: build/oracle_native_release_recovery oracle-recovery-generated-check
@@ -1456,3 +1469,16 @@ test-video-clip-mutations: test-video-clips
 	python3 tools/oracle/check_video_clip_mutations.py
 test: test-video-clip-mutations
 .PHONY: test-video-clips test-video-clip-mutations
+
+build/sprite_filter_regression: tests/sprite_filter_regression.cpp src/main/frontend/sprite_filter.hpp src/main/frontend/native_settings.hpp $(wildcard src/main/frontend/scalers/*) $(wildcard tests/scalers_reference/*)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main -Itests/scalers_reference $< -o $@
+test-sprite-filters: build/sprite_filter_regression
+	./build/sprite_filter_regression
+test: test-sprite-filters
+# Supplemental comparison to the original five GLSL passes (macOS/OpenGL).
+build/check_scalefx_reference: tools/scalers/check_scalefx_reference.cpp src/main/frontend/sprite_filter.hpp $(wildcard src/main/frontend/scalers/*)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS) -framework OpenGL
+verify-scalefx-reference: build/check_scalefx_reference
+	./build/check_scalefx_reference
+.PHONY: test-sprite-filters verify-scalefx-reference

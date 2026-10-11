@@ -55,7 +55,7 @@ regression gates still run them; `--only` is available for focused mutation work
 The default is `-j min(8, logical CPU count)`; override with `-j N` when
 sharing the machine. Do not change emulated clocks or weaken fixture/mutation
 coverage to reduce wall time. The latest complete oracle suite measured
-2270.84 seconds for the natural-transition checkpoint; runtime varies with
+2653.29 seconds for the 2026-10-12 daily main checkpoint; runtime varies with
 coverage and load.
 `benchmark-cpu-continuation` measures host synchronization overhead, not game FPS.
 
@@ -83,6 +83,49 @@ before launching large captures. No cleanup runs automatically.
 No additional service or dependency is needed for this workflow: Python,
 make and compiler dependency files provide the improvements locally. Full
 logs, ROM images and captures remain under gitignored `build/`.
+
+## Native settings menu
+
+Build with `make native-release` and run `./build/afterburner2-release`
+from the repository root. The initial menu offers Start Game, Options and Quit;
+Start Game uses the existing physical coin/start boot sequence. Esc or F1 opens
+the menu during play. Use arrows and Enter/Space, or click a row; Left/Right
+changes an option. Esc returns from Options, then resumes the previous session.
+Opening the menu pauses the board and audio and preserves a pre-existing pause.
+P still pauses/resumes and F5 restarts outside the menu.
+
+Options provides nearest-neighbour, smooth (SDL linear), integer nearest-neighbour
+and SDL Pixel Art scaling (available with SDL 3.4+), a separate sprite filter,
+desktop fullscreen and Off/FPS/Detailed statistics. Scaling preserves the native 320×224 aspect ratio;
+integer mode uses whole-number multiples. F11 toggles fullscreen and F3 cycles
+statistics during play. Detailed statistics show simulated and displayed FPS,
+wall time per displayed frame, CPU time per simulated frame, sprite filter/upload
+time and presentation time (including vsync wait). Values refresh once per second.
+
+The Sprites row selects Off (default), EPX 2x, Scale3x, 2xSaI, Super2xSaI or
+ScaleFX 3x. These filter the visible hardware sprite plane after native zoom,
+then compose it over nearest-scaled road/tiles. Sprite-drawn scenery is included;
+foreground tile/text coverage and palette shadows remain native. Window scaling
+still applies to the completed image, so choose Nearest or Integer to retain a
+crisp HUD. xBRZ awaits a compatible licensing route; it is not offered as an
+unimplemented or approximate mode. The SaI pair uses standard names rather than
+the unrelated CrispSal/SmoothSal names. ScaleFX uses CPU passes and can reduce
+frame rate on slower machines; use the detailed Filter timing to compare modes.
+
+Settings save immediately to `settings.cfg` in SDL's per-user preference directory
+for organization `AfterBurner2-Recomp`, application `AfterBurner2`.
+`--settings-file path` overrides that location. Unsupported or invalid settings
+fall back to defaults; failed changes leave the previous selection and show a
+notice. ROM fonts are decoded at runtime for the menu and overlay, independently
+of the board's text RAM and palette. No extracted assets are checked in.
+
+`--boot-to-flight`, `--stage` and bounded `--frames` runs bypass the initial menu.
+`--menu-preview image.bmp` renders Options and exits for visual inspection.
+`--frame-preview image.bmp --frames count` saves the last presented bounded frame;
+use an ignored path under `build/oracle/` for any ROM-derived image.
+Use `python3 tools/workflow.py run test-native-settings test-sprite-filters verify-native-menu`
+for persistence and ROM-backed SDL menu checks; the latter uses dummy video/audio.
+These cover navigation, SDL options, rejection, Start/Quit and pause/frame isolation.
 
 For native desktop play use `make play-native`; this builds the release binary,
 boots with physical coin/start pulses and shows measured FPS. Run
@@ -219,6 +262,11 @@ MAME field overrides have input-update latency. Keep the original requested
 controls separate from the actual port observations in `.mame.csv.inputs`;
 native comparison uses those observed physical pins. The replay script
 rejects unsupported service buttons/ADC channels and mismatched switch values.
+The `continue-multi-credit` scenario inserts three coin pulses during the
+first life-exhaustion/continue window, exercising the plural-credit display
+when two credits remain at a later continue screen. Use `--frames 10000`
+and the same capture/replay/comparison commands above. The original `continue`
+scenario remains unchanged.
 `natural-credit` builds then replays; build once and use
 `natural-credit-replay` for independent concurrent runs because ordinary
 make invocations share release configuration/object files.
@@ -351,3 +399,14 @@ Audio queues original signed 16-bit stereo PCM into an SDL3 playback stream;
 the input-side queue still bounds latency to approximately 100 ms. P pauses
 the stream device, F5 clears queued PCM and restarts the selected board, and
 a missing audio driver permits gameplay without a speaker.
+
+For the stage-1 full-throttle/cannon regression window, generate physical inputs
+with `python3 tools/natural_inputs.py build/oracle/cannon_boost.inputs --frames 3600 --scenario cannon-boost`. This holds the same actions as
+Space+Z from frame 480 and retains cold boot/default switches. It is a bounded
+discovery window, not a recording of a user's exact input trajectory.
+
+`--scenario ground-awards --frames 12000` uses the existing Easy/99-credit stock
+boot, then full throttle/cannon, varying stick position and missile pulses for
+ground-target discovery. It changes physical inputs/DIP settings only. Verify
+actual award-queue execution before claiming ground-target coverage; it does
+not reproduce a user's exact trajectory by itself.

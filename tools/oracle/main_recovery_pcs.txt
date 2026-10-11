@@ -12499,3 +12499,31 @@
 01222c
 012232
 012236
+
+# Multi-credit display continuation reported at $C618 on the continue screen.
+00c618
+00c63c
+00c642
+
+# Stage-1 weapon launch distance clamp, reported PC 85346.
+14d62
+
+# Ground-target award queue consumption and score/sound path.
+e570
+e574
+e578
+e57c
+e57e
+e580
+e582
+e584
+e586
+e58a
+e58c
+e590
+e594
+e59a
+e59e
+e5a4
+e5aa
+e5ae

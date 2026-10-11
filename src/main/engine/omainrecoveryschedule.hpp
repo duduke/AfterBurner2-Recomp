@@ -3,7 +3,7 @@
 #include <cstdint>
 // Generated instruction manifest; shared capture/coverage definitions.
 struct OMainRecoveryInstruction { uint32_t pc; unsigned phases; int offset; unsigned tail,source,branch; };
-inline constexpr std::array<OMainRecoveryInstruction,12382> main_recovery_instructions{{
+inline constexpr std::array<OMainRecoveryInstruction,12404> main_recovery_instructions{{
     {0x402,4,0,0,0,0},
     {0x406,4,0,0,0,0},
     {0x40c,2,0,0,0,0},
@@ -12386,6 +12386,28 @@ inline constexpr std::array<OMainRecoveryInstruction,12382> main_recovery_instru
     {0x1222c,5,0,0,0,0},
     {0x12232,4,2,0,0,0},
     {0x12236,2,-1,0,0,4},
+    {0xc618,1,0,4,0,0},
+    {0xc63c,3,0,0,0,0},
+    {0xc642,4,2,0,0,0},
+    {0x14d62,1,0,0,0,0},
+    {0xe570,4,0,0,0,0},
+    {0xe574,2,-1,0,0,4},
+    {0xe578,2,0,0,0,0},
+    {0xe57c,1,0,0,0,0},
+    {0xe57e,2,0,0,0,0},
+    {0xe580,1,0,0,0,0},
+    {0xe582,1,0,0,0,0},
+    {0xe584,3,0,0,0,0},
+    {0xe586,2,2,0,0,4},
+    {0xe58a,1,0,8,0,0},
+    {0xe58c,2,2,0,0,0},
+    {0xe590,6,0,0,0,0},
+    {0xe594,5,0,0,0,0},
+    {0xe59a,2,0,0,0,0},
+    {0xe59e,5,0,0,0,0},
+    {0xe5a4,3,0,0,0,0},
+    {0xe5aa,4,0,0,0,0},
+    {0xe5ae,2,-1,0,0,2},
 }};
 inline const OMainRecoveryInstruction* main_recovery_instruction(uint32_t pc) {
     for(const auto& i:main_recovery_instructions)if(i.pc==pc)return &i;return nullptr;
