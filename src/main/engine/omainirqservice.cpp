@@ -580,6 +580,33 @@ OMainIrqService::Instruction OMainIrqService::caller_step(MainBus& b,const Conte
         idle(cycles*2-4);r.d[reg]=((dividend%divisor)<<16)|(dividend/divisor);nz(dividend/divisor);
         final(target+2);next=target;
     };
+    // Original $16ADA is DIVS.W #3,D0. MAME divs_w_imm16_dd_df's
+    // positive-divisor dvs02..dvs1c path: early magnitude overflow, fifteen
+    // restoring steps plus the last bit, then signed quotient/remainder.
+    // Negative/zero divisors are outside this literal ROM site's operands.
+    auto divide_signed_positive=[&](unsigned reg,uint16_t divisor,uint32_t target){
+        if(!divisor || divisor&0x8000)throw std::runtime_error("unported DIVS divisor");
+        const auto original=r.d[reg];const bool negative=original&0x80000000u;
+        const uint32_t magnitude=negative?uint32_t(-int64_t(int32_t(original))):original;
+        if((magnitude>>16)>=divisor){
+            idle(negative?14:12);sr=(sr&0xfff0)|0xa;final(target+2);next=target;return;
+        }
+        unsigned clocks=116+(negative?6:0);
+        uint32_t partial=magnitude;const uint32_t high=uint32_t(divisor)<<16;
+        for(unsigned i=0;i<15;++i){
+            partial<<=1;
+            if(partial>=high)partial-=high;else clocks+=2;
+        }
+        idle(clocks);
+        const int64_t quotient=int64_t(int32_t(original))/divisor;
+        if(quotient<-32768 || quotient>32767)sr=(sr&0xfff0)|0xa;
+        else{
+            const int64_t remainder=int64_t(int32_t(original))%divisor;
+            r.d[reg]=(uint32_t(uint16_t(remainder))<<16)|uint16_t(quotient);
+            nz(uint16_t(quotient));
+        }
+        final(target+2);next=target;
+    };
     auto bcd_register=[&](unsigned src,unsigned dst,bool subtract){
         const unsigned a=r.d[src]&255,b=r.d[dst]&255,carry=bool(sr&16);unsigned result,raw;
         if(subtract){unsigned low=(b&15)-(a&15)-carry;raw=uint16_t(b-a-carry);result=raw;

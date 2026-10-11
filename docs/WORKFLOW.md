@@ -85,6 +85,21 @@ No additional service or dependency is needed for this workflow: Python,
 make and compiler dependency files provide the improvements locally. Full
 logs, ROM images and captures remain under gitignored `build/`.
 
+For native desktop play use `make play-native`; this builds the release binary,
+boots with physical coin/start pulses and shows measured FPS. Run
+`python3 tools/workflow.py run benchmark-native benchmark-native-extended`
+with other heavy tests stopped to measure board/render costs. The extended
+profile covers 960 flight/weapon frames; it excludes window presentation and
+does not prove full-credit gameplay. `verify-native-release-recovery` checks
+directed instruction fixtures with the same release compiler options.
+
+Recovery gates retain `build/oracle/cpu_recovery.bin` and also require the
+current complete manifest capture `build/oracle/cpu_recovery_complete.bin`.
+If the latter is missing or its plan changed, run
+`python3 tools/workflow.py run oracle-capture-recovery oracle-recovery`.
+The capture target preserves an existing baseline. Both captures must replay
+successfully before their combined coverage/mutations count as evidence.
+
 
 ## Native sound execution
 
@@ -244,3 +259,111 @@ The 121-frame cold fixture contains only silence, so the speaker gain mutant
 uses the 603-frame gameplay fixture's nonzero stream. A silent gain mutation
 is not counted as a successful rejection. CMake exposes the new oracles under
 `ORACLE_TESTS` and the native game integration under `STAGE1_ROM_TESTS`.
+
+For the Space-input `$E514` stop, the retained recovery oracle and its
+`full-throttle-speed-clamp` mutation pin the exact instruction. Run
+`python3 tools/workflow.py run benchmark-native-full-throttle` for a separate
+960-frame physical input smoke; its finite path does not naturally cover
+the clamp. Rebuild with `native-release`, then launch `make play-native`.
+
+For the left/right `$7784` stop, run
+`python3 tools/workflow.py run benchmark-native-rolls`: 960 flight frames
+alternate full horizontal endpoints with full then neutral throttle.
+The exact orientation bit and neighbouring table selection are independently
+pinned by recovery fixtures and mutations; the replay's passive entry counts
+report which new paths it actually reaches.
+
+For the missile-input `$19C78` stop, run
+`python3 tools/workflow.py run benchmark-native-missiles`: 32 press/release
+windows over 960 flight frames, neutral then full throttle. Its passive
+indicator entry count distinguishes natural reach from the independently
+verified exact-PC countdown fixtures. Rebuild `native-release` before
+launching `make play-native`.
+
+For later-stage instruction discovery, run
+`python3 tools/workflow.py run stage-input-sweep`. Each ordered ROM stage
+slot gets a fresh cold board and a planned 600-frame (~10.06-second) window:
+75 frames each of full up/down, full bank left/right, opposite-endpoint
+roll gestures left/right, Vulcan and repeated missile presses. Later slots
+use test-only operands for the original ROM stage-advance event and stage
+initializer; they are directed discovery fixtures, not natural progression
+or MAME acceptance. Entry failures stop that case before any input window.
+Diagnostics read backing memory directly: diagnostic bus reads would change
+CPU continuation timing. `RESULT` and `COVERAGE` lines distinguish completed
+input frames, observed roll-angle frames and weapon routine entries.
+To reproduce one slot, use
+`STAGE_SWEEP_ARGS='--stage 3' python3 tools/workflow.py run stage-input-sweep`.
+The target succeeds when discovery finishes, even if cases report `status=stop`;
+inspect those lines before claiming gameplay coverage.
+
+To play a selected stage, use `make play-native STAGE=7`, or launch
+`./build/afterburner2-release --stage 7 --profile` directly. Stage numbers
+are 1-based ordered ROM slots (1..23 for this set). `--stage` automatically
+boots with physical coin/start pulses, waits for active flight, and invokes
+the same directed original-ROM transition as the sweep. F5 restarts at the
+selected stage. Without `STAGE`/`--stage`, normal startup and F5 stay unchanged.
+This is a debug skip, not natural progression. Any newly reached unported
+path still stops with its original missing-PC diagnostic.
+
+
+## Extending instruction coverage after a live stop
+
+Read the original-ROM continuation and add only literal instruction sites to
+`tools/oracle/main_recovery_pcs.txt`; generate the recovery translation and
+capture metadata with `tools/generate_input_schedule.py --graph recovery`.
+For a focused independent MAME capture of new sites:
+
+```sh
+RECOVERY_PC_FILTER="$PWD/build/oracle/new_pcs.txt" \
+RECOVERY_INCREMENT_CAPTURE=build/oracle/new_instructions.bin \
+python3 tools/workflow.py run oracle-capture-recovery-increment build/oracle_cpu_coverage
+./build/oracle_cpu_coverage build/oracle/new_instructions.bin
+python3 tools/oracle/check_cpu_coverage_mutations.py --jobs 3 \
+  --only mutation-name --recovery build/oracle/new_instructions.bin
+```
+
+`RECOVERY_PC_FILTER` is a newline-delimited hexadecimal PC manifest. It must
+select nonempty sites already in the recovery manifest. It changes only the
+focused capture; the normal coverage gate still requires every declared PC
+and both measured branch outcomes. `--only` also accepts comma-separated
+names; ordinary recovery acceptance runs all retained mutations. Concurrent
+mutations use separate source overlays and binaries, with passing baselines
+checked first. No mutation is accepted merely because its baseline fails.
+
+Operand seeds are applied after stack setup so a fixture whose A5 aliases
+the supervisor stack retains its intended memory value. Indexed word/long
+fixtures use the original path's aligned index; address errors are a separate
+exception contract. The scripted-flight `DIVS.W #3,D0` fixtures cover signed
+quotient/remainder, early and late overflow, flags and MAME cycle counts;
+they do not establish support for zero or negative divisors.
+
+After the new instructions and mutations pass, run the directed stage sweep,
+refresh the complete recovery capture with `oracle-capture-recovery`, and run
+`test`, `verify-stage1` and the complete `oracle-test` before committing. The
+full capture now allows 64 emulated seconds for the expanded fixture roster;
+focused captures keep their bounded window. Keep older captures and coverage.
+
+
+To retain a verified complete corpus and add independent increments without
+recapturing its earlier fixtures, first preserve the complete capture and its
+passing `.coverage.json`, then use:
+
+```sh
+python3 tools/oracle/merge_cpu_coverage.py build/oracle/merged.bin \
+  build/oracle/retained.bin build/oracle/new_instructions.bin
+./build/oracle_cpu_coverage build/oracle/merged.bin
+```
+
+The merger requires passing input replay censuses newer than their captures,
+keeps the exact original plan entries and record bytes, writes atomically,
+and records input hashes in an ignored `.merge.json`. It removes any stale
+output census. The merged file is not accepted until replay and the complete
+manifest/branch gate pass; mutation and whole-host checks remain required.
+A fresh `oracle-capture-recovery` can always recreate the complete manifest.
+
+
+The expanded recovery plan exceeds 50,000 individual fixtures, so the replay
+and merger accept at most 100,000 records per corpus. Every planned record
+must still be present and match exactly. Register/displacement MULS fixtures
+cover variable Booth-transition clocks; displacement TAS fixtures retain
+byte neighbours and test old-byte NZ flags and the written high bit.

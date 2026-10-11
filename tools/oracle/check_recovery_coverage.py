@@ -17,7 +17,7 @@ assert observed==pcs, f'recovery PC coverage differs: missing={pcs-observed}, ex
 image=(root/'build/oracle/main_recovery_image.bin').read_bytes()
 def is_branch(pc):
  op=int.from_bytes(image[pc:pc+2],'big')
- return (op&0xf000==0x6000 and (op>>8)&15>=2) or op&0xfff8==0x51c8
+ return (op&0xf000==0x6000 and (op>>8)&15>=2) or op&0xf0f8==0x50c8
 declared_branches={pc for pc in pcs if is_branch(pc)}
 assert set(branches)==declared_branches, 'recovery branch census differs'
 assert all(a and b for a,b in branches.values()), 'recovery branch outcome missing'

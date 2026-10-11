@@ -156,9 +156,15 @@ for start, stop in ranges:
         if name == 'NOP':
             finish()
         elif name == 'PEA':
-            src=ea(operands[0]);assert src[0]=='abs' and src[2]==2
-            prefetch(2);emit('sp-=4;');emit(f'write16(sp,0x{src[1]>>16:x});write16(sp+2,0x{src[1]&65535:x});');phases+=2
-            finish()
+            src=ea(operands[0]);assert (src[0]=='abs' and src[2]==2) or src[0]=='pc'
+            prefetch(2);emit('sp-=4;')
+            if src[0]=='pc':
+                # MAME pea_dpc_df: both prefetches precede the stack words;
+                # IPL selection precedes the final low-word write.
+                emit(f'write16(sp,0x{src[1]>>16:x});latch();write16(sp+2,0x{src[1]&65535:x});next=0x{end:x};');phases+=2
+            else:
+                emit(f'write16(sp,0x{src[1]>>16:x});write16(sp+2,0x{src[1]&65535:x});');phases+=2
+                finish()
         elif name == 'MOVEQ':
             dst=ea(operands[1]); value=int(operands[0][1:])&0xffffffff
             emit(f'r.d[{dst[1]}]=0x{value:x};');flags(4,f'r.d[{dst[1]}]');finish()
@@ -192,9 +198,9 @@ for start, stop in ranges:
                 if dst[0] == 'index': emit('idle(2);'); offset = 2
                 prefetch(extensions(dst, size)); flags(size); write(dst, size, ext=False); finish()
         elif name == 'TAS':
-            dst=ea(operands[0]);assert dst[0] in ('d','ind')
+            dst=ea(operands[0]);assert dst[0] in ('d','ind','disp')
             read(dst,1,'old')
-            if dst[0]=='ind':
+            if dst[0] in ('ind','disp'):
                 emit('idle(2);');offset=2
                 flags(1,'old');write(dst,1,'old|0x80',ext=False)
             else:
@@ -328,8 +334,11 @@ for start, stop in ranges:
                 phases=1;tail=(4 if size==4 else 2)+(2*src[1] if src[0]=='i' else 0);source=dst[1]
         elif name in ('MULU','MULS'):
             src,dst=map(ea,operands);assert dst[0]=='d'
-            if name=='MULS':assert args.graph=='recovery' and src[0]=='i'
+            if name=='MULS':assert args.graph=='recovery' and src[0] in ('i','d','disp')
             read(src,2,'operand');emit(f'multiply_{"unsigned" if name=="MULU" else "signed"}({dst[1]},operand,0x{end:x});');phases+=1
+        elif name == 'DIVS':
+            src,dst=map(ea,operands);assert args.graph=='recovery' and src==('i',3,0) and dst==('d',0,0)
+            read(src,2,'operand');emit(f'divide_signed_positive({dst[1]},operand,0x{end:x});');phases+=1;offset=-2
         elif name == 'DIVU':
             src,dst=map(ea,operands)
             if args.graph in ('callees','remaining','boot','recovery'):
@@ -337,9 +346,10 @@ for start, stop in ranges:
             else:
                 assert src==('d',1,0) and dst==('d',0,0);emit('decimal_divu();');phases=1
             offset=-2
-        elif name == 'DBEQ':
+        elif name in ('DBEQ','DBNE'):
             dst=ea(operands[0]);target=int(operands[1][1:],16)
-            emit(f'if(sr&4){{idle(4);read16(0x{pc+4:x});final(0x{pc+6:x});next=0x{end:x};}}else{{')
+            condition='sr&4' if name=='DBEQ' else '!(sr&4)'
+            emit(f'if({condition}){{idle(4);read16(0x{pc+4:x});final(0x{pc+6:x});next=0x{end:x};}}else{{')
             emit(f'const auto old=uint16_t(r.d[{dst[1]}]);idle(2);read16(0x{target:x});word(r.d[{dst[1]}],old-1);')
             emit(f'if(old){{final(0x{target+2:x});next=0x{target:x};}}else{{read16(0x{pc+4:x});final(0x{pc+6:x});next=0x{end:x};}}}}');phases=2;branch_length=end-pc;offset=-1
         elif name == 'DBF':

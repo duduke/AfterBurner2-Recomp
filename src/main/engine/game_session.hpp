@@ -2,6 +2,7 @@
 
 #include "engine/game_controls.hpp"
 #include "engine/xboard_game.hpp"
+#include "engine/native_stage_skip.hpp"
 #include <functional>
 #include <span>
 
@@ -28,7 +29,14 @@ public:
     };
 
     explicit GameSession(Roms& rom, Extensions extensions = {})
-        : game(rom), extensions(std::move(extensions)) {}
+        : game(rom), rom(rom), extensions(std::move(extensions)) {}
+
+    // Opt-in debug startup, after the normal physical coin/start boot.
+    void debug_skip_to_stage(unsigned stage) {
+        NativeStageSkip::enter(game.board(), rom, stage, [&] {
+            advance({}); take_audio();
+        });
+    }
 
     // One physical frame per advance, independent of display refresh. Pausing
     // admits no inputs and advances no CPU, audio device or gameplay timer.
@@ -68,6 +76,7 @@ public:
 
 private:
     XBoardGame game;
+    Roms& rom;
     Extensions extensions;
     bool paused_ = false;
     std::vector<int16_t> audio;

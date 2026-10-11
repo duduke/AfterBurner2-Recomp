@@ -17,7 +17,7 @@ int main(int argc,char** argv)try{
  std::ifstream f(argv[1],std::ios::binary);char magic[8];
  if(!f.read(magic,8)||std::memcmp(magic,"AB2COV02",8)||!roms.load_aburner2())throw std::runtime_error("missing CPU coverage capture/ROMs");
  std::vector<std::pair<unsigned,uint32_t>> planned;auto total=number(f,4);
- if(!total||total>50000)throw std::runtime_error("invalid CPU fixture plan size");
+ if(!total||total>100000)throw std::runtime_error("invalid CPU fixture plan size");
  for(unsigned i=0;i<total;++i){unsigned cpu=number(f,1);auto pc=uint32_t(number(f,4));planned.emplace_back(cpu,pc);}
  unsigned calls=0,identical=0,bad=0,phases=0;std::map<std::pair<unsigned,uint32_t>,std::array<unsigned,2>> branches;std::map<std::pair<unsigned,uint32_t>,unsigned> coverage;
  while(f.peek()!=EOF){unsigned cpu=number(f,1);uint32_t pc=number(f,4);
@@ -50,7 +50,7 @@ int main(int argc,char** argv)try{
    if(bad<20)std::cerr<<"CPU fixture result cpu="<<cpu<<" pc="<<std::hex<<pc<<" next="<<result.pc<<'/'<<post.pc<<" sr="<<result.sr<<'/'<<post.sr<<" usp="<<usp<<'/'<<post.usp<<" ssp="<<ssp<<'/'<<post.ssp<<std::dec<<" ns="<<result.ns<<'/'<<post.ns<<" phases="<<cursor<<'/'<<events.size()<<'\n';throw std::runtime_error("CPU fixture state comparison failed");}
   const auto* image=cpu==1?roms.maincpu.rom:roms.subcpu.rom;const unsigned opcode=(image[pc]<<8)|image[pc+1];
   if((opcode&0xf000)==0x6000&&((opcode>>8)&15)>=2){const bool c=pre.sr&1,v=pre.sr&2,z=pre.sr&4,n=pre.sr&8;const bool take[]={true,true,!c&&!z,c||z,!c,c,!z,z,!v,v,!n,n,n==v,n!=v,!z&&n==v,z||n!=v};++branches[{cpu,pc}][take[(opcode>>8)&15]];}
-  else if((opcode&0xfff8)==0x51c8)++branches[{cpu,pc}][result.pc!=pc+4];
+  else if((opcode&0xf0f8)==0x50c8)++branches[{cpu,pc}][result.pc!=pc+4];
   ++identical;++coverage[{cpu,pc}];
   }catch(const std::exception& e){++bad;if(bad<=20)std::cerr<<"CPU fixture failure "<<cpu<<' '<<std::hex<<pc<<std::dec<<": "<<e.what()<<'\n';}
 

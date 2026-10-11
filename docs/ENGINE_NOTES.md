@@ -7807,7 +7807,465 @@ at 59.6287–59.9087 simulation/display FPS, with 11.3219–11.4128 ms average b
 cost per reporting window. The final release-core 603/781-frame comparisons
 match, including 55,982,080 expanded RGB pixels and 627,841 mixed stereo frames,
 with zero differences/skips. ROM-free and Stage 1/native integration checks
-pass. Full-suite and final extended performance results are recorded below when
-complete. These finite observations do not close full-credit progression,
+pass. These finite observations do not close full-credit progression,
 arbitrary input trajectories, every-stage real-time performance or unported
 instructions. No scheduler approximation or CPU timing shortcut was needed.
+
+Final unloaded-machine measurements are in
+`build/workflow/20261011T083052.670135Z/`: the same 181-frame profile averages
+10.7994 ms (11.3276 p95, 12.064 maximum), with rendering/synchronization at
+0.875154 ms, about 16% less than the initial profile. Whole-board improvement
+is only about 1.4%, consistent with the non-rendering work dominating. The
+960-frame sustained flight/throttle/cannon/missile profile averages 10.8291 ms
+(11.4404 p95, 13.9927 maximum), about 92.34 unpaced frames/second. Every measured
+frame fits the 16.768 ms board budget in that finite run. The bridge's 60-frame
+simulation/export/transport mean is 12.8878 ms, excluding browser GPU work;
+there is no material bridge throughput gain claimed from these observations.
+
+A separate native Metal window (`accelerated=1`, `vsync=1`) completed 960
+neutral flight frames after physical boot; all sixteen one-second reporting
+windows measured 59.5917–59.9072 simulation/display FPS. The ignored log is
+`build/native_play_extended_profile.log`. These observations are on the current
+Mac, with default arcade resolution, and do not predict other hardware, high
+resolution enhancements or every stage. CMake is unavailable locally; its test
+registrations are added but not executed.
+
+The first required suite exposed an existing recovery fixture/manifest mismatch:
+`cpu_recovery.bin` covered 3,101 PCs while the uncommitted current manifest
+declared 5,444. Existing local increments cover the manifest, but the default
+gate consumed only the old fixture. A fresh original-ROM capture under the
+stable ignored name `cpu_recovery_complete.bin` contains 25,846 fixtures; all
+25,846 match, with 61,760 exact bus phases and zero differences/skips. The old
+14,014-fixture baseline (32,726 phases) stays required, replayed separately;
+the combined census covers 5,444 PCs and both outcomes of all 497 branches.
+Capture, coverage and mutation targets now consistently use both fixtures.
+`oracle-capture-recovery` preserves an existing baseline and independently
+captures one only when absent. The release compiler independently passes both
+corpora through `verify-native-release-recovery`, recorded with ROM-free and
+native/Stage 1 integration checks in `build/workflow/20261011T083322.349970Z/`.
+No fixture coverage is removed; captures and ROM data remain ignored.
+
+Final required checks in `build/workflow/20261011T083322.349970Z/` all pass:
+release recovery 26.70 s, `test` 12.09 s, `verify-stage1` 43.48 s and complete
+`oracle-test` 985.29 s. All fifteen whole-host owner mutations, all seventeen
+recovery mutations and the two new renderer mutations reject. Earlier fixture
+race exclusions remain reported by their own checks (including the legacy
+sprite/scenery captures); the zero-difference/skip claim applies only to the
+declared autonomous/recovery corpora, not every older fixture. No existing
+fixture is dropped to obtain this pass.
+
+### Space-input stop at `$E514` (2026-10-11)
+
+The native stop at decimal PC 58644 is the missing `MOVEQ #127,D0`
+at `$E514`, between the already ported `$E510` BLE and `$E516` table
+lookup. `$E504` reads `$29C0AA`, shifts the signed word right twice and
+compares it with 127; this instruction clamps larger indices before the
+ROM lookup at `$2B790`. Neither local `main` nor `origin/main` contains
+the missing case. The recovery generator now translates it literally,
+including CCR preservation and its final prefetch, with no scheduling change.
+
+Two independent original-ROM fixtures (initial CCR 0 and 31) compare exactly:
+2/2 states and 2 bus phases, zero differences or skips. Changing 127 to 126
+is rejected by the independent state comparison. The retained recovery plan
+includes the new PC and mutation; no prior coverage is removed.
+
+`benchmark-native-full-throttle` adds 960 sustained Space/neutral-steering
+physical flight frames, enabling both weapons after 120 frames. This is a
+finite input smoke check, not proof of all full-throttle gameplay: the first
+960 frames do not naturally execute `$E514`, so the directed oracle is the
+regression for the exact reported instruction. A separate longer exploratory
+run stops at the still-unported `$096E` object callback; complete-credit
+acceptance remains open. ROM data, logs and captures stay ignored.
+
+The refreshed canonical capture contains 25,848/25,848 identical fixtures
+(61,762 bus phases), zero differences or skips, including both new clamp
+cases. Together with the retained baseline, coverage is 5,445 PCs, 497
+branches with both outcomes and 39,862 fixtures. The optimized release
+replay passes both corpora. `test`, `verify-stage1` and the 960-frame
+Space-input smoke pass; both native executable variants were rebuilt.
+Logs: `build/workflow/20261011T090321.043030Z/`,
+`build/workflow/20261011T090456.449828Z/` and
+`build/workflow/20261011T090705.855785Z/`.
+The optimized `verify-threejs-core` also passes the retained cold and
+781-frame active-gameplay comparisons, with zero supplied execution/state
+seeds and zero differences/skips within those finite captures
+(`build/workflow/20261011T090656.666779Z/`, 95.06 seconds).
+All eighteen retained recovery mutations reject against the two corpora
+(`oracle-recovery-mutations`, 369.15 seconds). The full unrelated
+`oracle-test` umbrella was not rerun for this one-instruction change; the
+required full suite remains a pre-commit gate. No commit was made.
+
+### Left/right roll stop at `$7784` (2026-10-11)
+
+Decimal PC 30596 is `BSET #4,(A5)` at `$7784`, a missing sprite-
+orientation bit update in the otherwise translated `$7650..$77AC` handler.
+A static instruction census finds no other missing instruction within that
+handler after this addition. The adjacent `$77F8..$786A` orientation helper
+also lacked `$7802`, which selects the ROM table at `$34BE0`; it is now
+translated. Neither change invents an object or changes CPU scheduling.
+
+Independent original-ROM fixtures cover both initial CCR extremes and the
+orientation bit initially clear/set, while preserving unrelated byte bits
+and the neighbouring byte. The two instructions match 8/8 fixtures and
+30 bus phases with zero differences or skips. Wrong orientation-bit and
+table-address mutations both fail.
+
+A fresh physical replay alternating full left/right every 60 flight frames
+exposed `$6598` before reaching the reported orientation site. The literal
+effect-animation initializer, update and restart graph `$6598..$66EC` has
+80 additional instruction sites, with six conditional branches. Its ROM
+tables are read at runtime. The combined directed increment matches
+348/348 original-ROM fixtures, 932 bus phases, zero differences or skips.
+Wrong effect-table and countdown mutations both fail. All four new mutations
+are retained in the recovery gate.
+
+`benchmark-native-rolls` runs 960 physical flight frames with alternating
+full left/right, Space held for the first 480 frames and neutral throttle
+for the remaining 480, plus both weapons. Passive entry counts distinguish
+naturally executed orientation/effect instructions from directed fixture
+coverage. The first neutral-throttle replay executes the effect initializer
+once but not `$7784`; it completes after the new graph is ported. Finite
+input smoke coverage is not complete-credit MAME acceptance.
+
+The final full/neutral-throttle roll replay completes 960 flight frames;
+it executes `$6598` once and does not naturally execute `$7784`. The
+reported stop is therefore pinned by its independent directed fixtures,
+not inferred from this input smoke. Logs are retained locally under
+`build/workflow/20261011T100618.336477Z/`. Both native executable variants
+were rebuilt. No claim of full-credit or every-roll-sequence acceptance is
+made, and the previously discovered later `$096E` gap remains open.
+
+Final checks: refreshed recovery replay matches 26,196/26,196 fixtures
+and 62,694 bus phases with zero differences/skips; the unchanged baseline
+still matches 14,014/14,014 fixtures. Their union covers 5,527 PCs and 503
+conditional branches with both outcomes, 40,210 original-ROM fixtures.
+Both normal and optimized compilers pass this recovery census
+(`build/workflow/20261011T101031.501598Z/`). `test`, `verify-stage1` and
+`verify-threejs-core` also pass (`build/workflow/20261011T100523.258427Z/`).
+All four new mutations were individually rejected against the independent
+increment before live integration. The full unrelated `oracle-test` umbrella
+was not rerun; it remains required before committing. No commit was made,
+and the prior Space fix and all earlier fixture coverage are preserved.
+
+### Missile-input stop at `$19C78` (2026-10-11)
+
+Decimal PC 105592 is `SUBQ.B #1,($89EA).W` in the indicator handler
+`$19C4E..$19D8E`. It decrements a byte, preserves the neighbouring byte,
+and branches at `$19C7C` to the already translated `$19D80`. The report
+identifies the triggering input; the instruction itself is a countdown
+update, not a new missile trajectory or rendering rule.
+
+An instruction census of the handler found nine missing sites: `$19C78`,
+`$19C7C`, `$19C80`, `$19C88`, `$19C8C`, `$19C94`, `$19CB4`, `$19CBA` and
+`$19CBE`. They are now translated literally, closing the two mode-check
+branches and the secondary word countdown/indicator-call/return path as
+well as the reported byte countdown. No missing static instruction remains
+within this handler. No CPU scheduling or ROM-derived data is replaced.
+
+Independent original-ROM fixtures cover byte/word countdown zero, one,
+signed-boundary and wrapping values; the byte's neighbour is retained. Mode
+compares have operands around `$10` and `$16`; both conditional branch
+outcomes are exercised independently over all 32 CCR patterns. All
+114/114 fixtures and 360 bus phases match, zero differences or skips.
+Wrong byte decrement, terminal branch target and word decrement mutations
+are independently rejected and retained in the recovery gate.
+
+`benchmark-native-missiles` adds 960 flight frames with 32 six-frame missile
+press windows separated by 24 release frames, neutral steering, no cannon,
+neutral throttle for the first 480 frames and Space for the remainder. The
+count is physical press windows, not claimed missile launches; ammunition
+and launch gates remain ROM-owned. A passive entry counter reports whether
+this finite input sequence actually executes `$19C78`. Directed fixtures
+pin the exact reported instruction independently of that live reach.
+
+The missile smoke completes 960 flight frames and naturally executes
+`$19C78` fifteen times, covering the exact reported stop. The smoke now
+requires at least one such instruction entry, so a run that misses the
+regression path cannot silently pass. Physical input and counters remain
+passive; no gameplay RAM or CPU context is seeded. The three new mutations
+were rejected before native integration.
+
+Final physical missile regression, including its required exact-PC reach,
+passes in `build/workflow/20261011T101624.782374Z/`: 960 flight frames,
+32 input press windows and 15 `$19C78` entries. The optimized instruction
+replay also matches all 114 fixtures. `test`, `verify-stage1` and
+`verify-threejs-core` pass in `build/workflow/20261011T101452.943818Z/`;
+this includes the retained cold and 781-frame whole-host comparisons.
+Both native executable variants are rebuilt. No complete-credit acceptance
+is inferred from these finite captures.
+The refreshed recovery gate passes with 26,310/26,310 fixtures and 63,054
+bus phases, zero differences or skips; the retained baseline still passes
+14,014/14,014 fixtures. Combined coverage is 5,536 PCs, all 505 conditional
+branches with both outcomes and 40,324 original-ROM fixtures. Normal and
+optimized replays pass (`build/workflow/20261011T101937.000267Z/`).
+The full unrelated `oracle-test` umbrella was not rerun; it remains a
+pre-commit gate. No commit was made, and previous patches/captures remain
+covered. ROM data and captures stay ignored.
+
+## Initial directed native stage/input discovery (2026-10-11)
+
+This is the initial discovery checkpoint. The follow-up instruction closure
+below supersedes its open-frontier list; its logs remain historical evidence.
+
+The requested starting scope is ten seconds **total per stage**, split into
+eight 75-frame windows: full up/down, full bank left/right, opposite-endpoint
+roll gestures left/right, held Vulcan, and four-frame missile presses with
+eleven-frame releases. The native physical period makes 600 frames about
+10.06 seconds. Throttle stays neutral. This is an instruction-discovery smoke,
+not a rendering/FPS measurement or a MAME comparison.
+
+`tools/stage_input_sweep.cpp` reads the ordered stage-slot count from the ROM
+at runtime (23 in this set). Each case cold-boots a fresh board with physical
+coin/start pulses, then waits for active-flight mode `$10`; frame 600 itself
+is still the carrier sequence. Slot 1 starts naturally. Later slots use
+directed operands at a completed frame boundary: the original event command
+12 (`$DEC0 -> $DFC4`) increments the selected stage/index, resets distance,
+and runs `$13C92`. The initializer reads that slot's own descriptors and
+publishes its event pointer at `$142D0`; entry is observed at `$13CE8`.
+The test does not patch CPU instructions, copy ROM tables into source, or
+force roll/weapon behavior. These seeded later-stage entries do not establish
+natural progression, prior-stage accumulated state or full-credit acceptance.
+All observations use backing memory or passive instruction-entry callbacks;
+using diagnostic bus reads here would alter CPU continuation timing.
+
+All 23 slots were attempted. Slots **1, 2, 4, 6 and 7** complete all 600 input
+frames. The other **18** stop during directed stage entry, before any of the
+eight input windows can run:
+
+| First missing main PC | Decimal diagnostic | Stage slots blocked |
+| --- | ---: | --- |
+| `$D914` | 55572 | 3, 9, 11, 16, 19, 21 |
+| `$DC8E` | 56462 | 5, 13 |
+| `$DD38` | 56632 | 8, 17 |
+| `$E314` | 58132 | 10, 12, 14, 15, 18, 20, 22, 23 |
+
+Original-ROM disassembly identifies these first sites as, respectively,
+`MOVE.B ($8B5B).W,D0`, `BMI $DC94`, `MOVE.W D1,D0` and `CLR.B D1`.
+No new instruction was translated in this discovery task. Each frontier
+and its reachable continuation still need independent MAME evidence and
+mutation checks before integration; additional frontiers may lie behind them.
+
+The five completed slots were replayed with passive coverage counters. Every
+input gets all 75 completed frames in each replay. The shared roll angle
+`$29C0AE` is nonzero during both gesture windows on all five; this confirms
+rotation was active, not its direction or a completed full roll. Weapon
+routine entries are reported separately from physical button delivery:
+
+| Slot | Left/right gesture frames with active roll angle | Vulcan allocator `$9ED8` entries | Missile initializer `$9F7C` entries |
+| ---: | ---: | ---: | ---: |
+| 1 | 57 / 55 | 19 | 5 |
+| 2 | 55 / 57 | 18 | 5 |
+| 4 | 55 / 42 | 0 | 0 |
+| 6 | 55 / 44 | 0 | 0 |
+| 7 | 55 / 57 | 18 | 5 |
+
+No weapon-execution coverage is claimed for slots 4 and 6 in this sequence.
+The allocator count is a routine-entry count, not guaranteed projectile
+allocation; the ROM retains ammunition, object-pool and gameplay gates.
+
+The complete discovery log is
+`build/workflow/20261011T102851.638324Z/01-stage-input-sweep.log`.
+Coverage replay logs are under workflow runs `103307.838837Z`,
+`103327.171828Z`, `103346.041877Z`, `103405.089575Z` and `103423.696227Z`
+on the same UTC date. The ignored aggregate
+`build/oracle/stage_input_sweep_report.json` retains all 23 results and those
+coverage records, with source-log paths. The discovery make target returns
+success when all requested cases have been examined; individual `status=stop`
+lines remain failures to exercise gameplay. This tool adds no whole-host
+oracle acceptance. Existing game-core and recovery patches are unchanged.
+Focused coverage replays of slots 3, 5, 8 and 10 reproduce each of the four
+first missing PCs with zero completed input frames (workflow runs
+`103538.270691Z`, `103550.287061Z`, `103602.253085Z`, `103614.269717Z`).
+`git diff --check` passes, and ROM images/results remain ignored. No new port,
+oracle acceptance or commit is included in this discovery task.
+
+## Native debug stage selection (2026-10-11)
+
+`make play-native STAGE=7` passes `--stage 7` to the release SDL executable.
+Direct `--stage N` implies physical coin/start boot even without
+`--boot-to-flight`; N is validated as a positive integer against the runtime
+ROM slot count before boot. F5 creates a fresh board and repeats the selected
+startup. Without the option, existing startup and restart behavior remain.
+
+`native_stage_skip.hpp` shares the sweep's directed operands, active-flight
+wait and original stage initialization with `GameSession`'s explicit
+`debug_skip_to_stage` method. The temporary passive phase observer is restored
+on success or failure. Diagnostics issue no bus transactions. Normal gameplay
+does not invoke this helper. This is debug stage selection, with fresh
+first-stage accumulated state, not natural progression or a new gameplay port;
+the four discovered missing-PC stops were open at this checkpoint; see
+the follow-up closure below.
+
+Release build, `test` and `verify-stage1` pass in
+`build/workflow/20261011T103859.724306Z/`; normal session behavior retains
+781 exact native RGB frames, processed audio, pause/resume and restart.
+The final release rebuild and focused session gate pass in
+`build/workflow/20261011T103954.949735Z/`. The shared helper's stage 2 sweep
+retains all 600 input frames and the previous passive coverage counts
+(`build/workflow/20261011T103956.113498Z/`). No new ROM instructions were
+ported and no commit was made.
+Native CLI smoke with SDL dummy video/audio passes normal two-frame startup
+and selected-stage 1, 2 and 7 startup plus two displayed frames. Stage 3
+retains the expected PC 55572 stop; zero, 24, negative, nonnumeric and missing
+stage arguments are rejected. Logs remain ignored under
+`build/oracle/native_stage_cli/`. Interactive F5 was not separately exercised;
+it calls the same tested startup path after the existing restart operation.
+`git diff --check` passes.
+
+## Stage and gameplay instruction closure (2026-10-11)
+
+The initial stage-entry stops and the subsequently discovered enemy, scenery,
+weapon, carrier and final-stage continuations now have literal instruction
+ports. The recovery manifest requires **10,525 PCs and both outcomes at
+1,060 branches**. All 68,294 retained/new original-ROM instruction fixtures
+match, with 158,088 compared bus phases, zero differences and zero skips.
+The earlier discovery sections record historical frontiers; they are not the
+current missing-instruction list. The Space, roll and missile fixes are retained.
+
+| Graph increment | New sites | Exact MAME fixtures | Bus phases |
+| --- | ---: | ---: | ---: |
+| `$D914/$DC8E/$DD38/$E314` stage-entry continuations | 40 | 334 / 334 | 760 |
+| `$096E` object callback and recovery graph | 189 | 1,568 / 1,568 | 3,610 |
+| `$8352/$8098/$2D52/$161B8/$7C56` successors and indexed dispatch | 1,090 | 6,414 / 6,414 | 14,212 |
+| Scenery, weapon, enemy and scripted-flight successor graphs | 2,222 | 11,044 / 11,044 | 24,866 |
+| Additional condition-byte and spawn-word boundaries | 0 | 42 / 42 | 154 |
+| Nine later script/object continuations and final-stage dispatch | 463 | 2,096 / 2,096 | 4,664 |
+| Carrier scripts, final-stage callback and enemy motion helpers | 472 | 3,098 / 3,098 | 6,502 |
+| Observed enemy-program callees and seven-state carrier variant | 314 | 2,156 / 2,156 | 4,660 |
+| Alternate carrier constructor and enemy/weapon effects | 165 | 1,080 / 1,080 | 2,514 |
+| Spawn-speed threshold boundaries | 0 | 16 / 16 | 80 |
+| Stage 5 carrier callback and animation continuation | 34 | 128 / 128 | 308 |
+
+These increments add 4,989 sites. The 42-case boundary capture repeats six
+ordinary fixtures and adds 36 operand cases. The 16-case speed-boundary
+capture repeats two ordinary fixtures and adds 14 operand cases. Every generated case is labelled
+with its original ROM address. ROM tables are read at runtime; no ROM image,
+raw table or instruction capture is committed. All increments receive MAME
+comparisons and deliberate mutation rejection before their native stage reruns.
+
+The original bounded dispatch tables at `$7D14/$11246/$16264/$16D72`, the
+five-entry final-stage table at `$11C04`, four-entry carrier table at `$12F7A`
+and seven-entry variant at `$127EA` are followed as instruction entries.
+The final-stage callbacks assigned at `80(A5)` and the object callback stored
+through A6 are included. Passive script observations at `$30A4/$315E` expose
+original six-byte duration/callee records. Their ROM program continuations
+are inspected with the interpreter's negative-count loop rules and actual
+held-duration instructions; unrelated data after hold records is not ported
+as code. This analysis does not implement replacement gameplay or script rules.
+
+Additional instruction forms follow MAME's microcode: PC-relative PEA keeps
+prefetch/stack-write order and IPL latching; `DIVS.W #3,D0` keeps the fixed
+positive-divisor restoring-division timing, early/late overflow and signed
+quotient/remainder; DBNE keeps the condition-true path, decrement and terminal
+fetches. Displacement TAS keeps extension fetch, byte read, two internal
+clocks, byte write and final prefetch. Register/displacement MULS reuses the
+signed Booth-transition timing. Fixtures cover signed extrema, alternating
+bits, zero, register highs, byte neighbours and all initial CCRs where
+specified. The activation threshold and held-duration fixtures include
+zero, neighbouring thresholds, sign limits and wrap. Zero/negative DIVS
+divisors and indexed address-error exceptions remain outside these literal
+normal-instruction fixtures. Table-load fixtures use aligned normal offsets.
+
+The orientation-mask mutation exposed a capture setup defect: A5's default
+memory aliases SSP, and stack setup overwrote a seeded operand. Operand seeds
+now apply after stack setup. The corrected callback corpus was recaptured,
+replayed and tested against the wrong-mask mutation. Baseline failures cannot
+count as rejected mutations. Concurrent mutation jobs use separate source
+overlays and binaries. The complete recovery gate retains **85 mutations**,
+including all earlier checks; none of the older fixture coverage is removed.
+
+The complete corpus has 54,280 exact fixtures and 125,362 bus phases; its
+14,014-fixture baseline adds 32,726 phases. Original independently replayed
+captures are concatenated without altering plan entries, state, timestamps
+or events. `merge_cpu_coverage.py` requires newer passing input censuses,
+writes atomically, records input SHA-256 provenance in ignored `.merge.json`,
+and removes any stale output census. The merged corpus is independently
+replayed and checked against the complete manifest and branch census. The
+9,077-, 9,540- and 10,012-site corpora are preserved locally. The plan safety
+limit rises from 50,000 to 100,000 because the verified complete file now has
+54,280 records; state/bus equality and coverage requirements are unchanged.
+A fresh full capture uses the original-ROM plan with a 64-emulated-second bound.
+
+Focused accepted capture runs include UTC workflow directories
+`20261011T104634.540529Z`, `105516.069644Z`, `111212.737790Z`,
+`112650.638549Z`, and `112945.446436Z`. The 9,077-site complete capture is
+`build/workflow/20261011T113003.502713Z/`. Later accepted captures and replay/
+mutation logs are under ignored `build/oracle/`: `stage_late_all_aligned.bin`,
+`next_scripts_complete_verified.bin`, `script_program_closure_verified.bin`,
+`remaining_live_gaps.bin`, `spawn_speed_boundary.bin`, and `carrier_last_gap.bin`.
+Earlier odd-index discovery captures are excluded from normal instruction
+acceptance. An early full-suite attempt encountered the complete capture
+while it was still being written; this is not accepted oracle evidence.
+Further exploratory suite runs were interrupted when new live gaps appeared.
+Only the final completed suite establishes this checkpoint's required checks.
+
+The final required suite completes successfully in
+`build/workflow/20261011T125042.300165Z/`, using
+`python3 tools/workflow.py run test verify-stage1 oracle-test verify-threejs-core -j3`.
+All 85 recovery mutations and all 15 whole-host owner mutations reject;
+the earlier nine CPU mutations also remain required and pass. Retained
+legacy fixtures keep their explicitly reported inter-CPU race skips; the
+expanded recovery fixtures have zero differences/skips.
+
+| Check | Result | Elapsed seconds |
+| --- | --- | ---: |
+| `test` | PASS | 31.75 |
+| `verify-stage1` | PASS | 71.93 |
+| `oracle-test` | PASS | 2100.85 |
+| `verify-threejs-core` | PASS | 107.49 |
+
+`verify-native-release-recovery` also passes in 28.11 seconds with the
+native `-O3 -flto` settings: all 68,294 instruction fixtures and 158,088 bus
+phases match, with zero differences/skips and the complete PC/branch census.
+Its log is `build/workflow/20261011T132936.239250Z/`.
+
+The 781-frame session checks exact native RGB/audio, pause/resume and cold
+restart equality. The optimized core checks both retained whole-host corpora
+with zero supplied execution/state/read seeds and zero differences/skips.
+
+The final native sweep passes **23 / 23 ordered ROM stage slots**, each
+with 600 completed frames (~10.06 seconds) and all eight inputs delivered
+for 75 frames. The ignored log is `build/oracle/stage_input_sweep_final.log`;
+its `RESULT`/`COVERAGE` lines and local JSON report preserve the observations.
+The board starts fresh for each selected debug entry. Roll counts mean a
+nonzero roll angle during that gesture segment, not a completed roll or
+verified direction. Weapon counts are original allocator/initializer entries;
+zero means the input did not activate that routine in this finite window.
+
+| Stage slot | Roll-angle frames left / right | Vulcan allocator entries | Missile initializer entries |
+| ---: | ---: | ---: | ---: |
+| 1 | 57 / 55 | 19 | 5 |
+| 2 | 55 / 57 | 18 | 5 |
+| 3 | 0 / 0 | 6 | 5 |
+| 4 | 55 / 42 | 0 | 0 |
+| 5 | 0 / 0 | 18 | 2 |
+| 6 | 55 / 44 | 0 | 0 |
+| 7 | 55 / 57 | 18 | 5 |
+| 8 | 0 / 0 | 0 | 0 |
+| 9 | 0 / 0 | 6 | 5 |
+| 10 | 55 / 40 | 0 | 0 |
+| 11 | 0 / 0 | 6 | 5 |
+| 12 | 55 / 57 | 18 | 3 |
+| 13 | 0 / 0 | 18 | 2 |
+| 14 | 55 / 57 | 13 | 0 |
+| 15 | 55 / 57 | 18 | 1 |
+| 16 | 0 / 0 | 6 | 5 |
+| 17 | 0 / 0 | 0 | 0 |
+| 18 | 55 / 57 | 18 | 2 |
+| 19 | 0 / 0 | 6 | 5 |
+| 20 | 55 / 40 | 0 | 0 |
+| 21 | 0 / 0 | 6 | 3 |
+| 22 | 55 / 40 | 0 | 0 |
+| 23 | 0 / 0 | 18 | 5 |
+
+Native selected-stage CLI startup also passes slots 8, 19 and 23 with two
+displayed frames using SDL dummy video/audio, supplementing the earlier
+argument validation and normal startup checks. Logs are local under
+`build/oracle/native_stage_cli_final/`. F5 calls the shared tested startup
+helper; interactive keyboard F5 was not separately exercised.
+
+These instruction fixtures and directed stage inputs do not establish natural
+stage progression, accumulated prior-stage state, complete-credit MAME RGB/
+audio equality, alternate DIP settings, arbitrary reset/suspend states or
+60 FPS. The independently accepted finite whole-host corpora and their owner
+mutations remain required; full-credit expansion remains Phase 3e work.

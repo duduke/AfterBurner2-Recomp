@@ -1329,18 +1329,24 @@ threejs-prototype: build/threejs_bridge
 # Reported live gameplay frontiers; retain the older whole-host corpora.
 RECOVERY_CAPTURE ?= build/oracle/cpu_recovery_complete.bin
 RECOVERY_BASELINE_CAPTURE ?= build/oracle/cpu_recovery.bin
+RECOVERY_CAPTURE_SECONDS ?= 64
 oracle-recovery-generated-check:
 	python3 tools/build_rom_image.py maincpu build/oracle/main_recovery_image.bin
 	python3 tools/generate_input_schedule.py build/oracle/main_recovery_image.bin --graph recovery --check
 oracle-capture-recovery: oracle-scheduler-probe oracle-recovery-generated-check
-	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_CAPTURE)" 100 32
-	@if [ ! -f "$(RECOVERY_BASELINE_CAPTURE)" ]; then MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_BASELINE_CAPTURE)" 100 32; fi
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_CAPTURE)" 100 $(RECOVERY_CAPTURE_SECONDS)
+	@if [ ! -f "$(RECOVERY_BASELINE_CAPTURE)" ]; then MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_BASELINE_CAPTURE)" 100 $(RECOVERY_CAPTURE_SECONDS); fi
 oracle-recovery: build/oracle_cpu_coverage oracle-recovery-generated-check
 	./build/oracle_cpu_coverage "$(RECOVERY_BASELINE_CAPTURE)"
 	./build/oracle_cpu_coverage "$(RECOVERY_CAPTURE)"
 	python3 tools/oracle/check_recovery_coverage.py "$(RECOVERY_BASELINE_CAPTURE)" "$(RECOVERY_CAPTURE)"
 oracle-recovery-mutations: oracle-recovery
-	python3 tools/oracle/check_cpu_coverage_mutations.py --recovery "$(RECOVERY_BASELINE_CAPTURE)" "$(RECOVERY_CAPTURE)"
+	python3 tools/oracle/check_cpu_coverage_mutations.py --jobs 3 --recovery "$(RECOVERY_BASELINE_CAPTURE)" "$(RECOVERY_CAPTURE)"
+RECOVERY_INCREMENT_CAPTURE ?= build/oracle/cpu_recovery_increment.bin
+oracle-capture-recovery-increment: oracle-scheduler-probe oracle-recovery-generated-check
+	@test -n "$(RECOVERY_PC_FILTER)" || { echo 'Set RECOVERY_PC_FILTER to a PC manifest'; exit 1; }
+	MAME="$(CURDIR)/build/oracle/scheduler_probe/mame" AB2_CPU_PROBE=1 AB2_RECOVERY_PC_FILTER="$(RECOVERY_PC_FILTER)" AB2_CPU_COVERAGE_PLAN="$(CURDIR)/tools/oracle/recovery_plan.lua" tools/oracle/capture.sh tools/oracle/capture_cpu_coverage.lua "$(RECOVERY_INCREMENT_CAPTURE)" 100 32
+.PHONY: oracle-capture-recovery-increment
 oracle-test: oracle-recovery-mutations
 .PHONY: oracle-recovery-generated-check oracle-capture-recovery oracle-recovery oracle-recovery-mutations
 
@@ -1372,7 +1378,19 @@ benchmark-native: build/native_game_benchmark
 	./build/native_game_benchmark
 benchmark-native-extended: build/native_game_benchmark
 	./build/native_game_benchmark --extended
-.PHONY: benchmark-native benchmark-native-extended
+benchmark-native-full-throttle: build/native_game_benchmark
+	./build/native_game_benchmark --full-throttle
+benchmark-native-rolls: build/native_game_benchmark
+	./build/native_game_benchmark --rolls
+benchmark-native-missiles: build/native_game_benchmark
+	./build/native_game_benchmark --missiles
+build/stage_input_sweep: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tools/stage_input_sweep.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+stage-input-sweep: build/stage_input_sweep
+	./build/stage_input_sweep $(STAGE_SWEEP_ARGS)
+.PHONY: stage-input-sweep
+-include build/threejs_obj/tools/stage_input_sweep.d
+.PHONY: benchmark-native benchmark-native-extended benchmark-native-full-throttle benchmark-native-rolls benchmark-native-missiles
 -include build/threejs_obj/tools/benchmark_native_game.d build/threejs_obj/src/main/main.d
 
 # Native desktop play uses the same verified release options as the bridge.
@@ -1380,7 +1398,7 @@ build/afterburner2-release: $(addprefix build/threejs_obj/,$(SRCS:.cpp=.o))
 	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
 native-release: build/afterburner2-release
 play-native: native-release
-	./build/afterburner2-release --boot-to-flight --profile
+	./build/afterburner2-release --boot-to-flight --profile $(if $(STAGE),--stage $(STAGE))
 .PHONY: native-release play-native
 
 build/oracle_native_release_recovery: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/oracle_cpu_coverage.cpp $(filter-out src/main/main.cpp,$(SRCS))))

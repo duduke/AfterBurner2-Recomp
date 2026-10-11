@@ -118,6 +118,19 @@ alternate DIP settings and arbitrary hardware reset/suspend states. Those
 paths are not implied by finite whole-host acceptance. See the final
 ENGINE_NOTES section for the contract, owner mutations and test evidence.
 
+The stage/input follow-up now closes the initial `$D914/$DC8E/$DD38/$E314`
+frontiers, `$096E`, and the subsequently observed enemy, scenery, carrier and
+weapon continuations. The complete recovery gate requires 10,525 instruction
+PCs and both outcomes at 1,060 branches; all 68,294 retained/new MAME fixtures
+match, with zero differences/skips. Native debug play accepts
+`make play-native STAGE=N` / `--stage N`; F5 repeats that selected startup.
+All 23 debug stage slots complete 600 input frames, with 75 frames per input.
+The required `test`, `verify-stage1`, complete `oracle-test` and optimized
+`verify-threejs-core` checks pass, including all 85 recovery mutations.
+The native `-O3 -flto` instruction replay also matches all 68,294 fixtures.
+These debug entries do not establish natural progression or full-credit
+acceptance. See the final ENGINE_NOTES section for evidence and exclusions.
+
 Live-stop follow-up: `$5CEA` and `$C4F6` plus their observed downstream
 continuations have a merge checkpoint of 5,011 additional literal ports,
 23,654 independent MAME fixtures, 56,530 exact bus phases and both outcomes
@@ -1103,8 +1116,38 @@ See the final `ENGINE_NOTES.md` section for the exact fixture boundaries.
 - [x] Check native application inputs, RGB/audio output and cold restart
   equality; keep unported/full-credit paths explicit.
 
+### Directed stage/input closure checkpoint (2026-10-11)
+
+- [x] Pass required `test`, `verify-stage1` and full `oracle-test`, plus
+  optimized `verify-threejs-core`. Reject all 85 recovery mutations; keep
+  all earlier routine, owner and race-accounted fixture coverage.
+
+- [x] Pass all 23 directed debug stage entries and their 600-frame input
+  windows, delivering each of the eight inputs for 75 frames. Record actual
+  roll-angle frames and weapon entries, including suppressed actions.
+
+- [x] Translate the stage/input-discovered continuations and retain the earlier
+  Space, roll and missile fixes. The recovery union now covers 10,525 PCs,
+  both outcomes at 1,060 branches and 68,294 exact original-ROM fixtures.
+- [x] Add selected-stage native debug startup through the original ROM
+  transition: `make play-native STAGE=N`, 1..23; F5 repeats the selection.
+  Fresh first-stage accumulated state remains an explicit debug limitation.
+
 ### Browser gameplay continuation checkpoint (2026-10-09)
 
+- [x] Translate the missile-input `$19C78` stop and all nine missing sites
+  in `$19C4E..$19D8E`. All 114 independent fixtures match, including
+  countdown and mode boundaries; three new mutations fail. Retain repeated
+  missile press/release input smoke and report its actual instruction reach.
+- [x] Translate the `$7784` orientation-bit stop, adjacent `$7802` table
+  selector and `$6598..$66EC` effect graph exposed by endpoint roll input.
+  All 348 independent instruction fixtures match; four new mutations fail.
+  Retain the 960-frame left/right physical-input smoke and report its actual
+  instruction reach separately from directed fixture coverage.
+- [x] Fix the native Space-input stop at `$E514` with the literal speed-index
+  clamp; two independent MAME fixtures match and the wrong-value mutation
+  fails. Retain a 960-frame sustained Space-input smoke check. `$096E` is now
+  covered by the 189-site callback graph; complete-credit paths remain open.
 - [x] Translate the reported `$72DA` stop and the subsequently observed
   first-crash, recovery, respawn, bonus and combat-motion continuations.
   The declared recovery union has 5,444 PCs and 497 branches with both outcomes;

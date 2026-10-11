@@ -104,7 +104,11 @@ coin and Enter for start. The window title and console show measured simulation
 FPS; `--profile` also reports display FPS, board cost and presentation wait.
 Launch the release binary without `--boot-to-flight` for the original attract
 and coin/start sequence. Full-credit coverage remains incomplete; unported
-instructions still stop explicitly.
+instructions still stop explicitly. Use `make play-native STAGE=7` to start
+at a selected ordered ROM stage slot (1..23), or pass `--stage 7` directly.
+F5 repeats that selected startup. This debug skip uses fresh first-stage
+accumulated state; it does not reproduce natural progression. See
+[the current coverage checkpoint](docs/ROADMAP.md) for verified scope.
 
 `python3 tools/workflow.py run benchmark-native benchmark-native-extended`
 measures unpaced native flight/weapon execution and rendering separately.

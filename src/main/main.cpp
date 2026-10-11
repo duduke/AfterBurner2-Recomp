@@ -28,18 +28,20 @@ namespace
 int main(int argc, char** argv)try
 {
     unsigned frame_limit = 0;
+    unsigned start_stage = 0;
     bool boot_to_flight = false, profile = false;
     for (int i=1;i<argc;++i)
     {
         const std::string_view option(argv[i]);
         if (option == "--boot-to-flight") { boot_to_flight=true; continue; }
         if (option == "--profile") { profile=true; continue; }
-        if (option != "--frames" || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--boot-to-flight] [--profile]\n"; return 1; }
+        if ((option != "--frames" && option != "--stage") || i+1>=argc)
+        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number] [--boot-to-flight] [--profile]\n"; return 1; }
         const std::string_view value(argv[++i]);
-        const auto result = std::from_chars(value.data(), value.data() + value.size(), frame_limit);
-        if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || !frame_limit)
-        { std::cerr << "Frame count must be a positive integer.\n"; return 1; }
+        auto& count = option == "--stage" ? start_stage : frame_limit;
+        const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || !count)
+        { std::cerr << (option == "--stage" ? "Stage" : "Frame count") << " must be a positive integer.\n"; return 1; }
     }
     unsigned simulated_frames = 0;
     if (!roms.load_aburner2())
@@ -49,9 +51,11 @@ int main(int argc, char** argv)try
         return 1;
     }
     std::cout << "ROM set loaded OK." << std::endl;
+    if (start_stage && start_stage > NativeStageSkip::stage_count(roms))
+        throw std::runtime_error("Stage number out of range (1.." + std::to_string(NativeStageSkip::stage_count(roms)) + ")");
 
     GameSession game(roms);
-    if (boot_to_flight) {
+    auto startup = [&] {
         // Original cold boot with the same physical coin/start pulses as the
         // verified bridge. Never seed gameplay state or skip board frames.
         for(unsigned f=0;f<600;++f) {
@@ -59,7 +63,12 @@ int main(int argc, char** argv)try
             input.coin=f>=360&&f<372; input.start=f>=420&&f<432;
             game.advance(input); game.take_audio();
         }
-    }
+        if (start_stage) {
+            game.debug_skip_to_stage(start_stage);
+            std::cout << "Debug stage skip: entered stage " << start_stage << std::endl;
+        }
+    };
+    if (boot_to_flight || start_stage) startup();
     const size_t frame_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
     std::vector<uint32_t> texture_pixels(frame_pixels);
 
@@ -147,6 +156,7 @@ int main(int argc, char** argv)try
             if (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_F5)
             {
                 game.restart();
+                if (start_stage) startup();
                 if (audio_device) SDL_ClearQueuedAudio(audio_device);
                 if (audio_device) SDL_PauseAudioDevice(audio_device, 0);
                 accumulated_seconds = 0;
