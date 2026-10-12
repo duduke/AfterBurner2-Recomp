@@ -319,6 +319,45 @@ It retains the arcade projection; 3D world geometry, true widescreen and a
 standalone WebAssembly build remain future work. This prototype does not
 promote full-credit gameplay acceptance.
 
+### Implementation order — easiest to hardest
+
+This is an estimated order for the remaining enhancement work, based on current
+interfaces and the effort to implement and validate it. It is not a schedule;
+adjacent items may change order after investigation. Completed menu, scaling,
+sprite-filter and native-performance foundations are excluded. Large features
+are split where their first useful increment is substantially easier than their
+full scope. The detailed feature descriptions remain grouped by topic below.
+
+| Order | Enhancement / increment | Difficulty | Main dependency or source of effort |
+| --- | --- | --- | --- |
+| 1 | Audio volume and additional persisted menu options | Easy | Existing menu, settings and outgoing PCM hooks |
+| 2 | Input remapping, deadzones, sensitivity and throttle mappings | Easy–moderate | Existing normalized controls; device UI and persistence |
+| 3 | CRT shaders and display pacing improvements | Moderate | Presentation backend, shader integration and frame-time measurements |
+| 4 | Controller/HOTAS auto-detection and presets | Moderate | Device mappings, calibration and testing across available hardware |
+| 5 | DIP/service access and high-score persistence | Moderate | Verified configuration/lifecycle boundaries and NVRAM persistence; service UI |
+| 6 | Sprite extraction CLI | Moderate | ROM decoding, frame boundaries and reproducible asset identification |
+| 7 | Supplemental soundtrack with original effects | Moderate–hard | Verified music/effect command separation; final mixed PCM alone is insufficient |
+| 8 | Gamepad rumble | Moderate–hard | Verified semantic weapon, impact and flight events plus SDL haptics |
+| 9 | Mission/stage selection and Time Attack | Hard | Verified stage entry, initialization and mode/timing interfaces |
+| 10 | Replacement sprites, larger textures and full-color assets | Hard | Individual sprite data before clipping, asset mapping and enhanced composition |
+| 11 | Cloud/trail translucency and additional visual particles | Hard | Individual sprite composition, depth/priority, RGBA support and overlap tests |
+| 12 | High-resolution HUD and smoother sprite rotation | Hard | HUD/asset interfaces, new art and stable sprite pivots/ordering |
+| 13 | 120/144 Hz interpolated presentation | Hard | Scene/state history, interpolation and display pacing independent of simulation |
+| 14 | True widescreen | Hard | Wider road/tile rendering, projection, culling, scenery coverage and HUD placement |
+| 15 | Save states | Hard–very hard | Complete CPU/device/continuation serialization and deterministic resume |
+| 16 | Missile near-miss scoring, combos and spatial sound cues | Hard–very hard | Verified trajectories/collision events, scoring policy and audio events |
+| 17 | Expanded gameplay object counts and basic arranged mode | Very hard | Object ownership/capacity, stage sequencing, modifiers and balance; visual particles alone do not expand gameplay capacity |
+| 18 | Optional 60 Hz gameplay updates | Very hard | Movement/timer/fire/spawn adaptation, rounding, collision order and balance |
+| 19 | Flight-stick forces and moving-cabinet integration | Very hard | Verified telemetry, device protocols and physical hardware validation |
+| 20 | Procedural environments and formations, new special stages, interactive landing/refueling | Very hard | New content/art, mission and behavior systems, transitions and extensive playtesting |
+| 21 | Local two-player wingman mode | Very hard | Second player, camera/HUD, targeting, collisions, scoring and balance |
+| 22 | Networked co-op / rollback | Highest | Multiplayer plus deterministic snapshots, synchronization, prediction and recovery |
+
+Cannonball ecosystem adaptation is an investigation item rather than a single
+implementation: select concrete features and place each in this order according
+to its dependencies. Keep original-mode regressions throughout; enhancement
+work does not close the separate full-game acceptance tasks.
+
 ### 1. Menus, UI & Convenience
 - [x] Initial native settings menu: ROM-font Start/Options/Quit, pause/resume,
   SDL nearest/linear/integer/Pixel Art scaling, desktop fullscreen, FPS/frame-time
@@ -374,8 +413,39 @@ promote full-credit gameplay acceptance.
   - *High-Res Replacement Pipeline:* Transparent loading and scaled rendering of external high-resolution sprite sheets.
   - *Smoother 360° Rotation Steps:* High-granularity roll/rotation steps via additional intermediate sprite banks or runtime software/GPU micro-rotation interpolation.
 - [ ] **Complete Sprite Replacement Option:** Option to substitute alternate custom sprite sets.
+- [ ] **Expanded Sprite Rendering and Assets:** Optional enhanced renderer
+  supporting larger sprite textures, more visual sprites and full-color
+  RGB/RGBA assets beyond the original hardware's size, descriptor-count and
+  palette restrictions. Expose individual sprite/scene data before native
+  clipping and composition, retaining original mode as the regression reference.
+  Account for both the hardware's 256 descriptor slots and the game's 192-request
+  cap; increasing renderer capacity alone does not increase game-produced sprites.
+  Add visual particles, denser scenery and longer trails through an enhancement
+  interface; additional gameplay objects require separate game-logic work.
+  Measure sustained performance and preserve intended depth, HUD priority and
+  shadow behavior. See [ENHANCEMENT_ARCHITECTURE.md](ENHANCEMENT_ARCHITECTURE.md).
+- [ ] **Selective Sprite Translucency and Effects:** Start with independently
+  configurable cloud and missile-trail translucency. Compare opacity applied
+  to original art, then support replacement RGBA textures with soft cloud edges
+  and gradually fading trails. Composite individual sprites in the correct
+  depth/priority order so scenery and other sprites remain visible behind
+  translucent effects; the current combined visible-sprite plane alone is
+  insufficient. Preserve foreground/HUD protection and native shadow semantics,
+  retain original mode, and validate overlapping effects and performance.
 
 ### 4. Gameplay Modes & Mission Content
+- [ ] **Optional 60 Hz Gameplay Update Mode:** Evaluate smoother motion and
+  reduced input latency by increasing gameplay updates from the arcade's
+  approximately 29.82 Hz to approximately 59.64 Hz, keeping the same game pace.
+  Preserve the original 30/60 Hz logic/display cadence as the default reference.
+  Adapt movement, acceleration, timers, weapon firing and spawning through
+  explicit enhancement interfaces; assess integer rounding, collision ordering
+  and sprite interpolation rather than simply doubling routine calls or
+  halving constants. Compare input response, motion, gameplay balance and
+  sustained performance against original mode, retaining its MAME regressions.
+  First evaluate 120/144 Hz presentation interpolation with the original
+  simulation as a smaller visual enhancement; this requires scene/state data
+  beyond the completed RGB frame. See [ENHANCEMENT_ARCHITECTURE.md](ENHANCEMENT_ARCHITECTURE.md).
 - [ ] **Random Gameplay Mode (Roguelite / Arranged Mode):**
   - *Seeded Runs:* Custom seed entry and daily challenge seeds for competitive, reproducible runs.
   - *Shuffled Stage Progression:* Dynamic stage sequencing with randomized time-of-day palettes and environment tilemaps.
