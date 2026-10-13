@@ -1,6 +1,6 @@
 #pragma once
 #include "hwaudio/xboard_pcm.hpp"
-#include "../../third_party/ymfm/ymfm_opm.h"
+#include "hwaudio/presentation_ym.hpp"
 #include <algorithm>
 #include <array>
 #include <deque>
@@ -16,6 +16,8 @@ public:
     static constexpr uint64_t NEVER=std::numeric_limits<uint64_t>::max();
     using Samples=std::vector<XBoardPcm::Sample>;
     std::function<void(unsigned,uint64_t,uint64_t,const Samples&)> stream;
+    std::function<void(unsigned,uint64_t,uint64_t,const Samples&,const Samples&)> stems;
+    std::function<uint32_t()> music_mask;
     std::function<void(bool)> irq_line;
     std::function<void()> synchronize;
     std::function<void(bool,unsigned,uint64_t,uint64_t)> timer_callback;
@@ -50,24 +52,31 @@ public:
 private:
     struct Timer {uint64_t at=NEVER,order=NEVER;};
     struct Mode {uint64_t at,order;uint8_t data;};
-    XBoardPcm& pcm;ymfm::ym2151 chip;
+    XBoardPcm& pcm;PresentationYm2151 chip;
     std::array<Timer,2> timers;std::deque<Mode> modes;
     uint64_t current{},busy_end{},serial{},fm_count{},pcm_count{};
     void update_fm(uint64_t ns){
         if(!ns)return;
         const auto target=ns/16000+1;
         if(target<=fm_count)return;
-        Samples out;out.reserve(target-fm_count);
-        for(auto n=fm_count;n<target;++n){ymfm::ym2151::output_data sample;chip.generate(&sample);out.push_back({sample.data[0],sample.data[1]});}
-        const auto first=fm_count;fm_count=target;if(stream)stream(0,ns,first,out);
+        Samples out,music,effects;out.reserve(target-fm_count);
+        if(stems){music.reserve(target-fm_count);effects.reserve(target-fm_count);}
+        for(auto n=fm_count;n<target;++n){ymfm::ym2151::output_data sample;chip.generate(&sample);out.push_back({sample.data[0],sample.data[1]});
+            if(stems){const auto mask=music_mask?music_mask():0;const auto m=mask==0xff?sample:chip.channels(mask),f=mask==0?sample:chip.channels(0xff&~mask);music.push_back({m.data[0],m.data[1]});effects.push_back({f.data[0],f.data[1]});}}
+        const auto first=fm_count;fm_count=target;if(stems)stems(0,ns,first,music,effects);if(stream)stream(0,ns,first,out);
     }
     void update_pcm(uint64_t ns){
         if(!ns)return;
         const auto target=ns/32000+1;
         if(target<=pcm_count)return;
-        Samples out;out.reserve(target-pcm_count);
-        for(auto n=pcm_count;n<target;++n)out.push_back(pcm.tick());
-        const auto first=pcm_count;pcm_count=target;if(stream)stream(1,ns,first,out);
+        Samples out,music,effects;out.reserve(target-pcm_count);
+        if(stems){music.reserve(target-pcm_count);effects.reserve(target-pcm_count);}
+        for(auto n=pcm_count;n<target;++n) {
+            std::array<XBoardPcm::Sample,16> voices;
+            out.push_back(pcm.tick(stems?&voices:nullptr));
+            if(stems){XBoardPcm::Sample m{},f{};for(unsigned c=0;c<16;++c){auto& v=c<8?m:f;v.left+=voices[c].left;v.right+=voices[c].right;}music.push_back(m);effects.push_back(f);}
+        }
+        const auto first=pcm_count;pcm_count=target;if(stems)stems(1,ns,first,music,effects);if(stream)stream(1,ns,first,out);
     }
     void ymfm_sync_mode_write(uint8_t data) override {modes.push_back({current,++serial,data});if(synchronize)synchronize();}
     void ymfm_set_timer(uint32_t n,int32_t clocks) override {timers[n]={clocks<0?NEVER:current+uint64_t(clocks)*250,++serial};}

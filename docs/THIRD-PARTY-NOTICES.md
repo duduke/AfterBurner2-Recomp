@@ -47,8 +47,30 @@ E-clock synchronization behavior of MAME's `m68000` core (BSD-3-Clause,
 Olivier Galibert) for its original bounded IRQ service translation. The
 MAME CPU core is not vendored or copied into this project.
 
-## Three.js prototype
+## GPU sprite filters
 
-The npm dependency is pinned in `prototypes/threejs/package.json` and its
-lockfile. Three.js is MIT-licensed; its installed package carries the upstream
-license. `node_modules/` and ROM-derived runtime assets are not committed.
+Generated GPU shaders retain ScaleFX's MIT notice and the SaI adaptations'
+Snes9x attribution/license references alongside the retained source notices in
+`src/main/frontend/scalers/`. Shader conversion uses glslang and SPIRV-Cross
+as development tools; no compiler libraries are linked into the application.
+
+The Three.js dependency and its notices are retained on the dedicated
+`codex/threejs-game-engine` branch; main no longer includes that prototype.
+
+## SDL_GameControllerDB
+
+The offline controller database comes from
+[mdqinc/SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB),
+commit `c1d5289a1f713b30a2c121e9fe6529d39360be0f`. The unmodified database and
+zlib license are retained in `src/main/frontend/controllerdb/`, with hash and
+provenance in its README. `database.inc` wraps that same text in a C++ raw
+string for packaging; mappings are not modified. SDL3 loads this through
+`SDL_AddGamepadMappingsFromIO` before the frontend opens input devices.
+
+## dr_flac
+
+`src/third_party/dr_flac/dr_flac.h` is unmodified from
+[mackron/dr_libs](https://github.com/mackron/dr_libs), commit
+`dfe8377631000664666519fdb83da193fd8037f4`. This project uses its MIT No
+Attribution license option, retained in that directory alongside provenance.
+The decoder is linked only into frontend music playback and its tests.

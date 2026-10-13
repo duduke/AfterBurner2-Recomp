@@ -1,0 +1,368 @@
+#version 450
+/*
+Copyright (c) 2016 Sp00kyFox - ScaleFX@web.de
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+*/
+// SaI adapted from Snes9x; see SNES9X-LICENSE.txt.
+// Generated from the CPU reference. ScaleFX MIT and SaI Snes9x license notices
+// are retained in scalefx.hpp, sai.hpp and SNES9X-LICENSE.txt.
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+layout(set=0,binding=0,std430) readonly buffer Input { uint data[]; } src;
+layout(set=1,binding=1,std430) buffer Intermediate { vec4 data[]; } fx;
+layout(set=1,binding=0,rgba8) uniform writeonly image2D output_image;
+layout(set=2,binding=0,std140) uniform Params { int w; int h; int mode; int factor; } p;
+// Refine reciprocal division with an explicit fused residual. Metal's
+// approximate constant division otherwise changes ScaleFX's exact tie decisions.
+float divround(float a,float b) { precise float q=a/b; precise float e=fma(-q,b,a); return fma(e,1.0/b,q); }
+vec4 divround(vec4 a,float b) { return vec4(divround(a.x,b),divround(a.y,b),divround(a.z,b),divround(a.w,b)); }
+uint pixel(int x,int y,int w,int h) { return src.data[w*h+clamp(y,0,h-1)*w+clamp(x,0,w-1)]; }
+vec4 LE(vec4 x,vec4 y){return 1.f-step(y,x);}
+vec4 GE(vec4 x,vec4 y){return 1.f-step(x,y);}
+float GE(float x,float y){return x>y?1.f:0.f;}
+vec4 LEQ(vec4 x,vec4 y){return step(x,y);}
+vec4 NOT(vec4 x){return 1.f-x;}
+float NOT(float x){return 1.f-x;}
+float dist(uint a,uint b){
+ if ((a>>24)!=(b>>24)) return 1.f;
+ const float ar=divround(float(((a>>16)&255)),255.f),br=divround(float(((b>>16)&255)),255.f);
+ const float r=(ar+br)*.5f, dr=ar-br;
+ const float dg=divround(float(int((a>>8)&255)-int((b>>8)&255)),255.f);
+ const float db=divround(float(int(a&255)-int(b&255)),255.f);
+ return divround(sqrt((2.f+r)*dr*dr+4.f*dg*dg+(3.f-r)*db*db),3.f);
+}
+int index(int x,int y,int w,int h){return clamp(y,0,h-1)*w+clamp(x,0,w-1);}
+float str(float d,vec2 a,vec2 b){
+ const float diff=a.x-a.y,wght1=max(.5f-d,0.f)/.5f;
+ const float wght2=clamp((1.f-d)+(min(a.x,b.x)+a.x>min(a.y,b.y)+a.y?diff:-diff),0.f,1.f);
+ return (wght1*wght2)*(a.x*a.y);
+}
+vec4 dom(vec3 x, vec3 y, vec3 z, vec3 w){
+	return 2.f * vec4(x.y, y.y, z.y, w.y) - (vec4(x.x, y.x, z.x, w.x) + vec4(x.z, y.z, z.z, w.z));
+}
+
+// necessary but not sufficient junction condition for orthogonal edges
+float clear(vec2 crn, vec2 a, vec2 b){
+	return (crn.x >= max(min(a.x, a.y), min(b.x, b.y))) && (crn.y >= max(min(a.x, b.y), min(b.x, a.y))) ? 1.f : 0.f;
+}
+
+vec4 loadCorn(vec4 x){
+	return vec4(floor(mod(x*15.f + 0.5f, 2.f)));
+}
+
+// extract second bool4 from float4 - horizontal edges
+vec4 loadHori(vec4 x){
+	return vec4(floor(mod(x*7.5f + 0.25f, 2.f)));
+}
+
+// extract third bool4 from float4 - vertical edges
+vec4 loadVert(vec4 x){
+	return vec4(floor(mod(x*3.75f + 0.125f, 2.f)));
+}
+
+// extract fourth bool4 from float4 - orientation
+vec4 loadOr(vec4 x){
+	return vec4(floor(mod(x*1.875f + 0.0625f, 2.f)));
+}
+
+
+int GetResult(uint A,uint B,uint C,uint D){
+ int x=0,y=0;
+ if(A==C)++x;else if(B==C)++y;
+ if(A==D)++x;else if(B==D)++y;
+ return int(x<=1)-int(y<=1);
+}
+int GetResult1(uint A,uint B,uint C,uint D,uint unused){return GetResult(A,B,C,D);}
+int GetResult2(uint A,uint B,uint C,uint D,uint unused){return -GetResult(A,B,C,D);}
+uint INTERPOLATE(uint a,uint b){
+ return ((a&0xfefefefeu)>>1)+((b&0xfefefefeu)>>1)+(a&b&0x01010101u);
+}
+uint Q_INTERPOLATE(uint a,uint b,uint c,uint d){
+ uint high=((a&0xfcfcfcfcu)>>2)+((b&0xfcfcfcfcu)>>2)+((c&0xfcfcfcfcu)>>2)+((d&0xfcfcfcfcu)>>2);
+ uint low=((a&0x03030303u)+(b&0x03030303u)+(c&0x03030303u)+(d&0x03030303u))>>2;
+ return high+(low&0x03030303u);
+}
+uvec4 sai(int x,int y,int w,int h){
+uint	colorA, colorB, colorC, colorD, colorE, colorF, colorG, colorH, colorI, colorJ, colorK, colorL, colorM, colorN, colorO, colorP;
+            uint	product, product1, product2;
+
+            colorI = pixel(x+(-1),y+(-1),w,h);
+            colorE = pixel(x+(0),y+(-1),w,h);
+            colorF = pixel(x+(1),y+(-1),w,h);
+            colorJ = pixel(x+(2),y+(-1),w,h);
+
+            colorG = pixel(x+(-1),y+(0),w,h);
+            colorA = pixel(x+(0),y+(0),w,h);
+            colorB = pixel(x+(1),y+(0),w,h);
+            colorK = pixel(x+(2),y+(0),w,h);
+
+            colorH = pixel(x+(-1),y+(1),w,h);
+            colorC = pixel(x+(0),y+(1),w,h);
+            colorD = pixel(x+(1),y+(1),w,h);
+            colorL = pixel(x+(2),y+(1),w,h);
+
+            colorM = pixel(x+(-1),y+(2),w,h);
+            colorN = pixel(x+(0),y+(2),w,h);
+            colorO = pixel(x+(1),y+(2),w,h);
+            colorP = pixel(x+(2),y+(2),w,h);
+
+            if ((colorA == colorD) && (colorB != colorC))
+            {
+                if (((colorA == colorE) && (colorB == colorL)) || ((colorA == colorC) && (colorA == colorF) && (colorB != colorE) && (colorB == colorJ)))
+                    product = colorA;
+                else
+                    product = INTERPOLATE(colorA, colorB);
+
+                if (((colorA == colorG) && (colorC == colorO)) || ((colorA == colorB) && (colorA == colorH) && (colorG != colorC) && (colorC == colorM)))
+                    product1 = colorA;
+                else
+                    product1 = INTERPOLATE(colorA, colorC);
+
+                product2 = colorA;
+            }
+            else
+            if ((colorB == colorC) && (colorA != colorD))
+            {
+                if (((colorB == colorF) && (colorA == colorH)) || ((colorB == colorE) && (colorB == colorD) && (colorA != colorF) && (colorA == colorI)))
+                    product = colorB;
+                else
+                    product = INTERPOLATE(colorA, colorB);
+
+                if (((colorC == colorH) && (colorA == colorF)) || ((colorC == colorG) && (colorC == colorD) && (colorA != colorH) && (colorA == colorI)))
+                    product1 = colorC;
+                else
+                    product1 = INTERPOLATE(colorA, colorC);
+
+                product2 = colorB;
+            }
+            else
+            if ((colorA == colorD) && (colorB == colorC))
+            {
+                if (colorA == colorB)
+                {
+                    product  = colorA;
+                    product1 = colorA;
+                    product2 = colorA;
+                }
+                else
+                {
+                    int	r = 0;
+
+                    product1 = INTERPOLATE(colorA, colorC);
+                    product  = INTERPOLATE(colorA, colorB);
+
+                    r += GetResult1(colorA, colorB, colorG, colorE, colorI);
+                    r += GetResult2(colorB, colorA, colorK, colorF, colorJ);
+                    r += GetResult2(colorB, colorA, colorH, colorN, colorM);
+                    r += GetResult1(colorA, colorB, colorL, colorO, colorP);
+
+                    if (r > 0)
+                        product2 = colorA;
+                    else
+                    if (r < 0)
+                        product2 = colorB;
+                    else
+                        product2 = Q_INTERPOLATE(colorA, colorB, colorC, colorD);
+                }
+            }
+            else
+            {
+                product2 = Q_INTERPOLATE(colorA, colorB, colorC, colorD);
+
+                if ((colorA == colorC) && (colorA == colorF) && (colorB != colorE) && (colorB == colorJ))
+                    product  = colorA;
+                else
+                if ((colorB == colorE) && (colorB == colorD) && (colorA != colorF) && (colorA == colorI))
+                    product  = colorB;
+                else
+                    product = INTERPOLATE(colorA, colorB);
+
+                if ((colorA == colorB) && (colorA == colorH) && (colorG != colorC) && (colorC == colorM))
+                    product1 = colorA;
+                else
+                if ((colorC == colorG) && (colorC == colorD) && (colorA != colorH) && (colorA == colorI))
+                    product1 = colorC;
+                else
+                    product1 = INTERPOLATE(colorA, colorC);
+            }
+
+        return uvec4(colorA,product,product1,product2);
+}
+uvec4 super_sai(int x,int y,int w,int h){
+uint	color1, color2, color3, color4, color5, color6;
+            uint	colorA0, colorA1, colorA2, colorA3, colorB0, colorB1, colorB2, colorB3, colorS1, colorS2;
+            uint	product1a, product1b, product2a, product2b;
+
+            colorB0 = pixel(x+(-1),y+(-1),w,h);
+            colorB1 = pixel(x+(0),y+(-1),w,h);
+            colorB2 = pixel(x+(1),y+(-1),w,h);
+            colorB3 = pixel(x+(2),y+(-1),w,h);
+
+            color4  = pixel(x+(-1),y+(0),w,h);
+            color5  = pixel(x+(0),y+(0),w,h);
+            color6  = pixel(x+(1),y+(0),w,h);
+            colorS2 = pixel(x+(2),y+(0),w,h);
+
+            color1  = pixel(x+(-1),y+(1),w,h);
+            color2  = pixel(x+(0),y+(1),w,h);
+            color3  = pixel(x+(1),y+(1),w,h);
+            colorS1 = pixel(x+(2),y+(1),w,h);
+
+            colorA0 = pixel(x+(-1),y+(2),w,h);
+            colorA1 = pixel(x+(0),y+(2),w,h);
+            colorA2 = pixel(x+(1),y+(2),w,h);
+            colorA3 = pixel(x+(2),y+(2),w,h);
+
+            if (color2 == color6 && color5 != color3)
+                product2b = product1b = color2;
+            else
+            if (color5 == color3 && color2 != color6)
+                product2b = product1b = color5;
+            else
+            if (color5 == color3 && color2 == color6 && color5 != color6)
+            {
+                int	r = 0;
+
+                r += GetResult(color6, color5, color1,  colorA1);
+                r += GetResult(color6, color5, color4,  colorB1);
+                r += GetResult(color6, color5, colorA2, colorS1);
+                r += GetResult(color6, color5, colorB2, colorS2);
+
+                if (r > 0)
+                    product2b = product1b = color6;
+                else
+                if (r < 0)
+                    product2b = product1b = color5;
+                else
+                    product2b = product1b = INTERPOLATE(color5, color6);
+            }
+            else
+            {
+                if (color6 == color3 && color3 == colorA1 && color2 != colorA2 && color3 != colorA0)
+                    product2b = Q_INTERPOLATE(color3, color3, color3, color2);
+                else
+                if (color5 == color2 && color2 == colorA2 && colorA1 != color3 && color2 != colorA3)
+                    product2b = Q_INTERPOLATE(color2, color2, color2, color3);
+                else
+                    product2b = INTERPOLATE(color2, color3);
+
+                if (color6 == color3 && color6 == colorB1 && color5 != colorB2 && color6 != colorB0)
+                    product1b = Q_INTERPOLATE(color6, color6, color6, color5);
+                else
+                if (color5 == color2 && color5 == colorB2 && colorB1 != color6 && color5 != colorB3)
+                    product1b = Q_INTERPOLATE(color6, color5, color5, color5);
+                else
+                    product1b = INTERPOLATE (color5, color6);
+            }
+
+            if (color5 == color3 && color2 != color6 && color4 == color5 && color5 != colorA2)
+                product2a = INTERPOLATE(color2, color5);
+            else
+            if (color5 == color1 && color6 == color5 && color4 != color2 && color5 != colorA0)
+                product2a = INTERPOLATE(color2, color5);
+            else
+                product2a = color2;
+
+            if (color2 == color6 && color5 != color3 && color1 == color2 && color2 != colorB2)
+                product1a = INTERPOLATE(color2, color5);
+            else
+            if (color4 == color2 && color3 == color2 && color1 != color5 && color2 != colorB0)
+                product1a = INTERPOLATE(color2, color5);
+            else
+                product1a = color5;
+
+        return uvec4(product1a,product1b,product2a,product2b);
+}
+
+uint simple(int x,int y,int sx,int sy,int w,int h,int mode) {
+ if(mode==0)return pixel(x,y,w,h);
+ uint E=pixel(x,y,w,h),B=pixel(x,y-1,w,h),D=pixel(x-1,y,w,h),F=pixel(x+1,y,w,h),H=pixel(x,y+1,w,h);
+ if(mode==3 || mode==4) { uvec4 q=mode==3?sai(x,y,w,h):super_sai(x,y,w,h); return q[sy*2+sx]; }
+ if(B==H || D==F) return E;
+ if(mode==1) { if(sy==0)return sx==0?(D==B?D:E):(B==F?F:E); return sx==0?(D==H?D:E):(H==F?F:E); }
+ uint A=pixel(x-1,y-1,w,h),C=pixel(x+1,y-1,w,h),G=pixel(x-1,y+1,w,h),I=pixel(x+1,y+1,w,h);
+ uint q[9]=uint[9](D==B?D:E,((D==B && E!=C)||(B==F && E!=A))?B:E,B==F?F:E,
+ ((D==B && E!=G)||(D==H && E!=A))?D:E,E,((B==F && E!=I)||(H==F && E!=C))?F:E,
+ D==H?D:E,((D==H && E!=I)||(H==F && E!=G))?H:E,H==F?F:E);
+ return q[sy*3+sx];
+}
+
+void main(){
+int x=int(gl_GlobalInvocationID.x),y=int(gl_GlobalInvocationID.y),w=p.w,h=p.h; if(x>=w || y>=h)return;
+{
+
+
+
+
+	// metric data
+	vec4 A = fx.data[index(x+(-1),y+(-1),w,h)+0*p.w*p.h], B = fx.data[index(x+(0),y+(-1),w,h)+0*p.w*p.h];
+	vec4 D = fx.data[index(x+(-1),y+(0),w,h)+0*p.w*p.h], E = fx.data[index(x+(0),y+(0),w,h)+0*p.w*p.h], F = fx.data[index(x+(1),y+(0),w,h)+0*p.w*p.h];
+	vec4 G = fx.data[index(x+(-1),y+(1),w,h)+0*p.w*p.h], H = fx.data[index(x+(0),y+(1),w,h)+0*p.w*p.h], I = fx.data[index(x+(1),y+(1),w,h)+0*p.w*p.h];
+
+	// strength data
+	vec4 As = fx.data[index(x+(-1),y+(-1),w,h)+1*p.w*p.h], Bs = fx.data[index(x+(0),y+(-1),w,h)+1*p.w*p.h], Cs = fx.data[index(x+(1),y+(-1),w,h)+1*p.w*p.h];
+	vec4 Ds = fx.data[index(x+(-1),y+(0),w,h)+1*p.w*p.h], Es = fx.data[index(x+(0),y+(0),w,h)+1*p.w*p.h], Fs = fx.data[index(x+(1),y+(0),w,h)+1*p.w*p.h];
+	vec4 Gs = fx.data[index(x+(-1),y+(1),w,h)+1*p.w*p.h], Hs = fx.data[index(x+(0),y+(1),w,h)+1*p.w*p.h], Is = fx.data[index(x+(1),y+(1),w,h)+1*p.w*p.h];
+// strength & dominance junctions
+	vec4 jSx = vec4(As.z, Bs.w, Es.x, Ds.y), jDx = dom(As.yzw, Bs.zwx, Es.wxy, Ds.xyz);
+	vec4 jSy = vec4(Bs.z, Cs.w, Fs.x, Es.y), jDy = dom(Bs.yzw, Cs.zwx, Fs.wxy, Es.xyz);
+	vec4 jSz = vec4(Es.z, Fs.w, Is.x, Hs.y), jDz = dom(Es.yzw, Fs.zwx, Is.wxy, Hs.xyz);
+	vec4 jSw = vec4(Ds.z, Es.w, Hs.x, Gs.y), jDw = dom(Ds.yzw, Es.zwx, Hs.wxy, Gs.xyz);
+
+
+	// majority vote for ambiguous dominance junctions
+	vec4 zero4 = vec4(0.f);
+	vec4 jx = min(GE(jDx, zero4) * (LEQ(jDx.yzwx, zero4) * LEQ(jDx.wxyz, zero4) + GE(jDx + jDx.zwxy, jDx.yzwx + jDx.wxyz)), 1.f);
+	vec4 jy = min(GE(jDy, zero4) * (LEQ(jDy.yzwx, zero4) * LEQ(jDy.wxyz, zero4) + GE(jDy + jDy.zwxy, jDy.yzwx + jDy.wxyz)), 1.f);
+	vec4 jz = min(GE(jDz, zero4) * (LEQ(jDz.yzwx, zero4) * LEQ(jDz.wxyz, zero4) + GE(jDz + jDz.zwxy, jDz.yzwx + jDz.wxyz)), 1.f);
+	vec4 jw = min(GE(jDw, zero4) * (LEQ(jDw.yzwx, zero4) * LEQ(jDw.wxyz, zero4) + GE(jDw + jDw.zwxy, jDw.yzwx + jDw.wxyz)), 1.f);
+
+
+	// inject strength without creating new contradictions
+	vec4 res;
+	res.x = min(jx.z + NOT(jx.y) * NOT(jx.w) * GE(jSx.z, 0.f) * (jx.x + GE(jSx.x + jSx.z, jSx.y + jSx.w)), 1.f);
+	res.y = min(jy.w + NOT(jy.z) * NOT(jy.x) * GE(jSy.w, 0.f) * (jy.y + GE(jSy.y + jSy.w, jSy.x + jSy.z)), 1.f);
+	res.z = min(jz.x + NOT(jz.w) * NOT(jz.y) * GE(jSz.x, 0.f) * (jz.z + GE(jSz.x + jSz.z, jSz.y + jSz.w)), 1.f);
+	res.w = min(jw.y + NOT(jw.x) * NOT(jw.z) * GE(jSw.y, 0.f) * (jw.w + GE(jSw.y + jSw.w, jSw.x + jSw.z)), 1.f);
+
+
+	// single pixel & end of line detection
+	res = min(res * (vec4(jx.z, jy.w, jz.x, jw.y) + NOT(res.wxyz * res.yzwx)), 1.f);
+
+
+	// output
+
+	vec4 clr;
+	clr.x = clear(vec2(D.z, E.x), vec2(D.w, E.y), vec2(A.w, D.y));
+	clr.y = clear(vec2(F.x, E.z), vec2(E.w, E.y), vec2(B.w, F.y));
+	clr.z = clear(vec2(H.z, I.x), vec2(E.w, H.y), vec2(H.w, I.y));
+	clr.w = clear(vec2(H.x, G.z), vec2(D.w, H.y), vec2(G.w, G.y));
+
+	vec4 h = vec4(min(D.w, A.w), min(E.w, B.w), min(E.w, H.w), min(D.w, G.w));
+	vec4 v = vec4(min(E.y, D.y), min(E.y, F.y), min(H.y, I.y), min(H.y, G.y));
+
+	vec4 orientation   = GE(h + vec4(D.w, E.w, E.w, D.w), v + vec4(E.y, E.y, H.y, H.y));	// orientation
+	vec4 hori = LE(h, v) * clr;	// horizontal edges
+	vec4 vert = GE(h, v) * clr;	// vertical edges
+
+	fx.data[y*w+x+2*p.w*p.h] = divround(res + 2.f * hori + 4.f * vert + 8.f * orientation,15.f);
+
+}
+}

@@ -43,15 +43,15 @@ int main() try {
     };
     extensions.restarted = [&] { frames = 0; ++restarts; };
     GameSession session(roms, extensions);
-    session.capture_sprite_presentation(true);
+    session.capture_sprite_scene(true);
     require(!session.sprite_presentation().ready,"capture cannot be ready before rendering");
     bool saw_sprites=false;
     for (unsigned f = 0; f < 781; ++f) {
         if (f == 520) {
             const auto before = session.info();
             session.capture_sprite_presentation(false);
-            require(!session.sprite_presentation().ready,"disabled presentation retained readiness");
-            session.capture_sprite_presentation(true);
+            require(!session.sprite_presentation().ready && !session.sprite_scene().ready,"disabled presentation retained readiness");
+            session.capture_sprite_scene(true);
             require(!session.sprite_presentation().ready,"late capture retained stale planes");
             session.set_paused(true);
             for (unsigned p = 0; p < 5; ++p) require(!session.advance(controls(f)), "paused session advanced");
@@ -74,6 +74,12 @@ int main() try {
             saw_sprites |= planes.sprites[i]!=0;
             require((planes.sprites[i]?planes.sprites[i]:planes.background[i])==argb,"sprite planes do not reconstruct native RGB");
         }
+        const auto scene=session.sprite_scene();require(scene.ready && scene.heads.size()==320*224,"individual scene capture incomplete");
+        for(size_t i=0;i<scene.heads.size();++i){
+            const auto foreground=scene.heads[i]==UINT32_MAX || (scene.fragments[scene.heads[i]].kind==3 || scene.fragments[scene.heads[i]].kind==4)?0:scene.fragments[scene.heads[i]].color;
+            const auto pixel=planes.protected_pixels[i] || !foreground?planes.background[i]:foreground;
+            const auto rgb=reference.pixels()[i];require(pixel==(0xff000000u|uint32_t(rgb.r)<<16|uint32_t(rgb.g)<<8|rgb.b),"scene capture changed original sprite ordering/priority/shadows");
+        }
         auto expected = reference.take_audio();
         if (mute) {
             for (auto sample : expected) nonzero_muted_source |= sample != 0;
@@ -87,13 +93,13 @@ int main() try {
     // survives, while both board and paused state return to a fresh run.
     session.set_paused(true); session.restart(); reference.restart();
     require(restarts == 1 && !session.paused() && session.take_audio().empty(), "restart lifecycle failed");
-    require(!session.sprite_presentation().ready,"restart retained stale sprite planes");
+    require(!session.sprite_presentation().ready && !session.sprite_scene().ready,"restart retained stale sprite planes");
     for (unsigned f = 0; f < 8; ++f) {
         const auto input = arcade_inputs({});
         XBoardGame::Host::Input raw; raw.buttons = input.buttons; raw.analog = input.analog;
         reference.tick(raw); session.advance({}); same_frame(session, reference);
         require(session.take_audio() == reference.take_audio(), "session restart differs from fresh native audio");
     }
-    std::cout << "Game session passed: 781 exact native RGB frames and sprite-plane reconstructions, identity/processed audio, capture toggle, pause/resume and restart lifecycle.\n";
+    std::cout << "Game session passed: 781 exact native RGB frames and sprite-plane/individual-layer reconstructions, identity/processed audio, capture toggle, pause/resume and restart lifecycle.\n";
     return 0;
 } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

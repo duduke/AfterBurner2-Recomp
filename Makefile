@@ -29,7 +29,7 @@ SRCS += src/main/engine/omainhost.cpp src/main/engine/omainirqservice.cpp src/ma
 
 SRCS += src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
 
-OBJS = $(SRCS:.cpp=.o)
+OBJS = $(SRCS:.cpp=.o) src/main/frontend/music_decoder.o
 DEPS = $(OBJS:.o=.d)
 -include $(DEPS)
 TARGET = afterburner2
@@ -1298,33 +1298,19 @@ test: test-game-controls
 verify-stage1: verify-game-session
 .PHONY: test-game-controls verify-game-session
 
-# Browser play uses a release build with whole-program optimization. Keep its
-# objects separate from acceptance builds and never enable fast-math.
-THREEJS_CXXFLAGS ?= $(CXXFLAGS) -O3 -flto
-THREEJS_SRCS = tools/threejs_bridge.cpp $(filter-out src/main/main.cpp,$(SRCS))
-THREEJS_OBJS = $(addprefix build/threejs_obj/,$(THREEJS_SRCS:.cpp=.o))
--include $(THREEJS_OBJS:.o=.d) build/threejs_obj/tests/oracle_whole_host.d
-THREEJS_CONFIG_CHANGED := $(shell printf '%s\n' '$(CXX)' '$(THREEJS_CXXFLAGS)' '$(INCLUDES)' | cmp -s - build/threejs_obj/config || echo FORCE_THREEJS_REBUILD)
-.PHONY: FORCE_THREEJS_REBUILD
-build/threejs_obj/config: FORCE_CHECK_CONFIG
+# Native release objects remain separate from acceptance builds; no fast-math.
+NATIVE_CXXFLAGS ?= $(CXXFLAGS) -O3 -flto
+NATIVE_OBJS = $(addprefix build/native_obj/,$(SRCS:.cpp=.o))
+-include $(NATIVE_OBJS:.o=.d)
+NATIVE_CONFIG_CHANGED := $(shell printf '%s\n' '$(CXX)' '$(NATIVE_CXXFLAGS)' '$(INCLUDES)' | cmp -s - build/native_obj/config || echo FORCE_NATIVE_REBUILD)
+.PHONY: FORCE_NATIVE_REBUILD
+build/native_obj/config: FORCE_CHECK_CONFIG
 	@mkdir -p $(dir $@)
-	@printf '%s\n' '$(CXX)' '$(THREEJS_CXXFLAGS)' '$(INCLUDES)' > $@.tmp
-	@if cmp -s $@.tmp $@; then rm $@.tmp; else rm -f $(THREEJS_OBJS); mv $@.tmp $@; fi
-build/threejs_obj/%.o: %.cpp build/threejs_obj/config $(THREEJS_CONFIG_CHANGED)
+	@printf '%s\n' '$(CXX)' '$(NATIVE_CXXFLAGS)' '$(INCLUDES)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else rm -f $(NATIVE_OBJS); mv $@.tmp $@; fi
+build/native_obj/%.o: %.cpp build/native_obj/config $(NATIVE_CONFIG_CHANGED)
 	@mkdir -p $(dir $@)
-	$(CXX) $(THREEJS_CXXFLAGS) $(INCLUDES) -pthread -MMD -MP -c $< -o $@
-build/threejs_bridge: $(THREEJS_OBJS)
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
-build/threejs_scene_regression: tests/threejs_scene_regression.cpp tools/threejs_scene.hpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/threejs_scene_regression.cpp src/main/hwvideo/hwsprites.cpp -o $@
-test-threejs-scene: build/threejs_scene_regression
-	./build/threejs_scene_regression
-test-threejs-scene-mutations: test-threejs-scene
-	python3 tools/oracle/check_threejs_scene_mutation.py
-test: test-threejs-scene-mutations
-threejs-prototype: build/threejs_bridge
-	python3 prototypes/threejs/server.py
-.PHONY: threejs-prototype test-threejs-scene test-threejs-scene-mutations
+	$(CXX) $(NATIVE_CXXFLAGS) $(INCLUDES) -pthread -MMD -MP -c $< -o $@
 
 # Reported live gameplay frontiers; retain the older whole-host corpora.
 RECOVERY_CAPTURE ?= build/oracle/cpu_recovery_complete.bin
@@ -1359,21 +1345,8 @@ test-cpu-continuation-backends: build/cpu_continuation_regression build/cpu_cont
 test: test-cpu-continuation-backends
 .PHONY: test-cpu-continuation-backends
 
-# Validate the exact release compiler/options used by the local browser core.
-build/threejs_obj/tests/oracle_whole_host.o: tests/oracle_whole_host.cpp
-build/oracle_threejs_release: build/threejs_obj/tests/oracle_whole_host.o $(filter-out build/threejs_obj/tools/threejs_bridge.o,$(THREEJS_OBJS))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
-verify-threejs-core: build/oracle_threejs_release
-	./build/oracle_threejs_release build/oracle/joint_cold_full.bin build/oracle/joint_cold_full.txt
-	./build/oracle_threejs_release build/oracle/whole_host_expanded.bin build/oracle/whole_host_expanded.txt
-.PHONY: verify-threejs-core
-
-benchmark-threejs: build/threejs_bridge
-	python3 tools/benchmark_threejs_bridge.py
-.PHONY: benchmark-threejs
-
-build/native_game_benchmark: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tools/benchmark_native_game.cpp $(filter-out src/main/main.cpp,$(SRCS))))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+build/native_game_benchmark: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tools/benchmark_native_game.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
 benchmark-native: build/native_game_benchmark
 	./build/native_game_benchmark
 benchmark-native-extended: build/native_game_benchmark
@@ -1390,23 +1363,23 @@ oracle-video-rolls:
 .PHONY: capture-video-rolls oracle-video-rolls
 capture-native-stage-palette:
 	@for stage in 5 8 13 17; do AB2_ORACLE_STAGE=$$stage tools/oracle/capture.sh tools/oracle/capture_stage_skip_palette.lua build/oracle/native_stage$${stage}_palette.bin 1 40 || exit $$?; done
-build/oracle_native_stage_palette: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/oracle_native_stage_palette.cpp $(filter-out src/main/main.cpp,$(SRCS))))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+build/oracle_native_stage_palette: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_native_stage_palette.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
 verify-native-stage-palette: build/oracle_native_stage_palette
 	@for stage in 5 8 13 17; do ./build/oracle_native_stage_palette build/oracle/native_stage$${stage}_palette.bin || exit $$?; done
--include build/threejs_obj/tests/oracle_native_stage_palette.d
+-include build/native_obj/tests/oracle_native_stage_palette.d
 .PHONY: capture-native-stage-palette verify-native-stage-palette
 oracle-capture: capture-native-stage-palette
 oracle-test: verify-native-stage-palette
 benchmark-native-missiles: build/native_game_benchmark
 	./build/native_game_benchmark --missiles
-build/stage_input_sweep: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tools/stage_input_sweep.cpp $(filter-out src/main/main.cpp,$(SRCS))))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+build/stage_input_sweep: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tools/stage_input_sweep.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
 stage-input-sweep: build/stage_input_sweep
 	./build/stage_input_sweep $(STAGE_SWEEP_ARGS)
 .PHONY: stage-input-sweep
-build/natural_credit: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tools/natural_credit.cpp $(filter-out src/main/main.cpp,$(SRCS))))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+build/natural_credit: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tools/natural_credit.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
 natural-credit: build/natural_credit
 	./build/natural_credit $(NATURAL_INPUT) $(NATURAL_OUTPUT)
 # Build once, then use this target for concurrent independent recordings;
@@ -1414,7 +1387,7 @@ natural-credit: build/natural_credit
 natural-credit-replay:
 	./build/natural_credit $(NATURAL_INPUT) $(NATURAL_OUTPUT)
 .PHONY: natural-credit natural-credit-replay
--include build/threejs_obj/tools/natural_credit.d
+-include build/native_obj/tools/natural_credit.d
 capture-natural-credit:
 	AB2_NATURAL_INPUT="$(abspath $(NATURAL_INPUT))" tools/oracle/capture.sh tools/oracle/capture_natural_credit.lua "$(NATURAL_REFERENCE)" 1 $(NATURAL_SECONDS)
 capture-natural-census: oracle-scheduler-probe
@@ -1427,13 +1400,13 @@ oracle-natural-ending:
 	python3 tools/oracle/check_natural_mutations.py "$(NATURAL_INPUT)" "$(NATURAL_OUTPUT)" "$(NATURAL_REFERENCE)" --require-ending
 NATURAL_SECONDS ?= 210
 .PHONY: capture-natural-credit capture-natural-census oracle-natural-transitions oracle-natural-ending
--include build/threejs_obj/tools/stage_input_sweep.d
+-include build/native_obj/tools/stage_input_sweep.d
 .PHONY: benchmark-native benchmark-native-extended benchmark-native-full-throttle benchmark-native-rolls benchmark-native-missiles
--include build/threejs_obj/tools/benchmark_native_game.d build/threejs_obj/src/main/main.d
+-include build/native_obj/tools/benchmark_native_game.d build/native_obj/src/main/main.d
 
-# Native desktop play uses the same verified release options as the bridge.
-build/afterburner2-release: $(addprefix build/threejs_obj/,$(SRCS:.cpp=.o))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+# Native desktop play retains the verified release compiler options.
+build/afterburner2-release: $(addprefix build/native_obj/,$(SRCS:.cpp=.o)) build/native_obj/src/main/frontend/music_decoder.o
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
 native-release: build/afterburner2-release
 play-native: native-release
 	./build/afterburner2-release --boot-to-flight --profile $(if $(STAGE),--stage $(STAGE))
@@ -1445,21 +1418,22 @@ build/native_settings_regression: tests/native_settings_regression.cpp src/main/
 test-native-settings: build/native_settings_regression
 	./build/native_settings_regression
 test: test-native-settings
-build/native_menu_integration: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/native_menu_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+build/native_menu_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/native_menu_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))) build/native_obj/src/main/frontend/music_decoder.o
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
 verify-native-menu: build/native_menu_integration
+	python3 tools/audio/generate_test_audio.py
 	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/native_menu_integration
--include build/threejs_obj/tests/native_menu_integration.d
+-include build/native_obj/tests/native_menu_integration.d
 .PHONY: test-native-settings verify-native-menu
 
-build/oracle_native_release_recovery: $(addprefix build/threejs_obj/,$(patsubst %.cpp,%.o,tests/oracle_cpu_coverage.cpp $(filter-out src/main/main.cpp,$(SRCS))))
-	$(CXX) $(THREEJS_CXXFLAGS) -pthread $^ -o $@
+build/oracle_native_release_recovery: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_cpu_coverage.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
 verify-native-release-recovery: build/oracle_native_release_recovery oracle-recovery-generated-check
 	./build/oracle_native_release_recovery "$(RECOVERY_BASELINE_CAPTURE)"
 	./build/oracle_native_release_recovery "$(RECOVERY_CAPTURE)"
 	python3 tools/oracle/check_recovery_coverage.py "$(RECOVERY_BASELINE_CAPTURE)" "$(RECOVERY_CAPTURE)"
 .PHONY: verify-native-release-recovery
--include build/threejs_obj/tests/oracle_cpu_coverage.d
+-include build/native_obj/tests/oracle_cpu_coverage.d
 
 build/video_clip_regression: tests/video_clip_regression.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwroad.hpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwtiles.hpp
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/video_clip_regression.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp -o $@
@@ -1482,3 +1456,66 @@ build/check_scalefx_reference: tools/scalers/check_scalefx_reference.cpp src/mai
 verify-scalefx-reference: build/check_scalefx_reference
 	./build/check_scalefx_reference
 .PHONY: test-sprite-filters verify-scalefx-reference
+
+# Explicit GPU check requires a real SDL GPU backend; never silently skips.
+build/gpu_sprite_filter_regression: tests/gpu_sprite_filter_regression.cpp src/main/frontend/gpu_sprite_filter.hpp src/main/frontend/sprite_filter.hpp $(wildcard src/main/frontend/scalers/*)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
+verify-gpu-sprite-filters: build/gpu_sprite_filter_regression
+	./build/gpu_sprite_filter_regression
+shader-build:
+	python3 tools/scalers/build_gpu_shaders.py
+.PHONY: verify-gpu-sprite-filters shader-build
+verify-gpu-sprite-mutations: verify-gpu-sprite-filters
+	python3 tools/scalers/check_gpu_mutations.py
+verify-gpu-native-menu: build/native_menu_integration
+	python3 tools/audio/generate_test_audio.py
+	./build/native_menu_integration --gpu
+.PHONY: verify-gpu-sprite-mutations verify-gpu-native-menu
+verify-gpu-native-fixture: build/gpu_sprite_filter_regression
+	./build/gpu_sprite_filter_regression build/oracle/gpu-native-planes.bin
+.PHONY: verify-gpu-native-fixture
+
+build/native_input_regression: tests/native_input_regression.cpp src/main/frontend/native_input.hpp src/main/frontend/controller_database.hpp src/main/frontend/controllerdb/database.inc
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -Isrc/main $< -o $@ $(LIBS)
+test-native-input: build/native_input_regression
+	./build/native_input_regression
+test: test-native-input
+.PHONY: test-native-input
+
+
+build/native_music_regression: tests/native_music_regression.cpp src/main/frontend/music_decoder.cpp src/main/frontend/native_music.hpp src/main/frontend/music_settings.hpp src/third_party/dr_flac/dr_flac.h
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -pthread tests/native_music_regression.cpp src/main/frontend/music_decoder.cpp src/third_party/ymfm/ymfm_opm.cpp -o $@ $(LIBS)
+test-native-music: build/native_music_regression
+	python3 tools/audio/generate_test_audio.py
+	SDL_AUDIODRIVER=dummy ./build/native_music_regression
+test: test-native-music
+.PHONY: test-native-music
+
+-include src/main/frontend/music_decoder.d build/native_obj/src/main/frontend/music_decoder.d
+
+build/music_presentation_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/music_presentation_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))) build/native_obj/src/main/frontend/music_decoder.o
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-music-presentation: build/music_presentation_integration
+	./build/music_presentation_integration
+-include build/native_obj/tests/music_presentation_integration.d
+.PHONY: verify-music-presentation
+
+build/oracle_music_routing: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_music_routing.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
+oracle-music-routing: build/oracle_music_routing
+	./build/oracle_music_routing build/oracle/music-routing-781-v3.bin
+	./build/oracle_music_routing build/oracle/music-routing-1800.bin --require-fm-effects
+-include build/native_obj/tests/oracle_music_routing.d
+.PHONY: oracle-music-routing
+
+
+oracle-capture-music-routing:
+	AB2_ORACLE_CALLER_SNAPSHOTS=1 AB2_ORACLE_INPUT_ENDPOINTS=1 tools/oracle/capture.sh tools/oracle/capture_music_routing.lua build/oracle/music-routing-781-v3.bin 781 30
+	AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_music_routing.lua build/oracle/music-routing-1800.bin 1800 45
+oracle-music-mutations: oracle-music-routing test-native-music
+	python3 tools/audio/check_music_mutations.py
+oracle-test: oracle-music-mutations
+verify-stage1: verify-music-presentation
+.PHONY: oracle-capture-music-routing oracle-music-mutations

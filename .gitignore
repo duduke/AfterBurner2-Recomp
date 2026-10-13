@@ -21,3 +21,11 @@ roms/opr-*
 *.swp
 .vscode/
 .idea/
+
+# Three.js is branch-only; retain local dependencies/caches without tracking them.
+/prototypes/threejs/
+# Python validation-tool caches.
+__pycache__/
+
+# User-provided replacement music
+/soundtrack/

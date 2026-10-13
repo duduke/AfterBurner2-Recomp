@@ -2,6 +2,7 @@
 
 #include "engine/game_controls.hpp"
 #include "engine/xboard_game.hpp"
+#include "hwvideo/sprite_scene.hpp"
 #include "engine/native_stage_skip.hpp"
 #include <functional>
 #include <span>
@@ -24,6 +25,11 @@ public:
         // sprites are transparent except where the native priority test wins.
         std::span<const uint32_t> background, sprites;
         std::span<const uint8_t> protected_pixels;
+        bool ready{};
+    };
+    struct SpriteScene {
+        std::span<const uint32_t> heads;
+        std::span<const Presentation::Fragment> fragments;
         bool ready{};
     };
     struct Extensions {
@@ -53,6 +59,7 @@ public:
         XBoardGame::Host::Input input;
         input.buttons = physical.buttons;
         input.analog = physical.analog;
+        scene_ready=false;
         game.tick(input);
         auto samples = game.take_audio();
         if (extensions.process_audio && !samples.empty()) extensions.process_audio(samples, info());
@@ -83,13 +90,31 @@ public:
     // the next completed frame, including when enabled while paused.
     void capture_sprite_presentation(bool enabled) {
         if (enabled == capture_sprites) return;
-        capture_sprites = enabled; presentation_ready = false;
+        capture_sprites = enabled; presentation_ready = false;scene_ready=false;
+        if(!enabled)capture_scene=false;
         if (enabled) bind_sprite_capture();
         else { game.board().layers = {}; game.board().rendered = {}; }
     }
     SpritePresentation sprite_presentation() const {
         return {background, sprites, protected_pixels, capture_sprites && presentation_ready};
     }
+    void capture_sprite_scene(bool enabled) {
+        if(enabled==capture_scene)return;
+        capture_scene=enabled;scene_ready=false;
+        if(enabled){for(auto& row:scene_rows)row.clear();for(auto& heads:row_heads)heads.fill(UINT32_MAX);presentation_ready=false;assets=std::make_unique<Presentation::EffectAssets>(std::span(rom.maincpu.rom,rom.maincpu.length),std::span(rom.subcpu.rom,rom.subcpu.length));capture_sprite_presentation(true);}
+    }
+    SpriteScene sprite_scene() {
+        if(!capture_scene || !presentation_ready)return {};
+        if(!scene_ready){scene_heads.assign(width*height,UINT32_MAX);scene_fragments.clear();
+            for(unsigned y=0;y<height;++y){const auto base=uint32_t(scene_fragments.size());
+                for(auto f:scene_rows[y]){if(f.previous!=UINT32_MAX)f.previous+=base;scene_fragments.push_back(f);}
+                for(unsigned x=0;x<width;++x)if(row_heads[y][x]!=UINT32_MAX)scene_heads[y*width+x]=base+row_heads[y][x];
+            }scene_ready=true;
+        }
+        return {scene_heads,scene_fragments,true};
+    }
+    void capture_music(bool enabled){game.capture_music(enabled);}
+    std::vector<XBoardGame::AudioPresentation> take_music(){return game.take_music();}
     std::vector<int16_t> take_audio() {
         auto result = std::move(audio);
         audio.clear();
@@ -102,17 +127,33 @@ private:
     Extensions extensions;
     bool paused_ = false;
     std::vector<int16_t> audio;
-    bool capture_sprites{}, presentation_ready{};
+    bool capture_sprites{}, presentation_ready{},capture_scene{},scene_ready{};
+    std::unique_ptr<Presentation::EffectAssets> assets;
+    std::array<std::vector<Presentation::Fragment>,height> scene_rows;
+    std::array<std::array<uint32_t,width>,height> row_heads{};
+    std::vector<Presentation::Fragment> scene_fragments;
+    std::vector<uint32_t> scene_heads;
     std::vector<uint32_t> background, sprites;
     std::vector<uint8_t> protected_pixels;
     static uint32_t argb(RGB888 p) {
         return 0xff000000u | uint32_t(p.r)<<16 | uint32_t(p.g)<<8 | p.b;
     }
     void bind_sprite_capture() {
+        for(auto& row:scene_rows)row.clear();for(auto& heads:row_heads)heads.fill(UINT32_MAX);scene_ready=false;
         background.assign(width*height, 0xff000000u);
         sprites.assign(width*height, 0);
         protected_pixels.assign(width*height, 0);
         game.board().layers = [this](unsigned top, unsigned bottom, auto indices, auto priority, const HWPalette& palette) {
+            if(capture_scene){
+                for(unsigned y=top;y<=bottom;++y){scene_rows[y].clear();row_heads[y].fill(UINT32_MAX);}
+                Presentation::decode(game.board().memory.sprite_buffer,std::span(rom.sprites.rom,rom.sprites.length),top,bottom,*assets,
+                    [&](unsigned x,unsigned y,uint16_t raw,Presentation::Effect kind){const unsigned i=y*width+x;
+                        const bool visible=(1<<((raw>>12)&3))>priority[i];
+                        const auto pen=!visible?indices[i]:(raw&0x400f)==0x400a?indices[i]+palette.num_entries():raw&0xfff;
+                        auto& row=scene_rows[y];row.push_back({argb(palette.pen(pen)),row_heads[y][x],uint32_t(!visible?Presentation::Effect::background:(raw&0x400f)==0x400a?Presentation::Effect::shadow:kind),raw});
+                        row_heads[y][x]=uint32_t(row.size()-1);
+                    });
+            }
             const auto words = game.board().sprite_words();
             for (unsigned i=top*width; i<(bottom+1)*width; ++i) {
                 background[i] = argb(palette.pen(indices[i]));
@@ -127,7 +168,7 @@ private:
         game.board().rendered = [this](uint64_t, unsigned top, unsigned bottom, bool display) {
             const auto& output = game.pixels();
             for (unsigned i=top*width; i<(bottom+1)*width; ++i) {
-                if (!display) { background[i]=0xff000000u; sprites[i]=0; protected_pixels[i]=0; }
+                if (!display) { if(capture_scene){scene_rows[i/width].clear();row_heads[i/width].fill(UINT32_MAX);}background[i]=0xff000000u; sprites[i]=0; protected_pixels[i]=0; }
                 else if (sprites[i]==2) { background[i]=argb(output[i]); sprites[i]=0; }
                 else if (sprites[i]) sprites[i]=argb(output[i]);
             }

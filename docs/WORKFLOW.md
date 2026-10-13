@@ -380,9 +380,9 @@ A fresh `oracle-capture-recovery` can always recreate the complete manifest.
 
 ## Native SDL3 platform
 
-The native application requires SDL3 3.2 or newer. Make uses `pkg-config sdl3`
-and CMake uses `find_package(SDL3 3.2 REQUIRED CONFIG COMPONENTS SDL3)` with
-`SDL3::SDL3`. SDL3 supplies the window, keyboard events, texture presentation
+The native application requires SDL3 3.4 or newer. Make uses `pkg-config sdl3`
+and CMake uses `find_package(SDL3 3.4 REQUIRED CONFIG COMPONENTS SDL3)` with
+`SDL3::SDL3`. SDL3 supplies the window, keyboard events, GPU rendering/compute
 and audio stream; `GameSession` still owns board clocks, RGB and PCM.
 
 Use SDL3's driver environment names for native headless checks:
@@ -395,7 +395,9 @@ SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=unavailable ./build/afterburner2-release
 `tools/oracle/capture.sh` runs the external MAME executable and retains its
 SDL2 driver environment names. Native rendering requests vsync, letterboxes
 the original logical resolution and explicitly uses nearest texture sampling.
-Audio queues original signed 16-bit stereo PCM into an SDL3 playback stream;
+Audio queues signed 16-bit stereo presentation PCM into an SDL3 playback stream;
+Original at unity retains exact native output, while optional music settings use
+verified stems and replacement files.
 the input-side queue still bounds latency to approximately 100 ms. P pauses
 the stream device, F5 clears queued PCM and restarts the selected board, and
 a missing audio driver permits gameplay without a speaker.
@@ -410,3 +412,67 @@ boot, then full throttle/cannon, varying stick position and missile pulses for
 ground-target discovery. It changes physical inputs/DIP settings only. Verify
 actual award-queue execution before claiming ground-target coverage; it does
 not reproduce a user's exact trajectory by itself.
+
+### SDL GPU sprite filtering
+
+The native app requests an SDL GPU device with Metal/MSL or Vulkan/SPIR-V
+support, then creates an SDL GPU 2D renderer. GPU compute shaders implement
+all five sprite filters and protected background composition. Unsupported GPU
+systems and dummy-video checks report an explicit CPU/software fallback.
+The CPU board renderer and sprite feedback remain authoritative.
+
+```sh
+python3 tools/workflow.py run verify-gpu-sprite-mutations verify-gpu-native-menu
+make shader-build
+```
+
+GPU checks require a real device/display service and fail if unavailable; they
+do not silently skip. Ordinary `test` retains the CPU/reference coverage and
+`verify-native-menu` uses dummy/software rendering. Shader rebuilding needs
+`glslangValidator` and `spirv-cross`; normal Make/CMake builds use the embedded
+shader header and need neither tool. Rebuild shaders after changing scaler
+algorithms and repeat GPU comparison/mutations. GPU filter/upload statistics
+measure CPU upload/command submission time, not isolated GPU execution time.
+
+`verify-gpu-native-menu` additionally compares all five filters on sampled
+native boot/launch/gameplay planes and retains the first 320x224 native fixture
+under ignored `build/oracle/`. Use
+`python3 tools/workflow.py run verify-gpu-native-fixture` to replay that retained
+fixture after creating it with the native check. Existing fixtures are preserved;
+new failures get separate frame/filter filenames.
+
+### Optional original-art sprite transparency
+
+Options → Clouds, Trails, Explosions and Afterburner independently select Opaque
+or Translucent; all default to Opaque and persist in the existing settings file. These options
+work with Sprites Off or any scaler. Known original cloud art uses 160/255
+opacity, missile-trail art uses 112/255, explosions use 176/255 and player flame
+pens use 192/255; gameplay and native board
+pixels remain unchanged. GPU composition retains covered sprites, foreground
+tile priority and native shadow coverage. A CPU/software fallback is available.
+
+`verify-gpu-sprite-mutations` includes opaque, zero-opacity and translucent
+layer overlaps plus separate rejected cloud/trail/explosion/afterburner opacity mutations.
+`verify-gpu-native-menu` exercises all sixteen option combinations and all six
+scaler modes on sampled native boot/attract/launch/gameplay scenes, with actual
+cloud/trail/explosion/player-flame observations required. `verify-game-session` checks individual
+scene capture against a separate native host across 781 frames, audio and the
+pause/toggle/restart lifecycle. This is finite coverage; other ROM art families,
+whole-credit visuals and peak-load performance remain open.
+
+### Native input remapping
+
+Use Options → Controls for keyboard, gamepad and joystick bindings. The SDL3
+gamepad database is embedded for offline deployment. Preferences live beside
+`settings.cfg` in `settings.cfg.inputs`; `--settings-file` also relocates them.
+`python3 tools/workflow.py run test-native-input verify-native-menu native-release`
+checks SDL virtual-device discovery/remapping/hotplug, UI and native compilation.
+`test-native-input` is included in `test` and CMake CTest. Physical hardware
+testing remains separate from virtual-device coverage. See README for bindings,
+axis capture, full throttle, GUID sharing and reserved system shortcuts.
+
+Music frontend checks: `python3 tools/workflow.py run test-native-music
+verify-music-presentation oracle-music-routing oracle-music-mutations`. Generate
+independent routing fixtures with `oracle-capture-music-routing` when absent or
+when capture semantics change. The 1,800-frame fixture is required to exercise
+actual FM effects voice ownership. Shared audio changes still require `required`.

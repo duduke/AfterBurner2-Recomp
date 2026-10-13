@@ -34,7 +34,8 @@ public:
             ++coverage.disables_retaining_fraction;
         s.ram[offset]=data;
     }
-    Sample tick() {
+    Sample tick(std::array<Sample,16>* voices=nullptr) {
+        if(voices)voices->fill({});
         Sample out;
         // MAME sound_stream_update: channel enable, BANK_512 and 24-bit
         // fixed-point address (eight fractional bits retained internally).
@@ -60,6 +61,7 @@ public:
                 // only seven volume bits participate. No per-device clamp.
                 const int32_t v=int32_t(rom[bank+(addr>>8)])-0x80;
                 out.left+=v*(r[2]&0x7f);out.right+=v*(r[3]&0x7f);
+                if(voices)(*voices)[ch]={v*(r[2]&0x7f),v*(r[3]&0x7f)};
                 if((r[2]|r[3])&0x80)++coverage.high_volumes;
                 if((addr&255)+r[7]>255)++coverage.fraction_carries;
                 if(addr+r[7]>0xffffff)++coverage.address_wraps;

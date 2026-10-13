@@ -1,0 +1,383 @@
+#version 450
+/*
+Copyright (c) 2016 Sp00kyFox - ScaleFX@web.de
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+*/
+// SaI adapted from Snes9x; see SNES9X-LICENSE.txt.
+// Generated from the CPU reference. ScaleFX MIT and SaI Snes9x license notices
+// are retained in scalefx.hpp, sai.hpp and SNES9X-LICENSE.txt.
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+layout(set=0,binding=0,std430) readonly buffer Input { uint data[]; } src;
+layout(set=1,binding=1,std430) buffer Intermediate { vec4 data[]; } fx;
+layout(set=1,binding=0,rgba8) uniform writeonly image2D output_image;
+layout(set=2,binding=0,std140) uniform Params { int w; int h; int mode; int factor; } p;
+// Refine reciprocal division with an explicit fused residual. Metal's
+// approximate constant division otherwise changes ScaleFX's exact tie decisions.
+float divround(float a,float b) { precise float q=a/b; precise float e=fma(-q,b,a); return fma(e,1.0/b,q); }
+vec4 divround(vec4 a,float b) { return vec4(divround(a.x,b),divround(a.y,b),divround(a.z,b),divround(a.w,b)); }
+uint pixel(int x,int y,int w,int h) { return src.data[w*h+clamp(y,0,h-1)*w+clamp(x,0,w-1)]; }
+vec4 LE(vec4 x,vec4 y){return 1.f-step(y,x);}
+vec4 GE(vec4 x,vec4 y){return 1.f-step(x,y);}
+float GE(float x,float y){return x>y?1.f:0.f;}
+vec4 LEQ(vec4 x,vec4 y){return step(x,y);}
+vec4 NOT(vec4 x){return 1.f-x;}
+float NOT(float x){return 1.f-x;}
+float dist(uint a,uint b){
+ if ((a>>24)!=(b>>24)) return 1.f;
+ const float ar=divround(float(((a>>16)&255)),255.f),br=divround(float(((b>>16)&255)),255.f);
+ const float r=(ar+br)*.5f, dr=ar-br;
+ const float dg=divround(float(int((a>>8)&255)-int((b>>8)&255)),255.f);
+ const float db=divround(float(int(a&255)-int(b&255)),255.f);
+ return divround(sqrt((2.f+r)*dr*dr+4.f*dg*dg+(3.f-r)*db*db),3.f);
+}
+int index(int x,int y,int w,int h){return clamp(y,0,h-1)*w+clamp(x,0,w-1);}
+float str(float d,vec2 a,vec2 b){
+ const float diff=a.x-a.y,wght1=max(.5f-d,0.f)/.5f;
+ const float wght2=clamp((1.f-d)+(min(a.x,b.x)+a.x>min(a.y,b.y)+a.y?diff:-diff),0.f,1.f);
+ return (wght1*wght2)*(a.x*a.y);
+}
+vec4 dom(vec3 x, vec3 y, vec3 z, vec3 w){
+	return 2.f * vec4(x.y, y.y, z.y, w.y) - (vec4(x.x, y.x, z.x, w.x) + vec4(x.z, y.z, z.z, w.z));
+}
+
+// necessary but not sufficient junction condition for orthogonal edges
+float clear(vec2 crn, vec2 a, vec2 b){
+	return (crn.x >= max(min(a.x, a.y), min(b.x, b.y))) && (crn.y >= max(min(a.x, b.y), min(b.x, a.y))) ? 1.f : 0.f;
+}
+
+vec4 loadCorn(vec4 x){
+	return vec4(floor(mod(x*15.f + 0.5f, 2.f)));
+}
+
+// extract second bool4 from float4 - horizontal edges
+vec4 loadHori(vec4 x){
+	return vec4(floor(mod(x*7.5f + 0.25f, 2.f)));
+}
+
+// extract third bool4 from float4 - vertical edges
+vec4 loadVert(vec4 x){
+	return vec4(floor(mod(x*3.75f + 0.125f, 2.f)));
+}
+
+// extract fourth bool4 from float4 - orientation
+vec4 loadOr(vec4 x){
+	return vec4(floor(mod(x*1.875f + 0.0625f, 2.f)));
+}
+
+
+int GetResult(uint A,uint B,uint C,uint D){
+ int x=0,y=0;
+ if(A==C)++x;else if(B==C)++y;
+ if(A==D)++x;else if(B==D)++y;
+ return int(x<=1)-int(y<=1);
+}
+int GetResult1(uint A,uint B,uint C,uint D,uint unused){return GetResult(A,B,C,D);}
+int GetResult2(uint A,uint B,uint C,uint D,uint unused){return -GetResult(A,B,C,D);}
+uint INTERPOLATE(uint a,uint b){
+ return ((a&0xfefefefeu)>>1)+((b&0xfefefefeu)>>1)+(a&b&0x01010101u);
+}
+uint Q_INTERPOLATE(uint a,uint b,uint c,uint d){
+ uint high=((a&0xfcfcfcfcu)>>2)+((b&0xfcfcfcfcu)>>2)+((c&0xfcfcfcfcu)>>2)+((d&0xfcfcfcfcu)>>2);
+ uint low=((a&0x03030303u)+(b&0x03030303u)+(c&0x03030303u)+(d&0x03030303u))>>2;
+ return high+(low&0x03030303u);
+}
+uvec4 sai(int x,int y,int w,int h){
+uint	colorA, colorB, colorC, colorD, colorE, colorF, colorG, colorH, colorI, colorJ, colorK, colorL, colorM, colorN, colorO, colorP;
+            uint	product, product1, product2;
+
+            colorI = pixel(x+(-1),y+(-1),w,h);
+            colorE = pixel(x+(0),y+(-1),w,h);
+            colorF = pixel(x+(1),y+(-1),w,h);
+            colorJ = pixel(x+(2),y+(-1),w,h);
+
+            colorG = pixel(x+(-1),y+(0),w,h);
+            colorA = pixel(x+(0),y+(0),w,h);
+            colorB = pixel(x+(1),y+(0),w,h);
+            colorK = pixel(x+(2),y+(0),w,h);
+
+            colorH = pixel(x+(-1),y+(1),w,h);
+            colorC = pixel(x+(0),y+(1),w,h);
+            colorD = pixel(x+(1),y+(1),w,h);
+            colorL = pixel(x+(2),y+(1),w,h);
+
+            colorM = pixel(x+(-1),y+(2),w,h);
+            colorN = pixel(x+(0),y+(2),w,h);
+            colorO = pixel(x+(1),y+(2),w,h);
+            colorP = pixel(x+(2),y+(2),w,h);
+
+            if ((colorA == colorD) && (colorB != colorC))
+            {
+                if (((colorA == colorE) && (colorB == colorL)) || ((colorA == colorC) && (colorA == colorF) && (colorB != colorE) && (colorB == colorJ)))
+                    product = colorA;
+                else
+                    product = INTERPOLATE(colorA, colorB);
+
+                if (((colorA == colorG) && (colorC == colorO)) || ((colorA == colorB) && (colorA == colorH) && (colorG != colorC) && (colorC == colorM)))
+                    product1 = colorA;
+                else
+                    product1 = INTERPOLATE(colorA, colorC);
+
+                product2 = colorA;
+            }
+            else
+            if ((colorB == colorC) && (colorA != colorD))
+            {
+                if (((colorB == colorF) && (colorA == colorH)) || ((colorB == colorE) && (colorB == colorD) && (colorA != colorF) && (colorA == colorI)))
+                    product = colorB;
+                else
+                    product = INTERPOLATE(colorA, colorB);
+
+                if (((colorC == colorH) && (colorA == colorF)) || ((colorC == colorG) && (colorC == colorD) && (colorA != colorH) && (colorA == colorI)))
+                    product1 = colorC;
+                else
+                    product1 = INTERPOLATE(colorA, colorC);
+
+                product2 = colorB;
+            }
+            else
+            if ((colorA == colorD) && (colorB == colorC))
+            {
+                if (colorA == colorB)
+                {
+                    product  = colorA;
+                    product1 = colorA;
+                    product2 = colorA;
+                }
+                else
+                {
+                    int	r = 0;
+
+                    product1 = INTERPOLATE(colorA, colorC);
+                    product  = INTERPOLATE(colorA, colorB);
+
+                    r += GetResult1(colorA, colorB, colorG, colorE, colorI);
+                    r += GetResult2(colorB, colorA, colorK, colorF, colorJ);
+                    r += GetResult2(colorB, colorA, colorH, colorN, colorM);
+                    r += GetResult1(colorA, colorB, colorL, colorO, colorP);
+
+                    if (r > 0)
+                        product2 = colorA;
+                    else
+                    if (r < 0)
+                        product2 = colorB;
+                    else
+                        product2 = Q_INTERPOLATE(colorA, colorB, colorC, colorD);
+                }
+            }
+            else
+            {
+                product2 = Q_INTERPOLATE(colorA, colorB, colorC, colorD);
+
+                if ((colorA == colorC) && (colorA == colorF) && (colorB != colorE) && (colorB == colorJ))
+                    product  = colorA;
+                else
+                if ((colorB == colorE) && (colorB == colorD) && (colorA != colorF) && (colorA == colorI))
+                    product  = colorB;
+                else
+                    product = INTERPOLATE(colorA, colorB);
+
+                if ((colorA == colorB) && (colorA == colorH) && (colorG != colorC) && (colorC == colorM))
+                    product1 = colorA;
+                else
+                if ((colorC == colorG) && (colorC == colorD) && (colorA != colorH) && (colorA == colorI))
+                    product1 = colorC;
+                else
+                    product1 = INTERPOLATE(colorA, colorC);
+            }
+
+        return uvec4(colorA,product,product1,product2);
+}
+uvec4 super_sai(int x,int y,int w,int h){
+uint	color1, color2, color3, color4, color5, color6;
+            uint	colorA0, colorA1, colorA2, colorA3, colorB0, colorB1, colorB2, colorB3, colorS1, colorS2;
+            uint	product1a, product1b, product2a, product2b;
+
+            colorB0 = pixel(x+(-1),y+(-1),w,h);
+            colorB1 = pixel(x+(0),y+(-1),w,h);
+            colorB2 = pixel(x+(1),y+(-1),w,h);
+            colorB3 = pixel(x+(2),y+(-1),w,h);
+
+            color4  = pixel(x+(-1),y+(0),w,h);
+            color5  = pixel(x+(0),y+(0),w,h);
+            color6  = pixel(x+(1),y+(0),w,h);
+            colorS2 = pixel(x+(2),y+(0),w,h);
+
+            color1  = pixel(x+(-1),y+(1),w,h);
+            color2  = pixel(x+(0),y+(1),w,h);
+            color3  = pixel(x+(1),y+(1),w,h);
+            colorS1 = pixel(x+(2),y+(1),w,h);
+
+            colorA0 = pixel(x+(-1),y+(2),w,h);
+            colorA1 = pixel(x+(0),y+(2),w,h);
+            colorA2 = pixel(x+(1),y+(2),w,h);
+            colorA3 = pixel(x+(2),y+(2),w,h);
+
+            if (color2 == color6 && color5 != color3)
+                product2b = product1b = color2;
+            else
+            if (color5 == color3 && color2 != color6)
+                product2b = product1b = color5;
+            else
+            if (color5 == color3 && color2 == color6 && color5 != color6)
+            {
+                int	r = 0;
+
+                r += GetResult(color6, color5, color1,  colorA1);
+                r += GetResult(color6, color5, color4,  colorB1);
+                r += GetResult(color6, color5, colorA2, colorS1);
+                r += GetResult(color6, color5, colorB2, colorS2);
+
+                if (r > 0)
+                    product2b = product1b = color6;
+                else
+                if (r < 0)
+                    product2b = product1b = color5;
+                else
+                    product2b = product1b = INTERPOLATE(color5, color6);
+            }
+            else
+            {
+                if (color6 == color3 && color3 == colorA1 && color2 != colorA2 && color3 != colorA0)
+                    product2b = Q_INTERPOLATE(color3, color3, color3, color2);
+                else
+                if (color5 == color2 && color2 == colorA2 && colorA1 != color3 && color2 != colorA3)
+                    product2b = Q_INTERPOLATE(color2, color2, color2, color3);
+                else
+                    product2b = INTERPOLATE(color2, color3);
+
+                if (color6 == color3 && color6 == colorB1 && color5 != colorB2 && color6 != colorB0)
+                    product1b = Q_INTERPOLATE(color6, color6, color6, color5);
+                else
+                if (color5 == color2 && color5 == colorB2 && colorB1 != color6 && color5 != colorB3)
+                    product1b = Q_INTERPOLATE(color6, color5, color5, color5);
+                else
+                    product1b = INTERPOLATE (color5, color6);
+            }
+
+            if (color5 == color3 && color2 != color6 && color4 == color5 && color5 != colorA2)
+                product2a = INTERPOLATE(color2, color5);
+            else
+            if (color5 == color1 && color6 == color5 && color4 != color2 && color5 != colorA0)
+                product2a = INTERPOLATE(color2, color5);
+            else
+                product2a = color2;
+
+            if (color2 == color6 && color5 != color3 && color1 == color2 && color2 != colorB2)
+                product1a = INTERPOLATE(color2, color5);
+            else
+            if (color4 == color2 && color3 == color2 && color1 != color5 && color2 != colorB0)
+                product1a = INTERPOLATE(color2, color5);
+            else
+                product1a = color5;
+
+        return uvec4(product1a,product1b,product2a,product2b);
+}
+
+uint simple(int x,int y,int sx,int sy,int w,int h,int mode) {
+ if(mode==0)return pixel(x,y,w,h);
+ uint E=pixel(x,y,w,h),B=pixel(x,y-1,w,h),D=pixel(x-1,y,w,h),F=pixel(x+1,y,w,h),H=pixel(x,y+1,w,h);
+ if(mode==3 || mode==4) { uvec4 q=mode==3?sai(x,y,w,h):super_sai(x,y,w,h); return q[sy*2+sx]; }
+ if(B==H || D==F) return E;
+ if(mode==1) { if(sy==0)return sx==0?(D==B?D:E):(B==F?F:E); return sx==0?(D==H?D:E):(H==F?F:E); }
+ uint A=pixel(x-1,y-1,w,h),C=pixel(x+1,y-1,w,h),G=pixel(x-1,y+1,w,h),I=pixel(x+1,y+1,w,h);
+ uint q[9]=uint[9](D==B?D:E,((D==B && E!=C)||(B==F && E!=A))?B:E,B==F?F:E,
+ ((D==B && E!=G)||(D==H && E!=A))?D:E,E,((B==F && E!=I)||(H==F && E!=C))?F:E,
+ D==H?D:E,((D==H && E!=I)||(H==F && E!=G))?H:E,H==F?F:E);
+ return q[sy*3+sx];
+}
+
+void main(){
+int x=int(gl_GlobalInvocationID.x),y=int(gl_GlobalInvocationID.y),w=p.w,h=p.h; if(x>=w || y>=h)return;
+{
+
+
+
+	// read data
+	vec4 E = fx.data[index(x+(0),y+(0),w,h)+2*p.w*p.h];
+	vec4 D = fx.data[index(x+(-1),y+(0),w,h)+2*p.w*p.h], D0 = fx.data[index(x+(-2),y+(0),w,h)+2*p.w*p.h], D1 = fx.data[index(x+(-3),y+(0),w,h)+2*p.w*p.h];
+	vec4 F = fx.data[index(x+(1),y+(0),w,h)+2*p.w*p.h], F0 = fx.data[index(x+(2),y+(0),w,h)+2*p.w*p.h], F1 = fx.data[index(x+(3),y+(0),w,h)+2*p.w*p.h];
+	vec4 B = fx.data[index(x+(0),y+(-1),w,h)+2*p.w*p.h], B0 = fx.data[index(x+(0),y+(-2),w,h)+2*p.w*p.h], B1 = fx.data[index(x+(0),y+(-3),w,h)+2*p.w*p.h];
+	vec4 H = fx.data[index(x+(0),y+(1),w,h)+2*p.w*p.h], H0 = fx.data[index(x+(0),y+(2),w,h)+2*p.w*p.h], H1 = fx.data[index(x+(0),y+(3),w,h)+2*p.w*p.h];
+// extract data
+	vec4 Ec = loadCorn(E), Eh = loadHori(E), Ev = loadVert(E), Eo = loadOr(E);
+	vec4 Dc = loadCorn(D),	Dh = loadHori(D), Do = loadOr(D), D0c = loadCorn(D0), D0h = loadHori(D0), D1h = loadHori(D1);
+	vec4 Fc = loadCorn(F),	Fh = loadHori(F), Fo = loadOr(F), F0c = loadCorn(F0), F0h = loadHori(F0), F1h = loadHori(F1);
+	vec4 Bc = loadCorn(B),	Bv = loadVert(B), Bo = loadOr(B), B0c = loadCorn(B0), B0v = loadVert(B0), B1v = loadVert(B1);
+	vec4 Hc = loadCorn(H),	Hv = loadVert(H), Ho = loadOr(H), H0c = loadCorn(H0), H0v = loadVert(H0), H1v = loadVert(H1);
+
+
+	// lvl1 corners (hori, vert)
+	bool lvl1x = (Ec.x != 0.0) && ((Dc.z != 0.0) || (Bc.z != 0.0) || 1.0f == 1.f);
+	bool lvl1y = (Ec.y != 0.0) && ((Fc.w != 0.0) || (Bc.w != 0.0) || 1.0f == 1.f);
+	bool lvl1z = (Ec.z != 0.0) && ((Fc.x != 0.0) || (Hc.x != 0.0) || 1.0f == 1.f);
+	bool lvl1w = (Ec.w != 0.0) && ((Dc.y != 0.0) || (Hc.y != 0.0) || 1.0f == 1.f);
+
+	// lvl2 mid (left, right / up, down)
+	vec2 lvl2x = vec2((((Ec.x != 0.0) && (Eh.y != 0.0))) && (Dc.z != 0.0), (((Ec.y != 0.0) && (Eh.x != 0.0))) && (Fc.w != 0.0));
+	vec2 lvl2y = vec2((((Ec.y != 0.0) && (Ev.z != 0.0))) && (Bc.w != 0.0), (((Ec.z != 0.0) && (Ev.y != 0.0))) && (Hc.x != 0.0));
+	vec2 lvl2z = vec2((((Ec.w != 0.0) && (Eh.z != 0.0))) && (Dc.y != 0.0), (((Ec.z != 0.0) && (Eh.w != 0.0))) && (Fc.x != 0.0));
+	vec2 lvl2w = vec2((((Ec.x != 0.0) && (Ev.w != 0.0))) && (Bc.z != 0.0), (((Ec.w != 0.0) && (Ev.x != 0.0))) && (Hc.y != 0.0));
+
+	// lvl3 corners (hori, vert)
+	vec2 lvl3x = vec2((lvl2x.y != 0.0) && (((Dh.y != 0.0) && (Dh.x != 0.0))) && (Fh.z != 0.0), (lvl2w.y != 0.0) && (((Bv.w != 0.0) && (Bv.x != 0.0))) && (Hv.z != 0.0));
+	vec2 lvl3y = vec2((lvl2x.x != 0.0) && (((Fh.x != 0.0) && (Fh.y != 0.0))) && (Dh.w != 0.0), (lvl2y.y != 0.0) && (((Bv.z != 0.0) && (Bv.y != 0.0))) && (Hv.w != 0.0));
+	vec2 lvl3z = vec2((lvl2z.x != 0.0) && (((Fh.w != 0.0) && (Fh.z != 0.0))) && (Dh.x != 0.0), (lvl2y.x != 0.0) && (((Hv.y != 0.0) && (Hv.z != 0.0))) && (Bv.x != 0.0));
+	vec2 lvl3w = vec2((lvl2z.y != 0.0) && (((Dh.z != 0.0) && (Dh.w != 0.0))) && (Fh.y != 0.0), (lvl2w.x != 0.0) && (((Hv.x != 0.0) && (Hv.w != 0.0))) && (Bv.y != 0.0));
+
+	// lvl4 corners (hori, vert)
+	vec2 lvl4x = vec2((((Dc.x != 0.0) && (Dh.y != 0.0)) && ((Eh.x != 0.0) && (Eh.y != 0.0)) && ((Fh.x != 0.0) && (Fh.y != 0.0))) && (((D0c.z != 0.0) && (D0h.w != 0.0))), (((Bc.x != 0.0) && (Bv.w != 0.0)) && ((Ev.x != 0.0) && (Ev.w != 0.0)) && ((Hv.x != 0.0) && (Hv.w != 0.0))) && (((B0c.z != 0.0) && (B0v.y != 0.0))));
+	vec2 lvl4y = vec2((((Fc.y != 0.0) && (Fh.x != 0.0)) && ((Eh.y != 0.0) && (Eh.x != 0.0)) && ((Dh.y != 0.0) && (Dh.x != 0.0))) && (((F0c.w != 0.0) && (F0h.z != 0.0))), (((Bc.y != 0.0) && (Bv.z != 0.0)) && ((Ev.y != 0.0) && (Ev.z != 0.0)) && ((Hv.y != 0.0) && (Hv.z != 0.0))) && (((B0c.w != 0.0) && (B0v.x != 0.0))));
+	vec2 lvl4z = vec2((((Fc.z != 0.0) && (Fh.w != 0.0)) && ((Eh.z != 0.0) && (Eh.w != 0.0)) && ((Dh.z != 0.0) && (Dh.w != 0.0))) && (((F0c.x != 0.0) && (F0h.y != 0.0))), (((Hc.z != 0.0) && (Hv.y != 0.0)) && ((Ev.z != 0.0) && (Ev.y != 0.0)) && ((Bv.z != 0.0) && (Bv.y != 0.0))) && (((H0c.x != 0.0) && (H0v.w != 0.0))));
+	vec2 lvl4w = vec2((((Dc.w != 0.0) && (Dh.z != 0.0)) && ((Eh.w != 0.0) && (Eh.z != 0.0)) && ((Fh.w != 0.0) && (Fh.z != 0.0))) && (((D0c.y != 0.0) && (D0h.x != 0.0))), (((Hc.w != 0.0) && (Hv.x != 0.0)) && ((Ev.w != 0.0) && (Ev.x != 0.0)) && ((Bv.w != 0.0) && (Bv.x != 0.0))) && (((H0c.y != 0.0) && (H0v.z != 0.0))));
+
+	// lvl5 mid (left, right / up, down)
+	vec2 lvl5x = vec2((lvl4x.x != 0.0) && (((F0h.x != 0.0) && (F0h.y != 0.0))) && (((D1h.z != 0.0) && (D1h.w != 0.0))), (lvl4y.x != 0.0) && (((D0h.y != 0.0) && (D0h.x != 0.0))) && (((F1h.w != 0.0) && (F1h.z != 0.0))));
+	vec2 lvl5y = vec2((lvl4y.y != 0.0) && (((H0v.y != 0.0) && (H0v.z != 0.0))) && (((B1v.w != 0.0) && (B1v.x != 0.0))), (lvl4z.y != 0.0) && (((B0v.z != 0.0) && (B0v.y != 0.0))) && (((H1v.x != 0.0) && (H1v.w != 0.0))));
+	vec2 lvl5z = vec2((lvl4w.x != 0.0) && (((F0h.w != 0.0) && (F0h.z != 0.0))) && (((D1h.y != 0.0) && (D1h.x != 0.0))), (lvl4z.x != 0.0) && (((D0h.z != 0.0) && (D0h.w != 0.0))) && (((F1h.x != 0.0) && (F1h.y != 0.0))));
+	vec2 lvl5w = vec2((lvl4x.y != 0.0) && (((H0v.x != 0.0) && (H0v.w != 0.0))) && (((B1v.z != 0.0) && (B1v.y != 0.0))), (lvl4w.y != 0.0) && (((B0v.w != 0.0) && (B0v.x != 0.0))) && (((H1v.y != 0.0) && (H1v.z != 0.0))));
+
+	// lvl6 corners (hori, vert)
+	vec2 lvl6x = vec2((lvl5x.y != 0.0) && (((D1h.y != 0.0) && (D1h.x != 0.0))), (lvl5w.y != 0.0) && (((B1v.w != 0.0) && (B1v.x != 0.0))));
+	vec2 lvl6y = vec2((lvl5x.x != 0.0) && (((F1h.x != 0.0) && (F1h.y != 0.0))), (lvl5y.y != 0.0) && (((B1v.z != 0.0) && (B1v.y != 0.0))));
+	vec2 lvl6z = vec2((lvl5z.x != 0.0) && (((F1h.w != 0.0) && (F1h.z != 0.0))), (lvl5y.x != 0.0) && (((H1v.y != 0.0) && (H1v.z != 0.0))));
+	vec2 lvl6w = vec2((lvl5z.y != 0.0) && (((D1h.z != 0.0) && (D1h.w != 0.0))), (lvl5w.x != 0.0) && (((H1v.x != 0.0) && (H1v.w != 0.0))));
+
+
+	// subpixels - 0 = E, 1 = D, 2 = D0, 3 = F, 4 = F0, 5 = B, 6 = B0, 7 = H, 8 = H0
+
+	vec4 crn;
+	crn.x = ((lvl1x && (Eo.x != 0.0)) || ((lvl3x.x != 0.0) && (Eo.y != 0.0)) || ((lvl4x.x != 0.0) && (Do.x != 0.0)) || ((lvl6x.x != 0.0) && (Fo.y != 0.0))) ? 5.f : (lvl1x || ((lvl3x.y != 0.0) && !(Eo.w != 0.0)) || ((lvl4x.y != 0.0) && !(Bo.x != 0.0)) || ((lvl6x.y != 0.0) && !(Ho.w != 0.0))) ? 1.f : (lvl3x.x != 0.0) ? 3.f : (lvl3x.y != 0.0) ? 7.f : (lvl4x.x != 0.0) ? 2.f : (lvl4x.y != 0.0) ? 6.f : (lvl6x.x != 0.0) ? 4.f : (lvl6x.y != 0.0) ? 8.f : 0.f;
+	crn.y = ((lvl1y && (Eo.y != 0.0)) || ((lvl3y.x != 0.0) && (Eo.x != 0.0)) || ((lvl4y.x != 0.0) && (Fo.y != 0.0)) || ((lvl6y.x != 0.0) && (Do.x != 0.0))) ? 5.f : (lvl1y || ((lvl3y.y != 0.0) && !(Eo.z != 0.0)) || ((lvl4y.y != 0.0) && !(Bo.y != 0.0)) || ((lvl6y.y != 0.0) && !(Ho.z != 0.0))) ? 3.f : (lvl3y.x != 0.0) ? 1.f : (lvl3y.y != 0.0) ? 7.f : (lvl4y.x != 0.0) ? 4.f : (lvl4y.y != 0.0) ? 6.f : (lvl6y.x != 0.0) ? 2.f : (lvl6y.y != 0.0) ? 8.f : 0.f;
+	crn.z = ((lvl1z && (Eo.z != 0.0)) || ((lvl3z.x != 0.0) && (Eo.w != 0.0)) || ((lvl4z.x != 0.0) && (Fo.z != 0.0)) || ((lvl6z.x != 0.0) && (Do.w != 0.0))) ? 7.f : (lvl1z || ((lvl3z.y != 0.0) && !(Eo.y != 0.0)) || ((lvl4z.y != 0.0) && !(Ho.z != 0.0)) || ((lvl6z.y != 0.0) && !(Bo.y != 0.0))) ? 3.f : (lvl3z.x != 0.0) ? 1.f : (lvl3z.y != 0.0) ? 5.f : (lvl4z.x != 0.0) ? 4.f : (lvl4z.y != 0.0) ? 8.f : (lvl6z.x != 0.0) ? 2.f : (lvl6z.y != 0.0) ? 6.f : 0.f;
+	crn.w = ((lvl1w && (Eo.w != 0.0)) || ((lvl3w.x != 0.0) && (Eo.z != 0.0)) || ((lvl4w.x != 0.0) && (Do.w != 0.0)) || ((lvl6w.x != 0.0) && (Fo.z != 0.0))) ? 7.f : (lvl1w || ((lvl3w.y != 0.0) && !(Eo.x != 0.0)) || ((lvl4w.y != 0.0) && !(Ho.w != 0.0)) || ((lvl6w.y != 0.0) && !(Bo.x != 0.0))) ? 1.f : (lvl3w.x != 0.0) ? 3.f : (lvl3w.y != 0.0) ? 5.f : (lvl4w.x != 0.0) ? 2.f : (lvl4w.y != 0.0) ? 8.f : (lvl6w.x != 0.0) ? 4.f : (lvl6w.y != 0.0) ? 6.f : 0.f;
+
+	vec4 mid;
+	mid.x = (((lvl2x.x != 0.0) &&  (Eo.x != 0.0)) || ((lvl2x.y != 0.0) &&  (Eo.y != 0.0)) || ((lvl5x.x != 0.0) &&  (Do.x != 0.0)) || ((lvl5x.y != 0.0) &&  (Fo.y != 0.0))) ? 5.f : (lvl2x.x != 0.0) ? 1.f : (lvl2x.y != 0.0) ? 3.f : (lvl5x.x != 0.0) ? 2.f : (lvl5x.y != 0.0) ? 4.f : (((Ec.x != 0.0) && (Dc.z != 0.0)) && ((Ec.y != 0.0) && (Fc.w != 0.0))) ? ( (Eo.x != 0.0) ?  (Eo.y != 0.0) ? 5.f : 3.f : 1.f) : 0.f;
+	mid.y = (((lvl2y.x != 0.0) && !(Eo.y != 0.0)) || ((lvl2y.y != 0.0) && !(Eo.z != 0.0)) || ((lvl5y.x != 0.0) && !(Bo.y != 0.0)) || ((lvl5y.y != 0.0) && !(Ho.z != 0.0))) ? 3.f : (lvl2y.x != 0.0) ? 5.f : (lvl2y.y != 0.0) ? 7.f : (lvl5y.x != 0.0) ? 6.f : (lvl5y.y != 0.0) ? 8.f : (((Ec.y != 0.0) && (Bc.w != 0.0)) && ((Ec.z != 0.0) && (Hc.x != 0.0))) ? (!(Eo.y != 0.0) ? !(Eo.z != 0.0) ? 3.f : 7.f : 5.f) : 0.f;
+	mid.z = (((lvl2z.x != 0.0) &&  (Eo.w != 0.0)) || ((lvl2z.y != 0.0) &&  (Eo.z != 0.0)) || ((lvl5z.x != 0.0) &&  (Do.w != 0.0)) || ((lvl5z.y != 0.0) &&  (Fo.z != 0.0))) ? 7.f : (lvl2z.x != 0.0) ? 1.f : (lvl2z.y != 0.0) ? 3.f : (lvl5z.x != 0.0) ? 2.f : (lvl5z.y != 0.0) ? 4.f : (((Ec.z != 0.0) && (Fc.x != 0.0)) && ((Ec.w != 0.0) && (Dc.y != 0.0))) ? ( (Eo.z != 0.0) ?  (Eo.w != 0.0) ? 7.f : 1.f : 3.f) : 0.f;
+	mid.w = (((lvl2w.x != 0.0) && !(Eo.x != 0.0)) || ((lvl2w.y != 0.0) && !(Eo.w != 0.0)) || ((lvl5w.x != 0.0) && !(Bo.x != 0.0)) || ((lvl5w.y != 0.0) && !(Ho.w != 0.0))) ? 1.f : (lvl2w.x != 0.0) ? 5.f : (lvl2w.y != 0.0) ? 7.f : (lvl5w.x != 0.0) ? 6.f : (lvl5w.y != 0.0) ? 8.f : (((Ec.w != 0.0) && (Hc.y != 0.0)) && ((Ec.x != 0.0) && (Bc.z != 0.0))) ? (!(Eo.w != 0.0) ? !(Eo.x != 0.0) ? 1.f : 5.f : 7.f) : 0.f;
+
+
+	// ouput
+	fx.data[y*w+x+3*p.w*p.h] = divround(crn + 9.f * mid,80.f);
+
+}
+}

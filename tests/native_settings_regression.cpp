@@ -15,6 +15,8 @@ int main() try {
         auto filter=chosen;filter.sprites=static_cast<Frontend::SpriteFilter>(i);
         require(Frontend::save_settings(path,filter) && Frontend::load_settings(path,true)==filter,"sprite filter persistence failed");
     }
+    for(bool explosions:{false,true})for(bool afterburner:{false,true}){auto effects=chosen;effects.explosions=explosions;effects.afterburner=afterburner;require(Frontend::save_settings(path,effects) && Frontend::load_settings(path,true)==effects,"explosion/flame persistence failed");}
+    for(bool clouds:{false,true})for(bool trails:{false,true}){auto effects=chosen;effects.clouds=clouds;effects.trails=trails;require(Frontend::save_settings(path,effects) && Frontend::load_settings(path,true)==effects,"independent effect persistence failed");}
     require(!std::filesystem::exists(path+".tmp"),"temporary preferences left behind");
     {std::ofstream f(path);f<<"AB2SETTINGS1\nscaling=pixel-art\nfullscreen=1\nstats=1\nunknown=future\n";}
     require(Frontend::load_settings(path,true).scaling==Frontend::Scaling::pixel_art,"available pixel-art setting lost");

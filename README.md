@@ -1,169 +1,159 @@
 # AfterBurner2-Recomp (WIP)
 
-A from-scratch, hand-ported reimplementation of SEGA's 1987 arcade game
-**After Burner II**, in the spirit of Chris White's
-[Cannonball](https://github.com/djyt/cannonball) — which did the same thing
-for *OutRun*.
+A native C++ reimplementation of SEGA's 1987 **After Burner II**, inspired by
+[Cannonball](https://github.com/djyt/cannonball). The original main/sub 68000
+instructions are translated into address-labelled C++ with ROM-derived code
+generation and hand-translated modules. The original sound Z80 program runs
+with reimplemented YM2151/SegaPCM devices under a common X-Board scheduler.
+Independent [MAME](https://github.com/mamedev/mame) captures verify the ports.
 
-After Burner II is a trademark of SEGA. This project is not affiliated with
-SEGA. No SEGA code, graphics, or audio is distributed here — the program
-reads that data at runtime from an original ROM dump you must supply
-yourself (see [roms/README.md](roms/README.md)). See [LICENSE.txt](LICENSE.txt).
+After Burner II is a SEGA trademark; this project is not affiliated with SEGA.
+ROM images, original graphics and soundtrack files are not distributed. Supply
+your own ROM dump as described in [ROM setup](roms/README.md).
+See [LICENSE.txt](LICENSE.txt) and [third-party notices](docs/THIRD-PARTY-NOTICES.md).
 
-## What "recomp" means here
+## Current status
 
-This is **not** automated static/dynamic recompilation of the original
-68000 machine code. There's no off-the-shelf tool for that on 68000, and the
-output of such tools tends to be unmaintainable. Instead, following
-Cannonball's proven approach:
+The native application cold-boots the translated board and supports attract
+mode, coin/start, flight, weapons, scenery, HUD and original audio. SDL3 handles
+windowing, input, presentation and playback. The board advances at its physical
+16.768 ms frame period; gameplay cadence remains ROM-controlled.
 
-- The original arcade ROM's **graphics tiles, sprites, background/road data,
-  and audio (Z80 program + YM2151/SegaPCM samples) are reused as-is** as
-  data, read straight out of the ROM images.
-- The **68000 game logic is translated from disassembly into address-labelled
-  C++**, with verified subsystems available for later readable refactoring.
-  The live application runs these translations; the earlier Stage 1
-  reconstruction remains in regression tools. The logic drives reimplementations
-  of the X-Board hardware (sprite scaler, background generator, tilemap,
-  palette) instead of an emulated CPU core.
-- The result runs natively (no CPU emulation for the game logic itself),
-  is portable, and is realistically modifiable — the entire point of the
-  Cannonball approach vs. straight arcade emulation (MAME already does that
-  well; this project exists to make the internals legible and hackable).
+Finite whole-host MAME comparisons and retained instruction/mutation gates pass.
+All 23 debug-selected stage slots complete approximately ten seconds of scripted
+inputs. A 74,452-frame Easy / 99-credit physical-input recording reaches the
+ending and matches ten MAME observation columns throughout. **Standard single-credit
+completion, continuous whole-credit CPU/device/RGB/audio identity and across-stage
+peak-load performance remain open.** Unknown instructions stop explicitly.
+See the [roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-12)
+for precise coverage, exclusions and the next acceptance tasks.
 
-## Hardware target
+## Build and play
 
-After Burner II runs on SEGA's **X-Board** hardware (dual 68000 CPUs + Z80
-sound CPU, hardware sprite scaler, custom background/ground generator,
-YM2151 + SegaPCM sound). [MAME](https://github.com/mamedev/mame)'s
-`src/mame/sega/segaxbd.cpp` driver is used throughout as the ground-truth
-hardware reference (it covers the whole X-Board game family; only the
-After Burner II-specific configuration is relevant here). See
-[docs/HARDWARE.md](docs/HARDWARE.md) for the distilled reference used while
-porting.
+Requires SDL3 **3.4 or newer**, a C++20 compiler and either Make with
+`pkg-config sdl3`, or CMake with the installed `SDL3::SDL3` package.
+Run commands from the repository root so `roms/` and `soundtrack/` resolve there.
 
-## Project layout
-
-Mirrors Cannonball's structure, adapted for X-Board:
-
-```
-src/main/
-  main.cpp, romloader.*      — SDL3 window/input/audio, ROM chip loader
-  engine/                    — ported 68000 game logic (one file per
-                               original code module, once identified)
-  hwvideo/                   — faithful reimplementations of the X-Board
-                               sprite scaler, background/ground generator,
-                               tilemap and palette hardware
-  hwaudio/                   — YM2151 + SegaPCM sound chip emulation, Z80
-                               sound program interpretation
-  frontend/                  — ROM-font menu, settings, stats and sprite filters
-roms/                        — where you place your ROM dump (gitignored)
-docs/                        — hardware & porting reference notes
+```sh
+make play-native
 ```
 
-## Status
+This builds `build/afterburner2-release` using the verified `-O3 -flto` options,
+then advances the original cold boot with physical coin/start pulses and hands
+over flight controls. For the initial Start Game / Options / Quit menu:
 
-The application now cold-boots the literal main/sub 68000 ports and original
-Z80 sound program through one native X-Board scheduler. The ROM drives attract
-mode, coin/start, flight, weapons, HUD, scenery and sound commands; the host
-presents the hardware renderer and mixed speaker output.
-
-The SDL3 native implementation is on `main`; `make play-native` is the primary
-desktop launch target. All 23 debug-selected stage slots complete approximately
-10 seconds of scripted inputs without a host stop. Whole-host MAME comparisons
-pass for finite cold/gameplay corpora, and the instruction recovery manifest
-passes its fixtures and mutations. A 74,452-frame Easy / 99-credit recording
-reaches the ending naturally and
-matches ten MAME observation columns throughout. **Standard single-credit
-completion, whole-credit CPU/device/RGB/audio identity and across-stage peak-load
-performance remain open.** Unknown instructions
-stop explicitly. See the [current checkpoint and next acceptance tasks](docs/ROADMAP.md#current-checkpoint-2026-10-12)
-for exact coverage and limits.
-
-The SDL application uses `GameSession`, an application API for normalized
-controls, pause/restart, completed frame notifications and output audio
-processing. It keeps the translated logic as the reference while Phase 5
-features are added. See [Extending the translated game](docs/ENHANCEMENT_ARCHITECTURE.md)
-for extension contracts and the deeper interfaces needed for new gameplay modes.
-
-A separate [Three.js rendering prototype](prototypes/threejs/README.md) is
-available with `make threejs-prototype` after installing its npm dependency.
-The `codex/threejs-game-engine` branch is preserved locally and on origin.
-It draws original-art sprite meshes and ground/tile geometry from the native
-core through a local server; it is not yet a standalone browser build.
-
-## Building
-
-Requires SDL3 3.2 or newer and a C++20 compiler. Make discovers SDL3 through
-`pkg-config sdl3`; CMake uses the installed `SDL3::SDL3` target.
-
-For optimized native desktop play, run `make play-native` from the repository
-root. This builds `build/afterburner2-release` with the verified `-O3 -flto`
-options, cold-boots 600 original board frames with physical coin/start pulses,
-then hands flight controls to the keyboard. No browser or server is needed.
-Arrows fly, Z/X fire cannon/missiles, Space/Left Shift control throttle,
-P pauses, F5 cold-restarts, and Esc/F1 opens the pause/settings menu. After a cold
-restart, use 5 for coin and Enter for start. The window title and console show measured simulation
-FPS; `--profile` also reports display FPS, board cost and presentation wait.
-Run `make native-release` and `./build/afterburner2-release` for the initial
-ROM-font menu with Start Game, Options and Quit. Start Game uses physical
-coin/start pulses. Full-credit coverage remains incomplete; unported
-instructions still stop explicitly. Use `make play-native STAGE=7` to start
-at a selected ordered ROM stage slot (1..23), or pass `--stage 7` directly.
-F5 repeats that selected startup. This debug skip uses fresh first-stage
-accumulated state; it does not reproduce natural progression. See
-[the current coverage checkpoint](docs/ROADMAP.md) for verified scope.
-
-Options provides SDL window scaling, fullscreen, detailed FPS/frame/core/filter
-and presentation timing, plus persistent preferences. The separate Sprites row
-selects Off (default), EPX, Scale3x, 2xSaI, Super2xSaI or ScaleFX. Native road/tile
-coverage, foreground text and palette shadows are preserved before final window
-scaling. EPX is the lighter starting option; CPU ScaleFX can reduce displayed
-FPS. xBRZ awaits a compatible license. See
-[menu controls and configuration](docs/WORKFLOW.md#native-settings-menu).
-
-`python3 tools/workflow.py run benchmark-native benchmark-native-extended`
-measures unpaced native flight/weapon execution and rendering separately.
-These benchmarks exclude window presentation and do not establish MAME
-acceptance or performance across every stage and input trajectory.
-
-```bash
-cmake -S . -B build
-cmake --build build
-./build/afterburner2
+```sh
+make native-release
+./build/afterburner2-release
 ```
 
-Controls: arrow keys move/bank/pitch, Z fires the cannon, X launches missiles,
-Space increases throttle and Left Shift reduces it. Press 5 to insert a coin,
-Enter to start, P to pause/resume, F5 to cold-restart, and Esc/F1 for the menu.
-Choose Quit from the menu to exit. F11 toggles fullscreen and F3 cycles stats.
-The board advances at
-its physical 16.768 ms frame period; logic cadence comes from the ROM.
+Alternatively:
 
-The Makefile is an alternative when CMake is unavailable: `make -j4`.
-Run ROM-free engine checks with `make test` (or CTest with a CMake build).
-For historical reconstruction screenshots, run `make render-scene`, then
-`./build/render_scene build/level.ppm`. Append `left` or `right` to capture
-banking, or `combat` for weapon fire; an optional final argument selects the
-tick count (for example, `./build/render_scene build/right.ppm right 480`).
-`make verify-stage1` runs the optional ROM-backed integration suite; CMake users
-can enable it with `-DSTAGE1_ROM_TESTS=ON`. `./afterburner2 --frames 180`
-performs a bounded application run for launch checks. Run these commands from the repository root; ROMs are not included.
+```sh
+cmake -S . -B build/cmake
+cmake --build build/cmake -j4
+./build/cmake/afterburner2
+```
 
-Ported arcade routines are verified against the original code running in
-MAME: `make oracle-capture` records reference snapshots from your ROMs into
-`build/oracle/` (needs a MAME binary; set `MAME=` and `ROMPATH=`), and
-`make oracle-test` checks the ports against them byte-for-byte. See
-"Oracle testing" in [docs/ENGINE_NOTES.md](docs/ENGINE_NOTES.md).
+`make play-native STAGE=7` debug-selects an ordered stage slot (1–23). It uses
+fresh first-stage accumulated state and does not reproduce natural progression.
+`--frames 180` limits a launch check; `--profile` reports simulation/display FPS,
+board cost, filter submission and presentation wait. `--record path` records
+physical inputs; `--settings-file path` relocates frontend preferences.
 
-## Documentation
+## Controls and remapping
 
-| Document | Purpose |
+| Keyboard default | Action |
 | --- | --- |
-| [Roadmap](docs/ROADMAP.md) | Working rules, current acceptance, next tasks and enhancement backlog |
-| [Workflow](docs/WORKFLOW.md) | Build/check/capture commands and missing-instruction recovery |
-| [Engine notes](docs/ENGINE_NOTES.md) | Chronological ROM discoveries, fixtures, mutations and historical exclusions |
-| [Hardware](docs/HARDWARE.md) | X-Board hardware reference |
-| [Enhancement architecture](docs/ENHANCEMENT_ARCHITECTURE.md) | Available extension hooks and required deeper interfaces |
-| [Historical Stage 1 tests](docs/STAGE1_FIDELITY.md) | Reconstruction regression scope and reproduction |
-| [Third-party notices](docs/THIRD-PARTY-NOTICES.md) | Vendored/derived code and license references |
+| Arrow keys | Fly / bank / pitch |
+| Z / X | Cannon / missiles |
+| Space / Left Shift | Increase / reduce throttle |
+| 5 / Enter | Coin / start |
+| P / F5 | Pause / cold restart |
+| Esc or F1 | Open / close menu |
+| F11 / F3 | Fullscreen / cycle stats |
+
+Options → Controls supports keyboard, SDL3 gamepads and raw joysticks, with
+remapping, dead zone, sensitivity, axis polarity and full-axis throttle. Enter
+captures a binding; Backspace clears it; Escape cancels or returns. Axes must
+cross neutral before capture. For a throttle slider, select Full Axis and bind
+Boost toward maximum; this replaces Brake and uses the complete signed range.
+
+Gamepads default to left-stick flight, South/East for weapons, triggers for
+throttle and Back/Start for coin/start. D-pad/shoulder fallbacks cover pads without
+those axes. Raw joysticks default to axes 0/1 and buttons 0–5; remap to suit your
+stick. D-pad or joystick hats navigate menus, South/button 0 selects, East/button
+1 returns. Bind Menu when Guide is unavailable. Keyboard remains available.
+SDL3 auto-detects hotplug devices and uses built-in mappings plus a pinned offline
+[SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) snapshot.
+Profiles follow SDL GUID and device type; identical models share a profile.
+Physical gamepad/HOTAS validation remains outstanding; virtual-device tests pass.
+
+## Graphics and sprite effects
+
+Options provides window scaling, fullscreen and FPS/frame/core/filter/presentation
+stats. The list scrolls with Up/Down; Left/Right changes values. Sprites selects
+Off (default), EPX, Scale3x, 2xSaI, Super2xSaI or ScaleFX. xBRZ awaits a compatible
+license. Sprite filtering and background composition use **SDL GPU compute** on
+Metal or Vulkan, with a CPU/software fallback. GPU composition also runs with
+Sprites Off. Native board rendering, sprite feedback, tile priority, text and
+palette shadows remain authoritative.
+
+Clouds, Trails, Explosions and Afterburner independently choose Opaque (default)
+or Translucent. Original-art opacity is 160/255 for clouds, 112/255 for missile
+trails, 176/255 for explosions and 192/255 for the player's flame. Explosion
+assets come from runtime ROM animation tables; flame transparency applies only
+to its palette pens within known aircraft assets, keeping the airframe opaque.
+These affect presentation copies; they do not change gameplay or native RGB.
+Replacement RGBA art, softer edges and age-based trail fading remain future work.
+
+## Music and volume
+
+Place your WAV/FLAC files directly in `soundtrack/`, then open Options → Audio.
+Music Tracks lists Maximum Power, Final Take Off, Red Out, Super Stripe, After
+Burner and City 202. Left/Right cycles Original and alphabetically sorted files;
+Enter advances. **No file picker opens.** Space or gamepad North previews a file
+while paused. Mapping changes apply at the next genuine native music start.
+
+Music Volume, Sound Effects Volume and six Track Volumes are independent,
+persistent 0–100% controls in 5% steps. Original is the default; at all-Original
+100% the output remains exact native PCM. Files decode asynchronously to 48 kHz
+stereo, loop while their native instance is active and fall back to Original if
+unavailable. Limits: 256 MiB per input/decoded file, 512 MiB decoded cache.
+Natural music evidence currently covers Maximum Power and Final Take Off with
+overlapping effects; other song contexts and natural fades still need recordings.
+See [music implementation and coverage](docs/MUSIC_REPLACEMENT_PLAN.md).
+
+Preferences use SDL's application preference directory. Input/audio settings
+have `.inputs` / `.audio` suffixes beside `settings.cfg`, or the explicit
+`--settings-file` path. That option does not relocate `soundtrack/`.
+
+## Validation and development
+
+```sh
+python3 tools/workflow.py context
+python3 tools/workflow.py run test verify-stage1
+python3 tools/workflow.py run required
+```
+
+`test` runs ROM-free regressions; `verify-stage1` adds ROM-backed integration.
+`required` also runs the complete retained MAME oracle and mutation suite, using
+local ignored fixtures. CMake enables ROM tests with `-DSTAGE1_ROM_TESTS=ON`.
+GPU readback checks require a working graphics backend. Capture commands and
+validation cadence are in [Workflow](docs/WORKFLOW.md) and [Roadmap](docs/ROADMAP.md).
+Never commit ROMs, captures, recordings or personal audio.
+
+The [Three.js prototype branch](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine)
+retains that experiment; its source, dependencies and targets are absent from main.
+
+| Location / document | Purpose |
+| --- | --- |
+| `src/main/engine/` | Translated gameplay, scheduling and application API |
+| `src/main/hwvideo/`, `hwaudio/` | Original board devices and passive presentation taps |
+| `src/main/frontend/` | SDL GPU shaders, menu, input profiles and music playback |
+| [Roadmap](docs/ROADMAP.md) | Checkpoint, rules and enhancement backlog |
+| [Workflow](docs/WORKFLOW.md) | Build, test, capture and recovery commands |
+| [Engine notes](docs/ENGINE_NOTES.md) | ROM evidence, validation results and exclusions |
+| [Hardware](docs/HARDWARE.md) | X-Board reference |
+| [Enhancement architecture](docs/ENHANCEMENT_ARCHITECTURE.md) | Extension contracts and deeper interfaces |
+| [Historical Stage 1 tests](docs/STAGE1_FIDELITY.md) | Retained reconstruction regression scope |

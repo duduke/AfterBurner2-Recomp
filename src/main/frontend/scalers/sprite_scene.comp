@@ -1,0 +1,22 @@
+#version 450
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+layout(set=0,binding=0,std430) readonly buffer LayerInput { uint data[]; } src;
+layout(set=1,binding=0,std430) buffer Colors { uint data[]; } fx;
+layout(set=2,binding=0,std140) uniform Params { int w; int h; int clouds; int trails; int explosions; int afterburner; } p;
+void main(){
+ uint x=gl_GlobalInvocationID.x,y=gl_GlobalInvocationID.y;
+ if(x>=uint(p.w)||y>=uint(p.h))return;
+ uint n=uint(p.w*p.h),i=y*uint(p.w)+x,head=src.data[i],trans=255u,alpha=0u;
+ uvec3 rgb=uvec3(0u);
+ while(head!=0xffffffffu && trans!=0u){
+  uint j=n+head*4u,color=src.data[j],kind=src.data[j+2u];
+  // Tile/shadow actions terminate the sprite stack without introducing
+  // road or text colors into the foreground scaler's neighborhood.
+  if(kind==3u || kind==4u){if(kind==4u)fx.data[i]=color;break;}
+  uint a=kind==1u?uint(p.clouds):kind==2u?uint(p.trails):kind==5u?uint(p.explosions):kind==6u?uint(p.afterburner):255u;
+  uint coverage=(a*trans+127u)/255u;alpha+=coverage;
+  rgb+=(uvec3(color&255u,(color>>8)&255u,(color>>16)&255u)*coverage+127u)/255u;
+  trans=(trans*(255u-a)+127u)/255u;head=src.data[j+1u];
+ }
+ rgb=min(rgb,uvec3(255u));fx.data[n+i]=(min(alpha,255u)<<24)|(rgb.z<<16)|(rgb.y<<8)|rgb.x;
+}

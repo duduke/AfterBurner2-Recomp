@@ -30,7 +30,20 @@ THE SOFTWARE.
 #include <cmath>
 #include <span>
 #include <vector>
+// Edge decisions depend on exact float ties. Keep CPU reference evaluation
+// consistent across optimization levels and with the GPU/upstream fixtures.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize ("fp-contract=off")
+#elif defined(_MSC_VER)
+#pragma float_control(precise, on, push)
+#pragma fp_contract(off)
+#endif
 namespace Frontend::ScaleFX {
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#pragma clang fp reassociate(off)
+#endif
 struct vec2 { float x{},y{}; vec2(float x,float y):x(x),y(y){} };
 struct vec3 { float x{},y{},z{}; vec3(float x,float y,float z):x(x),y(y),z(z){} };
 struct vec4 {
@@ -279,3 +292,9 @@ inline void scale(std::span<const uint32_t> input,int w,int h,std::vector<uint32
  }
 }
 } // namespace Frontend::ScaleFX
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#elif defined(_MSC_VER)
+#pragma float_control(pop)
+#endif

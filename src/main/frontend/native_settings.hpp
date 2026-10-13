@@ -15,6 +15,7 @@ struct Settings {
     bool fullscreen{};
     Stats stats{Stats::off};
     SpriteFilter sprites{SpriteFilter::none};
+    bool clouds{},trails{},explosions{},afterburner{};
     bool operator==(const Settings&) const = default;
 };
 inline Settings load_settings(const std::string& path, bool pixel_art) {
@@ -30,6 +31,14 @@ inline Settings load_settings(const std::string& path, bool pixel_art) {
         else if (line=="scaling=pixel-art" && pixel_art) result.scaling=Scaling::pixel_art;
         else if (line=="fullscreen=1") result.fullscreen=true;
         else if (line=="fullscreen=0") result.fullscreen=false;
+        else if (line=="clouds=1") result.clouds=true;
+        else if (line=="clouds=0") result.clouds=false;
+        else if (line=="trails=1") result.trails=true;
+        else if (line=="trails=0") result.trails=false;
+        else if (line=="explosions=1") result.explosions=true;
+        else if (line=="explosions=0") result.explosions=false;
+        else if (line=="afterburner=1") result.afterburner=true;
+        else if (line=="afterburner=0") result.afterburner=false;
         else if (line=="stats=0") result.stats=Stats::off;
         else if (line=="stats=1") result.stats=Stats::fps;
         else if (line=="stats=2") result.stats=Stats::detailed;
@@ -44,6 +53,8 @@ inline bool save_settings(const std::string& path, const Settings& settings) {
     std::ofstream file(temporary,std::ios::trunc);
     if (!file) return false;
     file << "AB2SETTINGS1\nscaling=" << scales[static_cast<int>(settings.scaling)]
+         << "\nclouds=" << settings.clouds << "\ntrails=" << settings.trails
+         << "\nexplosions=" << settings.explosions << "\nafterburner=" << settings.afterburner
          << "\nfullscreen=" << settings.fullscreen << "\nstats=" << static_cast<int>(settings.stats) << "\nsprites=" << sprite_filter_keys[static_cast<int>(settings.sprites)] << '\n';
     file.close();
     if (!file || std::rename(temporary.c_str(),path.c_str())!=0) {

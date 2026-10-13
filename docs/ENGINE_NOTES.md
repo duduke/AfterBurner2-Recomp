@@ -8887,3 +8887,283 @@ sources and captures are unchanged by this formatting cleanup.
 The complete ROM-free `test` target is rerun after the scaler formatting cleanup
 and passes in 4.31 s at `build/workflow/20261011T224559.697101Z/`. The final staged
 patch passes `git diff --check`; publication excludes ROM-derived outputs.
+
+## SDL GPU sprite filters and branch-only Three.js (2026-10-12)
+
+The native app now creates an SDL GPU device and SDL 3.4 GPU 2D renderer.
+All five sprite filters (EPX, Scale3x, 2xSaI, Super2xSaI, ScaleFX) run in GPU
+compute passes, including protected background/premultiplied-alpha composition.
+The app uploads native background/sprite/protection planes; intermediate and
+scaled output data stay on the GPU. SDL wraps the output texture for presentation
+and existing menu/scaling controls. Ordinary playback performs no GPU readback.
+Original CPU board rendering, sprite feedback, game scheduling and audio owners
+remain authoritative. Unsupported/dummy-video systems report an explicit
+CPU/software fallback; retained CPU/upstream filters and fixtures remain intact.
+
+Shader sources and embedded SPIR-V/Metal source are regenerated with
+`make shader-build` (`glslangValidator`, `spirv-cross`). Normal builds need only
+SDL 3.4 and the embedded header. Metal is physically validated here; Vulkan
+SPIR-V is supplied but untested on a physical Vulkan device, and DXIL/D3D12
+shaders are not included. These limits are not whole-host acceptance claims.
+
+The real native-plane check exposed a ScaleFX float boundary missed by the
+synthetic cases. CPU contraction at optimized build settings changed edge
+choices; Metal's approximate division could also alter them. ScaleFX now
+explicitly disables CPU contraction locally, Metal disables contraction and
+reassociation and uses precise sqrt, and shaders refine division through an
+explicit fused residual. This leaves board arithmetic/compiler options alone.
+All four corrected GPU intermediate planes matched the CPU reference on the
+retained failing frame; upstream GLSL comparisons and earlier fingerprints pass.
+The original native-plane fixture stays ignored at
+`build/oracle/gpu-native-planes.bin`; the native GPU test recreates it if absent
+and retains separately named future failures without replacing old captures.
+Its layout is two 320x224 ARGB8888 planes followed by 320x224 protection bytes.
+
+Focused validation:
+
+- Final `test` (4.49 s) and software `verify-native-menu` (0.31 s) pass at
+  `build/workflow/20261012T111352.419948Z/`. `verify-stage1` (45.64 s) passes at
+  `build/workflow/20261012T105053.305451Z/`; its engine/session sources and
+  transitive dependencies are unchanged by the subsequent presentation repair.
+  The Stage 1 result is reused evidence, not a fresh full oracle run.
+- Final CPU sprite references/fingerprints pass at
+  `build/workflow/20261012T110906.881707Z/`; optimized native build and software
+  menu checks pass there too. Independent upstream GLSL verification passes at
+  `build/workflow/20261012T111002.954970Z/`.
+- GPU synthetic comparison: 250 of 250 identical, 21,755,400 pixels, zero
+  skips; wrong filter selection and missing priority protection both reject.
+  Native cold boot with physical coin/start, then stick/cannon inputs, advances
+  1,081 frames and compares all five filters at 17 sampled frames: 85 of 85
+  presentations identical, zero skips. GPU menu checks cover scaling, integer
+  presentation, fullscreen, pause/resume and frame/time isolation. Logs:
+  `build/workflow/20261012T111208.446310Z/` (final retention/replay run). Full-credit output and every native frame are not covered by this
+  sampled presentation check.
+- Final generated-source whitespace cleanup also passes the GPU comparison at
+  `build/workflow/20261012T111809.480440Z/`.
+- Make and CMake builds pass; the CMake log is
+  `build/oracle/gpu-cmake-final.log`. Shader regeneration is deterministic.
+  Headless ScaleFX fallback passes at `build/oracle/gpu-headless-fallback.log`.
+
+A finite 600-frame post-boot native ScaleFX smoke is retained at
+`build/oracle/gpu-scalefx.log`, with a final screenshot under the same ignored
+prefix. After startup, its one-second windows report 59.45–59.70 display FPS
+and roughly 0.08–0.15 ms filter/upload submission time, versus about 12–14 ms
+CPU filter/upload time in the headless fallback check. These are different
+presentation environments, not a controlled GPU-kernel speedup measurement. GPU submission/upload statistics measure CPU submission work, not
+isolated GPU kernel duration; sustained peak-load and other backend performance
+remain unproved. ROMs, fixtures, screenshots and build logs remain excluded
+from Git. The complete oracle suite has not been rerun for this presentation
+change; the preceding full checkpoint remains the full-game regression evidence.
+
+Three.js source, npm metadata, bridge, browser-only tests/mutations and build
+commands have been removed from main at the user's request. All are retained
+on `codex/threejs-game-engine`; the local branch was advanced to pre-removal
+main (`72910ee`) to retain its latest prototype documentation too. Existing
+ignored browser dependencies/caches remain local and root-ignored. Native
+release targets now use `NATIVE_CXXFLAGS` and `build/native_obj/` with the same
+`-O3 -flto` options instead of borrowing browser-named objects. Original CPU,
+ROM and MAME fixture/mutation coverage remains on main; browser-only coverage
+belongs to the preserved branch.
+
+## GPU composition with optional cloud/trail opacity (2026-10-12)
+
+GPU composition now runs at native size with Sprites Off as well as through
+all five scalers. The app skips the unused composite-frame texture upload when
+presenting GPU planes. Options adds independent persisted Clouds and Trails
+rows: Opaque is the default; Translucent uses 160/255 and 112/255 opacity,
+respectively. These are optional presentation choices, not ROM gameplay rules.
+Original board RGB, clocks, CPU/device state, sprite feedback and audio remain
+owned by the translated host.
+
+`hwvideo/sprite_scene.hpp` is a passive descriptor decoder, following the
+verified hardware renderer's row stepping, zoom, nibble direction, wrapping,
+clipping and ordering. GameSession captures per-row fragment chains at the
+existing indexed-layer/palette frontier, retaining covered sprites across
+partial clips. It issues no bus transactions and never writes word-7 feedback.
+Scene views invalidate on advance, capture changes and restart. A GPU compute
+pass builds the premultiplied foreground from ordered layers; the existing
+filter/background/protection pass finishes composition. The CPU implementation
+is the software fallback and independent presentation reference.
+
+Blocked tiles and hardware shadows terminate the stack as background actions;
+their colors never enter the foreground scaler's neighborhood. Shadows use the
+native effects pen and preserve coverage, including underneath translucent
+sprites. Full-opacity scene output matches both native RGB and the preceding
+flat-plane scaler output, so activation does not change unrelated opaque edges.
+
+Asset identification is deliberately bounded. ROM frame families `$16500` and
+`$16550` were observed in native world objects and visually inspected as clouds.
+Player trail allocation reads its frame pointer at main `$28C64`; enemy `$14EC8`
+selects the same `$164B0` art. Trail classification additionally requires the
+verified player `$E9..$F0` or enemy `$F5..$FC` palette range. All five LOD offsets
+come from sub `$9E4`; bank/address extents and pitch come from runtime frame
+records. No art, ROM bytes or capture data are embedded. Other cloud/smoke art
+families are not assumed to be covered. Original silhouettes/dithering remain;
+soft RGBA replacements and age-based trail fading are future work.
+
+Focused validation on Metal:
+
+- `test` (4.72 s), `verify-stage1` (46.07 s), default Make build (0.16 s) and
+  software menu (0.30 s) pass at `build/workflow/20261012T115530.716389Z/`.
+  The paired session test now enables individual-layer capture and compares all
+  781 native RGB/audio frames, capture toggling, pause and restart against an
+  independent host. No differences or skipped frames.
+- GPU synthetic comparisons: 450 of 450 identical, 33,720,870 pixels, zero
+  skips, including zero/partial/full opacity, covered sprites, blocked tiles,
+  shadows and all six scaler choices. Four deliberate mutations (filter,
+  protection, cloud opacity and trail opacity) reject. Retained native-plane
+  fixture replay passes. Logs: `build/workflow/20261012T115529.528144Z/`.
+- Native GPU comparisons: 888 of 888 presentations identical, zero skips.
+  Across 1,081 physical boot/attract/coin/start/gameplay frames, 37 sampled
+  frames exercise all four option combinations and six scaler choices.
+  Actual fragment observations include 497,565 cloud and 57,407 trail pixels;
+  absence of either asset class fails the check. Original-mode outputs also
+  match the previous scalers. GPU menu/lifecycle checks pass at
+  `build/workflow/20261012T115307.132335Z/`.
+- Make optimized build and CMake build pass. CMake output is retained at
+  `build/oracle/gpu-effects-cmake.log`; the final native release build is at
+  `build/workflow/20261012T115304.266088Z/`.
+
+A 360-frame attract smoke with both effects and Sprites Off completes on Metal
+at roughly 59.3–59.7 displayed FPS after startup, with about 0.38–0.43 ms CPU
+filter/upload submission work in the later windows. The passive scene decoder
+and packing still run on CPU when effects are enabled. A separate dummy-video
+CPU/software smoke with both effects also passes. Logs/screenshots are under
+ignored `build/oracle/gpu-effects*`; menu and render screenshots were inspected.
+These finite checks do not establish whole-credit visuals, every stage/asset,
+peak-load performance or a physical Vulkan backend. The full oracle suite was
+not rerun for this presentation extension; earlier ROM/device fixtures and
+mutations are retained, and the preceding complete checkpoint remains the last
+full-game regression gate. Three.js remains branch-only as requested.
+
+## SDL3 native input remapping (2026-10-12)
+
+`frontend/native_input.hpp` owns SDL3 gamepad/joystick discovery, hotplug and
+mapping-change events, keyboard scancodes, neutral-gated axis capture and
+GUID/type profiles. `Options → Controls` offers eleven actions (four flight
+directions, boost/brake, cannon/missile, coin/start and Menu), clear/reset,
+deadzones (0–50%), linear sensitivity (50–200%), polarity and full-axis raw
+joystick throttle. Full throttle replaces that device's boost/brake pair and
+uses the complete signed axis range; keyboard remains available. Devices without
+left-stick/trigger axes receive D-pad/shoulder defaults. Other raw sticks get
+explicit generic axis/button defaults, editable for their physical layout.
+
+`AB2INPUT3` preferences are stored atomically beside the native settings file.
+Malformed records retain defaults. Identical GUID/type devices share mappings;
+lifecycle events preserve the selected connected instance, cancel capture and
+require held controls to release. Focus loss returns neutral inputs. Capturing
+input cannot swallow the window Quit event. The Menu binding detects press edges;
+Guide and reserved keyboard shortcuts remain available. No board logic, arcade
+ADC mapping, simulation cadence or recording format changed.
+
+SDL_GameControllerDB commit `c1d5289a1f713b30a2c121e9fe6529d39360be0f`
+is included with its zlib license and provenance. The embedded raw-string
+wrapper matches the unmodified source text (SHA256
+`e606134678e6b3fdbdec9081289a1f0ba3e25d53b59b2aa3cdfe69bf491ad18f`).
+SDL loads it offline before frontend device handles are opened.
+
+Focused validation:
+
+- `test`, including SDL virtual analog gamepad, digital-only gamepad and raw
+  flightstick: passes (4.28 s), including real live SDL mapping changes,
+  axis/button/hat capture, deadzone rescaling/sensitivity, trigger and full-axis
+  throttle, Menu edges, focus, reconnect, persistence, malformed config and
+  capture/quit handling. Native menu capture/clear/scroll/navigation and
+  `native-release` pass (31.83/32.59 s). Logs:
+  `build/workflow/20261012T130132.783595Z/`.
+- `verify-stage1` passes (52.13 s), including 781 exact native RGB frames and
+  audio/game-session lifecycle checks. Logs:
+  `build/workflow/20261012T130000.338471Z/`; its engine/session sources are
+  unchanged by subsequent frontend capability defaults.
+- Final SDL Metal `verify-gpu-native-menu` passes (18.59 s), with the Controls
+  panel plus 888/888 native GPU presentation comparisons, zero skips. Logs:
+  `build/workflow/20261012T130229.422053Z/`.
+- Finite 120-frame native startup passes on Metal with SDL 3.4.16; the final
+  interval reports 59.64 simulation/display FPS. Log:
+  `build/oracle/input-metal-smoke.log`. The software/dummy startup also passed
+  earlier at `build/oracle/input-smoke.log`. These are finite startup checks.
+- CMake `native_input_regression`/CTest passes (0.50 s); logs:
+  `build/oracle/input-cmake-build.log`. Controls panel screenshots were visually
+  inspected; SDL names are capitalized for the ROM font. Captures remain ignored.
+
+Physical Xbox/PlayStation/Switch controllers and specific HOTAS units were not
+attached for validation. Their recognition depends on SDL drivers and applicable
+platform mappings; device-specific calibration/response curves remain future
+work. These are frontend focused checks, not a new full-game MAME acceptance run.
+
+## Native music presentation adapter (2026-10-13)
+
+See [music implementation](MUSIC_REPLACEMENT_PLAN.md) for ROM addresses, routing,
+menus and coverage. Passive MAME routing compares 42,148/42,148 transactions in
+781 frames and 119,374/119,374 in 1,800 frames, zero skips. The longer physical
+input corpus includes 472 actual FM effects channel writes and supports the FM
+ownership negative control. Descriptor roots and all sixteen music records are
+read from ROM; no captured state supplies native execution. PCM music includes
+channels 0–7, including percussion; effects use 8–15. YM projections read the
+current chip output without generating a second clock. Optional speaker taps
+preserve the original mixed stream and deadline indices.
+
+Natural coverage is Maximum Power/Final Take Off with shooting and overlapping
+effects. Other song descriptors are inspected at runtime but their natural
+contexts are unverified; no natural fade updates occur in these captures. Fade
+and replacement lifecycle have frontend unit coverage. All-Original unity PCM
+and RGB are exact across 781 native frames with taps enabled/disabled. Fixtures
+and generated audio are retained under ignored `build/oracle/`.
+
+Final validation: `python3 tools/workflow.py run required` passed on 2026-10-13
+(`test`, `verify-stage1`, complete `oracle-test`; logs under ignored
+`build/workflow/20261013T075232.029672Z/`). All 143 retained recovery mutations
+and four new music mutations were rejected. Existing historical per-routine
+skip policies remain unchanged; the new music routing and presentation checks
+have zero skips. Native speaker comparison retains 484,801 identical stereo
+frames, and joint audio/whole-host baselines and their mutations pass.
+CMake product/audio/menu builds and four targeted CTests pass. Native release
+smokes with saved generated replacements and both gains muted pass on software
+and Metal; menu rendering was inspected. Generated tones, preferences, images,
+ROM symlink and routing captures remain ignored.
+
+## Explosion and player-flame presentation transparency (2026-10-13)
+
+Optional persisted Explosions and Afterburner rows use 176/255 and 192/255
+opacity, respectively; all effects default to Opaque. The Options viewport
+scrolls eight rows with stable mouse hit testing. Main ROM $347BE selects ten
+explosion animation lists ($90AC/$9306), including gate explosions. Each frame's
+palette and sub-ROM descriptor/LOD extent are read at runtime. Aircraft frames
+come from five $28C94 pitch tables and banks -5..5. The $14062 palette writer
+animates F2 pens 1, 2 and 4; only those pixels in matching aircraft assets get
+flame opacity, preserving the airframe. A rendered ROM mask was inspected.
+No animation tables, pixel data or captures are embedded in source.
+
+Shader and CPU paths share explicit effect kinds; background and shadow remain
+terminators rather than absorbing new effect IDs. GPU uniform data includes
+independent opacities. All opaque settings preserve original composition;
+original board RGB, sprite feedback and audio remain unchanged. Synthetic Metal
+readback checks pass 570/570 cases (42,713,102 pixels, zero skips), covering each
+scaler and opaque/zero/translucent overlaps. All six retained GPU mutations are
+rejected, including explosion and flame opacity. The 3,601-frame physical-input
+native scene corpus counts every frame to catch brief effects; first explosion
+and first flame frames also force readback, alongside regular 90-frame samples.
+All sixteen transparency policies and six scalers are compared on each sampled
+frame. Natural fragment counts include 38,064 explosions and 173,929 flames.
+
+The full core `required` run immediately preceding this presentation change
+remains in `build/workflow/20261013T075232.029672Z/`; native execution, device
+logic, ROM fixtures and core mutation selectors are unchanged by these visual
+options. Final focused regression/integration, retained GPU mutations, native
+readback, CMake build and desktop/software smokes are recorded below. This
+finite scene check does not establish whole-credit visuals or peak-load FPS.
+
+Final transparency checks passed: `test`, `verify-stage1`, `verify-native-menu`,
+`native-release` (`build/workflow/20261013T102805.986233Z/`), synthetic GPU filters
+and all six mutations (`20261013T101824.556086Z/`), then 4,128/4,128 native GPU
+readbacks with zero skips (`20261013T102941.774317Z/`). CMake product builds and
+four targeted CTests pass. Ninety-frame software and Metal launch smokes with
+all effects enabled and audio muted exit successfully; these finite launches
+are not whole-game performance acceptance. README, workflow, roadmap and
+architecture documentation now describe GPU presentation, input profiles,
+music/volume settings and all four original-art transparency controls.
+
+Staged source/document whitespace and links were inspected. The unmodified
+upstream controller database license and dr_flac header retain their original
+whitespace; decoder/database hashes match their pinned provenance. No ROMs,
+captures, generated audio, screenshots or personal settings are staged.
