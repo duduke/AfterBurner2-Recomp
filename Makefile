@@ -1458,7 +1458,7 @@ verify-scalefx-reference: build/check_scalefx_reference
 .PHONY: test-sprite-filters verify-scalefx-reference
 
 # Explicit GPU check requires a real SDL GPU backend; never silently skips.
-build/gpu_sprite_filter_regression: tests/gpu_sprite_filter_regression.cpp src/main/frontend/gpu_sprite_filter.hpp src/main/frontend/sprite_filter.hpp $(wildcard src/main/frontend/scalers/*)
+build/gpu_sprite_filter_regression: tests/gpu_sprite_filter_regression.cpp src/main/hwvideo/sprite_scene.hpp src/main/frontend/gpu_sprite_filter.hpp src/main/frontend/sprite_filter.hpp $(wildcard src/main/frontend/scalers/*)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
 verify-gpu-sprite-filters: build/gpu_sprite_filter_regression
 	./build/gpu_sprite_filter_regression
@@ -1519,3 +1519,74 @@ oracle-music-mutations: oracle-music-routing test-native-music
 oracle-test: oracle-music-mutations
 verify-stage1: verify-music-presentation
 .PHONY: oracle-capture-music-routing oracle-music-mutations
+
+# Passive ROM asset classification and full-throttle presentation policy.
+build/effect_assets_integration: tests/effect_assets_integration.cpp src/main/hwvideo/sprite_scene.hpp src/main/roms.hpp src/main/romloader.hpp src/main/roms.cpp src/main/romloader.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/effect_assets_integration.cpp src/main/roms.cpp src/main/romloader.cpp -o $@
+verify-effect-assets: build/effect_assets_integration
+	./build/effect_assets_integration
+verify-native-menu: verify-effect-assets
+.PHONY: verify-effect-assets
+verify-effect-asset-mutations: verify-effect-assets
+	python3 tools/scalers/check_effect_mutations.py
+oracle-test: verify-effect-asset-mutations
+.PHONY: verify-effect-asset-mutations
+
+
+build/ground_horizon_regression: tests/ground_horizon_regression.cpp src/main/hwvideo/ground_horizon.hpp src/main/hwvideo/sprite_scene.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
+test-ground-horizon: build/ground_horizon_regression
+	./build/ground_horizon_regression
+test: test-ground-horizon
+build/ground_horizon_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/ground_horizon_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-ground-horizon: build/ground_horizon_integration
+	./build/ground_horizon_integration
+verify-stage1: verify-ground-horizon
+-include build/native_obj/tests/ground_horizon_integration.d
+.PHONY: test-ground-horizon verify-ground-horizon
+verify-ground-mutations: test-ground-horizon
+	python3 tools/scalers/check_ground_mutations.py
+oracle-test: verify-ground-mutations
+.PHONY: verify-ground-mutations
+verify-ground-gpu: build/gpu_sprite_filter_regression verify-ground-horizon
+	./build/gpu_sprite_filter_regression build/oracle/horizon/ground-plane.bin
+.PHONY: verify-ground-gpu
+build/ground_horizon_fixture: tests/ground_horizon_fixture.cpp src/main/hwvideo/ground_horizon.hpp src/main/hwvideo/sprite_scene.hpp src/main/roms.cpp src/main/romloader.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/screen.cpp
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/ground_horizon_fixture.cpp src/main/roms.cpp src/main/romloader.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/screen.cpp -o $@
+verify-ground-fixture: build/ground_horizon_fixture
+	./build/ground_horizon_fixture
+oracle-test: verify-ground-fixture
+.PHONY: verify-ground-fixture
+
+build/native_haptics_regression: tests/native_haptics_regression.cpp src/main/frontend/native_haptics.hpp src/main/frontend/native_input.hpp src/main/engine/feedback_cues.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
+test-native-haptics: build/native_haptics_regression
+	./build/native_haptics_regression
+test: test-native-haptics
+.PHONY: test-native-haptics
+build/feedback_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/feedback_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-feedback: build/feedback_integration
+	./build/feedback_integration
+verify-stage1: verify-feedback
+-include build/native_obj/tests/feedback_integration.d
+.PHONY: verify-feedback
+build/feedback_fixture: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/feedback_fixture.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-feedback-fixture: build/feedback_fixture
+	./build/feedback_fixture build/oracle/feedback.bin
+	./build/feedback_fixture build/oracle/whole_host_expanded.bin
+oracle-test: verify-feedback-fixture
+-include build/native_obj/tests/feedback_fixture.d
+.PHONY: verify-feedback-fixture
+capture-feedback:
+	AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_feedback.lua build/oracle/feedback.bin 4200 120
+.PHONY: capture-feedback
+verify-feedback-mutations: test-native-haptics verify-feedback-fixture
+	python3 tools/check_feedback_mutations.py
+oracle-test: verify-feedback-mutations
+.PHONY: verify-feedback-mutations

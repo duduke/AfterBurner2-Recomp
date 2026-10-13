@@ -18,7 +18,7 @@ int main(int argc,char** argv)try {
             std::vector<uint32_t> sprites(w*h),background(w*h);std::vector<uint8_t> protection(w*h);
             auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,w*3,h*3);
             if(!target)throw std::runtime_error(SDL_GetError());
-            for(unsigned pattern=0;pattern<19;++pattern) {
+            for(unsigned pattern=0;pattern<21;++pattern) {
                 uint32_t random=0x12345678;
                 for(unsigned y=0;y<h;++y)for(unsigned x=0;x<w;++x){
                     random=random*1664525+1013904223;const auto i=y*w+x;
@@ -40,7 +40,7 @@ int main(int argc,char** argv)try {
                 }
                 std::vector<uint32_t> heads;std::vector<Presentation::Fragment> fragments;
                 const unsigned cloud_alpha=pattern==10?0:pattern==12?255:160,trail_alpha=pattern==10?0:112;
-                const unsigned explosion_alpha=pattern==15?0:pattern==17?255:176,afterburner_alpha=pattern==16?0:pattern==17?255:192;
+                const unsigned explosion_alpha=pattern==15?0:pattern==17?255:pattern==19?Presentation::explosion_opacity:176,afterburner_alpha=pattern==16?0:pattern==17?255:pattern==20?Presentation::afterburner_opacity:192;
                 auto reference_background=background;
                 if(pattern>=10){heads.assign(w*h,UINT32_MAX);
                     for(unsigned i=0;i<w*h;++i){const auto add=[&](uint32_t color,unsigned kind){fragments.push_back({color,heads[i],kind,0});heads[i]=uint32_t(fragments.size()-1);};

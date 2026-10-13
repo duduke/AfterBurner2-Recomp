@@ -59,14 +59,51 @@ int main()try {
         music.cycle(0,1);wait_file(music,0,"B tone.WAV");music.cycle(0,1);wait_file(music,0,"C tone.FLAC");
         raw.assign(12000,0);
         output=music.mix(raw,{chunk(6000,0,{{0,MusicRouting::Kind::start,0}})});
-        for(unsigned frame:{0u,1000u,3840u,4567u})require(std::abs(output[2*frame]-XBoardSpeaker::pcm(flac->stereo[(frame%3840)*2]+.1f))<=1,"replacement/loop/effects mix");
+        for(unsigned frame:{0u,1000u,3840u,4567u})require(std::abs(output[2*frame]-XBoardSpeaker::pcm(flac->stereo[(frame%3840)*2]*.25f+.1f))<=1,"replacement/loop/effects mix");
         output=music.mix(std::vector<int16_t>(4000,0),{chunk(2000,6000,{{125000000,MusicRouting::Kind::stop,0}})});
         require(output.back()==XBoardSpeaker::pcm(-.1f),"original music tail leaked after replacement stop");
         music.restarted();
         output=music.mix(std::vector<int16_t>(2000,0),{chunk(1000,0,{{0,MusicRouting::Kind::start,0},{10000000,MusicRouting::Kind::fade,0,.5f}})});
-        require(std::abs(output[1600]-XBoardSpeaker::pcm(flac->stereo[1600]*.5f+.1f))<=1,"replacement fade");
+        require(std::abs(output[1600]-XBoardSpeaker::pcm(flac->stereo[1600]*.5f*.25f+.1f))<=1,"replacement fade");
         music.preview(0);require(music.previewing(),"preview stream failed");music.update_preview();music.stop_preview();require(!music.previewing(),"preview shutdown");
         music.originals();require(music.settings.files[0].empty(),"Original restoration");
+    }
+    {
+        NativeMusic music("",root/"formats");
+        const std::vector<int16_t> original(4000,1234);
+        require(music.mix(original,{chunk(2000,0,{{0,MusicRouting::Kind::start,0}})})==original,"live mapping Original baseline");
+        // Scan order: mastered.wav, mono24.wav, unknown-count.flac.
+        music.cycle(0,1);wait_file(music,0,"mastered.wav");
+        auto output=music.mix(std::vector<int16_t>(4000),{chunk(2000,2000)});
+        const float mastered=32767.f/32768;
+        require(std::abs(output[3998]-XBoardSpeaker::pcm(mastered*.25f+.1f))<=1,"mastered music lacks mixing headroom");
+        require(std::abs(output[3999]-XBoardSpeaker::pcm(-mastered*.25f-.1f))<=1,"mastered stereo balance");
+        music.settings.effects=0;
+        auto dry=music.mix(std::vector<int16_t>(4000),{chunk(2000,2000)});
+        require(std::abs(output[3998]-dry[3998]-3276)<=1,"replacement reduced or clipped effects");
+        music.settings.music=50;music.settings.track_volume[0]=80;
+        output=music.mix(std::vector<int16_t>(4000),{chunk(2000,4000)});
+        require(std::abs(output[3998]-XBoardSpeaker::pcm(mastered*.25f*.4f))<=1,"replacement track/global gains");
+        music.settings.music=0;music.settings.effects=100;
+        output=music.mix(std::vector<int16_t>(4000),{chunk(2000,6000)});
+        require(output[3998]==XBoardSpeaker::pcm(.1f),"replacement mute affected effects");
+        music.defaults();music.restarted();
+        music.mix(original,{chunk(2000,0,{{0,MusicRouting::Kind::start,0},{10000000,MusicRouting::Kind::fade,0,.5f}})});
+        music.cycle(0,1);wait_file(music,0,"mono24.wav");
+        output=music.mix(original,{chunk(2000,2000)});
+        require(std::abs(output[2000]-XBoardSpeaker::pcm(mono->stereo[2000]*.25f*.5f+.1f))<=1,"live replacement switch or fade preservation");
+        music.cycle(1,1);wait_file(music,1,"mastered.wav");
+        output=music.mix(original,{chunk(2000,4000)});
+        require(std::abs(output[2000]-XBoardSpeaker::pcm(mono->stereo[6000]*.25f*.5f+.1f))<=1,"inactive mapping restarted active music");
+        music.cycle(0,-1);wait_file(music,0,"mastered.wav");music.cycle(0,-1);
+        require(music.mix(original,{chunk(2000,6000)})==original,"live return to Original");
+        music.cycle(0,1);wait_file(music,0,"mastered.wav");
+        output=music.mix(original,{chunk(2000,8000)});
+        require(std::abs(output[3998]-XBoardSpeaker::pcm(mastered*.25f*.5f+.1f))<=1,"live return to replacement");
+        music.originals();require(music.mix(original,{chunk(2000,10000)})==original,"live All Original restoration");
+        music.mix(original,{chunk(2000,12000,{{250000000,MusicRouting::Kind::stop,0}})});
+        music.cycle(0,1);wait_file(music,0,"mastered.wav");
+        require(music.mix(original,{chunk(2000,14000)})==original,"mapping edit restarted stopped music");
     }
     {
         chosen=MusicSettings{};chosen.files[0]="missing.wav";require(save_music_settings(config,chosen),"missing file config");

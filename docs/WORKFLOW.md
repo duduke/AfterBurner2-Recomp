@@ -1,5 +1,9 @@
 # Efficient local workflow
 
+Build/play basics are in the [project README](../README.md). Use this reference
+for checks, captures and instruction recovery; see the [documentation guide](README.md)
+for other topics.
+
 Read the live rules, checkpoint and ordered next tasks:
 
 ```sh
@@ -9,8 +13,7 @@ sed -n 'START,ENDp' path/to/relevant/file
 ```
 
 The context command extracts the rules, current checkpoint and next tasks
-from ROADMAP;
-there is no separate checkpoint to keep synchronized. Follow the roadmap's
+from ROADMAP; historical checkpoints live in [CHECKPOINT_HISTORY](CHECKPOINT_HISTORY.md). Follow the roadmap's
 instruction-level translation, MAME comparison, mutation and coverage rules.
 Read relevant engine notes before making a port. Search first and read bounded
 sections; generated `.inc` tables and entire historical documents are expensive
@@ -109,8 +112,8 @@ foreground tile/text coverage and palette shadows remain native. Window scaling
 still applies to the completed image, so choose Nearest or Integer to retain a
 crisp HUD. xBRZ awaits a compatible licensing route; it is not offered as an
 unimplemented or approximate mode. The SaI pair uses standard names rather than
-the unrelated CrispSal/SmoothSal names. ScaleFX uses CPU passes and can reduce
-frame rate on slower machines; use the detailed Filter timing to compare modes.
+the unrelated CrispSal/SmoothSal names. ScaleFX uses GPU compute on the native GPU path, with a CPU/software fallback.
+Use the detailed Filter timing to compare modes; backend and load affect performance.
 
 Settings save immediately to `settings.cfg` in SDL's per-user preference directory
 for organization `AfterBurner2-Recomp`, application `AfterBurner2`.
@@ -476,3 +479,41 @@ verify-music-presentation oracle-music-routing oracle-music-mutations`. Generate
 independent routing fixtures with `oracle-capture-music-routing` when absent or
 when capture semantics change. The 1,800-frame fixture is required to exercise
 actual FM effects voice ownership. Shared audio changes still require `required`.
+
+
+### Optional ground horizon correction
+
+Options → Video → Ground offers Original (default) and Corrected. This removes
+misplaced ground fill on the sky side of the native horizon strip in eligible
+normal-road flight; other modes retain Original. It does not change gameplay or
+implement continuous 3D terrain. Focused checks:
+
+```sh
+python3 tools/workflow.py run test-ground-horizon verify-ground-horizon verify-ground-fixture oracle-video-rolls verify-ground-mutations -j 4
+python3 tools/workflow.py run verify-ground-gpu -j 4
+```
+
+The GPU gate needs a working graphics backend. The native gate retains generated
+before/after images and a corrected-plane fixture under `build/oracle/horizon/`;
+1560 scripted frames test both roll directions and original RGB/PCM/time identity.
+
+`verify-ground-fixture` additionally replays the retained MAME roll corpus with
+actual sky/terrain witnesses for both bank directions. It requires the capture;
+ordinary ROM-backed integration does not. Ambiguous endpoint lines retain Original.
+
+### Controller feedback
+
+```sh
+python3 tools/workflow.py run test-native-haptics verify-feedback verify-feedback-fixture verify-feedback-mutations verify-native-menu -j 4
+# Regenerate compact passive MAME witnesses when needed:
+python3 tools/workflow.py run capture-feedback -j 4
+```
+
+`test` includes virtual SDL output/mixer checks; `verify-stage1` includes the
+4,200-frame native RGB/PCM/time comparison. `oracle-test` includes MAME cue
+witnesses, the retained attract-mode bus fixture and feedback mutations.
+Captures stay in ignored `build/oracle/`; never commit them. Physical acceptance
+is separate: test every exposed motor in Options → Controls → Feedback, then
+exercise gameplay, pause, focus loss, restart and unplug on each target OS.
+macOS Xbox Bluetooth body and both triggers are confirmed; Windows/Linux and
+simple-haptic fallback hardware remain open.

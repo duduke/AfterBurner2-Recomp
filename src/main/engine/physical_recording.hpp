@@ -11,11 +11,11 @@
 // stop/crash leaves a usable input prefix, including the failing frame.
 class PhysicalRecording {
 public:
-    explicit PhysicalRecording(const std::string& path, const Roms& rom)
+    explicit PhysicalRecording(const std::string& path, const Roms& rom, std::array<uint8_t,3> switches = {255,255,221})
         : out(path, std::ios::out | std::ios::trunc) {
         if (!out) throw std::runtime_error("Cannot open physical recording");
-        out << "AB2PHYS1\n0000000000 255 255 221\n";
-        write_metadata(path + ".json",rom,{255,255,221});
+        out << "AB2PHYS1\n0000000000 " << unsigned(switches[0]) << ' ' << unsigned(switches[1]) << ' ' << unsigned(switches[2]) << '\n';
+        write_metadata(path + ".json",rom,switches);
     }
     static void write_metadata(const std::string& path, const Roms& rom,
                                const std::array<uint8_t,3>& switches) {

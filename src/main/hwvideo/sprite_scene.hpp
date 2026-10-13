@@ -7,7 +7,14 @@
 #include <vector>
 
 namespace Presentation {
+inline constexpr unsigned explosion_opacity=128,afterburner_opacity=128;
 enum class Effect : uint32_t { opaque, cloud, missile_trail, background, shadow, explosion, afterburner };
+// $B262..$B2B0 clamps the raw throttle to $B0, subtracts $40 and
+// divides ($70 << 8) by $71: the game's maximum processed throttle is $FD.
+// Restrict the optional flame effect to active flight at that maximum.
+inline bool full_throttle_flame(uint16_t mode,uint16_t throttle) {
+    return mode==0x10 && int16_t(throttle)>=0xfd;
+}
 struct Fragment {uint32_t color{},previous=UINT32_MAX,kind{},raw{};};
 // Classification is asset-based. Cloud silhouettes were inspected from ROM
 // frame records $16500/$16550; $28C64 supplies player trail art and enemy
@@ -31,12 +38,34 @@ public:
             if(count>256)throw std::runtime_error("Invalid explosion animation length");
             for(unsigned n=0;n<count;++n){const auto entry=table+2+n*8;family(pointer(entry),Effect::explosion,mainword(entry+4)>>8);}
         }
-        // $995C/$9780: five pitch tables, bank -5..5, sixteen-byte entries.
-        // $14062 changes only palette F2 pens 1, 2 and 4 (the flame).
-        for(unsigned pitch=0;pitch<5;++pitch)for(int bank=-5;bank<=5;++bank)
-            family(pointer(pointer(0x28c94+pitch*4)+bank*16),Effect::afterburner,0xf2);
-
+        // $E7BA/$F796..$F7EE: two player-crash variants, five streams each.
+        // $EEEE is a two-byte hold marker; $FFFF terminates each stream.
+        // Palettes $A2/$75/$2C carry crash smoke/fire; $15 is aircraft debris.
+        for(unsigned variant=0;variant<2;++variant) {
+            const auto table=pointer(0xe89e + variant*4);
+            for(unsigned stream=0;stream<5;++stream) {
+                auto entry=pointer(table+stream*4);bool terminated=false;
+                for(unsigned n=0;n<256;++n) {
+                    const auto marker=mainword(entry);
+                    if(marker==0xffff){terminated=true;break;}
+                    if(marker==0xeeee){entry+=2;continue;}
+                    const auto color=mainword(entry+4)>>8;
+                    if(color==0xa2 || color==0x75 || color==0x2c)family(pointer(entry),Effect::explosion,color);
+                    entry+=16;
+                }
+                if(!terminated)throw std::runtime_error("Invalid crash animation length");
+            }
+        }
+        // $AF88/$B018 select two exhaust phases, five pitch tables, bank
+        // -5..5, and left/right frame pointers in each sixteen-byte entry.
+        // $AE8C/$AEE4 give both separate flame sprites palette $80. The F2
+        // aircraft/nozzle glow is not part of this optional effect.
+        for(unsigned phase=0;phase<2;++phase)for(unsigned pitch=0;pitch<5;++pitch)for(int bank=-5;bank<=5;++bank){
+            const auto entry=pointer((phase?0x2939c:0x29018)+pitch*4)+bank*16;
+            for(unsigned side=0;side<2;++side)family(pointer(entry+side*4),Effect::afterburner,0x80);
+        }
     }
+
     Effect identify(const std::array<uint16_t,8>& d)const{
         const unsigned bank=(d[0]>>9)&7,color=d[6]&255;
         const int pitch=int16_t((d[2]>>1)|((d[4]&0x1000)<<3))>>8;
@@ -72,7 +101,7 @@ void decode(std::span<const uint8_t> bank,std::span<const uint8_t> rom,unsigned 
                 address=uint16_t(address+(flip?-1:1));
                 bool last=false;
                 for(unsigned k=0;k<8;++k){const unsigned pen=(word>>(flip?k*4:(7-k)*4))&15;if(k==6)last=pen==15;
-                    while(acc<512){if(x>=0&&x<320&&pen!=0&&pen!=15)emit(unsigned(x),unsigned(y),uint16_t(flags|pen),kind==Effect::afterburner && pen!=1 && pen!=2 && pen!=4?Effect::opaque:kind);x+=xd;acc+=hz;}
+                    while(acc<512){if(x>=0&&x<320&&pen!=0&&pen!=15)emit(unsigned(x),unsigned(y),uint16_t(flags|pen),kind);x+=xd;acc+=hz;}
                     acc-=512;
                 }
                 if(last)break;

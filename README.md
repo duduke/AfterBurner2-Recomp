@@ -1,53 +1,76 @@
-# AfterBurner2-Recomp (WIP)
+# AfterBurner2-Recomp
 
-A native C++ reimplementation of SEGA's 1987 **After Burner II**, inspired by
-[Cannonball](https://github.com/djyt/cannonball). The original main/sub 68000
-instructions are translated into address-labelled C++ with ROM-derived code
-generation and hand-translated modules. The original sound Z80 program runs
-with reimplemented YM2151/SegaPCM devices under a common X-Board scheduler.
-Independent [MAME](https://github.com/mamedev/mame) captures verify the ports.
+A playable, work-in-progress C++ reimplementation of SEGA's **After Burner II**
+(1987), with optional modern presentation and control enhancements. The original
+main/sub 68000 code is translated into C++; the original sound Z80 program runs
+with reimplemented YM2151/SegaPCM devices. SDL3 handles the desktop frontend.
+Independent MAME captures check the translated game against the arcade ROM.
+Inspired by [Cannonball](https://github.com/djyt/cannonball).
 
-After Burner II is a SEGA trademark; this project is not affiliated with SEGA.
-ROM images, original graphics and soundtrack files are not distributed. Supply
-your own ROM dump as described in [ROM setup](roms/README.md).
+Supply your own [ROM dump](roms/README.md). ROMs, original artwork and personal
+soundtracks are not distributed. This project is not affiliated with SEGA.
 See [LICENSE.txt](LICENSE.txt) and [third-party notices](docs/THIRD-PARTY-NOTICES.md).
 
-## Current status
+## Current state
 
-The native application cold-boots the translated board and supports attract
-mode, coin/start, flight, weapons, scenery, HUD and original audio. SDL3 handles
-windowing, input, presentation and playback. The board advances at its physical
-16.768 ms frame period; gameplay cadence remains ROM-controlled.
+The native build supports cold boot, attract mode, coin/start, flight, weapons,
+HUD, original audio, stage transitions and pause/restart. All 23 directed stage
+slots have scripted coverage. A 74,452-frame Easy / 99-credit recording reaches
+the ending and matches the retained MAME transition observations.
 
-Finite whole-host MAME comparisons and retained instruction/mutation gates pass.
-All 23 debug-selected stage slots complete approximately ten seconds of scripted
-inputs. A 74,452-frame Easy / 99-credit physical-input recording reaches the
-ending and matches ten MAME observation columns throughout. **Standard single-credit
-completion, continuous whole-credit CPU/device/RGB/audio identity and across-stage
-peak-load performance remain open.** Unknown instructions stop explicitly.
-See the [roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-12)
-for precise coverage, exclusions and the next acceptance tasks.
+**Full-game acceptance remains open:** standard single-credit completion,
+continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
+performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
+other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
+recorded Metal/software checks remain open. See the
+[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-14) for scope.
+
+Latest progress includes DIP and Video submenus, corrected explosion/full-throttle
+flame translucency, balanced external music with live track changes, ground
+correction checked during rolls in both directions, and SDL controller feedback.
+The final feedback comparison preserves native pixels, audio and timing across
+4,200 frames; eleven feedback mutations reject. These focused checks do not
+replace full-game acceptance.
+
+## Current enhancements
+
+| Area | Implemented features |
+| --- | --- |
+| Menus | Arcade-font Start/Options/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation |
+| Display | Nearest, Linear, Integer and supported Pixel Art window scaling; fullscreen; FPS and frame/core/filter/presentation timing |
+| Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
+| Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; Original remains the default |
+| Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |
+| Controls | Keyboard, gamepad and raw joystick remapping; axes/buttons/hats; deadzone, sensitivity, polarity and full-axis throttle; hotplug and persisted device profiles |
+| Controller feedback | Optional SDL body and Xbox trigger rumble; cannon, missile, player-impact and full-throttle cues; strengths, motor tests, device selection and lifecycle stops |
+| Arcade settings | Lives/Credit (3 or 4), Ship Increase (credit-multiplied lives) and Difficulty; Apply & Restart, F5 or next launch applies saved DIP choices |
+| Audio | Six WAV/FLAC track replacements, preview, live current-song switching, Original fallback; independent music/effects/per-track volume; replacement music balanced at -12 dB |
+| Preferences and diagnostics | Saved video/input/audio/feedback/DIP preferences, physical-input recording, bounded launch checks and performance reporting |
+
+Presentation enhancements preserve the native board output as the regression
+reference. Effects default to Opaque, music to Original and feedback to Off.
+Force-feedback stick effects, incoming-warning cues, true widescreen,
+replacement sprite assets, CRT shaders, save states and new gameplay modes
+remain **planned**. The [haptics notes](docs/HAPTICS_PLAN.md) cover current SDL
+output and remaining platform hardware checks.
+The [true widescreen plan](docs/WIDESCREEN_PLAN.md) covers expanded scene rendering,
+visibility and HUD placement.
 
 ## Build and play
 
-Requires SDL3 **3.4 or newer**, a C++20 compiler and either Make with
-`pkg-config sdl3`, or CMake with the installed `SDL3::SDL3` package.
-Run commands from the repository root so `roms/` and `soundtrack/` resolve there.
-
-```sh
-make play-native
-```
-
-This builds `build/afterburner2-release` using the verified `-O3 -flto` options,
-then advances the original cold boot with physical coin/start pulses and hands
-over flight controls. For the initial Start Game / Options / Quit menu:
+Requirements: your ROM dump, SDL3 **3.4+**, a C++20 compiler, and either Make with
+`pkg-config sdl3` or CMake with the installed `SDL3::SDL3` package. Run from the
+repository root so `roms/` and `soundtrack/` resolve correctly.
 
 ```sh
 make native-release
 ./build/afterburner2-release
 ```
 
-Alternatively:
+This opens the initial menu. `make play-native` instead cold-boots to flight with
+physical coin/start pulses and enables performance reporting.
+
+CMake alternative:
 
 ```sh
 cmake -S . -B build/cmake
@@ -55,13 +78,10 @@ cmake --build build/cmake -j4
 ./build/cmake/afterburner2
 ```
 
-`make play-native STAGE=7` debug-selects an ordered stage slot (1–23). It uses
-fresh first-stage accumulated state and does not reproduce natural progression.
-`--frames 180` limits a launch check; `--profile` reports simulation/display FPS,
-board cost, filter submission and presentation wait. `--record path` records
-physical inputs; `--settings-file path` relocates frontend preferences.
+Native runtime checks are currently recorded on macOS; cross-platform build and
+physical-device acceptance must be established separately.
 
-## Controls and remapping
+## Controls
 
 | Keyboard default | Action |
 | --- | --- |
@@ -73,87 +93,54 @@ physical inputs; `--settings-file path` relocates frontend preferences.
 | Esc or F1 | Open / close menu |
 | F11 / F3 | Fullscreen / cycle stats |
 
-Options → Controls supports keyboard, SDL3 gamepads and raw joysticks, with
-remapping, dead zone, sensitivity, axis polarity and full-axis throttle. Enter
-captures a binding; Backspace clears it; Escape cancels or returns. Axes must
-cross neutral before capture. For a throttle slider, select Full Axis and bind
-Boost toward maximum; this replaces Brake and uses the complete signed range.
+Gamepads default to left-stick flight, South/East weapons, triggers for throttle
+and Back/Start for coin/start. Raw joysticks default to axes 0/1 and buttons 0–5.
+Remap in **Options → Controls**: Enter captures, Backspace clears and Escape
+cancels/returns. For throttle sliders, choose Full Axis and bind Boost toward
+maximum; this replaces Brake. Identical device models share a GUID/type profile.
 
-Gamepads default to left-stick flight, South/East for weapons, triggers for
-throttle and Back/Start for coin/start. D-pad/shoulder fallbacks cover pads without
-those axes. Raw joysticks default to axes 0/1 and buttons 0–5; remap to suit your
-stick. D-pad or joystick hats navigate menus, South/button 0 selects, East/button
-1 returns. Bind Menu when Guide is unavailable. Keyboard remains available.
-SDL3 auto-detects hotplug devices and uses built-in mappings plus a pinned offline
-[SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) snapshot.
-Profiles follow SDL GUID and device type; identical models share a profile.
-Physical gamepad/HOTAS validation remains outstanding; virtual-device tests pass.
+Enable rumble in **Options → Controls → Feedback**. Choose the output device,
+turn Enabled On, and adjust body/trigger strengths independently. Motor tests
+work with gameplay feedback Off. See the [motor mapping table](docs/HAPTICS_PLAN.md#motor-mapping)
+for left/right body and trigger assignments. Cannon uses the right trigger and
+missiles the left; Swap Triggers reverses them. Xbox Bluetooth body and both trigger
+motors are physically confirmed on macOS; Windows/Linux hardware checks remain
+open. Unsupported devices retain normal controls.
 
-## Graphics and sprite effects
+## Custom music
 
-Options provides window scaling, fullscreen and FPS/frame/core/filter/presentation
-stats. The list scrolls with Up/Down; Left/Right changes values. Sprites selects
-Off (default), EPX, Scale3x, 2xSaI, Super2xSaI or ScaleFX. xBRZ awaits a compatible
-license. Sprite filtering and background composition use **SDL GPU compute** on
-Metal or Vulkan, with a CPU/software fallback. GPU composition also runs with
-Sprites Off. Native board rendering, sprite feedback, tile priority, text and
-palette shadows remain authoritative.
+Put WAV/FLAC files directly in `soundtrack/`, then choose them in
+**Options → Audio → Music Tracks**. The six tracks are Maximum Power, Final Take
+Off, Red Out, Super Stripe, After Burner and City 202. Left/Right cycles choices;
+Space or gamepad North previews while paused.
 
-Clouds, Trails, Explosions and Afterburner independently choose Opaque (default)
-or Translucent. Original-art opacity is 160/255 for clouds, 112/255 for missile
-trails, 176/255 for explosions and 192/255 for the player's flame. Explosion
-assets come from runtime ROM animation tables; flame transparency applies only
-to its palette pens within known aircraft assets, keeping the airframe opaque.
-These affect presentation copies; they do not change gameplay or native RGB.
-Replacement RGBA art, softer edges and age-based trail fading remain future work.
+A loaded selection for the current song applies on resume and starts the file
+from the beginning. Other mappings apply at their native cue. Music, effects and
+track volumes range from 0–100%; gameplay and preview use the same -12 dB
+replacement baseline. Original at 100% preserves exact native PCM. See
+[music behavior and coverage](docs/MUSIC_REPLACEMENT_PLAN.md).
 
-## Music and volume
+Preferences live in SDL's application preference directory. `--settings-file
+path` overrides their base path; input/audio/feedback use `.inputs`/`.audio`/`.haptics` suffixes.
+It does not relocate `soundtrack/`. Useful launch options: `--frames 180`,
+`--profile` and `--record path`. `make play-native STAGE=7` is a directed debug
+entry, not natural stage progression.
 
-Place your WAV/FLAC files directly in `soundtrack/`, then open Options → Audio.
-Music Tracks lists Maximum Power, Final Take Off, Red Out, Super Stripe, After
-Burner and City 202. Left/Right cycles Original and alphabetically sorted files;
-Enter advances. **No file picker opens.** Space or gamepad North previews a file
-while paused. Mapping changes apply at the next genuine native music start.
-
-Music Volume, Sound Effects Volume and six Track Volumes are independent,
-persistent 0–100% controls in 5% steps. Original is the default; at all-Original
-100% the output remains exact native PCM. Files decode asynchronously to 48 kHz
-stereo, loop while their native instance is active and fall back to Original if
-unavailable. Limits: 256 MiB per input/decoded file, 512 MiB decoded cache.
-Natural music evidence currently covers Maximum Power and Final Take Off with
-overlapping effects; other song contexts and natural fades still need recordings.
-See [music implementation and coverage](docs/MUSIC_REPLACEMENT_PLAN.md).
-
-Preferences use SDL's application preference directory. Input/audio settings
-have `.inputs` / `.audio` suffixes beside `settings.cfg`, or the explicit
-`--settings-file` path. That option does not relocate `soundtrack/`.
-
-## Validation and development
+## Development and documentation
 
 ```sh
 python3 tools/workflow.py context
-python3 tools/workflow.py run test verify-stage1
-python3 tools/workflow.py run required
+python3 tools/workflow.py run test verify-stage1 -j 4
+python3 tools/workflow.py run required -j 4
 ```
 
-`test` runs ROM-free regressions; `verify-stage1` adds ROM-backed integration.
-`required` also runs the complete retained MAME oracle and mutation suite, using
-local ignored fixtures. CMake enables ROM tests with `-DSTAGE1_ROM_TESTS=ON`.
-GPU readback checks require a working graphics backend. Capture commands and
-validation cadence are in [Workflow](docs/WORKFLOW.md) and [Roadmap](docs/ROADMAP.md).
-Never commit ROMs, captures, recordings or personal audio.
+`test` is ROM-free; `verify-stage1` adds ROM-backed integration; `required` also
+runs the retained MAME oracles/mutations. Follow the roadmap's validation cadence
+and preserve all fixtures. Never commit ROMs, captures, recordings or personal
+music. GPU readback tests require a working graphics backend.
 
-The [Three.js prototype branch](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine)
-retains that experiment; its source, dependencies and targets are absent from main.
-
-| Location / document | Purpose |
-| --- | --- |
-| `src/main/engine/` | Translated gameplay, scheduling and application API |
-| `src/main/hwvideo/`, `hwaudio/` | Original board devices and passive presentation taps |
-| `src/main/frontend/` | SDL GPU shaders, menu, input profiles and music playback |
-| [Roadmap](docs/ROADMAP.md) | Checkpoint, rules and enhancement backlog |
-| [Workflow](docs/WORKFLOW.md) | Build, test, capture and recovery commands |
-| [Engine notes](docs/ENGINE_NOTES.md) | ROM evidence, validation results and exclusions |
-| [Hardware](docs/HARDWARE.md) | X-Board reference |
-| [Enhancement architecture](docs/ENHANCEMENT_ARCHITECTURE.md) | Extension contracts and deeper interfaces |
-| [Historical Stage 1 tests](docs/STAGE1_FIDELITY.md) | Retained reconstruction regression scope |
+Start with the [documentation guide](docs/README.md), [workflow](docs/WORKFLOW.md)
+and [roadmap](docs/ROADMAP.md). [Engine notes](docs/ENGINE_NOTES.md) retain the
+ROM evidence and verification history; [enhancement architecture](docs/ENHANCEMENT_ARCHITECTURE.md)
+describes extension contracts. The Three.js prototype is retained only on
+[`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).

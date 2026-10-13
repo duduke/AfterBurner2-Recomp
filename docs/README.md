@@ -1,0 +1,21 @@
+# Documentation guide
+
+| Task | Start here |
+| --- | --- |
+| Build, play or configure the game | [Project README](../README.md) |
+| See current coverage, rules and next tasks | [Roadmap](ROADMAP.md) |
+| Run tests, captures or recover a missing instruction | [Workflow](WORKFLOW.md) |
+| Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |
+| Configure or understand replacement music | [Music replacement](MUSIC_REPLACEMENT_PLAN.md) |
+| Implement rumble or force feedback | [Haptics notes](HAPTICS_PLAN.md) — rumble implemented, advanced FFB planned |
+| Extend the visible scene without stretching | [True widescreen plan](WIDESCREEN_PLAN.md) — planned |
+| Find ROM addresses, MAME evidence or validation logs | [Engine notes](ENGINE_NOTES.md) |
+| Read earlier roadmap checkpoints | [Checkpoint history](CHECKPOINT_HISTORY.md) |
+| Understand X-Board hardware | [Hardware](HARDWARE.md) |
+| Inspect retained reconstruction tests | [Historical Stage 1 baseline](STAGE1_FIDELITY.md) |
+| Check dependencies and licenses | [Third-party notices](THIRD-PARTY-NOTICES.md) |
+
+Current status belongs in the roadmap; historical results retain the scope of
+that revision. Before code changes, run `python3 tools/workflow.py context`, then
+search the relevant source and engine-note section. Read the rules before
+porting, and keep ROM data/captures out of Git.

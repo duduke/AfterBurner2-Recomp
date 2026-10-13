@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-12) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-14) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -24,6 +24,10 @@ Current evidence entry points:
 - [SDL3 platform](#sdl3-native-platform-migration-2026-10-11)
 - [Stage-skip palette correction](#stage-8-black-canyon-ground-after-debug-skipping-2026-10-11)
 - [Full native validation](#play-native-publication-validation-2026-10-11)
+- [Music routing, balance and live selection](#native-music-presentation-adapter-2026-10-13)
+- [SDL controller feedback](#sdl-controller-feedback-2026-10-14)
+- [DIP-switch menu](#native-dip-switch-menu-2026-10-13)
+- [Explosion and full-throttle flame effects](#captured-afterburner-white-core-report-2026-10-13)
 
 ## Tooling
 
@@ -9093,6 +9097,47 @@ work. These are frontend focused checks, not a new full-game MAME acceptance run
 
 ## Native music presentation adapter (2026-10-13)
 
+Replacement mixing correction: decoded files previously entered the speaker
+sum at full digital gain, overwhelming the quieter arcade effects and clipping
+overlaps with mastered files. The initial 1/16 (-24 dB) adjustment proved too
+quiet in user playback. A frontend-only 1/4 (-12 dB) baseline now applies
+to replacement playback and preview before user gains/native fades. Original
+unity PCM, effects gain, file samples, routing and board clocks are unchanged.
+Retained generated full-scale stereo tests check unclipped additive effects,
+independent mutes and global/track gains; loop/fade tests include the baseline.
+This fixed balance preserves dynamics; it does not normalize arbitrary files.
+The preceding 1/16 revision passed `test` and `verify-stage1` at
+`build/workflow/20261013T143648.631824Z/`, including 781 exact native RGB/PCM
+frames and 627,841 stem frames. The earlier full checkpoint below retains its
+original scope; this correction does not claim whole-credit acceptance.
+That revision's focused routing/mutation checks passed at
+`build/workflow/20261013T143442.451800Z/`: both retained MAME corpora match
+42,148/42,148 and 119,374/119,374 observations, zero skips; all five music
+mutations reject, including bypass of the new replacement gain.
+That revision's native release rebuild and 480-frame software launch with generated
+full-scale replacements and both user volumes at 100% pass (ignored log:
+`build/oracle/replacement-balance-smoke.log`). Actual user recordings were not
+available for listening comparison; quieter mastering may need track adjustment.
+
+Current-song menu mappings now switch on the next frontend mix after successful
+asynchronous decoding; menu pause therefore applies them on resume. Replacement
+files start at sample zero with the current fade; Original returns to the live
+native stem. Inactive mappings and stopped cues do not start/retrigger music.
+No sound commands or board execution changes are used. Retained tests cover
+Original/file/file switches, inactive edits, All Original, fades and stopped
+music. Final 1/4-gain and live-selection `test` / `verify-stage1` pass at
+`build/workflow/20261013T145024.004633Z/`, including 781 exact RGB/PCM frames and
+627,841 stem frames; preceding revision logs above remain historical evidence.
+The rebuilt release passes at `build/workflow/20261013T145512.368422Z/` and
+a 480-frame software launch with full-scale generated replacements and both
+user gains at 100% passes (`build/oracle/replacement-live-balance-smoke.log`).
+Mutation unit playback uses SDL's dummy backend, matching the normal unit
+target, so preview assertions do not depend on physical device availability.
+The clean final routing/mutation rerun passes at
+`build/workflow/20261013T145459.602242Z/`: both retained MAME corpora match
+with zero skips and all six music mutations reject, including deferred live
+selection and bypassed replacement attenuation.
+
 See [music implementation](MUSIC_REPLACEMENT_PLAN.md) for ROM addresses, routing,
 menus and coverage. Passive MAME routing compares 42,148/42,148 transactions in
 781 frames and 119,374/119,374 in 1,800 frames, zero skips. The longer physical
@@ -9167,3 +9212,397 @@ Staged source/document whitespace and links were inspected. The unmodified
 upstream controller database license and dr_flac header retain their original
 whitespace; decoder/database hashes match their pinned provenance. No ROMs,
 captures, generated audio, screenshots or personal settings are staged.
+
+
+## Native DIP-switch menu (2026-10-13)
+
+Options includes **Video**, Controls, Audio and **DIP Switches**. Video owns
+upscaling, sprite filters, cloud/trail/explosion/afterburner opacity, screen mode
+and stats. DIP Switches offers **Lives/Credit** (3 or 4), **Ship Increase**
+(No or Yes) and Difficulty (Easy, Normal, Hard and Hardest). Ship Increase is
+SWB:5; the 3/4 ships choice is SWB:4. The two rows edit independent bits of the
+existing combined `lives` preference index, preserving all previously saved
+3/4/3x Credits/4x Credits selections without a format migration.
+The mapping comes from MAME's `src/mame/sega/segaxbd.cpp`,
+`INPUT_PORTS_START(aburner2)`, IO1PORTD: lives mask `0x18` maps to
+`0x18/0x10/0x08/0x00`, and difficulty mask `0xc0` maps to
+`0x80/0xc0/0x40/0x00`. The default remains physical pins
+`255,255,221` (three lives, Normal). All other DIP bits are preserved.
+The owner's manual calls SWB:5 **Ship Increase**. This is the credit-multiplied
+lives setting that MAME combines with SWB:4; there is no separate score-based
+Bonus Life DIP. The initial placeholder row has been replaced with the actual
+Ship Increase switch.
+
+Selections persist in the existing versioned frontend preferences. They remain
+pending for the active board until **Apply & Restart**, F5 or the next launch;
+restarting ends the current game. `GameSession::set_dip_switches` configures
+physical pins only before the first cold-board frame. No ROM translation,
+CPU/device timing or gameplay RAM is changed. Recording headers and ROM
+metadata now carry the actual selected pins, including restart recordings.
+Use a separate `--settings-file` with default/missing preferences when recording
+the original three-life/Normal reference.
+
+Initial implementation validation: `test-native-settings` covers all 16 settings combinations,
+physical masks, persistence, old-file defaults and invalid input. The initial
+`verify-native-menu` covered keyboard wrapping, the then-unsupported Bonus Life row,
+pending-board isolation, Apply & Restart, cold-only configuration, recording
+header/metadata and pointer/Escape return, alongside retained Controls/Audio
+checks. Its ROM-font screenshot was visually inspected locally. Logs:
+`build/workflow/20261013T111908.505604Z/` (settings) and
+`build/workflow/20261013T112033.353650Z/` (final menu/build).
+`test` and `verify-stage1` pass at
+`build/workflow/20261013T112003.972186Z/`; the latter retains 781 exact native
+RGB frames with unchanged default DIP values. `oracle-caller-input` also
+passes its retained short/directed/full fixtures at the same log directory:
+4,236/4,236, 29,614/29,614 and 2,727,071/2,727,071 caller instruction/IRQ
+entries identical, zero skipped. That gate retains supplied shared-state inputs,
+explicit graph exits and directed fixture cuts; it is not alternate-DIP
+whole-host acceptance. A four-life/Easy 90-frame
+software launch and physical recording pass at `build/oracle/dip-smoke.log`.
+These focused checks do not establish complete gameplay/MAME equivalence for
+all alternate DIP choices or constitute a new full-suite acceptance gate.
+
+
+The subsequent Ship Increase/Video UI revision passes `test-native-settings`
+and `verify-native-menu` at `build/workflow/20261013T113139.289268Z/`.
+`test` passes at `build/workflow/20261013T113223.552951Z/`. The final layout
+(menu/build) run is `build/workflow/20261013T113259.418120Z/`. Tests retain all
+previous settings combinations and independently toggle SWB:4/SWB:5, reject
+failed application, check pending-board isolation and recording pins, and
+exercise keyboard/pointer navigation for every Video setting and all four
+Controls/Audio availability combinations. DIP, Video and Options screenshots
+were inspected locally. The earlier Stage 1/input-oracle results above are
+reused only for unchanged session, engine and recording sources; no new
+alternate-DIP full-game oracle acceptance is claimed by this UI change.
+
+The final release binary also passes a 90-frame software launch with four
+ships/credit, Ship Increase Yes and Easy (`255,255,133`); its physical header
+and JSON metadata agree. Log: `build/oracle/ship-increase-smoke.log`.
+
+
+## Explosion visibility and full-throttle-only flame (2026-10-13)
+
+The reported release behavior exposed a classification gap: $347BE target/gate
+explosion lists were covered, but player-crash effects use independent streams.
+$E7BA resolves two variants through $E89E, with five stream pointers each;
+$F796..$F7EE reads sixteen-byte entries, two-byte $EEEE holds and $FFFF ends.
+The presentation cache now reads these streams at runtime and classifies their
+$A2/$75/$2C fire/smoke palettes as explosions. ROM art inspection confirmed
+that $15 is the aircraft/debris image and stays opaque. No crash animation or
+pixel data is embedded in source. The Translucent explosion setting now uses
+128/255 opacity (previously 176/255) for clearer background visibility.
+
+The optional player-flame mask formerly applied at ordinary throttle. Passive
+per-scanline RAM observations now gate it to active flight ($29C09C == $10) and
+the ROM's maximum processed throttle at $29C0D2. $B262..$B2B0 clamps the ADC
+value to $B0, subtracts $40, and computes ($70 << 8) / $71 = $FD. Only that
+maximum range enables 192/255 opacity for the established F2 pens 1, 2 and 4;
+idle, braking, attract and other modes remain opaque. This observes board RAM
+without bus transactions or replacement state and does not alter ROM execution,
+RGB production, descriptor feedback or audio. Video shows a full-throttle-only
+hint on the Afterburner row.
+
+`verify-effect-assets` independently checks 363 crash fire/smoke frames,
+21 opaque aircraft/debris frames and 82 retained target frames at all 64 LOD
+entries (29,824 descriptor checks), plus throttle/mode boundaries. Five retained
+`verify-effect-asset-mutations` reject ordinary-throttle translucency, a wrong
+maximum endpoint, attract translucency, missing crash fire and translucent
+aircraft debris. The mutation target is included in `oracle-test`; native menu
+checks also retain the asset gate. The synthetic GPU corpus keeps all nineteen
+previous patterns and adds the new explosion opacity, across six scalers and
+five sizes. The retained six GPU mutations remain required.
+
+The retained 3,601-frame native steering/weapons corpus still compares all
+sixteen effect policies and six scalers with original RGB and GPU/CPU output.
+It now checks visible explosion/crash pixel changes and verifies ordinary
+throttle produces no translucent flame. An additional 3,600-frame physical
+throttle sequence checks full, ordinary and braking frames through takeoff and
+flight; ordinary/braking flame-only compositions must be identical to opaque,
+and full-throttle compositions must visibly differ. Comparison images remain
+under ignored `build/oracle/`. This is finite presentation coverage, not
+whole-credit or every-stage acceptance.
+
+
+Final focused execution/asset checks pass at
+`build/workflow/20261013T115958.326128Z/`: `test`, `verify-stage1` (781 original
+RGB frames, zero differences), and all five asset/policy mutations. Final
+menu/release and synthetic Metal checks pass at
+`build/workflow/20261013T120004.611990Z/`: 600/600 synthetic readbacks,
+44,961,160 pixels, zero skips; all six retained GPU mutations reject.
+The 3,600-frame throttle sequence observes 28,022 full-throttle flame fragments,
+104,374 opaque ordinary-throttle candidates and 9,295 changed flame pixels.
+Both 90-frame release launch smokes pass with effects enabled (software after
+normal boot-to-flight and Metal cold boot); logs are
+`build/oracle/effects-fix-software-smoke.log` and
+`build/oracle/effects-fix-metal-smoke.log`. The final native Metal scene replay,
+including the earlier forced ordinary-flame sample and all crash-fire palettes,
+is recorded at `build/workflow/20261013T120504.368031Z/`. These focused runs
+retain earlier fixtures and mutations; they do not claim a new complete
+`required` or alternate-setting whole-game pass.
+
+The final native Metal replay passes 4,128/4,128 readbacks, zero skipped,
+preserving the earlier forced ordinary-flame sample. Both explosion comparison
+images were visually inspected: the opaque crash fire hides the scenery,
+while the 128/255 composition reveals the rocks and sea through it; aircraft
+parts and HUD remain opaque. Asset/capture data and screenshots remain ignored.
+
+The final sampled native corpus changes 10,407 visible explosion pixels, all
+from player-crash effects; target explosion descriptors are covered by the
+82-frame/64-LOD asset check and synthetic compositing, but this run does not
+claim a separately observed natural target-explosion visibility comparison.
+
+
+## Captured afterburner white-core report (2026-10-13)
+
+The user's screenshot exposed a semantic gap in the earlier flame test. The
+saved Afterburner setting was already enabled. The previous F2 pen 1/2/4 mask
+covered only the aircraft's small nozzle glow, which is animated by $14062.
+It did not cover the large paired flames seen during full throttle. The old
+readbacks proved the compositor changed the declared mask, rather than proving
+that mask selected the actual afterburner. An attempted expansion of F2 colours
+was rejected because those colours also occur on the aircraft; it is absent
+from the final implementation.
+
+The actual flame producer is $AF3C/$AFCC. $AE8C/$AEE4 initialize its separate
+sprites with palette $80, and $AF88/$B018 choose frames from two phases at
+$29018/$2939C, five pitch tables, banks -5..5 and left/right pointers per
+sixteen-byte entry. The presentation cache now reads all 220 exhaust frame
+selections and their runtime LOD descriptors. Every drawn pixel in those known
+flame sprites, including their bright white cores, receives the optional
+128/255 opacity. The F2 aircraft and nozzle glow remain entirely opaque.
+The previous active-flight/max-throttle predicate is unchanged. ROM execution,
+producer feedback, hardware RGB and audio are unchanged; no animation tables,
+artwork or captures are embedded in source.
+
+`verify-effect-assets` checks all 220 exhaust selections and 55 opaque aircraft
+selections at 64 LOD entries, in addition to all earlier target/crash asset
+coverage. A real exhaust descriptor is decoded and every drawn pen must retain
+the effect kind. Seven retained mutations reject omitted exhaust pixels, wrong
+exhaust palette, ordinary-throttle opacity, wrong throttle endpoint, attract
+opacity, missing crash fire and translucent debris. Native replay requires
+white core pixels to blend visibly while F2 aircraft/nozzle pixels stay exactly
+opaque, and compares the full-throttle scene on GPU with all six filters,
+including ScaleFX. The earlier 4,128-readback native corpus and all prior
+fixtures/policies remain. Synthetic GPU coverage retains all twenty preceding
+patterns and adds the 128/255 afterburner policy.
+
+The focused `test` and `verify-stage1` checks pass at
+`build/workflow/20261013T140424.259568Z/`, retaining 781 exact original RGB frames.
+The seven asset/policy mutations pass at
+`build/workflow/20261013T141232.012651Z/`. Final native GPU/release/synthetic
+checks are recorded at `build/workflow/20261013T141235.508677Z/`.
+ROM-derived audits, captures and before/after images remain under ignored
+`build/oracle/`. These checks cover the declared scenes and poses, rather than
+whole-credit or every-stage visual acceptance.
+
+Final results: 5,147 white-core pixels blend, 14,346 F2 aircraft white pixels
+remain opaque, and all six native full-throttle GPU filter checks match the CPU
+reference. The retained native corpus passes 4,128/4,128 readbacks, zero skips;
+630/630 synthetic GPU cases (47,209,218 pixels) and all six retained GPU
+mutations also pass. The release is rebuilt. Ninety-frame ScaleFX/Afterburner
+software and Metal launch smokes pass; logs are
+`build/oracle/actual-afterburner-software-smoke.log` and
+`build/oracle/actual-afterburner-metal-smoke.log`. A separate normal cold-boot
+stage-1 boost replay supplies before/after pictures under `build/oracle/`.
+
+## Optional roll horizon correction (2026-10-13)
+
+**Superseded visual implementation:** the first correction described below
+passed identity/count tests but reversed sky/ground and could remove valid sea.
+Its screenshots did not prove wedge removal. See the subsequent both-direction
+correction for current behavior and stronger visual acceptance. These earlier
+logs retain only their historical scope.
+
+Options → Video → Ground now offers Original (default) and Corrected. The native
+wedge remains MAME-identical in Original. The normal road generator `$F02` uses
+bank-history-dependent scroll ramps; the fifteen horizon sprites use the main
+CPU's `$10ED8/$10FBC` projection/art selection. Their boundaries can leave plain
+road ground fill on the sky-facing side of the visible strip.
+
+`Presentation::GroundHorizon` reads the 64-entry main `$11000` frame table, sub
+LOD records at `$9E4`, and signed main projection values at `$33E98`. At each
+native partial-layer frontier it copies the published sprite bank, extracts the
+horizon extent and replaces only eligible road-0 ground pens on the sky side
+with that row's native exterior/sky pen. Foreground priority, palette frontier,
+source textures below the strip, sprites and shadow resolution are retained.
+No bus transactions, road/descriptor writes or native RGB/audio changes occur.
+The correction is gated to active flight and normal direct road control 4;
+solid-fill rows, alternate roads and special modes keep their original output.
+This is a conservative seam correction, not continuous 3D terrain/projection.
+
+Focused validation at `build/workflow/20261013T190817.472125Z/` passes `test`,
+`verify-stage1`, `verify-native-menu`, `oracle-video-rolls`,
+`verify-ground-mutations` and `native-release`. The retained MAME roll corpus
+remains **160/160 pixel-identical, zero skipped**. Five new negative controls
+reject wrong sky side, foreground overwrite, solid-fill overwrite, lost clip
+frontier and lost row palette. Existing fixtures/mutations remain intact.
+
+The strengthened composed-image check passes at
+`build/workflow/20261013T191129.867809Z/`: **1,560 native RGB/PCM/time frames
+identical, zero skipped**, 4,096 ROM asset/LOD selections checked; 1,414,679
+background pixels corrected in 394 frames, with 101,398 visibly exposed pixels.
+Left/right input phases cover 215/179 corrected frames. Disable/restart/cold
+boot identity passes. Synthetic tests cover opposite and inverted planes,
+priority, pattern boundaries, solid fills, palette choice and partial clips;
+full natural inverted/altitude/pitch coverage is not established.
+
+Metal checks at `build/workflow/20261013T191413.658777Z/` pass all **630/630**
+retained synthetic GPU cases (47,209,218 pixels), then repeat against a corrected
+native plane fixture, including all six filter modes, zero skips. The native
+1560-frame check passes again in that gate. These finite Metal scenes do not
+establish every-stage/backend performance. CMake product/settings/ground builds
+and two focused CTests pass; logs are under `build/oracle/horizon/`.
+
+Ignored `ground-before.png` / `ground-after.png` show the largest visibly exposed
+sample, scripted frame 1338. ROM-derived images, fixture and diagnostic files
+remain excluded from Git. Additional stage backgrounds, special-road enhanced
+projection, full inverted flight and sustained peak-load performance remain
+open. This focused increment does not claim a fresh complete `required` run or
+whole-credit acceptance.
+
+Final retained GPU mutations also reject (all six) at
+`build/workflow/20261013T191712.646395Z/`. Two 180-frame boot-to-flight launches
+with Ground Corrected, ScaleFX and all opacity settings enabled pass on Metal
+and the explicitly forced software fallback. Logs: `build/oracle/horizon/metal-smoke.log`
+and `software-smoke.log`. The finite Metal smoke reports about 59.64 simulation/
+display FPS after warm-up; software ScaleFX reports about 26 displayed FPS.
+These are launch observations, not controlled before/after benchmarks or
+sustained peak-load acceptance.
+
+## Horizon correction both roll directions (2026-10-13)
+
+The user correctly rejected the initial correction: its comparison removed valid
+sea, while the wedge remained. Original RGB identity and changed-pixel counts
+were insufficient visual acceptance. The ROM quarter-shifted sine is negative
+cosine, so the initial normal was reversed; one fitted plane also missed the
+published strip during interpolation. Global endpoint centroids were biased by
+viewport clipping, particularly during inverted rolls. Those approaches are
+superseded, not accepted fixes.
+
+The current correction identifies only the ROM horizon families with palette
+$E8 (`$10E6E` initializes `$007F00E8`). It resolves the published horizon raster
+before measuring each row/column. Strictly ordered sky pen 1 and terrain pen 14
+establish that line's direction. A pixel changes only when every available local
+silhouette agrees it is outside the strip on the sky side, and its native layer
+is an eligible plain road pen. Ambiguous/absent endpoint lines retain Original.
+There is no global angle fit, recoloring of the strip/sprites or extrapolation
+into the ground side. Normal-road/flight/priority/solid-fill guards remain.
+
+New `verify-ground-fixture` replays the retained MAME roll corpus: **160/160
+original RGB frames identical, zero skipped**. Enhanced witnesses cover 159
+frames; one lacks the required horizon endpoints. Actual visible bank sides
+(not requested input labels) cover 29/30 changed frames. **58,471 visible wedge
+pixels are corrected; 2,643,597 ground-side pixels are preserved.** The checks
+assert sky-side fill, terrain preservation, foreground protection and native
+baseline identity. Normal ROM-backed integration does not depend on the MAME
+capture; this new witness gate belongs to `oracle-test` and focused validation.
+
+Final focused checks pass at `build/workflow/20261013T200558.745478Z/`: `test`,
+`verify-stage1`, `verify-ground-fixture`, `verify-ground-mutations`,
+`verify-native-menu`, `native-release`. Native integration retains **1,560 exact
+RGB/PCM/time frames**, zero skips, and checks all 4,096 asset/LOD selections,
+disable/restart and cold boot. Eight retained unit mutations reject, plus three
+recorded-scene mutations for sea overwrite, sky-side reversal and fitted-plane
+shortcuts. CMake product builds and two focused CTests also pass; logs are in
+`build/oracle/horizon/final-cmake-*.log`.
+
+Ignored `verified-left-before/after.png` and `verified-right-before/after.png`
+show upright opposite-bank witnesses (frames 1275 and 1287). Sea below the strip
+is unchanged. Mutations run with `--no-images` so failing controls cannot replace
+the passing visual evidence. Older comparisons and validation logs retain only
+their historical scope. Further stage/background and sustained-performance
+coverage remains open; this is not full-credit acceptance or a fresh complete
+`required` run.
+
+Final Metal composition and all six retained GPU mutations pass at
+`build/workflow/20261013T202429.623225Z/`: 630/630 cases, 47,209,218 pixels,
+zero skips, including the current corrected native-plane fixture. Native
+identity checks pass again in that gate. Final 90-frame Metal and explicit
+software-fallback launches with Ground Corrected, ScaleFX and opacity settings
+also pass (`build/oracle/horizon/revised-metal-smoke.log` and
+`revised-software-smoke.log`). These finite checks do not establish sustained
+peak-load acceptance.
+
+## SDL controller feedback (2026-10-14)
+
+Basic rumble is implemented in the native frontend with Controls → Feedback,
+versioned `.haptics` preferences, explicit output-device selection, independent
+body/trigger gains, four cue toggles, trigger swap, finite motor tests and stops.
+Default Off leaves the passive board tap detached. Enabled capture observes only
+completed main-CPU handler assignments: `$9EF6 → $A030` cannon, `$9EBC → $9F7C`
+missile and `$9C20 → $E662` player damage. Continuous afterburner uses flight
+selector `$29C09C == $10` and signed processed throttle `$29C0D2 >= $FD`.
+No control requests or sound amplitudes stand in for successful gameplay actions.
+
+The SDL adapter borrows input handles, stops before close/remap, and owns any
+simple-haptic fallback handle. The mixer uses maximum per channel and independent
+gains, monotonic envelopes, once-only event IDs, stale suppression and finite
+watchdogs. Pause/menu/focus loss/restart/disable/device changes/unplug/shutdown
+stop output. Tests are finite even with gameplay feedback Off. Unsupported
+capabilities and errors leave input and other output channels available.
+
+Independent `capture-feedback` MAME witnesses cover **4,200 frames**, with
+**301 cannon allocations, 17 missile allocations, 3 player hits and 3,106 boost
+frames**, plus **7 attract/suppressed assignments and 25,914 unrelated writes**.
+The retained expanded-host fixture covers **73,593,282 original bus phases**
+and confirms no feedback from its attract allocations. No captures/ROM data
+were added to Git. `verify-feedback-mutations` rejects eleven retained mutations:
+wrong producers, attract output, early boost, overlap cancellation, duplicate
+frames, missing explicit stops, trigger crosswire, lost re-enable events and missing watchdog.
+
+Native capture-on/off comparison covers **4,200 identical RGB/PCM/time frames**,
+with **377 cannon, 20 missile and 2 player-hit events**, **3,106 boost frames**,
+pause/once-only consumption/reset checks. The MAME and native runs use different
+physical input schedules; these counts are separate witnesses, not a claim of
+trajectory equivalence. `test`, `verify-stage1`, `verify-native-menu` and native
+release build passed in `build/workflow/20261013T205330.258503Z/`.
+Mutations passed in `build/workflow/20261013T205716.580954Z/`; Make and CMake
+virtual-device/fixture checks both pass. The final idempotent polling, Off-mode tap detachment and sequence-reset changes
+pass `test`, the 4,200-frame comparison, menu checks and native build in
+`build/workflow/20261013T210002.022614Z/`; all eleven mutations pass in
+`build/workflow/20261013T210209.601136Z/`.
+
+The user's Bluetooth Xbox controller, named **Xbox One S Controller** by SDL
+**3.4.16**, reports body and trigger capabilities. The user physically confirmed
+body rumble and **both trigger motors** through SDL. The host reports macOS
+**26.7.1**. Controller-only initialization accepted a test without felt output;
+adding the SDL video window/event loop worked. The game already owns that loop.
+Firmware and output latency were not measured. Windows/Linux physical hardware,
+USB, simple-haptic fallback hardware, full gameplay/lifecycle feel and advanced
+FFB remain open. This finite enhancement check does not replace whole-credit
+or whole-host acceptance. See [HAPTICS_PLAN](HAPTICS_PLAN.md).
+
+Final Make executable smoke: 600-frame physical boot plus 660 live frames with
+feedback enabled in temporary settings and the attached controller, Metal output,
+and dummy audio completed successfully (`build/haptics/native-final-smoke.log`).
+The finite run reports roughly 57–59 simulation FPS; this is no peak-load or
+latency claim. Final CMake motor/positive-fixture/attract-fixture checks pass
+3/3 (`build/haptics/cmake-final-test.log`).
+
+
+## End-of-day enhancement checkpoint (2026-10-14)
+
+This checkpoint collects the DIP/Video menu work, original-art effect fixes,
+external-music balance and live mapping changes, ground correction for rolls in
+both directions, and SDL rumble. README now lists implemented enhancements,
+configuration and defaults; the documentation guide separates current coverage
+from haptics/widescreen plans and retained historical checkpoints. The rumble
+notes include explicit left/right body and trigger motor assignments.
+
+Validation retained for this commit: final `test`, `verify-feedback`,
+`verify-native-menu` and `native-release` pass in
+`build/workflow/20261013T210002.022614Z/`; `verify-stage1` passes in
+`build/workflow/20261013T205330.258503Z/`; all eleven feedback mutations pass in
+`build/workflow/20261013T210209.601136Z/`. Ground fixtures/mutations pass in
+`build/workflow/20261013T200558.745478Z/`, ground GPU and GPU mutations in
+`build/workflow/20261013T202429.623225Z/`, and music mutations in
+`build/workflow/20261013T145459.602242Z/`. Final CMake feedback checks pass 3/3;
+the rebuilt native executable completes the finite attached-controller smoke.
+Documentation-only finishing edits pass diff/link/command inspection.
+
+No ROM data, captures, recordings, personal soundtracks or build artifacts are
+included. All retained fixtures and mutations remain local. The last full
+`required` checkpoint predates these enhancements; this commit records focused
+validation, not a fresh full-suite or whole-credit acceptance claim. Remaining
+acceptance tasks continue in ROADMAP; Windows/Linux physical rumble, advanced
+FFB, incoming warnings and true widescreen remain open as documented.

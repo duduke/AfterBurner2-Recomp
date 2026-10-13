@@ -124,12 +124,16 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-12)
+## Current checkpoint (2026-10-14)
 
 `main` contains the SDL3 native engine, merged at `1f584d7` from the validated
 `play-native` implementation `2a0c76b`. `make play-native` remains the launch
-target; there is no longer a separate play-native branch. The retained
-`codex/threejs-game-engine` branch exists locally and on origin.
+target; there is no longer a separate play-native branch. Building on enhancement
+commit `9a5c4ac`, this checkpoint adds DIP/Video menus, corrected effect selection,
+external-music balance/live switching, ground correction during both roll
+directions and SDL body/trigger rumble. Documentation now includes a compact
+guide, retained checkpoint history and haptics/true-widescreen plans. The retained `codex/threejs-game-engine` branch
+exists locally and on origin; its prototype source and targets are absent from main.
 
 | Area | Verified status | Limits |
 | --- | --- | --- |
@@ -139,73 +143,29 @@ target; there is no longer a separate play-native branch. The retained
 | Natural transitions | Cold 74,452-frame Easy / 99-credit run visits all 23 ordered slots, six refuels, ending, ranking and return to attract; every frame matches MAME across ten observation columns. Default three-life failure/continue/weapons runs match 12,000/10,000/8,000 frames; new multi-credit continue recording matches 10,000 frames, zero skipped | Named RAM/timestamp stream only; standard single-credit completion, continuous whole-credit CPU/device/RGB/audio, name entry and NVRAM persistence remain open; carrier states 13–15 are directed-only |
 | Stage discovery | All 23 ordered ROM slots complete 600 scripted input frames each, 13,800 frames total with zero stops | Debug entries bypass natural progression and do not recreate every previous-stage state; special stages can suppress actions |
 | Selected-stage palettes | Stages 5, 8, 13 and 17 execute preceding ROM palette preparation; 56/56 gradient words match MAME, zero skipped | Directed debug startup, not full-credit acceptance |
-| Native platform | SDL3 3.4+, Make/CMake builds, window/input/audio, pause/restart, ROM-font settings menu (window scaling/sprite filters/fullscreen/stats), persisted preferences and no-speaker smoke checks pass | Short flight reaches the arcade's approximately 59.64 Hz cadence; every-stage peak-load performance remains unproved |
-| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames, passive sprite presentation planes and output PCM processing | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
+| Native platform | SDL3 3.4+, Make/CMake builds, window/input/audio, pause/restart, ROM-font settings with Video, Controls, Audio and DIP Switches submenus, persisted preferences and Metal/software launch checks pass | Physical controller/HOTAS calibration, other GPU backends and every-stage peak-load performance remain unproved |
+| Enhanced presentation | Five GPU sprite scalers plus native-size Off composition; independent cloud, trail, explosion and afterburner opacity; 630/630 synthetic cases and 4,128/4,128 sampled native readbacks identical, zero skips; six GPU mutations reject | Original-art effects only; finite Metal scenes, not whole-credit visual/performance acceptance |
+| Music and volume | Six persisted WAV/FLAC track mappings, preview/fallback, independent music/effects and per-track gains; 42,148/42,148 and 119,374/119,374 passive MAME routing transactions identical, zero skips | Natural contexts cover two songs and overlapping effects; four songs and natural fades remain unverified |
+| Ground/horizon correction | Optional Corrected mode preserves terrain while removing sky-side wedges; 160/160 retained MAME frames reconstruct exactly, with both roll directions and retained mutations checked | Original stays default; finite roll/Metal/software coverage, not every-stage visual acceptance |
+| Controller feedback | Cannon/missile/player-impact/full-throttle cues; 4,200 native RGB/PCM/time frames unchanged, independent MAME witnesses and eleven rejected mutations; Xbox Bluetooth body and both triggers physically confirmed on macOS | Windows/Linux and simple-haptic fallback hardware, full gameplay/lifecycle feel, incoming warnings and advanced FFB remain open |
+| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames, passive sprite planes/individual layers, output PCM processing and optional music/effects stems and events | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
 | Three.js | Prototype source and browser-specific tests retained only on `codex/threejs-game-engine` | Removed from main; arcade projection, true 3D world geometry, widescreen and standalone WASM remain future work |
 
-The documentation-consolidation baseline required checks passed
-on main: `test` (33.50 s), `verify-stage1` (73.68 s), and the complete
-`oracle-test` (1823.36 s), including all 85 recovery mutations and retained
-fixtures. Local logs are in `build/workflow/20261011T150418.391037Z/`.
-The current natural-recording work adds literal ports and observation tools
-while retaining every earlier fixture and all 10,525 earlier recovery bodies.
-The natural-transition checkpoint required checks passed: `test` (34.89 s) and `verify-stage1`
-(79.10 s) at `build/workflow/20261011T184425.284224Z/`, and a clean complete
-`oracle-test` (2270.84 s) at `build/workflow/20261011T193215.016295Z/`.
-The oracle rerun follows a repair to an ambiguous mutation selector; all
-120 recovery mutations and 15 whole-host ownership mutations reject.
-Older routine fixtures retain their documented input-race skips; zero-skip
-whole-host and recovery results do not erase those exclusions.
+Current enhancements include Video/Controls/Audio/DIP Switches menus, GPU sprite
+filters, optional original-art translucency, input remapping and replacement
+music. DIP choices apply on cold restart; music mappings for the active song
+apply on resume. Replacement music uses a 1/4 (-12 dB) baseline. Basic SDL rumble
+is implemented for gamepads/raw joysticks, including trigger
+motors and simple haptic fallback. Bluetooth Xbox body and both trigger motors
+are physically confirmed on macOS; Windows/Linux hardware acceptance remains open.
 
-The subsequent `$C618` multi-credit continue display fix adds three literal
-ports, preserves all 12,382 preceding instruction bodies and all retained
-fixtures, and passes the focused validation cadence. Its complete recovery
-corpus and 10,000-frame multi-credit continue observations match MAME;
-the three new instruction mutations reject. `test` (48.02 s) and
-`verify-stage1` (78.07 s) pass at `build/workflow/20261011T202613.753296Z/`.
-The rebuilt native game and complete 23-slot directed stage sweep also pass
-at `build/workflow/20261011T202719.311646Z/`, with 13,800 input-window
-frames and no stops. The natural comparison log is
-`build/workflow/20261011T203052.179492Z/`.
-The preceding complete oracle result above remains the last full checkpoint;
-this local fix does not claim a fresh 123-mutation or full-suite run.
-
-The historical `OEngine` Stage 1 reconstruction remains in regression tools,
-not the live game. See [STAGE1_FIDELITY.md](STAGE1_FIDELITY.md).
-
-The subsequent `$14D62` stage-1 full-throttle/cannon report adds one literal
-`MOVEQ` fallback. Independent MAME fixtures pass and both operand/flag mutations
-reject; the complete recovery corpus now covers 12,386 PCs and 77,794 fixtures
-with zero differences/skips. The scripted input window does not reproduce the
-user's exact trajectory; see ENGINE_NOTES for scope and validation.
-
-The `$E570` canyon ground-target report exposes a nonempty award-queue
-consumer. Its 18 missing instructions now match 146 independent MAME fixtures,
-including all branch outcomes and countdown boundaries. Complete recovery
-covers 12,404 PCs and 77,940 fixtures; see ENGINE_NOTES for shooting replay
-and mutation validation scope.
-
-### Daily progress — 2026-10-12
-
-Today's native build includes the multi-credit continue fix (`$C618`),
-full-throttle/cannon fallback (`$14D62`) and canyon ground-award consumer
-(`$E570..$E5AE`), with independent MAME fixtures and retained mutations.
-The ROM-font menu adds persistent window scaling, fullscreen and FPS/timing
-settings. Its separate Sprites row provides Off, EPX, Scale3x, 2xSaI,
-Super2xSaI and ScaleFX; native road/text coverage and palette shadows are
-preserved. xBRZ awaits a compatible license. A finite Metal smoke measures
-about 30 displayed FPS with CPU ScaleFX, so EPX is the lighter starting option.
-
-Focused evidence and the remaining full-game acceptance limits are recorded in
-[ENGINE_NOTES](ENGINE_NOTES.md#sprite-only-native-presentation-filters-2026-10-12).
-The complete required main-push gate passes: `test` (4.74 s),
-`verify-stage1` (45.51 s), and `oracle-test` (2653.29 s), including all 143
-recovery mutations and 15 ownership mutations. Logs:
-`build/workflow/20261011T220049.037304Z/`. Older routine fixtures retain their
-documented input-race exclusions; recovery and whole-host checks have zero
-unexplained differences/skips. Final filter/menu/build checks also pass after
-formatting cleanup at `build/workflow/20261011T220319.186745Z/`.
-ROMs, captures, screenshots and validation logs remain excluded from Git.
+The last complete `required` checkpoint is
+`build/workflow/20261013T075232.029672Z/`, before the subsequent DIP/effect/audio,
+ground and feedback changes. Their focused checks are recorded in ENGINE_NOTES;
+they do not constitute a fresh full-suite or whole-credit pass. See
+[checkpoint history](CHECKPOINT_HISTORY.md) for retained counts, timings and logs,
+[README](../README.md#current-enhancements) for the current feature list, and
+[ENGINE_NOTES](ENGINE_NOTES.md) for detailed coverage and exclusions.
 
 ## Next acceptance tasks
 
@@ -297,7 +257,7 @@ then update this roadmap. Do not commit ROM data, recordings or captures.
 | 3e: stages and game flow | Directed stage entry and sampled gameplay pass; natural full-credit acceptance is the next milestone |
 | 3f: full-game equivalence | Pending uninterrupted whole-credit comparisons |
 | 4: Audio | Original Z80, YM2151/SegaPCM, deadlines and mixed speaker output match declared MAME corpora; full-credit command/audio coverage remains open |
-| 5: Enhancements | Application hooks and SDL GPU sprite filters implemented; Three.js retained on its own branch |
+| 5: Enhancements | Native settings, GPU scalers/composition, four opacity controls, input remapping and WAV/FLAC music/volume implemented; physical hardware, advanced display/assets and gameplay extensions remain open |
 
 ## Phase 5 — Enhancements Phase
 
@@ -320,35 +280,33 @@ its validation tools; no browser prototype source or targets remain here.
 This is an estimated order for the remaining enhancement work, based on current
 interfaces and the effort to implement and validate it. It is not a schedule;
 adjacent items may change order after investigation. Completed menu, scaling,
-sprite-filter and native-performance foundations are excluded. Large features
-are split where their first useful increment is substantially easier than their
+sprite-filter, original-art opacity, input-remapping, music/volume and
+native-performance foundations are excluded. Large features are split where their first useful increment is substantially easier than their
 full scope. The detailed feature descriptions remain grouped by topic below.
 
 | Order | Enhancement / increment | Difficulty | Main dependency or source of effort |
 | --- | --- | --- | --- |
-| 1 | Master playback volume and additional persisted menu options | Easy | Existing menu, settings and outgoing PCM hooks; independent music/effects gains are part of item 7 |
-| 2 | Input remapping, deadzones, sensitivity and throttle mappings | Easy–moderate | Implemented in SDL3 Controls menu; virtual-device validation below |
-| 3 | CRT shaders and display pacing improvements | Moderate | Presentation backend, shader integration and frame-time measurements |
-| 4 | Controller/HOTAS auto-detection and presets | Moderate | SDL3 gamepad database and generic joystick defaults implemented; physical-device calibration/testing remains |
-| 5 | DIP/service access and high-score persistence | Moderate | Verified configuration/lifecycle boundaries and NVRAM persistence; service UI |
-| 6 | Sprite extraction CLI | Moderate | ROM decoding, frame boundaries and reproducible asset identification |
-| 7 | Per-track WAV/FLAC replacement and independent music/effects volume | Moderate–hard | Verified music/effect command separation; final mixed PCM alone is insufficient |
-| 8 | Gamepad rumble | Moderate–hard | Verified semantic weapon, impact and flight events plus SDL haptics |
-| 9 | Mission/stage selection and Time Attack | Hard | Verified stage entry, initialization and mode/timing interfaces |
-| 10 | Replacement sprites, larger textures and full-color assets | Hard | Individual sprite data before clipping, asset mapping and enhanced composition |
-| 11 | Replacement RGBA effects, soft edges and additional visual particles | Hard | Individual sprite composition, depth/priority, RGBA support and overlap tests |
-| 12 | High-resolution HUD and smoother sprite rotation | Hard | HUD/asset interfaces, new art and stable sprite pivots/ordering |
-| 13 | 120/144 Hz interpolated presentation | Hard | Scene/state history, interpolation and display pacing independent of simulation |
-| 14 | True widescreen | Hard | Wider road/tile rendering, projection, culling, scenery coverage and HUD placement |
-| 15 | Improved ground/horizon rendering during rolls | Hard | Investigate the original scanline-generated wedge; enhanced ground projection, bank/pitch response and layer composition |
-| 16 | Save states | Hard–very hard | Complete CPU/device/continuation serialization and deterministic resume |
-| 17 | Missile near-miss scoring, combos and spatial sound cues | Hard–very hard | Verified trajectories/collision events, scoring policy and audio events |
-| 18 | Expanded gameplay object counts and basic arranged mode | Very hard | Object ownership/capacity, stage sequencing, modifiers and balance; visual particles alone do not expand gameplay capacity |
-| 19 | Optional 60 Hz gameplay updates | Very hard | Movement/timer/fire/spawn adaptation, rounding, collision order and balance |
-| 20 | Flight-stick forces and moving-cabinet integration | Very hard | Verified telemetry, device protocols and physical hardware validation |
-| 21 | Procedural environments and formations, new special stages, interactive landing/refueling | Very hard | New content/art, mission and behavior systems, transitions and extensive playtesting |
-| 22 | Local two-player wingman mode | Very hard | Second player, camera/HUD, targeting, collisions, scoring and balance |
-| 23 | Networked co-op / rollback | Highest | Multiplayer plus deterministic snapshots, synchronization, prediction and recovery |
+| 1 | Additional persisted menu options | Easy | Existing menu/settings hooks; music, effects and per-track volume controls are implemented |
+| 2 | CRT shaders and display pacing improvements | Moderate | Presentation backend, shader integration and frame-time measurements |
+| 3 | Controller/HOTAS auto-detection and presets | Moderate | SDL3 gamepad database and generic joystick defaults implemented; physical-device calibration/testing remains |
+| 4 | Service access and high-score persistence | Moderate | Lives/credit, difficulty and Ship Increase DIP menu implemented; service UI and NVRAM persistence remain |
+| 5 | Sprite extraction CLI | Moderate | ROM decoding, frame boundaries and reproducible asset identification |
+| 6 | Gamepad rumble | Implemented; hardware checks open | SDL body/trigger output, verified weapon/impact/boost cues; macOS Bluetooth confirmed |
+| 7 | Mission/stage selection and Time Attack | Hard | Verified stage entry, initialization and mode/timing interfaces |
+| 8 | Replacement sprites, larger textures and full-color assets | Hard | Individual sprite data before clipping, asset mapping and enhanced composition |
+| 9 | Replacement RGBA effects, soft edges and additional visual particles | Hard | Individual sprite composition, depth/priority, RGBA support and overlap tests |
+| 10 | High-resolution HUD and smoother sprite rotation | Hard | HUD/asset interfaces, new art and stable sprite pivots/ordering |
+| 11 | 120/144 Hz interpolated presentation | Hard | Scene/state history, interpolation and display pacing independent of simulation |
+| 12 | True widescreen | Hard | Wider road/tile rendering, projection, culling, scenery coverage and HUD placement |
+| 13 | Further ground/horizon projection improvements | Hard | Targeted roll-wedge correction implemented; continuous terrain projection and broader stage/transition coverage remain |
+| 14 | Save states | Hard–very hard | Complete CPU/device/continuation serialization and deterministic resume |
+| 15 | Missile near-miss scoring, combos and spatial sound cues | Hard–very hard | Verified trajectories/collision events, scoring policy and audio events |
+| 16 | Expanded gameplay object counts and basic arranged mode | Very hard | Object ownership/capacity, stage sequencing, modifiers and balance; visual particles alone do not expand gameplay capacity |
+| 17 | Optional 60 Hz gameplay updates | Very hard | Movement/timer/fire/spawn adaptation, rounding, collision order and balance |
+| 18 | Flight-stick forces and moving-cabinet integration | Very hard | Verified telemetry, device protocols and physical hardware validation |
+| 19 | Procedural environments and formations, new special stages, interactive landing/refueling | Very hard | New content/art, mission and behavior systems, transitions and extensive playtesting |
+| 20 | Local two-player wingman mode | Very hard | Second player, camera/HUD, targeting, collisions, scoring and balance |
+| 21 | Networked co-op / rollback | Highest | Multiplayer plus deterministic snapshots, synchronization, prediction and recovery |
 
 Cannonball ecosystem adaptation is an investigation item rather than a single
 implementation: select concrete features and place each in this order according
@@ -359,13 +317,14 @@ work does not close the separate full-game acceptance tasks.
 - [x] Initial native settings menu: ROM-font Start/Options/Quit, pause/resume,
   SDL nearest/linear/integer/Pixel Art scaling, desktop fullscreen, FPS/frame-time
   statistics and persisted presentation settings. Esc/F1 opens the menu; F11/F3
-  provide fullscreen/statistics shortcuts. Audio/shaders/input calibration and
-  cabinet options remain part of the broader menu work below.
+  provide fullscreen/statistics shortcuts. Controls remapping, Audio submenus
+  and four effect-opacity settings are also implemented. CRT shaders, calibration
+  visualizers and cabinet options remain part of the broader menu work below.
 - [ ] **Frontend and Configuration Menus (Seamless In-Game Integration):**
   - *Native Visual Aesthetic:* Render menus directly through the engine's tilemap/sprite/text pipeline (or a cohesive HUD/cockpit overlay) using arcade font tiles and palette themes, avoiding external OS windows or generic popups.
   - *In-Game Pause & Settings Overlay:* Instant in-game pause menu with real-time previews for audio volume sliders, CRT shader toggles, and stick deadzone visualizers.
   - *Pre-Flight / Mission Select Screen:* Attract/menu screen styled after a military briefing terminal to select game modes (Arcade, Roguelite, Time Attack), view high scores, and configure flight controls.
-  - *Integrated DIP Switch & Service Access:* Direct access to cabinet settings (difficulty, lives, coin ratios, sound test) in-game without editing text configs.
+  - *Remaining Cabinet Access:* Difficulty, Lives/Credit and Ship Increase are implemented; coin ratios, service/sound test and high-score persistence remain.
   - *Seamless Persistence:* Instant save and load of player configuration and high scores to JSON/INI files.
 - [ ] **Save States:** Save and load full game state snapshots on demand.
 - [ ] **Cannonball Ecosystem Enhancements:** Evaluate and adapt relevant QoL features from Cannonball, Cannonball-SE, and Cannonball DX.
@@ -385,8 +344,10 @@ work does not close the separate full-game acceptance tasks.
     - *Retro Arcade Controllers:* Sega Saturn USB / 8BitDo M30, Astro City Mini arcade stick, generic USB encoders.
   - *Throttle Mapping Modes:* Incremental throttle, absolute lever axis, or bumper/trigger acceleration and airbrake.
 - [ ] **Force Feedback (FFB) & Haptic Rumble:**
-  - *Modern Gamepad Rumble:* SDL haptics/rumble cues for vulcan cannon fire, missile launches, afterburner ignition, incoming lock-on warnings, and explosion/flak hits.
-  - *Flight Stick & DirectDrive Support:* Constant force centering and spring resistance scaling with airspeed/afterburner, pitch/roll G-load resistance, stall shudder, and turbulence.
+  - *Implementation plan:* [SDL haptics and force feedback](HAPTICS_PLAN.md), covering basic rumble/haptics on Windows, Linux and macOS, plus Windows Xbox Series X trigger motor verification, capability fallbacks, passive gameplay cues and output lifecycle tests. Basic output is implemented; macOS Xbox Bluetooth body and both triggers are physically confirmed. Windows/Linux hardware acceptance and advanced FFB remain open.
+  - [x] *Modern Gamepad Rumble:* Verified cannon, missile, player damage and full-throttle cues; independent body/trigger strengths, finite motor tests and lifecycle stops.
+  - [ ] Incoming-warning cues and advanced force-feedback effects require separate verification.
+  - *Flight Stick & DirectDrive Support:* Capability-driven spring/damper centering, recoil and bounded impacts; later resistance may use verified speed telemetry. G-load, stall and turbulence models remain speculative enhancement proposals.
   - *Moving Cabinet Emulation:* Translate arcade motor signals (ADC3/ADC4 feedback and Moving Deluxe cabinet motor commands) into motion rig telemetry (e.g. SimHub / UDP telemetry) or FFB output.
 
 ### 3. Graphics, Resolution & Display
@@ -416,19 +377,20 @@ work does not close the separate full-game acceptance tasks.
   establish full-credit or every-stage peak-load performance. See the native
   performance continuation in `ENGINE_NOTES.md` for checks and measurements.
 - [ ] **Wide-Screen Support (16:9, 16:10, 21:9 Ultrawide):**
-  - *Expanded Viewport:* Expand horizontal raster from 320×224 to 398×224 (16:9) or 526×224 (21:9) without stretching.
+  - *Implementation plan:* [True widescreen](WIDESCREEN_PLAN.md): passive partial-frame scene export, wider road/tile/sprite rendering, verified visibility policy, HUD and CPU/GPU acceptance. Planned, not implemented.
+  - *Expanded Viewport:* Retain native 320×224 simulation; derive wider presentation dimensions from target display and pixel aspect, without stretching. See the plan for rounding and the separate 4:3-correction policy.
   - *Extended Road/Ground Raster:* Extend Sub CPU / `hwroad` scanline banking and horizon curves across wider display bounds.
   - *Tilemap Surface Wrapping:* Leverage X-Board's 1024×512 virtual tilemap surface to render wider scrolling backgrounds without clipping.
   - *Wide-Angle Projection & Culling:* Widen 3D camera frustum and sprite culling limits so enemy waves spawn and maneuver naturally across the full width.
   - *Flexible HUD Placement:* Toggle between classic 4:3 centered HUD or anchored widescreen HUD pushed to screen corners.
 - [ ] **4K Ultra HD Support (3840×2160):**
-  - *Existing Foundation:* SDL3 already presents the native raster through SDL_Renderer. High-resolution HUD/assets and the remaining display features below still need implementation.
+  - *Existing Foundation:* SDL3 already presents the native raster through its GPU renderer, with a software fallback. High-resolution HUD/assets and the remaining display features below still need implementation.
   - *Integer Scaling:* Pixel-perfect 9× integer scale of native 320×224 raster with configurable pillarboxing or fill modes.
   - *Advanced Shaders:* High-density CRT emulation (scanlines, shadow mask, phosphor glow, curvature) and edge-preserving scalers (xBRZ, ScaleHQ).
   - *Crisp High-DPI HUD:* Optional native 4K text and instrument overlays to eliminate blurriness.
   - *Smooth Presentation:* Zero-copy frame presentation and sub-millisecond pacing for lockstep 60 Hz / 120 Hz refresh rates.
 - [ ] **Upscaled & High-Resolution Sprites:**
-  - *Implemented presentation filters:* The native Options → Sprites row offers Off, EPX 2x, Scale3x, 2xSaI, Super2xSaI and ScaleFX 3x. Road/tiles, foreground text coverage and palette shadows retain their native presentation before the separate SDL window scaler. xBRZ is pending license compatibility. These filters do not implement the replacement-asset or rotation features below.
+  - *Implemented presentation filters:* The native Options → Video → Sprites row offers Off, EPX 2x, Scale3x, 2xSaI, Super2xSaI and ScaleFX 3x. Road/tiles, foreground text coverage and palette shadows retain their native presentation before the separate SDL window scaler. xBRZ is pending license compatibility. These filters do not implement the replacement-asset or rotation features below.
   - *Extraction CLI Tool:* CLI dump option in main binary (e.g. `--dump-sprites` / `--extract-sprites` to PNG) for AI upscaling or texture repainting.
   - *High-Res Replacement Pipeline:* Transparent loading and scaled rendering of external high-resolution sprite sheets.
   - *Smoother 360° Rotation Steps:* High-granularity roll/rotation steps via additional intermediate sprite banks or runtime software/GPU micro-rotation interpolation.
@@ -449,16 +411,23 @@ work does not close the separate full-game acceptance tasks.
   implemented above), then support replacement RGBA textures with soft cloud edges
   and gradually fading trails. Composite individual sprites in the correct
   depth/priority order so scenery and other sprites remain visible behind
-  translucent effects; the current combined visible-sprite plane alone is
-  insufficient. Preserve foreground/HUD protection and native shadow semantics,
+  translucent effects. The implemented passive individual-layer decoder provides
+  the starting interface; replacement RGBA assets and lifetime-based fading
+  remain open. Preserve foreground/HUD protection and native shadow semantics,
   retain original mode, and validate overlapping effects and performance.
-- [ ] **Improved Ground/Horizon Rendering During Rolls:** Optional enhanced
+- [x] **Targeted Roll-Wedge Correction:** Options → Video → Ground selects Original
+  (default) or Corrected. A passive horizon-art/roll observer corrects plain
+  road-0 ground fill on the sky side of the published strip; native RGB/PCM,
+  terrain below the strip, sprites and foreground priority remain unchanged.
+  This is a targeted normal-road correction, not continuous 3D terrain. See
+  [ground correction evidence](ENGINE_NOTES.md#horizon-correction-both-roll-directions-2026-10-13).
+- [ ] **Further Ground/Horizon Rendering During Rolls:** Optional enhanced
   rendering to eliminate the blue triangular wedge above the horizon on the
   right during left rolls and on the left during right rolls. The prior roll
   investigation observed the wedge in MAME and matched 160 captured frames
   pixel-for-pixel; retain that behavior in original mode. Investigate the exact
   generating conditions in the scanline-based ground/bank pipeline before
-  choosing a targeted correction or continuous ground/horizon projection.
+  extending the targeted correction into continuous ground/horizon projection.
   Preserve ground patterns, bank/pitch/altitude response, sprite layering and
   HUD priority. Validate both roll directions, steep and inverted banks,
   representative stage backgrounds and sustained performance. This is ground
@@ -524,10 +493,11 @@ work does not close the separate full-game acceptance tasks.
     natural evidence includes two songs and FM effects voice stealing.
   - Four remaining songs' natural contexts and natural fades still need coverage.
     See [implementation and validation details](MUSIC_REPLACEMENT_PLAN.md).
-- [ ] **Option: Sega Ages After Burner II (Saturn, 1996) Redbook Soundtrack:**
-  - Optional support for high-quality CD audio tracks while preserving authentic YM2151/SegaPCM sound effects.
-  - File-based music player mapping arcade music triggers to user-provided WAV/FLAC files in `soundtrack/`, through the per-track submenu above.
-  - Seamless config toggle between authentic arcade FM/PCM music and CD soundtrack.
+- [x] **User-Provided CD Soundtrack Playback Foundation:**
+  - The per-track submenu above supports user-provided WAV/FLAC versions of
+    Sega Ages After Burner II (Saturn, 1996) music, preserving native effects.
+  - Each track can select Original or a replacement; no soundtrack is bundled.
+    Complete natural song/fade coverage remains open as documented above.
 
 ### SDL3 input remapping — 2026-10-12
 

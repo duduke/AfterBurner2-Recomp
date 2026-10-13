@@ -65,13 +65,15 @@ feature can be implemented as a postprocessing effect.
 | Feature | Next interface needed |
 | --- | --- |
 | Rumble, motion telemetry, near-miss bonuses | Typed semantic events/state read from verified producers, with explicit event ordering and original-mode comparisons |
-| Replacement soundtrack with original effects | Verified music/effect command classification and separate audio routing; processing the final mixed PCM alone cannot separate original music |
+| Additional music/effect policies | Use the implemented verified stem/event interface; final mixed PCM alone cannot separate original music |
 | True widescreen and replacement sprites | Renderer/asset interfaces before native clipping and composition; stretching the completed raster cannot reveal additional world content |
 | Stage selection, shuffled missions and new formations | A verified stage/mission descriptor interface, followed by an explicit enhanced mode and original-mode regression tests |
 | New flight/combat rules or wingman play | Readable subsystem adapters extracted from verified player/object/collision routines; maintain native arithmetic and update order in original mode |
 | Save states | Complete versioned serialization of board/device and pending CPU continuation state, plus extension state; a RAM dump is insufficient |
 
 Introduce those interfaces at the owning subsystem as each feature is built.
+The [true widescreen plan](WIDESCREEN_PLAN.md) separates passive wide rendering
+from ROM-driven projection/culling and enhanced gameplay visibility.
 First establish the original path with ROM/MAME evidence; then expose named
 data and operations and implement the optional policy beside it. Avoid a
 generic RAM-patching callback: it hides ownership and makes original-mode
@@ -146,8 +148,9 @@ Native board RGB/audio and CPU/device ownership remain unchanged.
 Cloud/trail classification uses known ROM frame families and runtime LOD offsets,
 not color guesses. The app's optional policy uses 160/255 opacity for known clouds
 and 112/255 for known missile trails, with independent Opaque/Translucent menu
-rows and all effects Opaque by default. Explosions use 176/255 and player flame
-pens use 192/255. These values are enhancement choices.
+rows and all effects Opaque by default. Explosions use 128/255, including player-crash fire/smoke. Player flame
+pixels use 128/255 only at the ROM's maximum throttle during active flight.
+Ordinary-throttle flames and aircraft debris remain opaque. These values are enhancement choices.
 A GPU compute pass blends front-to-back into a premultiplied foreground plane,
 then the existing scaler/background/protection pass presents it. CPU scene
 composition is the software fallback and validation reference. Native foreground
@@ -161,6 +164,30 @@ on CPU when effects are enabled; this is GPU composition, not replacement of the
 native hardware renderer. Soft replacement textures, new particles and lifetime
 fading need additional asset/event interfaces and are not implemented here.
 
+Explosion/flame translucency extends the same optional sprite-fragment adapter.
+Explosion animation/palette records are read from main ROM $347BE, including ten
+types. Player-crash streams are resolved through $E89E/$F796; fire/smoke
+palettes $A2/$75/$2C are included and aircraft debris stays opaque.
+The actual paired afterburner flames come from the two $29018/$2939C exhaust
+phases used by $AF88/$B018, with palette $80 from $AE8C/$AEE4. The complete
+flame sprites, including white cores, receive optional opacity. The F2 aircraft
+and its small animated nozzle glow stay opaque. CPU and
+GPU use the same explicit effect kinds, retaining tile/shadow termination and
+all-opaque identity. No extra native producer or descriptor writes are introduced.
+
+### Optional ground horizon correction
+
+`capture_ground_horizon` uses passive copies at each native layer frontier.
+`hwvideo/ground_horizon.hpp` reads horizon families from ROM $11000 and the
+palette $E8, then clips misplaced plain road-0 fill against the published
+strip's actual row/column silhouette. Ordered sky/terrain endpoint pens determine
+the local direction; ambiguous lines retain Original. A fitted plane or global
+centroid is insufficient during clipping/interpolation. Partial palettes, foreground
+priority, sprite ordering and shadow resolution are retained in both GPU and
+CPU presentation. Only active flight/direct normal-road control 4 is eligible;
+other road modes retain their original image. Original is the default. This
+corrects a known roll wedge without replacing the ROM terrain/pitch/roll model.
+
 ## SDL3 native input adapter
 
 `frontend/native_input.hpp` maps keyboard scancodes, normalized SDL3 gamepad
@@ -172,6 +199,15 @@ stay in the SDL frontend. Digital-only gamepads use D-pad/shoulder defaults.
 No timing, arcade ADC conversion, ROM logic or recording format changes are
 needed. Device-specific calibration and response curves remain separate work.
 
+Implemented feedback uses passive native semantic observations and a separate SDL
+output mixer, with explicit device selection and stop/reconnect ownership.
+Basic rumble/haptics targets Windows, Linux and macOS with separate physical
+acceptance gates on each. Windows Xbox Series X trigger rumble and
+force-feedback sticks have additional capability/physical acceptance gates.
+macOS Bluetooth Xbox body and both trigger motors are physically confirmed;
+Windows/Linux hardware and advanced FFB remain open.
+See [HAPTICS_PLAN](HAPTICS_PLAN.md).
+
 ### Music presentation
 
 The optional sound-board adapter exposes pre-mix music/effects projections and
@@ -180,10 +216,3 @@ ROM-observed lifecycle events through `GameSession::take_music()`. Original
 Original settings and applies replacement/gains to presentation stems otherwise.
 File decoding and preview belong to `NativeMusic`, outside board execution. See
 [MUSIC_REPLACEMENT_PLAN](MUSIC_REPLACEMENT_PLAN.md) for lifecycle and coverage.
-
-Explosion/flame translucency extends the same optional sprite-fragment adapter.
-Explosion animation/palette records are read from main ROM $347BE, including ten
-types. Player aircraft families come from $28C94 and their flame pixels from
-palette F2 pens 1/2/4, identified by the original $14062 palette writer. CPU and
-GPU use the same explicit effect kinds, retaining tile/shadow termination and
-all-opaque identity. No extra native producer or descriptor writes are introduced.

@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -24,6 +25,7 @@ public:
     explicit NativeInput(std::string path):path(std::move(path)) { profiles["keyboard"]=defaults(false,true);load();discover(); }
     ~NativeInput() { for(auto& d:devices)close(d); }
     NativeInput(const NativeInput&)=delete;
+    std::function<void(SDL_JoystickID)> before_close;
     std::string status;
     bool focused=true;
     bool waiting() const {return capture_action>=0;}
@@ -167,7 +169,7 @@ private:
     std::string path;std::map<std::string,Profile> profiles;std::vector<Device> devices;
     int editing{},capture_action=-1;bool blocked{},menu_held{};std::array<bool,256> armed{};
     static bool reserved(SDL_Scancode k) {return k==SDL_SCANCODE_ESCAPE || k==SDL_SCANCODE_F1 || k==SDL_SCANCODE_F3 || k==SDL_SCANCODE_F5 || k==SDL_SCANCODE_F11 || k==SDL_SCANCODE_P;}
-    static void close(Device& d) {if(d.pad)SDL_CloseGamepad(d.pad);else if(d.stick)SDL_CloseJoystick(d.stick);}
+    void close(Device& d) {if(before_close)before_close(d.id);if(d.pad)SDL_CloseGamepad(d.pad);else if(d.stick)SDL_CloseJoystick(d.stick);}
     static int axis(const Device& d,int index) {return d.pad?SDL_GetGamepadAxis(d.pad,static_cast<SDL_GamepadAxis>(index)):SDL_GetJoystickAxis(d.stick,index);}
     Binding capture_axis(int index,int v) {if(std::abs(v)<12000)armed[index]=true;if(armed[index] && std::abs(v)>20000)return {'a',index,v>0?1:-1};return {};}
     static float value(Binding b,const Device* d,const bool* keys,int deadzone) {

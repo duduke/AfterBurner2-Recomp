@@ -5,33 +5,32 @@ music contexts are listed below. Original is the default for every track.
 
 ## Using the menu
 
-Place your WAV/FLAC files directly in `soundtrack/` beneath the startup working
-directory. Open Options → Audio → Music Tracks. Left/Right cycles backward/forward
-through Original and a stable alphabetical file list; Enter advances. No file
-picker opens. The folder refreshes when entering this submenu. Subfolders are
-excluded; extensions are case-insensitive. A missing folder leaves Original
-available and displays a notice. Filenames, rather than list indices, are saved.
+1. Put WAV/FLAC files directly in `soundtrack/` under the startup working directory.
+2. Open Options → Audio → Music Tracks; Left/Right cycles Original and files,
+   Enter advances. The list refreshes on entry, sorts alphabetically and ignores
+   subfolders. Extensions are case-insensitive; no file picker opens.
+3. Space/gamepad North previews while paused. Space, leaving the menu or changing
+   selection stops preview. Original is heard during gameplay.
 
-The six rows are Maximum Power, Final Take Off, Red Out, Super Stripe, After
-Burner and City 202. Long filenames scroll in the detail footer. Spaces and Unicode
-filenames are supported in storage; the existing ROM menu font has a limited
-character repertoire. Space, or gamepad North, previews the selected file while
-board execution is paused. Space stops preview; leaving the menu also stops it.
-Original preview is heard during gameplay.
+The six tracks are listed in the command table below. Long filenames scroll;
+spaces/Unicode are stored, though the ROM font has a limited character set.
 
-A mapping change applies at the next genuine native music start. Invalid files
-retain the prior choice and show an error; cycling can proceed past them. If a
-saved file is missing or not decoded when the cue arrives, that entire music
-instance uses Original. The saved filename remains available for recovery.
-All Original resets file mappings without resetting volumes.
+| Change | Behavior |
+| --- | --- |
+| Current song's loaded mapping | Applies on resume; new file starts at sample zero with the current fade |
+| Return to Original | Resumes the native sequencer's existing position |
+| Inactive/stopped song's mapping | Applies at its next genuine native start; does not start music |
+| Invalid selection | Keeps the prior choice and shows an error |
+| Saved file missing/not ready at cue | Uses Original for that instance; retains the filename for recovery |
+| All Original / Reset Volumes | Clears mappings / restores global and track volumes, respectively |
 
-Audio also offers Music Volume, Sound Effects Volume and Track Volumes. Each
-volume ranges from 0–100% in 5% steps, defaults to 100%, and persists. Zero mutes
-without stopping playback. Reset Volumes restores both global gains and all six
-track gains. Music gain equals global music gain times the active track gain;
-50% global and 80% track yields 40%. Effects gain is independent. Preview follows
-the selected track and global music gains. Live changes use a 10 ms frontend gain
-ramp and preserve music position.
+Music, effects and six track volumes persist at 0–100% in 5% steps, default 100%.
+Zero mutes without stopping position. Volume changes ramp over 10 ms. Preview
+and gameplay use the same gain: replacement music × 0.25 (-12 dB) × global music
+volume × track volume × native fade. Original music/effects get no added baseline
+attenuation. Global 50% × track 80% therefore means 40% of the source baseline.
+This is fixed balance, not loudness normalization; the final PCM sum still clips
+if it exceeds available headroom.
 
 ## Routing and lifecycle
 
@@ -94,8 +93,8 @@ test audio remain ignored and are not distributed with the game.
 
 Generated WAV/FLAC tones test lossless agreement, unknown-count FLAC, mono 24-bit
 44.1 kHz conversion, folder order, persistence, invalid files, asynchronous choice,
-independent mutes/gain multiplication, loops, stop/fade, preview, restart and
-Original fallback. Native menu integration checks selection and volume controls
+independent mutes/gain multiplication, full-scale headroom, live mapping changes,
+inactive/stopped edits, loops, stop/fade, preview, restart and Original fallback. Native menu integration checks selection and volume controls
 without advancing the board. Two native sessions compare 781 RGB frames and
 627,841 stereo audio frames with presentation capture enabled/disabled, including
 exact all-Original frontend output.
@@ -103,8 +102,8 @@ exact all-Original frontend output.
 Independent passive MAME captures compare 42,148 observations in 781 frames and
 119,374 in 1,800 frames, with zero skips. The longer physical-input recording
 includes 472 actual FM effects channel writes. Retained negative controls target
-wrong song mapping, lost sequencer starts, FM effects classified as music, and
-lost PCM percussion. Original speaker/joint-audio and whole-host gates remain
+wrong song mapping, lost sequencer starts, FM effects classified as music,
+lost PCM percussion, bypassed replacement attenuation and deferred live selection. Original speaker/joint-audio and whole-host gates remain
 required, alongside the complete regression/mutation profile for shared changes.
 
 Natural recordings exercise Maximum Power and Final Take Off, shooting and
@@ -113,9 +112,11 @@ but their natural stage/ending/game-over/ranking contexts remain unverified.
 Replacement fade is unit-tested; these natural captures contain no fade updates.
 This feature does not establish full-game audio or progression acceptance.
 
-Final validation on 2026-10-13: the complete `required` profile passed, along
+Historical validation on 2026-10-13: the complete `required` profile passed before
+the subsequent balance/live-selection corrections, along
 with release/CMake builds, four targeted CTests, menu integration and finite
 software/Metal smokes using generated replacements with muted gains. Existing
 historical oracle skips retain their documented policies; the new routing and
-presentation checks have zero skips. Details and local log location are recorded
+presentation checks have zero skips. The later corrections pass focused regression, native integration, routing, all
+six mutations and release/smoke checks. Revision-specific details and logs are recorded
 in [ENGINE_NOTES](ENGINE_NOTES.md#native-music-presentation-adapter-2026-10-13).

@@ -26,6 +26,10 @@ for number in range(2):
 print('Generated WAV/FLAC fixtures: 3840 stereo frames, 48000 Hz')
 
 extra=p/'formats';extra.mkdir(exist_ok=True)
+with wave.open(str(extra/'mastered.wav'),'wb') as w:
+    w.setnchannels(2);w.setsampwidth(2);w.setframerate(48000)
+    # Full-scale mastered fixture: the previous mixer clips overlapping effects.
+    w.writeframes(struct.pack('<hh',32767,-32767)*frames)
 unknown=bytearray(flac)
 packed=int.from_bytes(unknown[18:26],'big') & ~((1<<36)-1)
 unknown[18:26]=packed.to_bytes(8,'big')

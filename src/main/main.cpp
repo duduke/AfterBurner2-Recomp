@@ -73,7 +73,6 @@ int main(int argc, char** argv)try
     auto take_audio=[&]{auto samples=game.take_audio();auto chunks=game.take_music();return music_player?music_player->mix(std::move(samples),std::move(chunks)):samples;};
     unsigned recording_session=0;
     std::unique_ptr<PhysicalRecording> recording;
-    if (!recording_path.empty()) recording=std::make_unique<PhysicalRecording>(recording_path,roms);
     auto advance = [&](const GameControls& input) {
         if (recording && !game.paused()) recording->append(game.info().number,input);
         return game.advance(input);
@@ -84,7 +83,8 @@ int main(int argc, char** argv)try
         for(unsigned f=0;f<600;++f) {
             GameControls input;
             input.coin=f>=360&&f<372; input.start=f>=420&&f<432;
-            advance(input); take_audio();
+            advance(input);
+            take_audio();game.take_feedback();
         }
         if (start_stage) {
             game.debug_skip_to_stage(start_stage);if(music_player)music_player->mix({},game.take_music());
@@ -165,10 +165,16 @@ int main(int argc, char** argv)try
     music_player=std::make_unique<Frontend::NativeMusic>(settings_path.empty()?"":settings_path+".audio");
     Frontend::load_controller_database();
     auto input_manager=std::make_unique<Frontend::NativeInput>(settings_path.empty()?"":settings_path+".inputs");
+    SDL_InitSubSystem(SDL_INIT_HAPTIC); // Optional joystick haptic fallback.
+    auto feedback=std::make_unique<Frontend::NativeHaptics>(*input_manager,settings_path.empty()?"":settings_path+".haptics");
+    game.capture_feedback(feedback->settings.enabled);
     auto settings=Frontend::load_settings(settings_path,Frontend::pixel_art_available());
+    game.set_dip_switches(Frontend::dip_switches(settings));
+    if (!recording_path.empty()) recording=std::make_unique<PhysicalRecording>(recording_path,roms,game.dip_switches());
     if (!Frontend::apply_settings(window,renderer,texture,settings)) {
         std::cerr << "Saved presentation settings unavailable: " << SDL_GetError() << '\n';
-        settings={};
+        const auto lives=settings.lives,difficulty=settings.difficulty;
+        settings={};settings.lives=lives;settings.difficulty=difficulty;
         if(!Frontend::apply_settings(window,renderer,texture,settings)) throw std::runtime_error(SDL_GetError());
     }
     Frontend::SpriteScaler sprite_scaler;
@@ -180,7 +186,7 @@ int main(int argc, char** argv)try
     uint64_t last_sprite_frame=UINT64_MAX;
     const auto configure_sprite_texture=[&](const Frontend::Settings& value) {
         if(gpu_scaler) {last_sprite_frame=UINT64_MAX;return true;}
-        if(value.sprites==Frontend::SpriteFilter::none && !value.clouds && !value.trails && !value.explosions && !value.afterburner) return true;
+        if(value.sprites==Frontend::SpriteFilter::none && !value.clouds && !value.trails && !value.explosions && !value.afterburner && !value.ground) return true;
         const auto factor=Frontend::sprite_factor(value.sprites);
         auto* next=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,SCREEN_WIDTH*factor,SCREEN_HEIGHT*factor);
@@ -192,10 +198,11 @@ int main(int argc, char** argv)try
         std::cerr<<"Saved sprite filter unavailable: "<<SDL_GetError()<<'\n';
         settings.sprites=Frontend::SpriteFilter::none;
     }
+    game.capture_ground_horizon(settings.ground);
     game.capture_sprite_scene(settings.clouds || settings.trails || settings.explosions || settings.afterburner);
-    game.capture_sprite_presentation(gpu_scaler || settings.sprites!=Frontend::SpriteFilter::none || settings.clouds || settings.trails || settings.explosions || settings.afterburner);
+    game.capture_sprite_presentation(gpu_scaler || settings.sprites!=Frontend::SpriteFilter::none || settings.clouds || settings.trails || settings.explosions || settings.afterburner || settings.ground);
     auto menu=std::make_unique<Frontend::NativeMenu>(renderer,roms,settings,Frontend::pixel_art_available());
-    menu->input=input_manager.get();menu->music=music_player.get();
+    menu->feedback=feedback.get();menu->input=input_manager.get();menu->music=music_player.get();
     menu->apply=[&](const Frontend::Settings& changed) {
         const auto previous=menu->settings;
         if(!Frontend::apply_settings(window,renderer,texture,changed)) {
@@ -206,8 +213,9 @@ int main(int argc, char** argv)try
             Frontend::apply_settings(window,renderer,texture,previous);
             return false;
         }
+        game.capture_ground_horizon(changed.ground);
         game.capture_sprite_scene(changed.clouds || changed.trails || changed.explosions || changed.afterburner);
-        game.capture_sprite_presentation(gpu_scaler || changed.sprites!=Frontend::SpriteFilter::none || changed.clouds || changed.trails || changed.explosions || changed.afterburner);
+        game.capture_sprite_presentation(gpu_scaler || changed.sprites!=Frontend::SpriteFilter::none || changed.clouds || changed.trails || changed.explosions || changed.afterburner || changed.ground);
         menu->notice.clear();
         if(!Frontend::save_settings(settings_path,changed)) {
             menu->notice="SETTINGS NOT SAVED";
@@ -219,7 +227,7 @@ int main(int argc, char** argv)try
         menu->open(game);menu->key(SDLK_DOWN);menu->key(SDLK_RETURN);menu->draw();
         SDL_Surface* preview=SDL_RenderReadPixels(renderer,nullptr);
         if(!preview || !SDL_SaveBMP(preview,menu_preview.c_str())) throw std::runtime_error(SDL_GetError());
-        SDL_DestroySurface(preview);menu.reset();input_manager.reset();music_player.reset();if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);gpu_scaler.reset();SDL_DestroyTexture(texture);
+        SDL_DestroySurface(preview);menu.reset();feedback.reset();input_manager.reset();music_player.reset();if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);gpu_scaler.reset();SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);if(gpu_device)SDL_DestroyGPUDevice(gpu_device);SDL_DestroyWindow(window);SDL_Quit();return 0;
     }
     if(!frame_limit && !boot_to_flight && !start_stage) menu->open(game);
@@ -263,7 +271,17 @@ int main(int argc, char** argv)try
         }
     };
     sync_audio();
+    auto restart_board=[&] {
+        feedback->restart();input_manager->block();music_player->restarted();game.restart();
+        game.set_dip_switches(Frontend::dip_switches(menu->settings));
+        if(recording)recording=std::make_unique<PhysicalRecording>(recording_path+".restart"+std::to_string(++recording_session),roms,game.dip_switches());
+        if(start_stage)startup();
+        if(audio_stream)SDL_ClearAudioStream(audio_stream);
+        reset_pacing();sync_audio();
+        SDL_SetWindowTitle(window,"AfterBurner2-Recomp");
+    };
     auto menu_action=[&](Frontend::NativeMenu::Action action) {
+        if(action==Frontend::NativeMenu::Action::restart) {menu->close(game);restart_board();return;}
         if(action==Frontend::NativeMenu::Action::quit) {running=false;return;}
         if(action==Frontend::NativeMenu::Action::close || action==Frontend::NativeMenu::Action::start) {
             menu->close(game);
@@ -278,6 +296,7 @@ int main(int argc, char** argv)try
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+            feedback->event(event);
             if(input_manager->event(event))continue;
             if (event.type == SDL_EVENT_QUIT)
                 running = false;
@@ -305,17 +324,11 @@ int main(int argc, char** argv)try
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_F5)
             {
-                input_manager->block();music_player->restarted();game.restart();
-                if (recording) recording=std::make_unique<PhysicalRecording>(recording_path+".restart"+std::to_string(++recording_session),roms);
-                if (start_stage) startup();
-                if (audio_stream) SDL_ClearAudioStream(audio_stream);
-                if (audio_stream) SDL_ResumeAudioStreamDevice(audio_stream);
-                reset_pacing();
-                SDL_SetWindowTitle(window, "AfterBurner2-Recomp");
+                restart_board();
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key == SDLK_P)
             {
-                input_manager->block();game.set_paused(!game.paused());
+                feedback->stop();input_manager->block();game.set_paused(!game.paused());
                 if (audio_stream) {
                     if (game.paused()) SDL_PauseAudioStreamDevice(audio_stream);
                     else SDL_ResumeAudioStreamDevice(audio_stream);
@@ -330,6 +343,8 @@ int main(int argc, char** argv)try
             if(menu->is_open())menu_action(menu->key(SDLK_ESCAPE));
             else {menu->open(game);reset_pacing();sync_audio();}
         }
+        game.capture_feedback(feedback->settings.enabled);
+        feedback->update(game.paused() || menu->is_open());
         GameControls input=input_manager->read(menu->is_open());
 
         if (game.paused())
@@ -358,6 +373,8 @@ int main(int argc, char** argv)try
             const bool measure=profile || menu->settings.stats!=Frontend::Stats::off;
             const auto core_start=measure ? SDL_GetPerformanceCounter() : 0;
             advance(input);
+            feedback->consume(game.take_feedback());
+            feedback->update(!input_manager->focused);
             if(measure) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency;
             ++profile_frames;
             // Backpressure bounds playback latency without dropping sound.
@@ -395,7 +412,7 @@ int main(int argc, char** argv)try
         }
 
         const auto planes=game.sprite_presentation();
-        const bool composed=(gpu_scaler || menu->settings.sprites!=Frontend::SpriteFilter::none || menu->settings.clouds || menu->settings.trails || menu->settings.explosions || menu->settings.afterburner) && planes.ready && !menu->is_open();
+        const bool composed=(gpu_scaler || menu->settings.sprites!=Frontend::SpriteFilter::none || menu->settings.clouds || menu->settings.trails || menu->settings.explosions || menu->settings.afterburner || menu->settings.ground) && planes.ready && !menu->is_open();
         if(!composed){
             const auto frame = game.frame().pixels;
             for(size_t i=0;i<frame.size();++i){const auto p=frame[i];texture_pixels[i]=0xff000000u|uint32_t(p.r)<<16|uint32_t(p.g)<<8|p.b;}
@@ -409,7 +426,7 @@ int main(int argc, char** argv)try
             if(last_sprite_frame!=game.info().number) {
                 const auto filter_start=SDL_GetPerformanceCounter();
                 const auto scene=game.sprite_scene();
-                const unsigned cloud_alpha=menu->settings.clouds?160:255,trail_alpha=menu->settings.trails?112:255,explosion_alpha=menu->settings.explosions?176:255,afterburner_alpha=menu->settings.afterburner?192:255;
+                const unsigned cloud_alpha=menu->settings.clouds?160:255,trail_alpha=menu->settings.trails?112:255,explosion_alpha=menu->settings.explosions?Presentation::explosion_opacity:255,afterburner_alpha=menu->settings.afterburner?Presentation::afterburner_opacity:255;
                 if(gpu_scaler) {
                     sprite_texture=gpu_scaler->compose(planes.background,planes.sprites,SCREEN_WIDTH,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha);
                     if(!Frontend::apply_texture_settings(sprite_texture,menu->settings))throw std::runtime_error(SDL_GetError());
@@ -458,7 +475,7 @@ int main(int argc, char** argv)try
     }
 
     if (audio_stream) SDL_DestroyAudioStream(audio_stream);
-    menu.reset();input_manager.reset();music_player.reset();
+    menu.reset();feedback.reset();input_manager.reset();music_player.reset();
     if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);
     gpu_scaler.reset();
     SDL_DestroyTexture(texture);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Retained negative controls for passive ROM routing and PCM stem isolation."""
 from pathlib import Path
-import shlex,subprocess,tempfile
+import os,shlex,subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
 routing='src/main/hwaudio/music_routing.hpp'
 audio='src/main/hwaudio/xboard_audio_deadlines.hpp'
@@ -10,6 +10,8 @@ mutations=[
  ('wrong-track',routing,'commands{0x92,0x91,0x94,0x93,0x95,0x96}','commands{0x91,0x92,0x94,0x93,0x95,0x96}',False),
  ('missing-sequencer-start',routing,'e.pc==0xc76)for','e.pc==0xc75)for',False),
  ('lost-pcm-percussion',audio,'auto& v=c<8?m:f;','auto& v=c<7?m:f;',True),
+ ('unattenuated-replacement','src/main/frontend/native_music.hpp','replacement_gain=.25f','replacement_gain=1.f',True),
+ ('deferred-live-selection','src/main/frontend/native_music.hpp','if(mapping_dirty) {','if(false && mapping_dirty) {',True),
 ]
 for name,path,old,new,unit in mutations:
     source=(root/path).read_text();assert source.count(old)==1,name
@@ -21,7 +23,7 @@ for name,path,old,new,unit in mutations:
             lines=[shlex.split(line) for line in dry.splitlines() if 'tests/native_music_regression.cpp' in line and ' -o ' in line]
             assert len(lines)==1
             command=lines[0];command[1:1]=['-I'+str(overlay/'src/main')];command[command.index('-o')+1]=str(binary)
-            expected='PCM music/effects routing';args=[]
+            expected={'unattenuated-replacement':'replacement/loop/effects mix','deferred-live-selection':'mastered music lacks mixing headroom'}.get(name,'PCM music/effects routing');args=[]
         else:
             dry=subprocess.run(['make','-n','-W','tests/oracle_music_routing.cpp','build/oracle_music_routing'],cwd=root,capture_output=True,text=True,check=True).stdout
             lines=[shlex.split(line) for line in dry.splitlines() if ' -o build/oracle_music_routing' in line]
@@ -31,7 +33,10 @@ for name,path,old,new,unit in mutations:
             command=[command[0],'-std=c++20','-O3','-flto','-pthread','-I'+str(overlay/'src/main'),'-Isrc/main',*shlex.split(flags),'tests/oracle_music_routing.cpp',*objects,'-o',str(binary)]
             expected='native music routing differs from MAME';args=['build/oracle/music-routing-1800.bin','--require-fm-effects']
         subprocess.run(command,cwd=root,check=True,capture_output=True)
-        result=subprocess.run([str(binary),*args],cwd=root,capture_output=True,text=True,timeout=120)
+        # Match test-native-music: unit checks must not depend on a physical
+        # playback device being available for the earlier preview assertion.
+        env={**os.environ,'SDL_AUDIODRIVER':'dummy'} if unit else None
+        result=subprocess.run([str(binary),*args],cwd=root,capture_output=True,text=True,timeout=120,env=env)
         (root/'build/oracle'/('music_mutation_'+name+'.log')).write_text(result.stdout+result.stderr)
         if result.returncode!=1 or expected not in result.stderr:raise SystemExit(f'{name}: not rejected by required comparison: {result.stderr[-2000:]}')
         print('Music mutation '+name+': rejected',flush=True)
