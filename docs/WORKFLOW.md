@@ -90,8 +90,10 @@ logs, ROM images and captures remain under gitignored `build/`.
 ## Native settings menu
 
 Build with `make native-release` and run `./build/afterburner2-release`
-from the repository root. The initial menu offers Start Game, Options and Quit;
-Start Game uses the existing physical coin/start boot sequence. Esc or F1 opens
+from the repository root. The initial menu offers Enter Arcade, Options and Quit.
+Enter Arcade resumes the cold board without hidden frames or automatic inputs,
+so the original boot and attract sequence is displayed. Insert a coin and press
+Start to play (keyboard 5, then Enter; gamepad Back, then Start). Esc or F1 opens
 the menu during play. Use arrows and Enter/Space, or click a row; Left/Right
 changes an option. Esc returns from Options, then resumes the previous session.
 Opening the menu pauses the board and audio and preserves a pre-existing pause.
@@ -131,7 +133,9 @@ for persistence and ROM-backed SDL menu checks; the latter uses dummy video/audi
 These cover navigation, SDL options, rejection, Start/Quit and pause/frame isolation.
 
 For native desktop play use `make play-native`; this builds the release binary,
-boots with physical coin/start pulses and shows measured FPS. Run
+opens the normal arcade launcher and shows measured FPS. Automatic coin/start
+is opt-in through `--boot-to-flight`; selected-stage debug launches retain their
+explicit shortcut. Run
 `python3 tools/workflow.py run benchmark-native benchmark-native-extended`
 with other heavy tests stopped to measure board/render costs. The extended
 profile covers 960 flight/weapon frames; it excludes window presentation and
@@ -416,6 +420,27 @@ ground-target discovery. It changes physical inputs/DIP settings only. Verify
 actual award-queue execution before claiming ground-target coverage; it does
 not reproduce a user's exact trajectory by itself.
 
+### Experimental 16:9 preview
+
+Video → Viewport → 16:9 Preview selects 398×224 presentation with a centered
+native HUD/menu. Original is the default. Published sprites and wider road/tile
+samples are rendered from immutable partial-frame snapshots; gameplay stays
+native. Pre-publication culling can leave edge popping and outer horizon gaps.
+See [WIDESCREEN_PLAN](WIDESCREEN_PLAN.md) for the remaining acceptance work.
+
+```sh
+python3 tools/workflow.py run verify-wide-geometry verify-wide-scene verify-wide-mutations -j 4
+python3 tools/workflow.py run verify-wide-gpu
+```
+
+The GPU check requires a real device/display and compares all six filters under
+opaque/translucent policies. `verify-wide-scene` generates its ignored local
+fixture; CMake GPU checks also need that fixture first. Geometry/scene checks are
+part of `verify-stage1`, mutations of `oracle-test`. All old fixtures remain.
+Captures stay under `build/oracle/widescreen/`; never commit runtime ROM data.
+`--profile` reports the added CPU scene cost as `wide_scene_ms`; compare Original
+and Wide with the same audio/device setup before attributing pacing changes.
+
 ### SDL GPU sprite filtering
 
 The native app requests an SDL GPU device with Metal/MSL or Vulkan/SPIR-V
@@ -517,3 +542,17 @@ is separate: test every exposed motor in Options → Controls → Feedback, then
 exercise gameplay, pause, focus loss, restart and unplug on each target OS.
 macOS Xbox Bluetooth body and both triggers are confirmed; Windows/Linux and
 simple-haptic fallback hardware remain open.
+
+## Optional spatial audio checks
+
+```sh
+python3 tools/workflow.py run test-spatial-audio verify-spatial-mutations -j4
+python3 tools/workflow.py run verify-spatial-game -j4
+python3 tools/workflow.py run oracle-spatial-routing verify-spatial-ownership-mutations -j4
+```
+
+Soft loopback needs the optional OpenAL Soft dependency, without physical audio
+hardware. `capture-spatial-routing` regenerates the independent 1,800-frame MAME
+fixture under `build/oracle/spatial-audio/`. Unit/playback checks are part of
+`test`; ownership and retained mutation checks are part of `oracle-test`.
+Physical headphone/2.1/5.1 acceptance is separate from offline loopback.

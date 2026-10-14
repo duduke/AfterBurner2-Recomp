@@ -1,10 +1,74 @@
 # True widescreen implementation plan
 
-**Status: planned, not implemented.** Render additional scene content left and
+**Status: experimental 16:9 preview implemented 2026-10-14; full acceptance remains open.**
+
+Render additional scene content left and
 right of the original view, preserving object proportions, vertical coverage and
 native simulation. Initial target: 16:9; follow with 16:10 and ultrawide. Stretch,
 crop-to-fill, repeated border columns and invented scenery are not acceptance
 substitutes. Keep Original as the default and regression reference.
+
+## Implemented preview
+
+**Options → Video → Viewport → 16:9 Preview** selects 398×224 square-pixel
+presentation, with 39 additional columns on each side. Original remains the
+default. The HUD/menu stay in the centered 320×224 safe area. Window resizing,
+pointer conversion, full-width captures, saved preferences, existing sprite
+filters, translucency and optional corrected ground use the selected viewport.
+The SDL GPU path and CPU/software fallback share the same wide scene planes.
+
+`GameSession::capture_wide_scene` copies immutable road/tile/text/palette/sprite
+state before each native partial render. `WideScene` renders these snapshots
+without widening the native renderer or writing sprite feedback. Native gameplay,
+object limits, audio and timing remain authoritative.
+
+**Known limits:** the original producer has already rejected some objects before
+snapshot capture. Main scenery rejection at `$8B94..$8BB8`, Sub sprite bounds at
+`$852..$890` and the 192-request cap at `$B628..$B654` remain unchanged. Signed wide
+clipping recovers portions of published descriptors outside the original view;
+it cannot restore discarded descriptors. Outer scenery can pop, and the published
+horizon coverage leaves incomplete correction in the added bands during some
+rolls. Do not fill those gaps by repeating pixels or fitting an invented horizon.
+Full-width visibility and horizon coverage need a separately verified
+producer/projection policy.
+
+Focused checks cover 1,560 native RGB/PCM/time-identical frames, both roll
+directions, exact native-center reconstruction, independent side tile/column
+addressing, road phase, palette frontiers and signed sprite edges. GPU readback
+matches CPU output for all six filters with opaque/translucent effects. These
+checks do not establish every-stage coverage, sustained performance, Windows/Linux
+GPU acceptance, 16:10 or ultrawide support. The remaining release gates below
+still apply.
+
+## Proposed first release
+
+Start with **Original and 16:9**, retaining current square-pixel proportions,
+224 logical rows, native combat rules and a centered HUD. Add 16:10 and measured
+ultrawide ratios after 16:9 passes. Original remains the default. Pixel-aspect
+correction, relocated HUD and gameplay changes are separate opt-in follow-ups.
+
+The first deliverable was an **audit and passive snapshot contract**, followed by
+the implemented CPU-rendered 16:9 preview. A background-only preview is a development milestone;
+release requires sprites, visibility, layers, effects and lifecycle gates too.
+Do not ship unseen native-edge disappearance as complete widescreen.
+
+| Milestone | Deliverable | Gate before continuing |
+| --- | --- | --- |
+| 1. Scene audit/export | Immutable road, tile, sprite and palette data at each partial-render frontier; clipping/culling inventory | Capture on/off preserves native CPU/device state, RGB, PCM and time |
+| 2. CPU backgrounds | Genuine additional sky/road/tile content in 398×224, with 39 columns per side | Original 320×224 center matches at unfiltered/opaque/Original ground settings; side content and both roll directions checked |
+| 3. Sprites and visibility | Signed wide clipping, layer priority, shadows and coverage of pre-render rejection | Sprites cross both edges correctly; source wrap and native-boundary popping accounted for |
+| 4. Existing enhancements | Wide CPU/GPU planes, all sprite filters, translucency and corrected ground | GPU matches the wide CPU reference; original presentation and terrain-preservation checks remain intact |
+| 5. Frontend integration | Viewport setting, centered HUD/menu coordinates, resize/fullscreen/capture handling | Pause/restart/mode switches, high DPI, pointer alignment and restored arcade attract startup pass |
+| 6. 16:9 acceptance | Supported-scene/aspect matrix and sustained performance measurements | Relevant fixtures and rejected mutations, then the complete required profile for release |
+
+Current progress: snapshot export, CPU rendering, published-sprite clipping,
+CPU/GPU effects and the frontend setting are implemented. Pre-publication
+visibility in milestone 3 and full release acceptance in milestone 6 remain
+open; outer corrected-ground coverage in milestone 4 depends on visibility.
+
+Each milestone records unsupported scenes and dependencies. New probes or literal
+ports need independent MAME witnesses; side bands have no automatic MAME oracle,
+so validate their addressing/geometry independently and use deliberate mutations.
 
 ## Scope and aspect policy
 
@@ -46,7 +110,9 @@ palette/sprite state changes at native partial-render frontiers. Export immutabl
 snapshots synchronously at those frontiers, including the buffered data actually
 used for that row range. A final-frame RAM snapshot alone is insufficient.
 The existing `Screen::layers_rendered` and passive `sprite_scene` observer are
-starting points, not complete wide scene exports.
+starting points, not complete wide scene exports. Compose wide capture with the
+existing ground/effect observers; do not overwrite their callbacks. Capture must
+serve the same published data and clip-frontier palette across all consumers.
 
 Use centered coordinates: `margin = (W - 320) / 2`,
 `native_x = wide_x - margin`. Preserve vertical projection, source zoom and native
@@ -95,6 +161,12 @@ row pitch, zoom, flip, nibble/address wrapping and end markers. Never change the
 native scaler's execution or RAM feedback. Include partially visible sprites at
 both edges and preserve overlap, tile priority and palette shadow termination.
 
+The corrected-ground implementation also has native-width silhouettes and
+column arrays. Generalize those only in the enhanced renderer, preserving its
+sky/terrain role checks. Test sea/terrain at the lower-left and lower-right
+edges during rolls in both directions; a wider horizon must not erase terrain.
+Retain Original ground as the strict center-crop reference.
+
 Generalize CPU/GPU foreground, background, protection and fragment-chain buffers
 to `W×224`, including Off composition, all five filters and opacity effects.
 Keep the existing effect identities and full-throttle flame predicate. Validate
@@ -125,10 +197,14 @@ request capacity to compensate for missing content without a separate plan.
 
 ### 5. HUD, menus and settings
 
-Add Options → Video → Viewport: Original, 16:9, 16:10 and supported ultrawide/custom
-aspect. Persist independently from window scaling/fullscreen. Reallocate enhanced
+Initially add Options → Video → Viewport: Original or 16:9. Add 16:10 and
+supported ultrawide/custom aspects after their separate acceptance gates. Persist independently from window scaling/fullscreen. Reallocate enhanced
 resources at a safe frame boundary; preserve board state and pause status.
 Map window resize, high DPI, letterboxing and mouse coordinates consistently.
+
+Maintain separate gameplay and menu coordinate spaces: menu content stays at
+320×224 in a centered safe area, including its scrollbars. Transform mouse input
+through that same placement. Statistics and screenshots use explicit dimensions.
 
 Default HUD/text to the original centered safe area. Edge-anchored HUD is optional
 and needs semantic extraction of score, speed, stage, ammunition and messages;
@@ -137,6 +213,19 @@ as decorative UI. Validate crosshair/lock-on alignment with actual targets.
 Keep initial menus, statistics, preview/capture paths and non-flight screens
 readable. Until a screen has valid extra scene content, use an explicitly documented
 centered Original fallback rather than stretching it.
+
+## Sprite capacity and custom stages
+
+Neither is a prerequisite for the first widescreen renderer. The hardware sprite
+bank remains 256 descriptors and the current game request capacity remains 192.
+Wider visibility may expose pressure on those limits; measure descriptor demand,
+request rejection and visible omissions before proposing a separate expansion.
+More capacity alone cannot recover objects rejected before publication.
+
+Custom stages are a later opportunity to design formations, scenery and pacing
+for the added width. Original stages can supply the initial wider view. New spawn
+areas or full-width combat need a verified stage/object interface and explicit
+enhanced gameplay rules; they are outside this rendering plan's first release.
 
 ## Validation and acceptance
 
@@ -148,8 +237,9 @@ centered Original fallback rather than stretching it.
   fractional zoom, both sprite directions, source wrap, edge crossing and priority.
 - **Scene coverage:** Both roll directions, steep/inverted banks, altitude/pitch,
   road/sky transitions, representative stage backgrounds, weapons, crash, refuel,
-  carrier and ending. The existing blue roll wedge matches MAME; correcting it is
-  separate enhanced ground work, not an automatic consequence of wider output.
+  carrier and ending. The targeted roll-wedge correction is already implemented
+  as an optional enhancement. Keep its both-direction/terrain-preservation
+  regression coverage when adapting it to wide output.
 - **Backend/settings:** All filters and opacity combinations against CPU/GPU
   references; supported aspect/width limits, restart, resize, fullscreen, pause,
   repeated mode switches, menu input and capture dimensions.

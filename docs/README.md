@@ -7,8 +7,9 @@
 | Run tests, captures or recover a missing instruction | [Workflow](WORKFLOW.md) |
 | Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |
 | Configure or understand replacement music | [Music replacement](MUSIC_REPLACEMENT_PLAN.md) |
+| Configure headphone HRTF, speakers or interpolation | [OpenAL Soft cockpit audio](SPATIAL_AUDIO_PLAN.md) |
 | Implement rumble or force feedback | [Haptics notes](HAPTICS_PLAN.md) — rumble implemented, advanced FFB planned |
-| Extend the visible scene without stretching | [True widescreen plan](WIDESCREEN_PLAN.md) — planned |
+| Extend the visible scene without stretching | [True widescreen plan](WIDESCREEN_PLAN.md) — experimental 16:9 preview |
 | Find ROM addresses, MAME evidence or validation logs | [Engine notes](ENGINE_NOTES.md) |
 | Read earlier roadmap checkpoints | [Checkpoint history](CHECKPOINT_HISTORY.md) |
 | Understand X-Board hardware | [Hardware](HARDWARE.md) |

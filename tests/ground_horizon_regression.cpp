@@ -13,7 +13,7 @@ int main()try {
     require(horizon.normal(64)==std::array<int,2>{127,0},"ground right ROM orientation differs");
     require(horizon.normal(128)==std::array<int,2>{0,-127},"ground inverted ROM orientation differs");
     require(horizon.normal(192)==std::array<int,2>{-128,0},"ground left ROM orientation differs");
-    Presentation::GroundHorizon::Profile flat;flat.upper.fill(100);flat.lower.fill(100);
+    Presentation::GroundHorizon::Profile flat;std::fill(flat.upper.begin(),flat.upper.end(),100);std::fill(flat.lower.begin(),flat.lower.end(),100);
     Presentation::GroundHorizon::correct(pixels,priority,road,0,223,horizon.normal(0)[0],horizon.normal(0)[1],flat);
     require(pixels[99*320]==0x1720 && pixels[100*320]==0x1700 && pixels[223*320]==0x1700,"ground level sky/sea classification differs");
     const auto reset=[&]{std::fill(pixels.begin(),pixels.end(),0x1700);std::fill(priority.begin(),priority.end(),0);std::fill(road.begin(),road.end(),0);};

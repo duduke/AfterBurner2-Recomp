@@ -141,7 +141,7 @@ void HWRoad::render_background(uint16_t* pixels, int width, int height, int clip
     }
 }
 
-void HWRoad::render_foreground(uint16_t* pixels, int width, int height, int clip_top, int clip_bottom) const
+void HWRoad::render_foreground(uint16_t* pixels, int width, int height, int clip_top, int clip_bottom, int native_left) const
 {
     const uint16_t* roadram = ram_buffer;
 
@@ -210,13 +210,13 @@ void HWRoad::render_foreground(uint16_t* pixels, int width, int height, int clip
 
         uint16_t* row = pixels + y * width;
         // $5F8 is the chip's fixed horizontal origin, on top of the per-game offset.
-        int32_t h0 = (static_cast<int32_t>(hpos0) - (0x5f8 + x_offset)) & 0xfff;
-        int32_t h1 = (static_cast<int32_t>(hpos1) - (0x5f8 + x_offset)) & 0xfff;
+        int32_t h0 = ((static_cast<int32_t>(hpos0) - (0x5f8 + x_offset)) & 0xfff) + native_left;
+        int32_t h1 = ((static_cast<int32_t>(hpos1) - (0x5f8 + x_offset)) & 0xfff) + native_left;
 
         for (int x = 0; x < width; x++)
         {
-            unsigned p0 = (h0 < 0x200) ? src0[h0] : 3u;
-            unsigned p1 = (h1 < 0x200) ? src1[h1] : 3u;
+            unsigned p0 = (h0 >= 0 && h0 < 0x200) ? src0[h0] : 3u;
+            unsigned p1 = (h1 >= 0 && h1 < 0x200) ? src1[h1] : 3u;
             uint16_t pixel;
 
             switch (control)

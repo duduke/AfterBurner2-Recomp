@@ -4,6 +4,31 @@ CXXFLAGS ?= -std=c++20 -Wall -Wextra -O2
 INCLUDES = -Isrc/main $(shell pkg-config --cflags sdl3 2>/dev/null || echo -I/opt/homebrew/include)
 LIBS = $(shell pkg-config --libs sdl3 2>/dev/null || echo -L/opt/homebrew/lib -lSDL3)
 
+# Optional OpenAL Soft. Prefer the reproducible local build, then pkg-config.
+OPENAL ?= auto
+OPENAL_PKG_PATH := $(CURDIR)/build/deps/openal/lib/pkgconfig:$(PKG_CONFIG_PATH)
+OPENAL_CFLAGS := $(shell PKG_CONFIG_PATH="$(OPENAL_PKG_PATH)" pkg-config --cflags openal 2>/dev/null)
+OPENAL_LIBS := $(shell PKG_CONFIG_PATH="$(OPENAL_PKG_PATH)" pkg-config --libs openal 2>/dev/null)
+ifneq ($(OPENAL),0)
+ifneq ($(OPENAL_LIBS),)
+OPENAL_FLAGS := -DAB2_OPENAL=1 $(OPENAL_CFLAGS)
+LIBS += $(OPENAL_LIBS) $(if $(wildcard build/deps/openal/lib/libopenal.*),-Wl$(comma)-rpath$(comma)$(CURDIR)/build/deps/openal/lib)
+endif
+endif
+comma := ,
+OPENAL_CHANGED := $(shell printf '%s\n' '$(OPENAL_FLAGS)' '$(OPENAL_LIBS)' | cmp -s - build/openal-config || echo FORCE_OPENAL_REBUILD)
+build/openal-config: FORCE_OPENAL_CONFIG
+	@mkdir -p build
+	@printf '%s\n' '$(OPENAL_FLAGS)' '$(OPENAL_LIBS)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
+FORCE_OPENAL_CONFIG FORCE_OPENAL_REBUILD:
+.PHONY: FORCE_OPENAL_CONFIG FORCE_OPENAL_REBUILD
+src/main/main.o: src/main/main.cpp build/openal-config $(OPENAL_CHANGED)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPENAL_FLAGS) -MMD -MP -c $< -o $@
+build/native_obj/src/main/main.o: src/main/main.cpp build/native_obj/config build/openal-config $(OPENAL_CHANGED)
+	@mkdir -p $(dir $@)
+	$(CXX) $(NATIVE_CXXFLAGS) $(INCLUDES) $(OPENAL_FLAGS) -pthread -MMD -MP -c $< -o $@
+
 SRCS = \
 	src/main/main.cpp \
 	src/main/romloader.cpp \
@@ -1409,7 +1434,7 @@ build/afterburner2-release: $(addprefix build/native_obj/,$(SRCS:.cpp=.o)) build
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
 native-release: build/afterburner2-release
 play-native: native-release
-	./build/afterburner2-release --boot-to-flight --profile $(if $(STAGE),--stage $(STAGE))
+	./build/afterburner2-release --profile $(if $(STAGE),--stage $(STAGE))
 .PHONY: native-release play-native
 
 build/native_settings_regression: tests/native_settings_regression.cpp src/main/frontend/native_settings.hpp
@@ -1590,3 +1615,61 @@ verify-feedback-mutations: test-native-haptics verify-feedback-fixture
 	python3 tools/check_feedback_mutations.py
 oracle-test: verify-feedback-mutations
 .PHONY: verify-feedback-mutations
+
+build/wide_scene_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/wide_scene_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-wide-scene: build/wide_scene_integration
+	./build/wide_scene_integration
+-include build/native_obj/tests/wide_scene_integration.d
+.PHONY: verify-wide-scene
+build/wide_gpu_regression: tests/wide_gpu_regression.cpp src/main/frontend/gpu_sprite_filter.hpp src/main/frontend/sprite_filter.hpp src/main/hwvideo/sprite_scene.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
+verify-wide-gpu: build/wide_gpu_regression verify-wide-scene
+	./build/wide_gpu_regression
+.PHONY: verify-wide-gpu
+build/wide_scene_geometry: tests/wide_scene_geometry.cpp src/main/hwvideo/wide_scene.hpp src/main/hwvideo/scene_snapshot.hpp src/main/hwvideo/sprite_scene.hpp src/main/hwvideo/ground_horizon.hpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/wide_scene_geometry.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp -o $@ $(LIBS)
+verify-wide-geometry: build/wide_scene_geometry
+	./build/wide_scene_geometry
+.PHONY: verify-wide-geometry
+
+verify-stage1: verify-wide-scene verify-wide-geometry
+verify-wide-mutations: verify-wide-geometry
+	python3 tools/check_wide_mutations.py
+oracle-test: verify-wide-mutations
+.PHONY: verify-wide-mutations
+
+# Offline Soft loopback validates the production playback owner without hardware.
+build/spatial_audio_regression: tests/spatial_audio_regression.cpp src/main/frontend/audio_output.hpp build/openal-config $(OPENAL_CHANGED)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPENAL_FLAGS) -pthread $< -o $@ $(LIBS)
+test-spatial-audio: build/spatial_audio_regression
+	python3 tools/audio/generate_test_audio.py
+	./build/spatial_audio_regression
+.PHONY: test-spatial-audio
+test: test-spatial-audio
+
+build/oracle_spatial_routing: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_spatial_routing.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
+oracle-spatial-routing: build/oracle_spatial_routing
+	./build/oracle_spatial_routing build/oracle/spatial-audio/routing.bin
+capture-spatial-routing:
+	@mkdir -p build/oracle/spatial-audio
+	AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_spatial_routing.lua build/oracle/spatial-audio/routing.bin 1800 50
+-include build/native_obj/tests/oracle_spatial_routing.d
+.PHONY: oracle-spatial-routing capture-spatial-routing
+oracle-test: oracle-spatial-routing
+
+verify-spatial-mutations: test-spatial-audio
+	python3 -u tools/audio/check_spatial_mutations.py
+oracle-test: verify-spatial-mutations
+.PHONY: verify-spatial-mutations
+verify-spatial-ownership-mutations: oracle-spatial-routing verify-music-presentation
+	python3 -u tools/audio/check_spatial_ownership_mutations.py
+oracle-test: verify-spatial-ownership-mutations
+.PHONY: verify-spatial-ownership-mutations
+build/spatial_audio_game_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,$(filter-out src/main/main.cpp,$(SRCS)))) build/native_obj/src/main/frontend/music_decoder.o tests/spatial_audio_game_integration.cpp src/main/frontend/audio_output.hpp src/main/frontend/native_music.hpp
+	$(CXX) $(NATIVE_CXXFLAGS) $(INCLUDES) $(OPENAL_FLAGS) -pthread tests/spatial_audio_game_integration.cpp $(filter %.o,$^) -o $@ $(LIBS)
+verify-spatial-game: build/spatial_audio_game_integration
+	./build/spatial_audio_game_integration
+.PHONY: verify-spatial-game

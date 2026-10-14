@@ -81,8 +81,8 @@ public:
 // feedback. Ordering, address wrapping, clipping and zoom follow HWSprites.
 template<class Pixel>
 void decode(std::span<const uint8_t> bank,std::span<const uint8_t> rom,unsigned top,unsigned bottom,
-            const EffectAssets& assets,Pixel emit){
-    if(bank.size()!=0x1000 || rom.empty() || rom.size()%0x40000 || top>bottom || bottom>=224)throw std::invalid_argument("Invalid sprite scene source");
+            const EffectAssets& assets,Pixel emit,int clip_left=0,int clip_right=319){
+    if(bank.size()!=0x1000 || rom.empty() || rom.size()%0x40000 || top>bottom || bottom>=224 || clip_left>clip_right || clip_left < -512 || clip_right>831)throw std::invalid_argument("Invalid sprite scene source");
     for(unsigned slot=0;slot<256;++slot){
         std::array<uint16_t,8>d{};for(unsigned i=0;i<8;++i)d[i]=uint16_t(bank[slot*16+i*2])<<8|bank[slot*16+i*2+1];
         if(d[0]&0x8000)break;if(d[0]&0x5000)continue;
@@ -95,13 +95,13 @@ void decode(std::span<const uint8_t> bank,std::span<const uint8_t> rom,unsigned 
         const bool flip=(~d[4]>>14)&1;
         for(unsigned row=0;row<rows;++row){int y=ystart+yd*int(row);if(y<int(top)||y>int(bottom))continue;
             uint16_t address=uint16_t(d[1]+pitch*int((row*vz)>>9));int x=xs;unsigned acc=0;
-            while(xd>0?x<320:x>=0){
+            while(xd>0?x<=clip_right:x>=clip_left){
                 const size_t offset=rb*0x40000+unsigned(address)*4;
                 uint32_t word=uint32_t(rom[offset])|uint32_t(rom[offset+1])<<8|uint32_t(rom[offset+2])<<16|uint32_t(rom[offset+3])<<24;
                 address=uint16_t(address+(flip?-1:1));
                 bool last=false;
                 for(unsigned k=0;k<8;++k){const unsigned pen=(word>>(flip?k*4:(7-k)*4))&15;if(k==6)last=pen==15;
-                    while(acc<512){if(x>=0&&x<320&&pen!=0&&pen!=15)emit(unsigned(x),unsigned(y),uint16_t(flags|pen),kind);x+=xd;acc+=hz;}
+                    while(acc<512){if(x>=clip_left&&x<=clip_right&&pen!=0&&pen!=15)emit(x,unsigned(y),uint16_t(flags|pen),kind);x+=xd;acc+=hz;}
                     acc-=512;
                 }
                 if(last)break;

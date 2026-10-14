@@ -25,7 +25,9 @@ other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
 [roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-14) for scope.
 
-Latest progress includes DIP and Video submenus, corrected explosion/full-throttle
+Latest progress includes experimental OpenAL Soft cockpit audio and a 16:9
+preview, menu scroll hints, restored attract-mode entry, DIP and Video submenus,
+corrected explosion/full-throttle
 flame translucency, balanced external music with live track changes, ground
 correction checked during rolls in both directions, and SDL controller feedback.
 The final feedback comparison preserves native pixels, audio and timing across
@@ -36,7 +38,8 @@ replace full-game acceptance.
 
 | Area | Implemented features |
 | --- | --- |
-| Menus | Arcade-font Start/Options/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation |
+| Menus | Arcade-font Enter Arcade/Options/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation; slim scrollbars show hidden items and position |
+| Widescreen | Experimental 16:9 Preview (398×224): additional road, tiles and published sprites; centered HUD; existing filters and effects; Original remains the default |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; fullscreen; FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
 | Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; Original remains the default |
@@ -45,16 +48,20 @@ replace full-game acceptance.
 | Controller feedback | Optional SDL body and Xbox trigger rumble; cannon, missile, player-impact and full-throttle cues; strengths, motor tests, device selection and lifecycle stops |
 | Arcade settings | Lives/Credit (3 or 4), Ship Increase (credit-multiplied lives) and Difficulty; Apply & Restart, F5 or next launch applies saved DIP choices |
 | Audio | Six WAV/FLAC track replacements, preview, live current-song switching, Original fallback; independent music/effects/per-track volume; replacement music balanced at -12 dB |
+| Spatial audio (experimental) | Optional OpenAL Soft: four virtual cockpit speakers with headphone HRTF, 2.1/5.1 profiles, chip-rate interpolation, output-device selection and speaker test; Original SDL remains default |
 | Preferences and diagnostics | Saved video/input/audio/feedback/DIP preferences, physical-input recording, bounded launch checks and performance reporting |
 
 Presentation enhancements preserve the native board output as the regression
 reference. Effects default to Opaque, music to Original and feedback to Off.
-Force-feedback stick effects, incoming-warning cues, true widescreen,
+Force-feedback stick effects, incoming-warning cues, complete widescreen visibility,
 replacement sprite assets, CRT shaders, save states and new gameplay modes
 remain **planned**. The [haptics notes](docs/HAPTICS_PLAN.md) cover current SDL
 output and remaining platform hardware checks.
-The [true widescreen plan](docs/WIDESCREEN_PLAN.md) covers expanded scene rendering,
-visibility and HUD placement.
+Choose **Options → Video → Viewport → 16:9 Preview** to try the wider view.
+The original game still culls objects before they reach the renderer: edge popping
+and incomplete outer horizon coverage can remain, including during rolls.
+16:10, ultrawide and full-width visibility remain open. See the
+[true widescreen plan](docs/WIDESCREEN_PLAN.md) for progress and remaining gates.
 
 ## Build and play
 
@@ -67,8 +74,11 @@ make native-release
 ./build/afterburner2-release
 ```
 
-This opens the initial menu. `make play-native` instead cold-boots to flight with
-physical coin/start pulses and enables performance reporting.
+This opens the initial menu. Choose **Enter Arcade** to watch the original boot
+and attract sequence, then insert a coin and press Start (keyboard **5**, then
+**Enter**). `make play-native` uses the same startup with performance reporting.
+For the explicit automatic coin/start shortcut, use
+`./build/afterburner2-release --boot-to-flight`.
 
 CMake alternative:
 
@@ -120,8 +130,24 @@ track volumes range from 0–100%; gameplay and preview use the same -12 dB
 replacement baseline. Original at 100% preserves exact native PCM. See
 [music behavior and coverage](docs/MUSIC_REPLACEMENT_PLAN.md).
 
+For optional spatial playback, open **Options → Audio → Output** and choose
+Headphones HRTF, 2.1 Speakers or 5.1 Speakers. Interpolation lists the resamplers
+supported by OpenAL Soft. Speaker Test plays front-left, front-right, rear-left,
+rear-right. HRTF/actual output status appears below the options; unsupported
+output falls back explicitly. 2.1 uses your speakers/receiver's bass management;
+5.1 needs a configured surround device. Passing sounds and several sequence cues
+still use direct stereo pending classification; music uses direct stereo by design.
+Physical headphone localization and speaker-channel checks on Windows, Linux and
+macOS remain open.
+
+Build the optional dependency with `tools/audio/build_openal_soft.sh`, then
+rebuild the game. CMake can also use an installed OpenAL Soft package. SDL-only
+builds remain supported. See [spatial audio implementation and remaining
+acceptance](docs/SPATIAL_AUDIO_PLAN.md).
+
 Preferences live in SDL's application preference directory. `--settings-file
-path` overrides their base path; input/audio/feedback use `.inputs`/`.audio`/`.haptics` suffixes.
+path` overrides their base path; input/music/output/feedback use
+`.inputs`/`.audio`/`.output`/`.haptics` suffixes.
 It does not relocate `soundtrack/`. Useful launch options: `--frames 180`,
 `--profile` and `--record path`. `make play-native STAGE=7` is a directed debug
 entry, not natural stage progression.

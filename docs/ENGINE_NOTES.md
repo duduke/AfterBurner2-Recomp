@@ -9606,3 +9606,232 @@ included. All retained fixtures and mutations remain local. The last full
 validation, not a fresh full-suite or whole-credit acceptance claim. Remaining
 acceptance tasks continue in ROADMAP; Windows/Linux physical rumble, advanced
 FFB, incoming warnings and true widescreen remain open as documented.
+
+## Native menu scrollbars (2026-10-14)
+
+Video, Controls and Feedback now draw a slim scrollbar at the right edge when
+items extend beyond the visible rows. The blue thumb reflects the visible
+fraction and viewport position, including short final pages, and reaches both
+ends. Track and thumb use SDL rectangles and existing menu colors; native-pixel
+rounding keeps the indicator crisp. Short menus hide it. Existing keyboard,
+controller and mouse navigation still selects and scrolls the same rows.
+
+`test`, `verify-native-menu` and `native-release` pass in
+`build/workflow/20261014T035635.596389Z/`. Menu readbacks check top/middle/bottom
+positions, both endpoints, hidden indicators on short menus and board-frame
+isolation. Controls/Feedback screenshots were visually inspected; a finite
+native menu launch passes (`build/oracle/scrollbar-native-launch.log`). Images
+remain ignored local captures. These are frontend checks, not new whole-host
+acceptance evidence.
+
+## Restore normal arcade attract startup (2026-10-14)
+
+The original attract sequence was already implemented, but choosing Start Game
+ran 600 board frames in the background, supplying coin/start pulses and discarding
+their presentation/audio. The default `play-native` target requested the same
+shortcut. Normal launch now offers Enter Arcade and resumes the cold board at
+frame zero, displaying its boot and attract sequence. Credits and Start come
+from the existing player controls (keyboard 5, then Enter; gamepad Back/Start).
+The explicit `--boot-to-flight` and `--stage` debug paths retain their shortcuts.
+
+`test`, `verify-native-menu` and `native-release` pass in
+`build/workflow/20261014T041917.051744Z/`. A finite native cold-boot smoke records
+720 contiguous frames with all button pins released, renders the original attract
+demo with INSERT COIN / CREDIT 0, and exits successfully. Its image and recording
+stay local under `build/oracle/arcade-attract-720.*`. The standalone SDL process
+was unavailable to the UI automation app selector, so visual verification uses
+the bounded native launch; the menu action path was inspected directly. No new
+literal ROM port or whole-credit acceptance is claimed.
+
+
+## Widescreen plan refresh (2026-10-14)
+
+The draft in WIDESCREEN_PLAN now proposes a 16:9-first, render-only delivery:
+scene/culling audit and immutable partial-frame snapshots, CPU background proof,
+sprites/visibility, existing effects and corrected ground, frontend integration,
+then acceptance. Current square-pixel proportions imply 398×224 with 39 columns
+added per side; native simulation and combat stay unchanged initially. Unlimited
+sprites/custom stages are separate work. Menu scrollbars, restored arcade attract,
+both roll directions and sea/terrain preservation are included in the gates.
+The plan was followed by the experimental preview described below; full widescreen acceptance remains open.
+
+
+## Experimental 16:9 presentation (2026-10-14)
+
+Video → Viewport offers Original (default) and 16:9 Preview. The preview renders
+398×224 square pixels with a 39-column margin around the native safe area. SDL
+logical coordinates, window aspect, pointer conversion, menu/HUD viewport and
+captures follow that width. Native 320×224 simulation and sprite feedback remain
+unchanged. Existing filters, opacity settings and corrected ground work through
+the wide scene planes; the software path uses the same composition inputs.
+
+The passive GameSession tap snapshots owned tile/text/palette words, buffered
+road/sprites, latched tile registers, road control and presentation mode/throttle/
+roll before each partial render. WideScene uses separate road/tile/palette adapters,
+signed sprite clipping and per-row fragment chains. It resolves each clip with its
+own palette. Text remains centered. Road origin is applied after the native 12-bit
+phase mask; moving the constructor offset instead changes the center at wraps.
+The default native road/tile call paths retain their original behavior.
+
+The 1,560-frame comparison preserves native RGB/PCM/time and reconstructs the
+unfiltered opaque center exactly. It covers 1,573 clips, both roll directions
+(240 frames each), 11,039,984 non-repeated side-background pixels and 8,167,910
+side-sprite pixels. Corrected wide ground changes 343,729 eligible sky pixels
+while preserving terrain indices, sprite planes and priority protection.
+Natural column-scroll scenes were not encountered; an independent planar-ROM
+reference exercises signed column/source wrapping with synthetic registers.
+Geometry fixtures also cover road phase, distinct partial-clip palettes,
+left/right sprite edges and immutable input descriptors. Retained wide mutations
+exercise origin, column wrap, palette ownership, sprite bounds and feedback writes.
+Real Metal GPU readback passes six filters × two opacity policies: 12 cases,
+5,527,424 compared pixels, no skips. Local captures/fixtures stay in build/oracle.
+
+Original producer bounds remain: Main scenery `$8B94..$8BB8`, Sub sprite rejection
+`$852..$890`, and the 192-request limit `$B628..$B654`. Missing outer descriptors
+can cause edge popping; finite published horizon coverage also limits correction
+in the added bands.
+No extrapolated horizon or extra gameplay objects are invented. This is an
+experimental preview, not full-width visibility or full widescreen acceptance.
+Every-stage/peak-load performance, other GPU/platform paths, 16:10 and ultrawide
+remain open. WIDESCREEN_PLAN tracks the remaining gates.
+
+Finite macOS Metal smokes produce 1194×672 gameplay/menu captures in both GPU
+and forced CPU/software modes. The saved viewport width is used when creating
+the window; windowed mode switches refresh the resized swapchain before drawing
+the new menu. This avoids stale first-frame separator bounds after resizing.
+The `--profile` output includes `wide_scene_ms` (CPU time averaged per display).
+In an 180-frame Off/opaque Metal run without an audio test device, the last two
+samples report 59.60/59.64 simulation and display FPS, about 11.3 ms board time
+and 1.8 ms wide-scene time. Dummy-audio smokes instead show about 29 display FPS
+in both Original and Wide, so those runs cannot isolate renderer pacing.
+These are short controlled checks, not sustained gameplay/audio acceptance.
+
+Validation logs: `build/workflow/20261014T105953.967349Z` passes `test` and
+`verify-stage1`, including the wide integration/geometry checks. Every oracle
+prerequisite and all 143 retained recovery mutations complete; the root legacy
+recipe then fails because local `build/oracle/main.bin` is a raw 262,144-byte ROM
+image rather than an `AB2MAIN1` capture. The image is retained separately and
+`capture_main.lua` independently regenerates the intended 600-sample boot capture:
+600/600 identical, zero skipped, all six ADC slots and 100 wraps covered.
+The unchanged complete root recipe is replayed via an ignored local Make include
+(`build/workflow/20261014T121522.778424Z`): passing boot/gameplay ADC, sprite/road,
+video and scenery corpora. Existing skips remain explicit: 2/1,200 gameplay sprite
+passes have mid-pass input changes; 263/1,200 gameplay scenery cases have input
+writes by the other CPU. No corpus or mutation coverage is removed. This is a
+completed regression graph with a focused fixture repair, not a new clean
+`required` invocation; run the clean gate before a merge/release milestone.
+Use distinct `*_image.bin` names for raw ROM extraction to avoid fixture collisions.
+
+Real-GPU menu checks pass in `20261014T111107.704531Z` (4,128/4,128 native sprite
+planes, zero skipped), wide GPU readback in `build/oracle/widescreen/gpu-final.log`,
+and the final release build in `20261014T112150.351789Z`. CMake builds both wide
+integration/geometry targets and the GPU check; its geometry CTest passes.
+Documentation links and `git diff --check` pass. Full widescreen visibility and
+whole-credit acceptance remain open.
+
+## OpenAL Soft cockpit audio (2026-10-14)
+
+Options → Audio → Output adds Original SDL (default), Headphones HRTF, 2.1 and
+5.1 profiles, live device/resampler choices, actual output status and a finite
+four-speaker test. Output preferences use `.output`; existing music mappings,
+-12 dB replacement balance and music/effects/track gains remain intact. Preview
+uses the selected playback owner. One thread owns device/stream/context/source
+operations; SDL subsystem initialization/teardown stays on the main thread.
+Pause, clear/restart, profile/device changes, menu exit, focus loss, disconnect
+fallback and shutdown are handled without sound-CPU commands or game restart.
+
+Native FM/PCM taps retain 62,500/31,250 Hz, before the MAME LoFi resampler. Four
+virtual positions use separate mono S16 FM/PCM sources with equal-power pair
+normalization and native left/right gains. Native music has separate chip-rate
+direct stereo sources; decoded external music retains its existing 48 kHz path.
+Unclassified effects use neutral direct stereo. A separate SDL WAV conversion
+helper supplies mono S16 effects or stereo S16 music for future assets. No
+native effect is loaded/replayed as a WAV.
+
+Ownership follows the completed Z80 `$0C76` descriptor initializer, `$17A2`
+direct-sample allocator and actual PCM/YM writes, using IX/DE/BC observations.
+Main producers include cannon `$9ED8`, reload `$16CEC`, missiles `$A002/$A716`,
+explosion `$9122/$91B8`, crash `$E70E/$EA86` and debris `$F72E`; command tables
+are read from ROM at runtime. Engine variants initialize `$FBA7` through the
+sound `$0A65` handler. The lightweight ownership observer remains active while
+raw export is off, so switching into HRTF preserves currently playing voices.
+Capture toggle tests caught and rejected the earlier reset-on-enable approach.
+The listener/layout is the user's requested virtual arrangement, not measured
+Deluxe cabinet wiring. Remaining voice categories/cabinet revisions stay open.
+
+The follow-up classification audit confirms passing commands `$6E/$6F` and the
+refueling/departure sequence command `$EF` remain unclassified. In the retained
+1,800-frame routing capture, descriptor commands `$7E/$9A/$D8` and direct PCM
+sample IDs `$06/$26/$28` also remain unclassified. Their audible identities and
+speaker assignments have not been established. Commands and sample IDs are
+different namespaces and may refer to related effects; this is not a complete
+sound catalog. See the [routing gap list](SPATIAL_AUDIO_PLAN.md#virtual-cockpit-routing).
+
+Independent `capture-spatial-routing` records **117,509/117,509 exact sound
+transactions/IX/DE/BC, zero skips**, through 1,800 frames, with 13 descriptor
+initializations, 135 direct allocations and 15 observed owners. Recombining
+raw music/effect groups preserves **943,466 exact PCM sums**. Export-on/off
+integration preserves **1,800 native RGB/PCM frames** and checks continuous raw
+frontiers, nonzero front/rear buses, pause/restart and live raw-capture toggles.
+The retained BC corruption and detached-observer controls reject. A forced
+missing-direct-channel capability also proves truthful SDL fallback: disabling
+positioning alone still virtualizes stereo in HRTF, so it cannot guarantee dry
+music. The fallback clears stale HRTF status. Preview completion accounts for
+in-flight submissions before declaring the playback queue drained.
+
+Soft loopback verifies WAV conversion, actual HRTF, all four directional images,
+direct stereo BGM, 62,500 Hz conversion, pause/clear and live 2.1/5.1 requests.
+Four playback mutations reject swapped sides, disabled HRTF, stereo positional
+buffers and spatialized BGM. End-to-end native-to-Soft playback renders
+**1,448,641 stereo frames**, zero clipped samples, while retaining unity native
+PCM; pause/clear/restart also pass. Logs:
+`build/workflow/20261014T141457.913725Z/` and
+`build/workflow/20261014T141935.771674Z/`. The latter keeps two native chunks of
+lookahead during normal loopback rendering; deliberate immediate draining after
+restart can log expected source starvation. This is finite signal/lifecycle
+coverage, not sustained real-device acceptance.
+
+Make and CMake build both the optional backend and SDL-only paths. Soft 1.25.2
+is pinned/checksummed and dynamically linked, with embedded HRTF data and
+retained upstream notices. A Clang 21/CoreAudio annotation conflict required
+disabling upstream's optional function-effects feature probe on Darwin; game
+compiler flags and upstream source remain unchanged. Apple's legacy OpenAL
+framework is not used. Windows CMake copies the Soft DLL beside the executable.
+
+Finite Metal launches on this Mac report actual headphone HRTF (status 1,
+Built-In HRTF), stereo/HRTF-off for 2.1, and internal 5.1/HRTF-off for the surround
+request. Warm samples report about 59.6 simulation/display FPS. Each initial
+launch logged one 13-source underrun/restart during startup; no sustained or
+underrun-free performance claim is made. Actual physical speaker wiring/channel
+mapping and headphone localization/balance were not heard/confirmed by the user.
+Logs: `build/oracle/spatial-audio/{headphones,speakers21,speakers51}-smoke.log`.
+Sandboxed display launch failed; the finite checks used approved native display/
+audio access. Headless SDL-only fallback also launches successfully.
+
+The complete `required` profile passes at
+`build/workflow/20261014T142055.116214Z/`: `test` **4.92 s**, `verify-stage1`
+**148.77 s**, `oracle-test` **3763.25 s**, including all retained controls and the
+new spatial ownership/playback gates. Legacy comparisons retain their declared
+races/skips; no fixture or comparison was weakened. Shared engine/device/tap
+sources remained unchanged during this completed run. Final frontend-only dry-
+stereo fallback and preview-drain fixes are additionally checked at
+`build/workflow/20261014T144830.917124Z/` (playback controls/fallback and release)
+and `20261014T145258.232576Z/` (test/menu). CMake product/unit/game loopback checks
+pass in `build/oracle/spatial-audio/cmake-*-final.log`; fresh ROM-test-disabled
+CMake builds also pass. Standard Make is rebuilt with Soft after the SDL-only
+check (`build/workflow/20261014T150551.469056Z/`). Earlier interrupted profiles
+are superseded, not claimed as complete passes. This is finite regression scope,
+not fresh whole-credit acceptance.
+
+Remaining acceptance: physical headphones/2.1/5.1 on Windows/Linux/macOS,
+all native voice classifications/six music contexts, cabinet wiring/revision,
+sustained latency/peak load/device-loss coverage. Discrete LFE synthesis,
+replacement-effect selection and original-rate external music are future work.
+See [the implementation and acceptance plan](SPATIAL_AUDIO_PLAN.md).
+
+Final rebuilt 120-frame Metal/headphone launch also reports active Built-In HRTF
+and about 59.6 warm simulation/display FPS:
+`build/oracle/spatial-audio/headphones-final-smoke.log`. The initial 13-source
+restart remains explicitly logged. The reproducible dependency builder finishes
+with a matching archive checksum and copied notices in
+`build/oracle/spatial-audio/dependency-build-final.log`.

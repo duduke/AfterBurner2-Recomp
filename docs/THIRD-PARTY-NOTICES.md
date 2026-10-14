@@ -74,3 +74,19 @@ string for packaging; mappings are not modified. SDL3 loads this through
 `dfe8377631000664666519fdb83da193fd8037f4`. This project uses its MIT No
 Attribution license option, retained in that directory alongside provenance.
 The decoder is linked only into frontend music playback and its tests.
+
+## Optional OpenAL Soft
+
+Spatial output dynamically links [OpenAL Soft](https://openal-soft.org/), tested
+with version 1.25.2. Source and binaries are fetched/built only under ignored
+`build/deps/`; they are not vendored. The dependency builder pins the release
+archive and checks SHA-256. macOS uses Soft's CoreAudio backend, rather than the
+legacy Apple OpenAL framework.
+
+Soft's LGPL license is retained in [LICENSES/OpenAL-Soft.txt](../LICENSES/OpenAL-Soft.txt).
+When distributing its shared library, retain upstream source/license notices,
+including its bundled fmt/GSL/pffft notices. The local dependency builder copies
+these notices beside the installation. The default embedded HRTF is based on
+MIT KEMAR measurements: **Bill Gardner and Keith Martin, MIT Media Laboratory,
+Copyright 1994**. [Dataset attribution and use terms](https://sound.media.mit.edu/resources/KEMAR.html).
+No Sega samples or ROM-derived captures are part of this dependency.

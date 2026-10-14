@@ -26,9 +26,10 @@ struct Settings {
     SpriteFilter sprites{SpriteFilter::none};
     bool clouds{},trails{},explosions{},afterburner{};
     unsigned lives{},difficulty{1};
-    bool ground{};
+    bool ground{},widescreen{};
     bool operator==(const Settings&) const = default;
 };
+inline unsigned viewport_width(const Settings& s){return s.widescreen?398:320;}
 inline std::array<uint8_t,3> dip_switches(const Settings& settings) {
     return {0xff,0xff,uint8_t((0xdd & ~0xd8) | lives_bits[settings.lives] | difficulty_bits[settings.difficulty])};
 }
@@ -57,6 +58,8 @@ inline Settings load_settings(const std::string& path, bool pixel_art) {
         else if (line=="explosions=0") result.explosions=false;
         else if (line=="afterburner=1") result.afterburner=true;
         else if (line=="afterburner=0") result.afterburner=false;
+        else if (line=="widescreen=1") result.widescreen=true;
+        else if (line=="widescreen=0") result.widescreen=false;
         else if (line=="ground=1") result.ground=true;
         else if (line=="ground=0") result.ground=false;
         else if (line=="stats=0") result.stats=Stats::off;
@@ -75,7 +78,7 @@ inline bool save_settings(const std::string& path, const Settings& settings) {
     file << "AB2SETTINGS1\nscaling=" << scales[static_cast<int>(settings.scaling)]
          << "\nclouds=" << settings.clouds << "\ntrails=" << settings.trails
          << "\nexplosions=" << settings.explosions << "\nafterburner=" << settings.afterburner
-         << "\nground=" << settings.ground
+         << "\nwidescreen=" << settings.widescreen << "\nground=" << settings.ground
          << "\nlives=" << settings.lives << "\ndifficulty=" << settings.difficulty
          << "\nfullscreen=" << settings.fullscreen << "\nstats=" << static_cast<int>(settings.stats) << "\nsprites=" << sprite_filter_keys[static_cast<int>(settings.sprites)] << '\n';
     file.close();

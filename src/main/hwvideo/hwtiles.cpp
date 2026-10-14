@@ -87,7 +87,7 @@ void HWTiles::latch_frame_registers()
 // register's bit 15 is set. Both tables are read live. The X scroll is
 // mirrored about the hardware's $C0 origin.
 void HWTiles::draw_layer(uint16_t* pixels, uint8_t* priority, int width, int height,
-                          int which, int category, uint8_t priority_mark, int clip_top, int clip_bottom) const
+                          int which, int category, uint8_t priority_mark, int clip_top, int clip_bottom, int native_left) const
 {
     const uint16_t xscroll = latched_xscroll[which];
     const uint16_t yscroll = latched_yscroll[which];
@@ -115,13 +115,13 @@ void HWTiles::draw_layer(uint16_t* pixels, uint8_t* priority, int width, int hei
             else
             {
                 ex = (xscroll & 0x8000) ? rowscroll : xscroll;
-                ey = column_scroll ? text_ram[column_table + static_cast<uint32_t>((x + 8) / 16)] : yscroll;
+                ey = column_scroll ? text_ram[column_table + (native_left==0?static_cast<uint32_t>((x + 8) / 16):static_cast<uint32_t>((x+native_left+8)&511)/16)] : yscroll;
                 ep = pages;
             }
             ex = static_cast<uint16_t>((0xc0 - ex) & 0x3ff);
             ey = static_cast<uint16_t>(ey & 0x1ff);
 
-            const uint32_t vx = (static_cast<uint32_t>(x) + ex) & 0x3ff;
+            const uint32_t vx = (static_cast<uint32_t>(x+native_left) + ex) & 0x3ff;
             const uint32_t vy = (static_cast<uint32_t>(y) + ey) & 0x1ff;
             const uint32_t page = (ep >> ((((vy >> 8) * 2) + (vx >> 9)) * 4)) & 0xf;
             const uint16_t entry = tile_ram[page * PAGE_WORDS + ((vy & 255) >> 3) * PAGE_COLS + ((vx & 511) >> 3)];

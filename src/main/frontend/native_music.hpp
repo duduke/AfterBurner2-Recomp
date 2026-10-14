@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include "frontend/music_settings.hpp"
 #include "frontend/music_decoder.hpp"
+#include "frontend/audio_output.hpp"
 #include "engine/xboard_game.hpp"
 #include <condition_variable>
 #include <deque>
@@ -17,6 +18,7 @@ public:
     // Mastered files need headroom alongside the quieter arcade effects.
     // Presentation-only -12 dB baseline; user gains still range from 0 to 100%.
     static constexpr float replacement_gain=.25f;
+    AudioOutput* output{};
     MusicSettings settings;std::vector<std::string> files;std::string notice;
     explicit NativeMusic(std::string config,std::filesystem::path folder="soundtrack")
         :settings(load_music_settings(config)),config(std::move(config)),folder(std::filesystem::absolute(folder)),worker([this]{decode_jobs();}) {
@@ -59,13 +61,21 @@ public:
     void preview(unsigned track) {
         stop_preview();const auto file=settings.files[track];if(file.empty()){notice="ORIGINAL PLAYS IN GAME";return;}
         preview_data=lookup(file);if(!preview_data){request(file);notice="FILE NOT READY FOR PREVIEW";return;}
+        if(output){preview_track=int(track);preview_cursor=0;notice="PREVIEWING - SPACE TO STOP";output->clear();return;}
         SDL_AudioSpec spec{SDL_AUDIO_F32,2,48000};preview_stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,nullptr,nullptr);
         if(!preview_stream || !SDL_ResumeAudioStreamDevice(preview_stream)){stop_preview();notice="PREVIEW AUDIO UNAVAILABLE";return;}
         preview_track=int(track);preview_cursor=0;notice="PREVIEWING - SPACE TO STOP";
     }
-    bool previewing()const{return preview_stream!=nullptr;}
-    void stop_preview(){if(preview_stream){SDL_DestroyAudioStream(preview_stream);notice="PREVIEW STOPPED";}preview_stream=nullptr;preview_data.reset();}
+    bool previewing()const{return preview_stream!=nullptr || (output && bool(preview_data));}
+    void stop_preview(){if(output && preview_data)output->clear();if(preview_stream){SDL_DestroyAudioStream(preview_stream);notice="PREVIEW STOPPED";}preview_stream=nullptr;preview_data.reset();}
     void update_preview() {
+        if(output && preview_data){
+            if(preview_cursor>=preview_data->stereo.size()){if(output->drained())stop_preview();return;}
+            const auto count=std::min<size_t>(1920,preview_data->stereo.size()-preview_cursor);
+            const float gain=replacement_gain*settings.music*settings.track_volume[preview_track]/10000.f;
+            AudioPacket packet;packet.streams[0].pcm.reserve(count);for(size_t i=0;i<count;++i)packet.streams[0].pcm.push_back(XBoardSpeaker::pcm(preview_data->stereo[preview_cursor+i]*gain));packet.original=packet.streams[0].pcm;
+            output->submit(std::move(packet),true);preview_cursor+=count;return;
+        }
         if(!preview_stream)return;
         SDL_SetAudioStreamGain(preview_stream,replacement_gain*settings.music*settings.track_volume[preview_track]/10000.f);
         const int queued=SDL_GetAudioStreamQueued(preview_stream);if(queued<0){stop_preview();return;}if(queued>48000/10*8)return;
@@ -86,8 +96,12 @@ public:
                 replacement=bool(active_file);cursor=0;
             }
         }
+        AudioPacket packet;
         size_t out=0;
         for(auto& chunk:chunks) {
+            std::vector<float> native_music_envelope;native_music_envelope.reserve(chunk.music.size());
+            const bool raw_music=!chunk.spatial[0].music.empty();
+            std::vector<float> effects_envelope;effects_envelope.reserve(chunk.music.size());
             for(auto e:chunk.events)events.push_back(e);
             for(size_t i=0;i<chunk.music.size();++i) {
                 const auto sample=chunk.first+i;
@@ -97,17 +111,32 @@ public:
                 // 10 ms frontend gain transition, independent of native clocks.
                 music_gain+=std::clamp(target_music-music_gain,-1.f/480,1.f/480);
                 effects_gain+=std::clamp(target_effects-effects_gain,-1.f/480,1.f/480);
+                effects_envelope.push_back(effects_gain);native_music_envelope.push_back(replacement?0:music_gain);
                 const bool identity=!replacement && music_gain==1 && effects_gain==1 && target_music==1 && target_effects==1;
                 for(unsigned ch=0;ch<2;++ch) {
                     float music=chunk.music[i][ch];
                     if(replacement)music=playing&&active_file?active_file->stereo[cursor+ch]*fade*replacement_gain:0;
+                    if(output)packet.streams[0].pcm.push_back(raw_music&&!replacement?0:XBoardSpeaker::pcm(std::clamp(music*music_gain,-1.f,1.f)));
                     if(out<original.size() && !identity)original[out]=XBoardSpeaker::pcm(std::clamp(music*music_gain+chunk.effects[i][ch]*effects_gain,-1.f,1.f));
                     ++out;
                 }
                 if(playing && active_file)cursor=(cursor+2)%active_file->stereo.size();
             }
+            if(output && !effects_envelope.empty())for(const auto& block:chunk.spatial){
+                const unsigned rate=block.chip?31250:62500;const float chip_gain=block.chip?.35f:.15f;
+                for(size_t i=0;i<block.music.size();++i){const auto at=(block.first+i)*48000/rate;const size_t index=at<=chunk.first?0:std::min<size_t>(at-chunk.first,native_music_envelope.size()-1);
+                    const float gain=native_music_envelope[index]*chip_gain/32768.f;auto& stream=packet.streams[11+block.chip];stream.rate=rate;stream.pcm.push_back(XBoardSpeaker::pcm(block.music[i].left*gain));stream.pcm.push_back(XBoardSpeaker::pcm(block.music[i].right*gain));}
+                for(unsigned g=0;g<3;++g)for(size_t i=0;i<block.groups[g].size();++i){
+                    const auto at=(block.first+i)*48000/rate;
+                    const size_t index=at<=chunk.first?0:std::min<size_t>(at-chunk.first,effects_envelope.size()-1);
+                    const float gain=effects_envelope[index]*chip_gain/32768.f;const auto v=block.groups[g][i];
+                    if(g==0){auto& stream=packet.streams[1+block.chip];stream.rate=rate;stream.pcm.push_back(XBoardSpeaker::pcm(v.left*gain));stream.pcm.push_back(XBoardSpeaker::pcm(v.right*gain));}
+                    else for(unsigned ch=0;ch<2;++ch){auto& stream=packet.streams[3+block.chip*4+(g-1)*2+ch];stream.rate=rate;stream.channels=1;stream.pcm.push_back(XBoardSpeaker::pcm((ch?v.right:v.left)*gain*.707106781f));}
+                }
+            }
         }
         if(!original.empty() && out!=original.size())throw std::runtime_error("presentation audio frontier mismatch");
+        if(output){packet.original=original;output->submit(std::move(packet));}
         return original;
     }
 private:

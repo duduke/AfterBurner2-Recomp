@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -47,7 +48,7 @@ public:
     Settings settings;
     std::string notice;
     NativeInput* input{};
-    NativeMusic* music{};
+    NativeMusic* music{};AudioOutput* audio{};
     NativeHaptics* feedback{};
     std::function<bool(const Settings&)> apply;
     void open(GameSession& game) {
@@ -58,7 +59,7 @@ public:
     }
     void close(GameSession& game) {
         if (!opened) return;
-        if(feedback)feedback->stop();feedback_page=false;
+        if(feedback)feedback->stop();feedback_page=false;if(audio)audio->clear();
         game.set_paused(was_paused); opened=false;audio_page=0;if(music)music->stop_preview(); if(input)input->cancel();
     }
     bool is_open() const { return opened; }
@@ -105,11 +106,11 @@ public:
         }
         if(audio_page && music) {
             if(key==SDLK_ESCAPE || key==SDLK_F1) {
-                music->stop_preview();
+                music->stop_preview();if(audio && audio_page==4)audio->clear();
                 if(audio_page==1){audio_page=0;selected=audio_row();}else {audio_page=1;selected=audio_page_previous;}
                 return Action::none;
             }
-            const int rows=audio_page==1?6:8;
+            const int rows=audio_page==1?(audio?7:6):audio_page==4?5:8;
             if(key==SDLK_UP)selected=(selected+rows-1)%rows;
             if(key==SDLK_DOWN)selected=(selected+1)%rows;
             const bool enter=key==SDLK_RETURN || key==SDLK_KP_ENTER;
@@ -120,7 +121,14 @@ public:
                     if(selected<2)music->volume(selected==1,delta);
                     else if(enter && selected<4){audio_page_previous=selected;audio_page=selected==2?2:3;selected=0;music->refresh();}
                     else if(enter && selected==4)music->defaults();
-                    else if(enter && selected==5){audio_page=0;selected=audio_row();}
+                    else if(enter && selected==5 && audio){audio_page_previous=5;audio_page=4;selected=0;}
+                    else if(enter && selected==(audio?6:5)){audio_page=0;selected=audio_row();}
+                } else if(audio_page==4 && audio){
+                    if(selected==0)audio->cycle_profile(delta);
+                    else if(selected==1)audio->cycle_device(delta);
+                    else if(selected==2)audio->cycle_resampler(delta);
+                    else if(enter && selected==3)audio->speaker_test();
+                    else if(enter && selected==4){audio->clear();audio_page=1;selected=5;}
                 } else if(selected<6) {
                     if(audio_page==2)music->cycle(selected,delta);else music->track_volume(selected,delta);
                 } else if(enter && selected==6) {if(audio_page==2)music->originals();else {music->settings.track_volume.fill(100);music->track_volume(0,0);}}
@@ -160,7 +168,7 @@ public:
         if (key!=SDLK_RETURN && key!=SDLK_SPACE && key!=SDLK_KP_ENTER) return Action::none;
         if (options) {
             if(video) {
-                if(selected==9){video=false;selected=0;option_scroll=0;}else adjust(1);
+                if(selected==10){video=false;selected=0;option_scroll=0;}else adjust(1);
             } else if(selected==option_rows()-1) {options=false;selected=1;}
             else if(selected==0) {video=true;selected=0;option_scroll=0;}
             else if(selected==dip_row()) {dips=true;selected=0;}
@@ -180,7 +188,7 @@ public:
             return Action::none;
         }
         if(audio_page && music) {
-            const int rows=audio_page==1?6:8;
+            const int rows=audio_page==1?(audio?7:6):audio_page==4?5:8;
             for(int i=0;i<rows;++i)if(x>=24 && x<=304 && y>=61+i*16 && y<77+i*16){selected=i;return click?key(SDLK_RETURN):Action::none;}
             return Action::none;
         }
@@ -217,6 +225,7 @@ public:
                 text(labels[i],24,58+(i-first)*17,i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255});
                 text(value.substr(0,16),176,58+(i-first)*17,{54,184,255,255});if(i==selected)cursor(8,58+(i-first)*17);
             }
+            scrollbar(first,16,8,58,136);
             centered(feedback->notice.substr(0,38),204,{125,153,180,255});return;
         }
         if(dips) {
@@ -235,14 +244,19 @@ public:
         }
         SDL_SetRenderDrawColor(renderer,0,0,0,255); SDL_RenderClear(renderer);
         if(audio_page && music) {
-            centered(audio_page==1?"AUDIO":audio_page==2?"MUSIC REPLACEMENTS":"TRACK VOLUMES",16,{255,255,255,255});
+            centered(audio_page==1?"AUDIO":audio_page==2?"MUSIC REPLACEMENTS":audio_page==4?"AUDIO OUTPUT":"TRACK VOLUMES",16,{255,255,255,255});
             centered(audio_page==2?"L/R CHANGE  SPACE PREVIEW":"LEFT/RIGHT ADJUST",36,{125,153,180,255});
-            const int rows=audio_page==1?6:8;
+            const int rows=audio_page==1?(audio?7:6):audio_page==4?5:8;
             for(int i=0;i<rows;++i) {
                 std::string label,value;
                 if(audio_page==1) {
-                    const char* labels[]{"MUSIC VOLUME","EFFECTS VOLUME","MUSIC TRACKS","TRACK VOLUMES","RESET VOLUMES","BACK"};label=labels[i];
+                    const char* labels[]{"MUSIC VOLUME","EFFECTS VOLUME","MUSIC TRACKS","TRACK VOLUMES","RESET VOLUMES",audio?"OUTPUT":"BACK","BACK"};label=labels[i];
                     if(i<2)value=std::to_string(i?music->settings.effects:music->settings.music)+"%";
+                } else if(audio_page==4 && audio){
+                    const char* labels[]{"PROFILE","DEVICE","INTERPOLATION","SPEAKER TEST","BACK"};label=labels[i];
+                    if(i==0)value=audio_profiles[int(audio->settings.profile)];
+                    if(i==1)value=audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device;
+                    if(i==2)value=audio->settings.profile==AudioProfile::original?"NATIVE":audio->settings.resampler.empty()?"DEFAULT":audio->settings.resampler;
                 } else if(i<6) {label=music_titles[i];value=audio_page==2?music->selection(i):std::to_string(music->settings.track_volume[i])+"%";}
                 else label=i==6?(audio_page==2?"ALL ORIGINAL":"RESET VOLUMES"):"BACK";
                 std::transform(value.begin(),value.end(),value.begin(),[](unsigned char ch){return std::toupper(ch);});
@@ -254,7 +268,7 @@ public:
                 if(filename.size()>38){filename+="    ";const auto offset=(SDL_GetTicks()/250)%filename.size();filename=filename.substr(offset)+filename.substr(0,offset);}
                 centered(filename.substr(0,38),188,{54,184,255,255});
             }
-            centered(music->notice.substr(0,38),203,{125,153,180,255});
+            centered((audio_page==4 && audio?audio->status().text:music->notice).substr(0,38),203,{125,153,180,255});
             return;
         }
         if(controls && input) {
@@ -274,22 +288,25 @@ public:
                 text(label,32,64+(i-first)*20,color);text(value.substr(0,18),144,64+(i-first)*20,{54,184,255,255});
                 if(i==selected)cursor(8,64+(i-first)*20);
             }
+            scrollbar(first,control_rows(),6,64,120);
             centered(input->status.empty()?"BACKSPACE CLEAR - ESC RETURN":input->status.substr(0,38),195,{125,153,180,255});
             return;
         }
         if(video) {
             centered("VIDEO",16,{255,255,255,255});
+            if(selected==9)centered("EXPERIMENTAL WIDE VIEW",36,{125,153,180,255});
             if(selected==5)centered("FLAME: FULL THROTTLE ONLY",36,{125,153,180,255});
-            const char* labels[]{"UPSCALING","SPRITES","CLOUDS","TRAILS","EXPLOSIONS","AFTERBURNER","SCREEN","STATS","GROUND","BACK"};
+            const char* labels[]{"UPSCALING","SPRITES","CLOUDS","TRAILS","EXPLOSIONS","AFTERBURNER","SCREEN","STATS","GROUND","VIEWPORT","BACK"};
             const char* scales[]{"NEAREST","SMOOTH","INTEGER","PIXEL ART"};
             const char* stats[]{"OFF","FPS","DETAILED"};
-            const char* values[]{scales[static_cast<int>(settings.scaling)],sprite_filter_labels[static_cast<int>(settings.sprites)],settings.clouds?"TRANSLUCENT":"OPAQUE",settings.trails?"TRANSLUCENT":"OPAQUE",settings.explosions?"TRANSLUCENT":"OPAQUE",settings.afterburner?"TRANSLUCENT":"OPAQUE",settings.fullscreen?"FULLSCREEN":"WINDOWED",stats[static_cast<int>(settings.stats)],settings.ground?"CORRECTED":"ORIGINAL",""};
+            const char* values[]{scales[static_cast<int>(settings.scaling)],sprite_filter_labels[static_cast<int>(settings.sprites)],settings.clouds?"TRANSLUCENT":"OPAQUE",settings.trails?"TRANSLUCENT":"OPAQUE",settings.explosions?"TRANSLUCENT":"OPAQUE",settings.afterburner?"TRANSLUCENT":"OPAQUE",settings.fullscreen?"FULLSCREEN":"WINDOWED",stats[static_cast<int>(settings.stats)],settings.ground?"CORRECTED":"ORIGINAL",settings.widescreen?"16:9 PREVIEW":"ORIGINAL",""};
             for(int i=option_first();i<std::min(visible_rows(),option_first()+8);++i) {
                 const SDL_Color color=i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
                 text(labels[i],32,option_top(i),color);
                 text(values[i],184,option_top(i),i==selected?SDL_Color{54,184,255,255}:color);
                 if(i==selected)cursor(8,option_top(i));
             }
+            scrollbar(option_first(),visible_rows(),8,64,128);
             centered("UP/DOWN SCROLL  LEFT/RIGHT CHANGE",195,{125,153,180,255});
         } else {
             title("AFTER",16,SDL_Color{240,244,255,255});
@@ -304,13 +321,13 @@ public:
                 }
                 centered("ENTER SELECT   ESC RETURN",199,{125,153,180,255});
             } else {
-                const char* labels[]{initial?"START GAME":"RESUME GAME","OPTIONS","QUIT"};
+                const char* labels[]{initial?"ENTER ARCADE":"RESUME GAME","OPTIONS","QUIT"};
                 for(int i=0;i<3;++i) {
                     const auto x=160-static_cast<int>(std::char_traits<char>::length(labels[i]))*4;
                     text(labels[i],x,122+i*20,i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255});
                     if(i==selected) cursor(x-32,122+i*20);
                 }
-                centered("ENTER SELECT   ESC RETURN",193,{125,153,180,255});
+                centered(initial?"INSERT COIN / START IN ARCADE":"ENTER SELECT   ESC RETURN",193,{125,153,180,255});
             }
         }
         SDL_SetRenderDrawColor(renderer,41,125,190,255); SDL_RenderLine(renderer,24,210,296,210);
@@ -333,6 +350,17 @@ public:
         }
     }
 private:
+    // Passive position indicator in native menu coordinates. Its thumb covers
+    // the visible rows, including a short final page, and reaches both ends.
+    void scrollbar(int first,int rows,int capacity,float top,float height) {
+        if(rows<=capacity)return;
+        const int shown=std::min(capacity,rows-first);
+        const float thumb_height=std::max(8.f,std::round(height*shown/rows));
+        const float offset=std::round((height-thumb_height)*first/(rows-shown));
+        SDL_FRect track{312,top,3,height},thumb{312,top+offset,3,thumb_height};
+        SDL_SetRenderDrawColor(renderer,41,65,90,255);SDL_RenderFillRect(renderer,&track);
+        SDL_SetRenderDrawColor(renderer,54,184,255,255);SDL_RenderFillRect(renderer,&thumb);
+    }
     bool feedback_page{};
     int control_rows() const {return feedback?18:17;}
     SDL_Renderer* renderer;
@@ -344,7 +372,7 @@ private:
     int audio_row()const{return 1+(input?1:0);}
     int dip_row()const{return 1+(input?1:0)+(music?1:0);}
     int option_rows()const{return 3+(input?1:0)+(music?1:0);}
-    int visible_rows()const{return video?10:option_rows();}
+    int visible_rows()const{return video?11:option_rows();}
     int option_first()const {
         option_scroll=std::clamp(option_scroll,0,std::max(0,visible_rows()-8));
         if(selected<option_scroll)option_scroll=selected;
@@ -368,7 +396,8 @@ private:
         if(selected==6) changed.fullscreen=!settings.fullscreen;
         if(selected==7) changed.stats=static_cast<Stats>((static_cast<int>(settings.stats)+3+direction)%3);
         if(selected==8) changed.ground=!settings.ground;
-        if(selected<9) change(changed);
+        if(selected==9)changed.widescreen=!changed.widescreen;
+        if(selected<10) change(changed);
     }
     void tile(unsigned code,float x,float y,SDL_Color color,float scale=1) {
         SDL_SetTextureColorMod(atlas,color.r,color.g,color.b);
@@ -409,7 +438,7 @@ inline bool apply_texture_settings(SDL_Texture* texture,const Settings& settings
 inline bool apply_settings(SDL_Window* window,SDL_Renderer* renderer,SDL_Texture* texture,
                            const Settings& settings) {
     return apply_texture_settings(texture,settings) &&
-        SDL_SetRenderLogicalPresentation(renderer,320,224,settings.scaling==Scaling::integer?
+        SDL_SetRenderLogicalPresentation(renderer,viewport_width(settings),224,settings.scaling==Scaling::integer?
             SDL_LOGICAL_PRESENTATION_INTEGER_SCALE:SDL_LOGICAL_PRESENTATION_LETTERBOX) &&
         (((SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN)!=0)==settings.fullscreen ||
          (SDL_SetWindowFullscreen(window,settings.fullscreen) && SDL_SyncWindow(window)));

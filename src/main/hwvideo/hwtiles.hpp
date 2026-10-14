@@ -65,7 +65,7 @@ public:
     // The categories are disjoint opaque pixels, so their passes commute.
     void draw_layer(uint16_t* pixels, uint8_t* priority, int width, int height,
                      int which, int category, uint8_t priority_mark,
-                     int clip_top = 0, int clip_bottom = -1) const;
+                     int clip_top = 0, int clip_bottom = -1, int native_left = 0) const;
 
     // Draw the (non-paged, non-scrolling-surface) text layer.
     void draw_text(uint16_t* pixels, uint8_t* priority, int width, int height,

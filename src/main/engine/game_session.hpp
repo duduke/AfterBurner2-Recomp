@@ -5,6 +5,7 @@
 #include "engine/xboard_game.hpp"
 #include "hwvideo/sprite_scene.hpp"
 #include "hwvideo/ground_horizon.hpp"
+#include "hwvideo/scene_snapshot.hpp"
 #include "engine/native_stage_skip.hpp"
 #include <functional>
 #include <span>
@@ -61,7 +62,7 @@ public:
         XBoardGame::Host::Input input;
         input.buttons = physical.buttons;
         input.analog = physical.analog;
-        scene_ready=false;
+        scene_ready=false;if(capture_wide)wide_clips.clear();
         game.tick(input);
         if(capture_feedback_)feedback_frame=feedback.take(info().number,info().time_ns,feedback_word(0x29c09c),feedback_word(0x29c0d2));
         auto samples = game.take_audio();
@@ -79,6 +80,7 @@ public:
         game.restart();
         feedback.clear();feedback_frame={};if(capture_feedback_)bind_feedback_capture();
         presentation_ready = false;
+        wide_clips.clear();wide_pending.reset();if(capture_wide)bind_wide_capture();
         if (capture_sprites) bind_sprite_capture();
         audio.clear();
         paused_ = false;
@@ -103,7 +105,7 @@ public:
         capture_sprites = enabled; presentation_ready = false;scene_ready=false;
         if(!enabled)capture_scene=false;
         if (enabled) bind_sprite_capture();
-        else { game.board().layers = {}; game.board().rendered = {}; }
+        else { game.board().layers = {}; game.board().rendered = {}; if(capture_wide)bind_wide_capture(); }
     }
     SpritePresentation sprite_presentation() const {
         return {background, sprites, protected_pixels, capture_sprites && presentation_ready};
@@ -132,6 +134,12 @@ public:
         }
         return {scene_heads,scene_fragments,true};
     }
+    struct ScenePresentation {FrameInfo info;std::span<const Presentation::SceneClip> clips;bool ready{};};
+    void capture_wide_scene(bool enabled){
+        if(enabled==capture_wide)return;capture_wide=enabled;wide_clips.clear();wide_pending.reset();
+        if(enabled)bind_wide_capture();else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};}
+    }
+    ScenePresentation wide_scene()const{return {info(),wide_clips,capture_wide&&!wide_clips.empty()};}
     void capture_feedback(bool enabled) {
         if(enabled==capture_feedback_)return;
         capture_feedback_=enabled;feedback.clear();feedback_frame={};
@@ -139,6 +147,7 @@ public:
     }
     Feedback::Frame take_feedback(){auto f=std::move(feedback_frame);feedback_frame={};return f;}
     void capture_music(bool enabled){game.capture_music(enabled);}
+    void capture_cockpit(bool enabled){game.capture_cockpit(enabled);}
     std::vector<XBoardGame::AudioPresentation> take_music(){return game.take_music();}
     std::vector<int16_t> take_audio() {
         auto result = std::move(audio);
@@ -147,6 +156,26 @@ public:
     }
 
 private:
+    bool capture_wide{};
+    std::vector<Presentation::SceneClip> wide_clips;
+    std::unique_ptr<Presentation::SceneClip> wide_pending;
+    void publish_wide(uint64_t ns,unsigned top,unsigned bottom,bool display){
+        if(!capture_wide || !wide_pending)return;
+        wide_pending->ns=ns;wide_pending->top=top;wide_pending->bottom=bottom;wide_pending->display=display;
+        wide_clips.push_back(std::move(*wide_pending));wide_pending.reset();
+    }
+    void bind_wide_capture(){
+        game.board().rendering_started=[this]{
+            auto p=std::make_unique<Presentation::SceneClip>();const auto& m=game.board().memory;const auto bytes=std::span(m.bytes);
+            Presentation::SceneClip::words(p->tiles,bytes.subspan(MainBus::TILE,0x10000));
+            Presentation::SceneClip::words(p->text,bytes.subspan(MainBus::TEXT,0x1000));
+            Presentation::SceneClip::words(p->palette,bytes.subspan(MainBus::PALETTE,0x4000));
+            p->road=m.road_buffer;p->sprites=m.sprite_buffer;p->road_control=m.road_control;p->registers=game.video_registers();
+            p->mode=feedback_word(0x29c09c);p->throttle=feedback_word(0x29c0d2);p->roll=feedback_word(0x29c09e);
+            wide_pending=std::move(p);
+        };
+        if(!capture_sprites)game.board().rendered=[this](auto ns,auto top,auto bottom,auto display){publish_wide(ns,top,bottom,display);};
+    }
     Feedback::Capture feedback;Feedback::Frame feedback_frame;bool capture_feedback_{};
     uint16_t feedback_word(uint32_t a) const {const auto o=MainBus::memory_offset(a);const auto& m=game.board().memory.bytes;return uint16_t(m[o]<<8|m[o+1]);}
     void bind_feedback_capture(){game.board().phase=[this](const auto& p){if(!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
@@ -209,7 +238,8 @@ private:
                 protected_pixels[i] = (!visible && priority[i]!=0) || sprites[i]==2;
             }
         };
-        game.board().rendered = [this](uint64_t, unsigned top, unsigned bottom, bool display) {
+        game.board().rendered = [this](uint64_t ns, unsigned top, unsigned bottom, bool display) {
+            publish_wide(ns,top,bottom,display);
             const auto& output = game.pixels();
             for (unsigned i=top*width; i<(bottom+1)*width; ++i) {
                 if (!display) { if(capture_scene){scene_rows[i/width].clear();row_heads[i/width].fill(UINT32_MAX);}background[i]=0xff000000u; sprites[i]=0; protected_pixels[i]=0; }

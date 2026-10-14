@@ -45,7 +45,7 @@ public:
     void render_background(uint16_t* pixels, int width, int height,
                            int clip_top = 0, int clip_bottom = -1) const;
     void render_foreground(uint16_t* pixels, int width, int height,
-                           int clip_top = 0, int clip_bottom = -1) const;
+                           int clip_top = 0, int clip_bottom = -1, int native_left = 0) const;
 
 private:
     static constexpr int ROAD_RAM_WORDS = 0x1000 / 2;

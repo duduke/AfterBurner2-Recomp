@@ -18,6 +18,38 @@ int main(int argc,char** argv) try {
     auto* texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,320,224);
     require(texture,"texture unavailable");
     {
+        auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,320,224);
+        require(target && SDL_SetRenderTarget(renderer,target),"scrollbar render target unavailable");
+        require(SDL_SetRenderLogicalPresentation(renderer,320,224,SDL_LOGICAL_PRESENTATION_DISABLED),"scrollbar native coordinates unavailable");
+        Frontend::NativeInput input("");Frontend::NativeHaptics feedback(input,"");
+        GameSession game(roms);Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.input=&input;menu.feedback=&feedback;
+        auto thumb=[&](const char* capture=nullptr){
+            menu.draw();auto* raw=SDL_RenderReadPixels(renderer,nullptr);require(raw,"scrollbar readback failed");
+            auto* image=SDL_ConvertSurface(raw,SDL_PIXELFORMAT_ARGB8888);SDL_DestroySurface(raw);require(image,"scrollbar conversion failed");
+            require(image->w==320&&image->h==224,"scrollbar readback dimensions changed");
+            std::array<int,2> range{-1,-1};
+            for(int y=0;y<224;++y){auto* row=reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(image->pixels)+y*image->pitch);
+                if((row[313]&0xffffff)==0x36b8ff){if(range[0]<0)range[0]=y;range[1]=y;}}
+            if(capture){std::filesystem::create_directories("build/oracle");require(SDL_SaveBMP(image,capture),"scrollbar capture failed");}
+            SDL_DestroySurface(image);return range;
+        };
+        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
+        require(thumb()[0]<0,"short Options menu displayed a scrollbar");
+        menu.key(SDLK_RETURN);auto video_top=thumb();menu.key(SDLK_UP);auto video_bottom=thumb();
+        require(video_top[0]==64 && video_bottom[0]>video_top[0] && video_bottom[1]==191,"Video scrollbar did not reach both ends");
+        menu.key(SDLK_ESCAPE);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
+        auto controls_top=thumb("build/oracle/scrollbar-controls-top.bmp");
+        for(int i=0;i<6;++i)menu.key(SDLK_DOWN);auto controls_middle=thumb();
+        for(int i=0;i<11;++i)menu.key(SDLK_DOWN);auto controls_bottom=thumb("build/oracle/scrollbar-controls-bottom.bmp");
+        require(controls_top[0]==64 && controls_middle[0]>controls_top[0] && controls_bottom[0]>controls_middle[0] && controls_bottom[1]==183,"Controls scrollbar position failed");
+        menu.key(SDLK_UP);menu.key(SDLK_RETURN);auto feedback_top=thumb("build/oracle/scrollbar-feedback-top.bmp");
+        for(int i=0;i<8;++i)menu.key(SDLK_DOWN);auto feedback_bottom=thumb("build/oracle/scrollbar-feedback-bottom.bmp");
+        require(feedback_top[0]==58 && feedback_bottom[0]>feedback_top[0] && feedback_bottom[1]==193,"Feedback scrollbar position failed");
+        menu.close(game);require(!game.info().number,"scrollbar rendering advanced the board");
+        require(SDL_SetRenderTarget(renderer,nullptr),"scrollbar target restore failed");SDL_DestroyTexture(target);
+        std::cout<<"Menu scrollbars: Video/Controls/Feedback top, middle and bottom readbacks passed; short menus hide the indicator.\n";
+    }
+    {
         GameSession game(roms);require(game.advance({}),"initial game advance failed");game.take_audio();
         const auto before=game.info();const auto source=game.frame().pixels;
         const std::vector<RGB888> pixels(source.begin(),source.end());
@@ -56,14 +88,21 @@ int main(int argc,char** argv) try {
             std::memcmp(pixels.data(),game.frame().pixels.data(),pixels.size()*sizeof(RGB888))==0,
             "UI rendering mutated native frame/time");
         menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.ground,"ground correction UI failed");menu.draw(); // Ground scrolls the Video viewport.
+        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.widescreen,"Viewport entry missing");
+        require(SDL_GetRenderLogicalPresentation(renderer,&w,&h,&presentation)&&w==398&&h==224,"wide logical viewport not applied");
+        SDL_Rect safe{39,0,320,224};require(SDL_SetRenderViewport(renderer,&safe),"centered menu viewport failed");
+        float wx,wy;require(SDL_RenderCoordinatesToWindow(renderer,60,65,&wx,&wy),"wide mouse transform unavailable");
+        SDL_Event pointer{};pointer.type=SDL_EVENT_MOUSE_MOTION;pointer.motion.windowID=SDL_GetWindowID(window);pointer.motion.x=wx;pointer.motion.y=wy;
+        require(SDL_ConvertEventToRenderCoordinates(renderer,&pointer)&&std::abs(pointer.motion.x-60)<.01f&&std::abs(pointer.motion.y-65)<.01f,"wide menu pointer did not match centered drawing");
+        menu.key(SDLK_LEFT);require(!menu.settings.widescreen,"Original viewport return failed");SDL_SetRenderViewport(renderer,nullptr);
         menu.pointer(60,65,false); // Hover its first visible row without shifting it.
-        const auto prior_filter=menu.settings.sprites;menu.key(SDLK_RIGHT);
-        require(menu.settings.sprites!=prior_filter,"scrolled mouse row selected the wrong option");
+        const auto prior_clouds=menu.settings.clouds;menu.key(SDLK_RIGHT);
+        require(menu.settings.clouds!=prior_clouds,"scrolled mouse row selected the wrong option");
         const auto accepted=menu.settings;menu.apply=[](const auto&){return false;};menu.key(SDLK_RIGHT);
         require(menu.settings==accepted,"failed option must retain last accepted settings");
         menu.notice.clear();
         menu.key(SDLK_ESCAPE);require(!menu.in_video() && menu.in_options() && menu.selection()==0,"Video Escape failed");
-        menu.key(SDLK_RETURN);menu.key(SDLK_UP);require(menu.selection()==9,"Video reverse navigation failed");
+        menu.key(SDLK_RETURN);menu.key(SDLK_UP);require(menu.selection()==10,"Video reverse navigation failed");
         menu.key(SDLK_RETURN);require(!menu.in_video() && menu.in_options(),"Video Back failed");
         menu.pointer(60,104,true);require(menu.in_video(),"Video pointer entry failed");
         menu.draw();auto* video_image=SDL_RenderReadPixels(renderer,nullptr);require(video_image,"Video menu readback failed");
@@ -167,8 +206,21 @@ int main(int argc,char** argv) try {
         require(SDL_SaveBMP(image,"build/oracle/music-menu.bmp"),"Music menu image save failed");SDL_DestroySurface(image);
         menu.key(SDLK_ESCAPE);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);menu.key(SDLK_LEFT);
         require(music.settings.track_volume[0]==95,"track volume UI failed");
+        menu.key(SDLK_ESCAPE); // Audio page, Track Volumes selected.
+        const auto output_config=(folder/"menu-output.cfg").string();std::filesystem::remove(output_config);
+        Frontend::AudioOutput output(output_config);menu.audio=&output;music.output=&output;output.pause(true);
+        menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN); // Output page.
+        menu.key(SDLK_RIGHT);require(output.settings.profile==Frontend::AudioProfile::headphones,"headphones profile menu failed");
+        require(Frontend::load_output_settings(output_config)==output.settings,"output profile not persisted");
+        menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN); // finite speaker test
+        menu.draw();image=SDL_RenderReadPixels(renderer,nullptr);require(image,"Audio Output menu readback failed");
+        require(SDL_SaveBMP(image,"build/oracle/audio-output-menu.bmp"),"Audio Output menu image save failed");SDL_DestroySurface(image);
+        menu.key(SDLK_ESCAPE); // clears test and returns to Audio/Output.
+        menu.key(SDLK_UP);menu.key(SDLK_UP);menu.key(SDLK_UP);menu.key(SDLK_RETURN);menu.key(SDLK_SPACE);
+        require(music.previewing(),"selected-backend preview did not start");music.update_preview();menu.key(SDLK_SPACE);require(!music.previewing(),"selected-backend preview did not stop");
+        menu.key(SDLK_ESCAPE);
         const auto before=game.info();require(!game.advance({}) && game.info().time_ns==before.time_ns,"audio menu advanced native board");
-        menu.close(game);std::filesystem::remove(config);
+        menu.close(game);music.output=nullptr;menu.audio=nullptr;std::filesystem::remove(config);
         const auto input_config=(folder/"menu-navigation.inputs").string();
         Frontend::NativeInput input(input_config);
         for(unsigned present=0;present<4;++present) {

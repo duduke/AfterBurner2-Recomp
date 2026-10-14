@@ -39,14 +39,14 @@ public:
         return false;
     }
     struct Profile {
-        std::array<int,320> upper,lower;
+        std::vector<int> upper,lower;
         std::array<int,224> left,right;
         struct Ends {int sky_min=10000,sky_max=-1,ground_min=10000,ground_max=-1;
             void pixel(int coordinate,unsigned pen){if(pen==1){sky_min=std::min(sky_min,coordinate);sky_max=std::max(sky_max,coordinate);}if(pen==14){ground_min=std::min(ground_min,coordinate);ground_max=std::max(ground_max,coordinate);}}
             int direction()const {if(sky_max<0 || ground_max<0)return 0;return sky_max<ground_min?1:ground_max<sky_min?-1:0;}
         };
-        std::array<Ends,320> columns{};std::array<Ends,224> rows{};bool measured{};
-        Profile(){upper.fill(-1);lower.fill(-1);left.fill(-1);right.fill(-1);}
+        std::vector<Ends> columns;std::array<Ends,224> rows{};bool measured{};
+        explicit Profile(unsigned width=320):upper(width,-1),lower(width,-1),columns(width){left.fill(-1);right.fill(-1);}
 
         void pixel(unsigned x,unsigned y,unsigned pen=0){
             columns[x].pixel(int(y),pen);rows[y].pixel(int(x),pen);
@@ -70,14 +70,15 @@ public:
     static unsigned correct(std::span<uint16_t> indices,std::span<const uint8_t> priority,
                             std::span<const uint8_t> road,unsigned top,unsigned bottom,
                             int nx,int ny,const Profile& profile) {
-        if(indices.size()!=320*224 || priority.size()!=indices.size() || road.size()!=0x1000 || top>bottom || bottom>=224)throw std::invalid_argument("Invalid ground correction clip");
+        const unsigned width=profile.upper.size();
+        if(indices.size()!=width*224 || priority.size()!=indices.size() || road.size()!=0x1000 || top>bottom || bottom>=224)throw std::invalid_argument("Invalid ground correction clip");
         if(!nx && !ny)return 0;
         unsigned changed=0;
         for(unsigned y=top;y<=bottom;++y){
             const auto word=[&](unsigned i){return unsigned(road[2*i])<<8|road[2*i+1];};
             const auto data=word(y);if(data&0xa00)continue;
             const uint16_t sky=0x1720^((word(0x600+y)>>8)&15);
-            for(unsigned x=0;x<320;++x){const auto i=y*320+x;
+            for(unsigned x=0;x<width;++x){const auto i=y*width+x;
                 if(!priority[i] && indices[i]>=0x1700 && indices[i]<0x1708 && profile.sky(x,y,nx,ny)){indices[i]=sky;++changed;}
             }
         }
@@ -86,7 +87,7 @@ public:
     unsigned apply(std::span<uint16_t> indices,std::span<const uint8_t> priority,
                    std::span<const uint8_t> road,uint8_t control,std::span<const uint8_t> bank,
                    std::span<const uint8_t> sprites,unsigned top,unsigned bottom,uint8_t angle,
-                   const EffectAssets& assets)const {
+                   const EffectAssets& assets,unsigned width=320,int native_left=0)const {
         if(bank.size()!=0x1000)throw std::invalid_argument("Invalid horizon sprite bank");
         if(control!=4)return 0;
         // This is a copy: the hardware's descriptor/word-7 feedback is untouched.
@@ -99,9 +100,9 @@ public:
         }
         if(!selected)return 0;
         auto [nx,ny]=normal(angle);
-        Profile profile;std::array<uint8_t,320*224> pens{};
-        decode(horizon,sprites,0,223,assets,[&](unsigned x,unsigned y,uint16_t raw,Effect){pens[y*320+x]=raw&15;});
-        for(unsigned y=0;y<224;++y)for(unsigned x=0;x<320;++x)if(pens[y*320+x])profile.pixel(x,y,pens[y*320+x]);
+        Profile profile(width);std::vector<uint8_t> pens(width*224);
+        decode(horizon,sprites,0,223,assets,[&](int x,unsigned y,uint16_t raw,Effect){pens[y*width+unsigned(x-native_left)]=raw&15;},native_left,native_left+int(width)-1);
+        for(unsigned y=0;y<224;++y)for(unsigned x=0;x<width;++x)if(pens[y*width+x])profile.pixel(x,y,pens[y*width+x]);
         profile.measured=true;
         return correct(indices,priority,road,top,bottom,nx,ny,profile);
     }

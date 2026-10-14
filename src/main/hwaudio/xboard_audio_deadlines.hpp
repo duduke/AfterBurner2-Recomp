@@ -1,6 +1,7 @@
 #pragma once
 #include "hwaudio/xboard_pcm.hpp"
 #include "hwaudio/presentation_ym.hpp"
+#include "hwaudio/cockpit_audio.hpp"
 #include <algorithm>
 #include <array>
 #include <deque>
@@ -18,6 +19,8 @@ public:
     std::function<void(unsigned,uint64_t,uint64_t,const Samples&)> stream;
     std::function<void(unsigned,uint64_t,uint64_t,const Samples&,const Samples&)> stems;
     std::function<uint32_t()> music_mask;
+    CockpitRouting* cockpit{};
+    std::function<void(const CockpitRouting::Block&)> spatial;
     std::function<void(bool)> irq_line;
     std::function<void()> synchronize;
     std::function<void(bool,unsigned,uint64_t,uint64_t)> timer_callback;
@@ -59,23 +62,29 @@ private:
         if(!ns)return;
         const auto target=ns/16000+1;
         if(target<=fm_count)return;
+        CockpitRouting::Block block{0,fm_count,{},{}};
         Samples out,music,effects;out.reserve(target-fm_count);
         if(stems){music.reserve(target-fm_count);effects.reserve(target-fm_count);}
         for(auto n=fm_count;n<target;++n){ymfm::ym2151::output_data sample;chip.generate(&sample);out.push_back({sample.data[0],sample.data[1]});
+            if(spatial&&cockpit){const auto masks=cockpit->masks(music_mask?music_mask():0);for(unsigned g=0;g<3;++g){const auto v=chip.channels(masks[g]);block.groups[g].push_back({v.data[0],v.data[1]});}}
             if(stems){const auto mask=music_mask?music_mask():0;const auto m=mask==0xff?sample:chip.channels(mask),f=mask==0?sample:chip.channels(0xff&~mask);music.push_back({m.data[0],m.data[1]});effects.push_back({f.data[0],f.data[1]});}}
+        if(spatial&&cockpit){block.music=music;spatial(block);}
         const auto first=fm_count;fm_count=target;if(stems)stems(0,ns,first,music,effects);if(stream)stream(0,ns,first,out);
     }
     void update_pcm(uint64_t ns){
         if(!ns)return;
         const auto target=ns/32000+1;
         if(target<=pcm_count)return;
+        CockpitRouting::Block block{1,pcm_count,{},{}};
         Samples out,music,effects;out.reserve(target-pcm_count);
         if(stems){music.reserve(target-pcm_count);effects.reserve(target-pcm_count);}
         for(auto n=pcm_count;n<target;++n) {
             std::array<XBoardPcm::Sample,16> voices;
-            out.push_back(pcm.tick(stems?&voices:nullptr));
+            out.push_back(pcm.tick((stems||spatial)?&voices:nullptr));
+            if(spatial&&cockpit){std::array<XBoardPcm::Sample,3> groups{};for(unsigned c=8;c<16;++c){auto& v=groups[cockpit->pcm[c]];v.left+=voices[c].left;v.right+=voices[c].right;}for(unsigned g=0;g<3;++g)block.groups[g].push_back(groups[g]);}
             if(stems){XBoardPcm::Sample m{},f{};for(unsigned c=0;c<16;++c){auto& v=c<8?m:f;v.left+=voices[c].left;v.right+=voices[c].right;}music.push_back(m);effects.push_back(f);}
         }
+        if(spatial&&cockpit){block.music=music;spatial(block);}
         const auto first=pcm_count;pcm_count=target;if(stems)stems(1,ns,first,music,effects);if(stream)stream(1,ns,first,out);
     }
     void ymfm_sync_mode_write(uint8_t data) override {modes.push_back({current,++serial,data});if(synchronize)synchronize();}

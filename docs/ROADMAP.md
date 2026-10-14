@@ -146,9 +146,10 @@ exists locally and on origin; its prototype source and targets are absent from m
 | Native platform | SDL3 3.4+, Make/CMake builds, window/input/audio, pause/restart, ROM-font settings with Video, Controls, Audio and DIP Switches submenus, persisted preferences and Metal/software launch checks pass | Physical controller/HOTAS calibration, other GPU backends and every-stage peak-load performance remain unproved |
 | Enhanced presentation | Five GPU sprite scalers plus native-size Off composition; independent cloud, trail, explosion and afterburner opacity; 630/630 synthetic cases and 4,128/4,128 sampled native readbacks identical, zero skips; six GPU mutations reject | Original-art effects only; finite Metal scenes, not whole-credit visual/performance acceptance |
 | Music and volume | Six persisted WAV/FLAC track mappings, preview/fallback, independent music/effects and per-track gains; 42,148/42,148 and 119,374/119,374 passive MAME routing transactions identical, zero skips | Natural contexts cover two songs and overlapping effects; four songs and natural fades remain unverified |
+| Spatial audio (experimental) | Optional OpenAL Soft headphone HRTF, 2.1/5.1 modes, chip-rate interpolation, direct stereo music and live output menu; 1,800 native frames unchanged, 117,509 MAME ownership observations exact, six controls reject | Unclassified voices remain stereo; physical localization/channels, complete sound/cabinet audit and sustained latency remain open |
 | Ground/horizon correction | Optional Corrected mode preserves terrain while removing sky-side wedges; 160/160 retained MAME frames reconstruct exactly, with both roll directions and retained mutations checked | Original stays default; finite roll/Metal/software coverage, not every-stage visual acceptance |
 | Controller feedback | Cannon/missile/player-impact/full-throttle cues; 4,200 native RGB/PCM/time frames unchanged, independent MAME witnesses and eleven rejected mutations; Xbox Bluetooth body and both triggers physically confirmed on macOS | Windows/Linux and simple-haptic fallback hardware, full gameplay/lifecycle feel, incoming warnings and advanced FFB remain open |
-| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames, passive sprite planes/individual layers, output PCM processing and optional music/effects stems and events | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
+| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames, passive sprite planes/individual layers and immutable partial-render scene snapshots, output PCM processing and optional music/effects stems and events | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
 | Three.js | Prototype source and browser-specific tests retained only on `codex/threejs-game-engine` | Removed from main; arcade projection, true 3D world geometry, widescreen and standalone WASM remain future work |
 
 Current enhancements include Video/Controls/Audio/DIP Switches menus, GPU sprite
@@ -159,10 +160,12 @@ is implemented for gamepads/raw joysticks, including trigger
 motors and simple haptic fallback. Bluetooth Xbox body and both trigger motors
 are physically confirmed on macOS; Windows/Linux hardware acceptance remains open.
 
-The last complete `required` checkpoint is
-`build/workflow/20261013T075232.029672Z/`, before the subsequent DIP/effect/audio,
-ground and feedback changes. Their focused checks are recorded in ENGINE_NOTES;
-they do not constitute a fresh full-suite or whole-credit pass. See
+The complete core/device `required` profile passes at
+`build/workflow/20261014T142055.116214Z/` (`test`, `verify-stage1`, complete
+`oracle-test`, all retained mutations). Final frontend-only output fallback and
+preview fixes have additional passing test/menu, playback and Make/CMake checks
+recorded in ENGINE_NOTES. This does not close whole-credit or physical platform
+acceptance. See
 [checkpoint history](CHECKPOINT_HISTORY.md) for retained counts, timings and logs,
 [README](../README.md#current-enhancements) for the current feature list, and
 [ENGINE_NOTES](ENGINE_NOTES.md) for detailed coverage and exclusions.
@@ -377,12 +380,12 @@ work does not close the separate full-game acceptance tasks.
   establish full-credit or every-stage peak-load performance. See the native
   performance continuation in `ENGINE_NOTES.md` for checks and measurements.
 - [ ] **Wide-Screen Support (16:9, 16:10, 21:9 Ultrawide):**
-  - *Implementation plan:* [True widescreen](WIDESCREEN_PLAN.md): passive partial-frame scene export, wider road/tile/sprite rendering, verified visibility policy, HUD and CPU/GPU acceptance. Planned, not implemented.
+  - *Implementation plan:* [True widescreen](WIDESCREEN_PLAN.md): a staged 16:9-first plan for passive partial-frame export, wider road/tile/sprite rendering, visibility audits, corrected-ground/effect integration and frontend/CPU/GPU acceptance. Experimental 16:9 Preview is implemented: 398×224 road/tile/published-sprite rendering, centered HUD, existing CPU/GPU filters/effects and persisted Video setting. Native pre-publication culling and outer horizon gaps remain; full visibility, sustained performance, 16:10 and ultrawide acceptance are open. Original combat and sprite limits remain unchanged; unlimited sprites/custom stages are separate.
   - *Expanded Viewport:* Retain native 320×224 simulation; derive wider presentation dimensions from target display and pixel aspect, without stretching. See the plan for rounding and the separate 4:3-correction policy.
-  - *Extended Road/Ground Raster:* Extend Sub CPU / `hwroad` scanline banking and horizon curves across wider display bounds.
+  - *Extended Road/Ground Raster:* Render immutable native scanline data across wider bounds in a separate presentation renderer; integrate the optional corrected-ground silhouettes without changing Sub CPU execution.
   - *Tilemap Surface Wrapping:* Leverage X-Board's 1024×512 virtual tilemap surface to render wider scrolling backgrounds without clipping.
-  - *Wide-Angle Projection & Culling:* Widen 3D camera frustum and sprite culling limits so enemy waves spawn and maneuver naturally across the full width.
-  - *Flexible HUD Placement:* Toggle between classic 4:3 centered HUD or anchored widescreen HUD pushed to screen corners.
+  - *Projection & Culling:* Audit rejection before publication and retain additional renderable content where verified. Initial combat/spawn rules stay native; full-width formations are separate enhanced gameplay work.
+  - *HUD Placement:* Keep the HUD in the centered native safe area initially; semantic edge anchoring is a later option, independent of pixel-aspect correction.
 - [ ] **4K Ultra HD Support (3840×2160):**
   - *Existing Foundation:* SDL3 already presents the native raster through its GPU renderer, with a software fallback. High-resolution HUD/assets and the remaining display features below still need implementation.
   - *Integer Scaling:* Pixel-perfect 9× integer scale of native 320×224 raster with configurable pillarboxing or fill modes.
@@ -478,6 +481,14 @@ work does not close the separate full-game acceptance tasks.
   - *Multiplayer:* Local dual-controller couch co-op and optional rollback/lockstep peer-to-peer netplay.
 
 ### 5. Audio & Scoring Enhancements
+- [x] **Experimental OpenAL Soft Interpolation & Cockpit Spatial Audio:**
+  - [Implementation proposal](SPATIAL_AUDIO_PLAN.md): optional headphones/HRTF,
+    2.1 and 5.1 profiles, four head-relative virtual cockpit speakers, direct
+    stereo music, verified voice routing and selectable resampling.
+  - Implemented chip-rate FM/PCM presentation, direct stereo music, live output
+    profiles/resamplers and a four-speaker test; Original SDL/native PCM remains
+    the reference. Physical platform listening, remaining voice classifications,
+    cabinet wiring and discrete LFE acceptance remain open.
 - [ ] **Missile Evasion Score Bonus & Dynamic Audio Cue:**
   - *Near-Miss Scoring:* Extra score awarded for close-proximity evasion of incoming homing missiles.
   - *Dynamic 3D Sound Cue:* Distinct stereo "whoosh" sound effect when missiles whistle past the cockpit on near misses.

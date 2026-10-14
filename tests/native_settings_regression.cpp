@@ -11,6 +11,8 @@ int main() try {
     const Frontend::Settings chosen{Frontend::Scaling::integer,true,Frontend::Stats::detailed};
     require(Frontend::save_settings(path,chosen),"cannot save settings");
     require(Frontend::load_settings(path,true)==chosen,"persistent settings round-trip changed");
+    auto wide=chosen;wide.widescreen=true;require(Frontend::viewport_width(wide)==398,"wide logical width");
+    require(Frontend::save_settings(path,wide)&&Frontend::load_settings(path,true)==wide,"wide preference persistence");
     for(int i=0;i<Frontend::sprite_filter_count;++i) {
         auto filter=chosen;filter.sprites=static_cast<Frontend::SpriteFilter>(i);
         require(Frontend::save_settings(path,filter) && Frontend::load_settings(path,true)==filter,"sprite filter persistence failed");
