@@ -5,6 +5,7 @@
 | Build, play or configure the game | [Project README](../README.md) |
 | See current coverage, rules and next tasks | [Roadmap](ROADMAP.md) |
 | Run tests, captures or recover a missing instruction | [Workflow](WORKFLOW.md) |
+| Package the macOS preview | [macOS release workflow](WORKFLOW.md#macos-preview-release) |
 | Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |
 | Configure or understand replacement music | [Music replacement](MUSIC_REPLACEMENT_PLAN.md) |
 | Configure headphone HRTF, speakers or interpolation | [OpenAL Soft cockpit audio](SPATIAL_AUDIO_PLAN.md) |

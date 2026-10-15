@@ -5,6 +5,15 @@ cores and MAME-derived device algorithms. See each source header and the
 license files linked below for attribution. ROM data is supplied by the user
 and is not distributed.
 
+## macOS preview dependencies
+
+The macOS ZIP bundles dynamically linked SDL3 3.4.16 (zlib license) and OpenAL
+Soft 1.25.2. `Notices/` contains their licenses and the linked-code notices;
+`Sources/` contains the complete project source at the manifest's commit plus
+the pinned upstream SDL/OpenAL source archives. No Homebrew installation is
+needed to run that package. The shared libraries remain replaceable by
+ABI-compatible local builds. See the [release workflow](WORKFLOW.md#macos-preview-release).
+
 ## Native audio path
 
 - `src/third_party/ymfm/`: Aaron Giles's YMFM synthesis core (BSD-3-Clause);

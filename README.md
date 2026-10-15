@@ -23,26 +23,24 @@ continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
 performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
 other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
-[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-14) for scope.
+[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-15) for scope.
 
-Latest progress includes experimental OpenAL Soft cockpit audio and a 16:9
-preview, menu scroll hints, restored attract-mode entry, DIP and Video submenus,
-corrected explosion/full-throttle
-flame translucency, balanced external music with live track changes, ground
-correction checked during rolls in both directions, and SDL controller feedback.
-The final feedback comparison preserves native pixels, audio and timing across
-4,200 frames; eleven feedback mutations reject. These focused checks do not
-replace full-game acceptance.
+Latest work expands the experimental 16:9 view beyond the original sprite
+queue and depth-bucket limits, retains scenery as it crosses the wider edges,
+and fixes reproduced rolling scenery, takeoff wave coverage and attract-cloud
+corner artifacts. It also fixes the reported enemy-coordinate overflow stop
+at PC `$15C10`. The original simulation remains the comparison reference;
+the wider presentation still needs exhaustive scene and platform validation.
 
 ## Current enhancements
 
 | Area | Implemented features |
 | --- | --- |
 | Menus | Arcade-font Enter Arcade/Options/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation; slim scrollbars show hidden items and position |
-| Widescreen | Experimental 16:9 Preview (398×224): additional road, tiles and published sprites; centered HUD; existing filters and effects; Original remains the default |
+| Widescreen | Experimental 16:9 Preview (398×224): additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; fullscreen; FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
-| Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; Original remains the default |
+| Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains the default |
 | Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |
 | Controls | Keyboard, gamepad and raw joystick remapping; axes/buttons/hats; deadzone, sensitivity, polarity and full-axis throttle; hotplug and persisted device profiles |
 | Controller feedback | Optional SDL body and Xbox trigger rumble; cannon, missile, player-impact and full-throttle cues; strengths, motor tests, device selection and lifecycle stops |
@@ -58,12 +56,24 @@ replacement sprite assets, CRT shaders, save states and new gameplay modes
 remain **planned**. The [haptics notes](docs/HAPTICS_PLAN.md) cover current SDL
 output and remaining platform hardware checks.
 Choose **Options → Video → Viewport → 16:9 Preview** to try the wider view.
-The original game still culls objects before they reach the renderer: edge popping
-and incomplete outer horizon coverage can remain, including during rolls.
-16:10, ultrawide and full-width visibility remain open. See the
+The wider view now retains side scenery and recovers hidden sprite requests.
+Choose **Ground → Corrected** for full-width sky correction during rolls.
+The wider renderer now recovers requests discarded by the original 192-request
+queue and full depth buckets, and renders a dynamic descriptor list. Native
+object allocation and gameplay limits stay unchanged. All 23 stage slots and
+recorded lifecycle paths have dedicated checks; exhaustive scene/platform
+validation, 16:10 and ultrawide remain open. See the
 [true widescreen plan](docs/WIDESCREEN_PLAN.md) for progress and remaining gates.
 
 ## Build and play
+
+For a packaged **Apple Silicon / macOS 26+** preview, see
+[GitHub Releases](https://github.com/duduke/AfterBurner2-Recomp/releases).
+Extract the ZIP, put your own extracted ROM files in its `roms/` directory,
+then open `Launch.command`. SDL3 and OpenAL Soft are included, along with their
+sources and notices. The preview is ad-hoc signed and **not notarized**; macOS
+may require approval in Privacy & Security. Intel Macs are not included in this
+build. See the package's `START-HERE.txt` for setup.
 
 Requirements: your ROM dump, SDL3 **3.4+**, a C++20 compiler, and either Make with
 `pkg-config sdl3` or CMake with the installed `SDL3::SDL3` package. Run from the

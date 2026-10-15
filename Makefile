@@ -294,7 +294,8 @@ oracle-mainirq:
 	./build/oracle_mainirq build/oracle/mainirq.bin
 	./build/oracle_mainirq build/oracle/mainirq_endpoints.bin
 
-oracle-test: oracle-publication-schedule oracle-caller-host oracle-caller-weapon oracle-subirq oracle-bus-arbiter oracle-subprogress oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
+# Validate new presentation policies before the longer retained core corpus.
+oracle-test: verify-wide-visibility-mutations verify-wide-lifecycle-mutations oracle-publication-schedule oracle-caller-host oracle-caller-weapon oracle-subirq oracle-bus-arbiter oracle-subprogress oracle-subpublication oracle-caller-companion oracle-caller-flight oracle-caller-input oracle-caller-soundproducer oracle-caller-allirq oracle-caller-ready oracle-caller-follower oracle-caller-closure oracle-caller-successors oracle-caller-words oracle-scheduling-returns oracle-caller-return oracle-caller-service oracle-irq4-service oracle-logic-wait oracle-handlers oracle-mainirq oracle-board oracle-irq-service oracle-host-objects oracle-paired-road
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_objects.cpp $(HANDLER_SRCS) -o build/oracle_objects
 	./build/oracle_objects build/oracle/objects.bin
@@ -1445,8 +1446,7 @@ test-native-settings: build/native_settings_regression
 test: test-native-settings
 build/native_menu_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/native_menu_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))) build/native_obj/src/main/frontend/music_decoder.o
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
-verify-native-menu: build/native_menu_integration
-	python3 tools/audio/generate_test_audio.py
+verify-native-menu: build/native_menu_integration audio-test-fixtures
 	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/native_menu_integration
 -include build/native_obj/tests/native_menu_integration.d
 .PHONY: test-native-settings verify-native-menu
@@ -1492,8 +1492,7 @@ shader-build:
 .PHONY: verify-gpu-sprite-filters shader-build
 verify-gpu-sprite-mutations: verify-gpu-sprite-filters
 	python3 tools/scalers/check_gpu_mutations.py
-verify-gpu-native-menu: build/native_menu_integration
-	python3 tools/audio/generate_test_audio.py
+verify-gpu-native-menu: build/native_menu_integration audio-test-fixtures
 	./build/native_menu_integration --gpu
 .PHONY: verify-gpu-sprite-mutations verify-gpu-native-menu
 verify-gpu-native-fixture: build/gpu_sprite_filter_regression
@@ -1509,11 +1508,15 @@ test: test-native-input
 .PHONY: test-native-input
 
 
+# Publish deterministic audio fixtures once before parallel consumers.
+audio-test-fixtures:
+	python3 tools/audio/generate_test_audio.py
+.PHONY: audio-test-fixtures
+
 build/native_music_regression: tests/native_music_regression.cpp src/main/frontend/music_decoder.cpp src/main/frontend/native_music.hpp src/main/frontend/music_settings.hpp src/third_party/dr_flac/dr_flac.h
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -pthread tests/native_music_regression.cpp src/main/frontend/music_decoder.cpp src/third_party/ymfm/ymfm_opm.cpp -o $@ $(LIBS)
-test-native-music: build/native_music_regression
-	python3 tools/audio/generate_test_audio.py
+test-native-music: build/native_music_regression audio-test-fixtures
 	SDL_AUDIODRIVER=dummy ./build/native_music_regression
 test: test-native-music
 .PHONY: test-native-music
@@ -1627,8 +1630,8 @@ build/wide_gpu_regression: tests/wide_gpu_regression.cpp src/main/frontend/gpu_s
 verify-wide-gpu: build/wide_gpu_regression verify-wide-scene
 	./build/wide_gpu_regression
 .PHONY: verify-wide-gpu
-build/wide_scene_geometry: tests/wide_scene_geometry.cpp src/main/hwvideo/wide_scene.hpp src/main/hwvideo/scene_snapshot.hpp src/main/hwvideo/sprite_scene.hpp src/main/hwvideo/ground_horizon.hpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/wide_scene_geometry.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp -o $@ $(LIBS)
+build/wide_scene_geometry: src/main/hwvideo/wide_projection.hpp src/main/engine/subbus.cpp tests/wide_scene_geometry.cpp tests/wide_ground_reference.hpp src/main/hwvideo/wide_scene.hpp src/main/hwvideo/scene_snapshot.hpp src/main/hwvideo/sprite_scene.hpp src/main/hwvideo/ground_horizon.hpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/wide_scene_geometry.cpp src/main/engine/subbus.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp -o $@ $(LIBS)
 verify-wide-geometry: build/wide_scene_geometry
 	./build/wide_scene_geometry
 .PHONY: verify-wide-geometry
@@ -1643,8 +1646,7 @@ oracle-test: verify-wide-mutations
 build/spatial_audio_regression: tests/spatial_audio_regression.cpp src/main/frontend/audio_output.hpp build/openal-config $(OPENAL_CHANGED)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPENAL_FLAGS) -pthread $< -o $@ $(LIBS)
-test-spatial-audio: build/spatial_audio_regression
-	python3 tools/audio/generate_test_audio.py
+test-spatial-audio: build/spatial_audio_regression audio-test-fixtures
 	./build/spatial_audio_regression
 .PHONY: test-spatial-audio
 test: test-spatial-audio
@@ -1673,3 +1675,43 @@ build/spatial_audio_game_integration: $(addprefix build/native_obj/,$(patsubst %
 verify-spatial-game: build/spatial_audio_game_integration
 	./build/spatial_audio_game_integration
 .PHONY: verify-spatial-game
+
+# Detached wide projection must match retained original-ROM descriptors at
+# native bounds before its separate visibility policy is accepted.
+oracle-wide-projection:
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_subsprites.cpp src/main/engine/osubsprites.cpp $(ORACLE_SRCS) -o build/oracle_subsprites
+	./build/oracle_subsprites build/oracle/subsprites_directed.bin
+	./build/oracle_subsprites build/oracle/subsprites.bin
+	./build/oracle_subsprites build/oracle/subsprites_gameplay.bin
+.PHONY: oracle-wide-projection
+verify-wide-visibility-mutations: build/wide_scene_integration
+	python3 tools/check_wide_visibility_mutations.py
+.PHONY: verify-wide-visibility-mutations
+build/wide_stage_visibility: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/wide_stage_visibility.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-wide-stages: build/wide_stage_visibility
+	./build/wide_stage_visibility
+verify-stage1: verify-wide-stages
+-include build/native_obj/tests/wide_stage_visibility.d
+.PHONY: verify-wide-stages
+
+build/wide_lifecycle_visibility: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/wide_lifecycle_visibility.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-wide-lifecycle: build/wide_lifecycle_visibility
+	./build/wide_lifecycle_visibility ending
+	./build/wide_lifecycle_visibility neutral
+	./build/wide_lifecycle_visibility continue
+	./build/wide_lifecycle_visibility weapons
+-include build/native_obj/tests/wide_lifecycle_visibility.d
+.PHONY: verify-wide-lifecycle
+
+oracle-wide-requests:
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_mainsprites.cpp src/main/engine/omainsprites.cpp src/main/engine/mainbus.cpp $(ORACLE_SRCS) -o build/oracle_mainsprites
+	./build/oracle_mainsprites build/oracle/spriteinit.bin
+	./build/oracle_mainsprites build/oracle/mainsprites.bin
+	./build/oracle_mainsprites build/oracle/mainsprites_directed.bin
+.PHONY: oracle-wide-requests
+
+verify-wide-lifecycle-mutations: verify-wide-lifecycle
+	python3 tools/check_wide_lifecycle_mutations.py
+.PHONY: verify-wide-lifecycle-mutations

@@ -13,6 +13,7 @@
 #include "roms.hpp"
 #include "engine/omainobjects.hpp"
 #include "engine/omainhost.hpp"
+#include "hwvideo/wide_scenery.hpp"
 
 
 namespace
@@ -46,7 +47,7 @@ int main(int argc, char** argv) try
     MainBus::Memory memory;
     constexpr size_t N = MainBus::MEMORY_BYTES;
     std::vector<uint8_t> before(N), after(N), expected_w(N), other_w(N), reads(N), writes(N);
-    unsigned total=0, identical=0, failed=0, skipped=0, reported=0, active=0;
+    unsigned scenery_kept=0,scenery_culled=0;unsigned total=0, identical=0, failed=0, skipped=0, reported=0, active=0;
     std::vector<std::pair<uint32_t,unsigned>> entries;
     std::map<uint32_t,std::array<unsigned,3>> outcomes;
     std::map<std::string,unsigned> damage_paths;
@@ -61,7 +62,7 @@ int main(int argc, char** argv) try
             return r;
         };
         const uint32_t terminal=prefix_capture ? u32(in) : 0;
-        auto r=registers(), expected_r=registers();
+        auto r=registers(), expected_r=registers();const auto projection_entry=r;
         const uint8_t io_input=io_capture ? u32(in) : 0xff;
         uint16_t math_before[32], math_after[32];
         for(auto& v:math_before) v=u32(in);
@@ -207,6 +208,20 @@ int main(int argc, char** argv) try
         bool race=false;
         for (size_t i=0;i<N;++i) race |= reads[i] && other_w[i];
         if (race) { ++skipped; ++outcomes[entry][2]; continue; }
+        if(entry==0x8af2){
+            MainBus::Memory detached;std::copy(before.begin(),before.end(),detached.bytes.begin());
+            MainBus shadow(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,detached);
+            auto input=projection_entry;
+            const bool kept=Presentation::SceneryProjection::update(shadow,input,0);
+            // $9556 returns the size slot through the native free-list counter.
+            const bool culled=expected_w[MainBus::memory_offset(0xffff8d80)]!=0;
+            if(kept==culled)throw std::runtime_error("detached scenery cull differs from MAME");
+            if(kept){++scenery_kept;
+                const auto object=MainBus::memory_offset(input.a[5]);
+                for(unsigned n=0;n<64;++n)if(detached.bytes[object+n]!=after[object+n])throw std::runtime_error("detached scenery evolution differs from MAME");
+            }else ++scenery_culled;
+        }
+
         active += std::any_of(expected_w.begin(),expected_w.end(),[](uint8_t n){ return n!=0; });
         unsigned differences = (events!=expected_events) + !contract + !chips;
         for (size_t i=0;i<N;++i)
@@ -250,6 +265,7 @@ int main(int argc, char** argv) try
         for(const auto& [name,n]:damage_paths) std::cout << ' ' << name << '=' << n;
         std::cout << '\n';
     }
+    if(scenery_kept||scenery_culled)std::cout<<"Detached scenery: "<<scenery_kept<<" accepted updates match MAME, "<<scenery_culled<<" native culls\n";
     return total && identical && !failed ? 0 : 1;
 }
 catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

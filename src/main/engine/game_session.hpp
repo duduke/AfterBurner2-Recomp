@@ -6,6 +6,7 @@
 #include "hwvideo/sprite_scene.hpp"
 #include "hwvideo/ground_horizon.hpp"
 #include "hwvideo/scene_snapshot.hpp"
+#include "hwvideo/wide_visibility.hpp"
 #include "engine/native_stage_skip.hpp"
 #include <functional>
 #include <span>
@@ -78,9 +79,10 @@ public:
     bool paused() const { return paused_; }
     void restart() {
         game.restart();
+        if(visibility)visibility->reset();
         feedback.clear();feedback_frame={};if(capture_feedback_)bind_feedback_capture();
         presentation_ready = false;
-        wide_clips.clear();wide_pending.reset();if(capture_wide)bind_wide_capture();
+        wide_clips.clear();wide_pending.reset();if(capture_wide){bind_wide_capture();bind_feedback_capture();}
         if (capture_sprites) bind_sprite_capture();
         audio.clear();
         paused_ = false;
@@ -137,13 +139,14 @@ public:
     struct ScenePresentation {FrameInfo info;std::span<const Presentation::SceneClip> clips;bool ready{};};
     void capture_wide_scene(bool enabled){
         if(enabled==capture_wide)return;capture_wide=enabled;wide_clips.clear();wide_pending.reset();
-        if(enabled)bind_wide_capture();else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};}
+        if(enabled){if(!visibility)visibility=std::make_unique<Presentation::WideVisibility>(rom);bind_wide_capture();}else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};if(visibility)visibility->reset();}
+        bind_feedback_capture();
     }
     ScenePresentation wide_scene()const{return {info(),wide_clips,capture_wide&&!wide_clips.empty()};}
     void capture_feedback(bool enabled) {
         if(enabled==capture_feedback_)return;
         capture_feedback_=enabled;feedback.clear();feedback_frame={};
-        if(enabled)bind_feedback_capture();else game.board().phase={};
+        bind_feedback_capture();
     }
     Feedback::Frame take_feedback(){auto f=std::move(feedback_frame);feedback_frame={};return f;}
     void capture_music(bool enabled){game.capture_music(enabled);}
@@ -156,6 +159,7 @@ public:
     }
 
 private:
+    std::unique_ptr<Presentation::WideVisibility> visibility;
     bool capture_wide{};
     std::vector<Presentation::SceneClip> wide_clips;
     std::unique_ptr<Presentation::SceneClip> wide_pending;
@@ -171,6 +175,7 @@ private:
             Presentation::SceneClip::words(p->text,bytes.subspan(MainBus::TEXT,0x1000));
             Presentation::SceneClip::words(p->palette,bytes.subspan(MainBus::PALETTE,0x4000));
             p->road=m.road_buffer;p->sprites=m.sprite_buffer;p->road_control=m.road_control;p->registers=game.video_registers();
+            if(visibility)p->extended_sprites=visibility->descriptors();
             p->mode=feedback_word(0x29c09c);p->throttle=feedback_word(0x29c0d2);p->roll=feedback_word(0x29c09e);
             wide_pending=std::move(p);
         };
@@ -178,7 +183,7 @@ private:
     }
     Feedback::Capture feedback;Feedback::Frame feedback_frame;bool capture_feedback_{};
     uint16_t feedback_word(uint32_t a) const {const auto o=MainBus::memory_offset(a);const auto& m=game.board().memory.bytes;return uint16_t(m[o]<<8|m[o+1]);}
-    void bind_feedback_capture(){game.board().phase=[this](const auto& p){if(!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
+    void bind_feedback_capture(){if(!capture_feedback_&&!capture_wide){game.board().phase={};return;}game.board().phase=[this](const auto& p){if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
     XBoardGame game;
     Roms& rom;
     Extensions extensions;

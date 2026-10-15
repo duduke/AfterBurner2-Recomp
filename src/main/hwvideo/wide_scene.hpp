@@ -33,12 +33,12 @@ public:
         for(auto& r:row_fragments)r.clear();row_heads.assign(w*224,UINT32_MAX);seen.fill(false);
         heads.clear();fragments.clear();last_frame=0;last_ns=0;ready=false;
     }
-    void render(std::span<const SceneClip> clips,uint64_t frame,bool corrected_ground){
+    void render(std::span<const SceneClip> clips,uint64_t frame,bool corrected_ground,bool extend_visibility=true){
         if(frame==last_frame || clips.empty())return;
         if(frame<last_frame)reset();last_frame=frame;
         for(const auto& c:clips){
             if(c.top>c.bottom || c.bottom>=224 || c.ns<last_ns)throw std::invalid_argument("Unordered wide scene clips");
-            last_ns=c.ns;draw(c,corrected_ground);
+            last_ns=c.ns;draw(c,corrected_ground,extend_visibility);
         }
         ready=std::all_of(seen.begin(),seen.end(),[](bool x){return x;});flatten();
     }
@@ -52,7 +52,13 @@ private:
     std::vector<Fragment> fragments;std::array<std::vector<Fragment>,224> row_fragments;
     std::array<bool,224> seen{};uint64_t last_frame{},last_ns{};bool ready{};
     static uint32_t argb(RGB888 p){return 0xff000000|uint32_t(p.r)<<16|uint32_t(p.g)<<8|p.b;}
-    void draw(const SceneClip& c,bool corrected){
+    void draw(const SceneClip& c,bool corrected,bool extend_visibility){
+        std::vector<uint8_t> projected;std::vector<int> anchors;std::span<const uint8_t> bank=c.sprites;
+        if(w>320&&extend_visibility&&!c.extended_sprites.empty()){
+            projected.resize((c.extended_sprites.size()+1)*16);anchors.assign(c.extended_sprites.size()+1,INT32_MIN);
+            for(unsigned i=0;i<c.extended_sprites.size();++i){std::copy(c.extended_sprites[i].bytes.begin(),c.extended_sprites[i].bytes.end(),projected.begin()+i*16);anchors[i]=c.extended_sprites[i].x;}
+            projected[c.extended_sprites.size()*16]=0x80;bank=projected;
+        }
         for(unsigned y=c.top;y<=c.bottom;++y){seen[y]=true;row_fragments[y].clear();
             std::fill(row_heads.begin()+y*w,row_heads.begin()+(y+1)*w,UINT32_MAX);}
         if(!c.display){for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){background[i]=0xff000000;sprites[i]=0;protection[i]=0;}return;}
@@ -71,16 +77,16 @@ private:
         tiles.draw_text(text_indices.data(),text_priority.data(),320,224,-1,4,c.top,c.bottom);
         for(unsigned y=c.top;y<=c.bottom;++y)for(unsigned x=0;x<320;++x){unsigned a=y*320+x,b=y*w+x+margin;
             if(text_priority[a]){indices[b]=text_indices[a];priority[b]|=text_priority[a];}}
-        if(corrected && c.mode==0x10)ground.apply(indices,priority,c.road,c.road_control,c.sprites,sprite_rom,c.top,c.bottom,uint8_t(c.roll),assets,w,-int(margin));
+        if(corrected)ground.apply(indices,priority,c.road,c.road_control,bank,sprite_rom,c.top,c.bottom,uint8_t(c.roll),assets,w,-int(margin),anchors);
         std::copy(indices.begin()+c.top*w,indices.begin()+(c.bottom+1)*w,ground_indices.begin()+c.top*w);
         const bool boost=full_throttle_flame(c.mode,c.throttle);
-        decode(c.sprites,sprite_rom,c.top,c.bottom,assets,[&](int x,unsigned y,uint16_t word,Effect kind){
+        decode(bank,sprite_rom,c.top,c.bottom,assets,[&](int x,unsigned y,uint16_t word,Effect kind){
             const unsigned i=y*w+unsigned(x+int(margin));raw[i]=word;
             if(kind==Effect::afterburner&&!boost)kind=Effect::opaque;
             const bool visible=(1<<((word>>12)&3))>priority[i];
             const unsigned pen=!visible?indices[i]:(word&0x400f)==0x400a?indices[i]+palette.num_entries():word&0xfff;
             auto& row=row_fragments[y];row.push_back({argb(palette.pen(pen)),row_heads[i],uint32_t(!visible?Effect::background:(word&0x400f)==0x400a?Effect::shadow:kind),word});row_heads[i]=uint32_t(row.size()-1);
-        },-int(margin),int(w-margin)-1);
+        },-int(margin),int(w-margin)-1,anchors);
         for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){
             background[i]=argb(palette.pen(indices[i]));const auto word=raw[i];
             const bool visible=word!=0xffff&&(1<<((word>>12)&3))>priority[i];

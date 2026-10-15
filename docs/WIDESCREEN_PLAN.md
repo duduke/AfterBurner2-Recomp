@@ -22,23 +22,59 @@ state before each native partial render. `WideScene` renders these snapshots
 without widening the native renderer or writing sprite feedback. Native gameplay,
 object limits, audio and timing remain authoritative.
 
-**Known limits:** the original producer has already rejected some objects before
-snapshot capture. Main scenery rejection at `$8B94..$8BB8`, Sub sprite bounds at
-`$852..$890` and the 192-request cap at `$B628..$B654` remain unchanged. Signed wide
-clipping recovers portions of published descriptors outside the original view;
-it cannot restore discarded descriptors. Outer scenery can pop, and the published
-horizon coverage leaves incomplete correction in the added bands during some
-rolls. Do not fill those gaps by repeating pixels or fitting an invented horizon.
-Full-width visibility and horizon coverage need a separately verified
-producer/projection policy.
+### Wider visibility and roll coverage
 
-Focused checks cover 1,560 native RGB/PCM/time-identical frames, both roll
-directions, exact native-center reconstruction, independent side tile/column
-addressing, road phase, palette frontiers and signed sprite edges. GPU readback
-matches CPU output for all six filters with opaque/translucent effects. These
-checks do not establish every-stage coverage, sustained performance, Windows/Linux
-GPU acceptance, 16:10 or ultrawide support. The remaining release gates below
-still apply.
+A detached presentation observer now recovers requests hidden by the Sub CPU's
+native horizontal bounds. It uses the verified `$7B8..$9E2` projection with wider
+bounds and unwrapped X positions; ROM art, zoom, flips, pitch and interpolation
+remain the source of the image.
+
+Scenery deleted by `$8B94..$8BB8` is retained in private object records. The
+verified `$8AF2..$8C14` update advances those records against current camera
+inputs, including the live shared rotation/position pair, until they leave the
+wider bounds or pass the original depth limit. Retention also covers attract
+and takeoff. Takeoff repeats adjacent cells of the native water field using its
+wave animation and world projection, so the extra width includes wave artwork.
+Native allocator reuse cannot overwrite them. These objects never enter native
+collision, targeting, sound or sprite-request state.
+
+The horizon extends the `$10ED8` generator's exact 16.16 segment increments at
+both ends, using its current ROM frame/flips and previous-frame positions. The
+**Ground → Corrected** option measures these full-width sprites. It
+corrects eligible plain ground fill on the sky side. The enhanced wide plane also
+fills confirmed ground-side sky gaps from an observed native-row ground/sea
+index, including edge holes exposed by translucent clouds. Tiles, terrain,
+aircraft and layer protection remain intact. A clipped marker may use the ROM
+normal across the enhanced wide plane when a real silhouette edge remains
+visible, including central sky holes during inversion. Missing
+silhouettes/source colors remain unfilled. Observed horizon-plane bounds also
+classify banked corners without a local row/column intersection. Original ground
+remains available. See the [screenshot-driven checks](ENGINE_NOTES.md#screenshot-driven-outer-background-coverage-2026-10-15)
+and [rolling scenery/takeoff follow-up](ENGINE_NOTES.md#rolling-scenery-takeoff-waves-and-banked-cloud-corners-2026-10-15).
+
+Native gameplay and spawning remain unchanged. The wider renderer now observes
+the producer before its signed **192-request rejection** and keeps rejected
+requests in detached, dynamic presentation lists. It also recovers accepted
+requests lost by the native 30-entry depth buckets, removing repeated stale
+order entries from the enhanced bank. Native request counts, 256-descriptor
+hardware banks, scaler feedback, object pools and combat rules stay intact.
+This expands rendering capacity, not native spawning or gameplay capacity.
+
+All 23 ordered stage slots and retained natural lifecycle recordings have
+dedicated validation targets (see [coverage and results](ENGINE_NOTES.md#widescreen-capacity-and-stagelifecycle-checks-2026-10-15)). These are finite input
+windows and recordings, not proof of every possible object/input trajectory.
+16:10/ultrawide, sustained performance and Windows/Linux GPU checks remain open.
+Other object controllers still require audit before promising complete visibility
+in every possible scene.
+
+Focused checks include independent MAME projection/scenery comparisons, native
+RGB/PCM/time identity, both wide edges and roll directions, allocator reuse,
+wide-edge retirement, partial palettes, pause/reset and combined feedback
+observers. The legacy snapshot renderer still reconstructs the exact native
+center. Extended visibility may add sprites that overlap that center; it is a
+separate presentation policy. GPU readback checks all six filters and both
+opacity policies against the wide CPU reference. See ENGINE_NOTES for counts,
+logs and exclusions.
 
 ## Proposed first release
 
@@ -62,9 +98,10 @@ Do not ship unseen native-edge disappearance as complete widescreen.
 | 6. 16:9 acceptance | Supported-scene/aspect matrix and sustained performance measurements | Relevant fixtures and rejected mutations, then the complete required profile for release |
 
 Current progress: snapshot export, CPU rendering, published-sprite clipping,
-CPU/GPU effects and the frontend setting are implemented. Pre-publication
-visibility in milestone 3 and full release acceptance in milestone 6 remain
-open; outer corrected-ground coverage in milestone 4 depends on visibility.
+CPU/GPU effects and the frontend setting are implemented. Milestone 3 now includes
+detached scenery retention and wider Sub projection; milestone 4 includes added
+horizon segments and full-width correction. Complete object/scene coverage and
+full release acceptance in milestone 6 remain open.
 
 Each milestone records unsupported scenes and dependencies. New probes or literal
 ports need independent MAME witnesses; side bands have no automatic MAME oracle,
@@ -73,7 +110,7 @@ so validate their addressing/geometry independently and use deliberate mutations
 ## Scope and aspect policy
 
 Separate three choices: simulation resolution (always native 320×224), enhanced
-logical viewport, and physical display scaling. The current frontend presents
+logical viewport, and physical display scaling. The Original viewport presents
 320×224 logical pixels; that ratio is 10:7, not 4:3. Establish pixel-aspect policy
 before selecting wide dimensions rather than silently changing object shapes.
 
@@ -161,9 +198,9 @@ row pitch, zoom, flip, nibble/address wrapping and end markers. Never change the
 native scaler's execution or RAM feedback. Include partially visible sprites at
 both edges and preserve overlap, tile priority and palette shadow termination.
 
-The corrected-ground implementation also has native-width silhouettes and
-column arrays. Generalize those only in the enhanced renderer, preserving its
-sky/terrain role checks. Test sea/terrain at the lower-left and lower-right
+The corrected-ground implementation now has width-aware silhouettes and column
+arrays in the enhanced renderer, preserving its sky/terrain role checks.
+Test sea/terrain at the lower-left and lower-right
 edges during rolls in both directions; a wider horizon must not erase terrain.
 Retain Original ground as the strict center-crop reference.
 
@@ -173,7 +210,8 @@ Keep the existing effect identities and full-throttle flame predicate. Validate
 GPU dispatch bounds, texture limits and border sampling. Under identical feature
 settings, compare wide GPU output with the wide CPU reference. Filters can sample
 new neighboring pixels at the old border; exact center identity is required for
-unfiltered/opaque mode, not assumed for every enhanced filter setting.
+the legacy snapshot reference, not assumed after extending object visibility or
+for every enhanced filter setting.
 
 ### 4. Projection and gameplay visibility
 
@@ -216,11 +254,15 @@ centered Original fallback rather than stretching it.
 
 ## Sprite capacity and custom stages
 
-Neither is a prerequisite for the first widescreen renderer. The hardware sprite
-bank remains 256 descriptors and the current game request capacity remains 192.
-Wider visibility may expose pressure on those limits; measure descriptor demand,
-request rejection and visible omissions before proposing a separate expansion.
-More capacity alone cannot recover objects rejected before publication.
+The hardware sprite bank remains 256 descriptors and the native request capacity
+remains 192. The opt-in wider renderer bypasses those presentation bottlenecks
+with detached producer copies and dynamic descriptor storage. A 512-rejected-
+request fixture exceeds both native limits; a 5,001-descriptor fixture checks the
+dynamic decoder tail. An actual Sub sorter fixture recovers 34 of 64 requests
+from a full final depth bucket without repeating stale native order entries.
+Independent MAME producer fixtures verify the request bytes and signed capacity
+boundary. More render capacity does not recover objects never spawned or already
+rejected by an unaudited object controller; gameplay object allocation stays native.
 
 Custom stages are a later opportunity to design formations, scenery and pacing
 for the added width. Original stages can supply the initial wider view. New spawn

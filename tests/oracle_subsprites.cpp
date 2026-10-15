@@ -16,6 +16,7 @@
 #include <vector>
 #include "roms.hpp"
 #include "engine/osubsprites.hpp"
+#include "hwvideo/wide_projection.hpp"
 
 namespace
 {
@@ -36,7 +37,7 @@ namespace
     struct Region { const char* name; long start; long length; };
 }
 
-int main(int argc, char** argv)
+int main(int argc, char** argv) try
 {
     const std::string path = argc > 1 ? argv[1] : "build/oracle/subsprites.bin";
     std::ifstream in(path, std::ios::binary);
@@ -59,7 +60,7 @@ int main(int argc, char** argv)
     std::vector<uint8_t> before(SHARED), after(SHARED), work(SHARED);
     std::vector<uint8_t> expected(SHARED),other(SHARED),reads(SHARED),writes(SHARED);
     unsigned passes = 0, raced = 0, matched = 0, failed = 0, reported = 0;
-    OSubSprites sprite_pass;
+    OSubSprites sprite_pass;Presentation::WideSpriteProjection projection;unsigned projected=0;
 
     for (;;)
     {
@@ -86,6 +87,24 @@ int main(int argc, char** argv)
         std::fill(reads.begin(),reads.end(),0);std::fill(writes.begin(),writes.end(),0);
         SubBus::Trace trace{reads.data(),writes.data(),nullptr};if(write_sets) bus.trace=&trace;
         sprite_pass.pass(bus);
+        // Independent MAME inputs also pin the detached projection at native
+        // bounds. Compare fields the original transform writes; byte 12 and
+        // request-offset word 7 are preserved scratch/producer metadata.
+        const long req_base=offset_of(r32(before.data(),0x7c08)),sorted_base=offset_of(r32(before.data(),0x7c18));
+        const long count_base=offset_of(r32(before.data(),0x7c10));
+        if(!(before[0x3a]&1)&&req_base>=0&&sorted_base>=0&&count_base>=0){
+            const unsigned count=r16(before.data(),count_base);
+            for(unsigned n=0;n<count&&n<255;++n){const unsigned request=req_base+unsigned(work[0x7d00+n])*16;
+                if(request+16>before.size()||size_t(sorted_base)+n*16+16>after.size())throw std::runtime_error("projection fixture range");
+                auto result=projection.project(std::span(before).subspan(request,16),before,{roms.subcpu.rom,roms.subcpu.length},0);
+                const unsigned dst=sorted_base+n*16;
+                // Race filtering below remains authoritative for whole passes.
+                if(write_sets){bool race=false;for(size_t i=0;i<SHARED;++i)race|=reads[i]&&other[i];if(race)break;}
+                if(result.descriptor[0]&0x40){if(!(after[dst]&0x40))throw std::runtime_error("detached native projection hide differs from MAME");}
+                else for(unsigned k=0;k<14;++k)if(k!=12&&result.descriptor[k]!=after[dst+k])throw std::runtime_error("detached native projection differs from MAME");
+                ++projected;
+            }
+        }
         if(write_sets) {
             bool race=false;for(size_t i=0;i<SHARED;++i) race|=reads[i]&&other[i];
             if(race) {++raced;continue;}
@@ -146,5 +165,7 @@ int main(int argc, char** argv)
 
     std::cout << "Sub CPU sprite pass vs arcade: " << passes << " passes, " << matched << " identical, "
               << failed << " different, " << raced << " skipped (inputs changed mid-pass)\n";
+    std::cout<<"Detached native projection: "<<projected<<" MAME descriptors identical\n";
     return failed == 0 && matched > 0 ? 0 : 1;
 }
+catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

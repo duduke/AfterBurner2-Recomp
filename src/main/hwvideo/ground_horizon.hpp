@@ -55,31 +55,56 @@ public:
             if(left[y]<0 || int(x)<left[y])left[y]=int(x);
             right[y]=std::max(right[y],int(x));
         }
-        bool sky(unsigned x,unsigned y,int nx,int ny)const {
+        bool sky(unsigned x,unsigned y,int nx,int ny,bool fallback=false)const {
             // Require agreement wherever both silhouettes exist. This fills
             // visible sky beyond a clipped strip without cutting into terrain.
-            if(measured){nx=rows[y].direction();ny=columns[x].direction();}
+            if(measured){const int rx=rows[y].direction(),cy=columns[x].direction();nx=rx?rx:fallback?nx:0;ny=cy?cy:fallback?ny:0;}
             const int xedge=nx>0?left[y]:right[y],yedge=ny>0?upper[x]:lower[x];
             const bool known_x=nx && xedge>=0,known_y=ny && yedge>=0;
             return (known_x||known_y) && (!known_x||(nx>0?int(x)<xedge:int(x)>xedge)) &&
                 (!known_y||(ny>0?int(y)<yedge:int(y)>yedge));
         }
+        bool ground(unsigned x,unsigned y,int nx,int ny)const {
+            if(measured){nx=rows[y].direction();ny=columns[x].direction();}
+            const int xedge=nx>0?right[y]:left[y],yedge=ny>0?lower[x]:upper[x];
+            const bool known_x=nx&&xedge>=0,known_y=ny&&yedge>=0;
+            return (known_x||known_y)&&(!known_x||(nx>0?int(x)>xedge:int(x)<xedge))&&(!known_y||(ny>0?int(y)>yedge:int(y)<yedge));
+        }
     };
-    // Change only plain road-0 fill strictly beyond the sky-facing edge.
-    // No pixel on or below the horizon silhouette is eligible.
+    // Correct plain road-0 sky fill beyond the sky-facing edge. New side bands
+    // may also inherit observed native ground fill beyond the ground-facing edge.
     static unsigned correct(std::span<uint16_t> indices,std::span<const uint8_t> priority,
                             std::span<const uint8_t> road,unsigned top,unsigned bottom,
-                            int nx,int ny,const Profile& profile) {
+                            int nx,int ny,const Profile& profile,int native_left=0) {
         const unsigned width=profile.upper.size();
         if(indices.size()!=width*224 || priority.size()!=indices.size() || road.size()!=0x1000 || top>bottom || bottom>=224)throw std::invalid_argument("Invalid ground correction clip");
         if(!nx && !ny)return 0;
+        const bool extend_plane=native_left<0||native_left+int(width)>320;
+        // Project the observed strip envelope onto its ROM-derived normal.
+        // Rows/columns with no strip intersection still belong to this plane.
+        int plane_min=INT32_MAX,plane_max=INT32_MIN;
+        if(extend_plane&&profile.measured)for(unsigned y=0;y<224;++y)if(profile.left[y]>=0){
+            for(int x:{profile.left[y],profile.right[y]}){const int v=nx*x+ny*int(y);plane_min=std::min(plane_min,v);plane_max=std::max(plane_max,v);}}
+        const auto ground_side=[&](unsigned x,unsigned y){return profile.ground(x,y,nx,ny)||(plane_max!=INT32_MIN&&nx*int(x)+ny*int(y)>plane_max);};
         unsigned changed=0;
         for(unsigned y=top;y<=bottom;++y){
             const auto word=[&](unsigned i){return unsigned(road[2*i])<<8|road[2*i+1];};
             const auto data=word(y);if(data&0xa00)continue;
             const uint16_t sky=0x1720^((word(0x600+y)>>8)&15);
-            for(unsigned x=0;x<width;++x){const auto i=y*width+x;
-                if(!priority[i] && indices[i]>=0x1700 && indices[i]<0x1708 && profile.sky(x,y,nx,ny)){indices[i]=sky;++changed;}
+            // Extend the wide ground plane using an observed native-row index.
+            // Include native edge holes exposed by translucent art; the
+            // original 320-wide presentation keeps its existing policy.
+            const int first=std::max(0,-native_left),last=std::min(int(width),320-native_left);
+            int left_ground=-1,right_ground=-1;
+            if(extend_plane)for(int x=first;x<last;++x){const unsigned i=y*width+x;
+                if(!priority[i]&&indices[i]>=0x1700&&indices[i]<0x1708&&ground_side(x,y)){if(left_ground<0)left_ground=indices[i];right_ground=indices[i];}}
+            for(unsigned x=0;x<width;++x){const auto i=y*width+x;const int original=int(x)+native_left;
+                // A clipped strip can lose one marker beyond the screen. Use
+                // its silhouette/ROM normal across the enhanced wide plane,
+                // including central holes exposed during inversion.
+                if(!priority[i] && indices[i]>=0x1700 && indices[i]<0x1708 && (profile.sky(x,y,nx,ny,extend_plane)||(extend_plane&&plane_min!=INT32_MAX&&nx*int(x)+ny*int(y)<plane_min))){indices[i]=sky;++changed;}
+                else if(extend_plane&&!priority[i]&&indices[i]>=0x1720&&indices[i]<0x1730&&ground_side(x,y)){
+                    const int ground=original<0?left_ground:right_ground;if(ground>=0){indices[i]=ground;++changed;}}
             }
         }
         return changed;
@@ -87,13 +112,13 @@ public:
     unsigned apply(std::span<uint16_t> indices,std::span<const uint8_t> priority,
                    std::span<const uint8_t> road,uint8_t control,std::span<const uint8_t> bank,
                    std::span<const uint8_t> sprites,unsigned top,unsigned bottom,uint8_t angle,
-                   const EffectAssets& assets,unsigned width=320,int native_left=0)const {
-        if(bank.size()!=0x1000)throw std::invalid_argument("Invalid horizon sprite bank");
+                   const EffectAssets& assets,unsigned width=320,int native_left=0,std::span<const int> anchors={})const {
+        if(bank.empty()||bank.size()%16||bank.size()>0x10000)throw std::invalid_argument("Invalid horizon sprite bank");
         if(control!=4)return 0;
         // This is a copy: the hardware's descriptor/word-7 feedback is untouched.
-        std::array<uint8_t,0x1000> horizon{};std::copy(bank.begin(),bank.end(),horizon.begin());
+        std::vector<uint8_t> horizon(bank.begin(),bank.end());
         unsigned selected=0;
-        for(unsigned slot=0;slot<256;++slot){std::array<uint16_t,8>d{};for(unsigned w=0;w<8;++w)d[w]=uint16_t(bank[slot*16+2*w])<<8|bank[slot*16+2*w+1];
+        for(unsigned slot=0;slot<bank.size()/16;++slot){std::array<uint16_t,8>d{};for(unsigned w=0;w<8;++w)d[w]=uint16_t(bank[slot*16+2*w])<<8|bank[slot*16+2*w+1];
             if(d[0]&0x8000)break;
             if(!(d[0]&0x5000) && matches(d)){++selected;continue;}
             horizon[slot*16]|=0x50;
@@ -101,10 +126,10 @@ public:
         if(!selected)return 0;
         auto [nx,ny]=normal(angle);
         Profile profile(width);std::vector<uint8_t> pens(width*224);
-        decode(horizon,sprites,0,223,assets,[&](int x,unsigned y,uint16_t raw,Effect){pens[y*width+unsigned(x-native_left)]=raw&15;},native_left,native_left+int(width)-1);
+        decode(horizon,sprites,0,223,assets,[&](int x,unsigned y,uint16_t raw,Effect){pens[y*width+unsigned(x-native_left)]=raw&15;},native_left,native_left+int(width)-1,anchors);
         for(unsigned y=0;y<224;++y)for(unsigned x=0;x<width;++x)if(pens[y*width+x])profile.pixel(x,y,pens[y*width+x]);
         profile.measured=true;
-        return correct(indices,priority,road,top,bottom,nx,ny,profile);
+        return correct(indices,priority,road,top,bottom,nx,ny,profile,native_left);
     }
 };
 }

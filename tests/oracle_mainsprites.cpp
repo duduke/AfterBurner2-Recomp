@@ -9,6 +9,7 @@
 #include <vector>
 #include "roms.hpp"
 #include "engine/omainsprites.hpp"
+#include "hwvideo/wide_request.hpp"
 
 namespace
 {
@@ -39,7 +40,7 @@ int main(int argc, char** argv) try
     MainBus::Memory memory;
     constexpr size_t N = MainBus::MEMORY_BYTES;
     std::vector<uint8_t> before(N), after(N), expected_w(N), other_w(N), reads(N), writes(N);
-    unsigned total=0, identical=0, failed=0, skipped=0, reported=0, active=0;
+    unsigned total=0, identical=0, failed=0, skipped=0, reported=0, active=0,producer_copies=0,producer_rejections=0;
     std::vector<std::pair<uint32_t,unsigned>> entries;
     OMainSprites setup;
     while (in.peek() != std::char_traits<char>::eof())
@@ -75,6 +76,22 @@ int main(int argc, char** argv) try
         if (race) { ++skipped; continue; }
         active += std::any_of(expected_w.begin(),expected_w.end(),[](uint8_t n){ return n!=0; });
         unsigned differences = events!=expected_events;
+        if(entry==0xb628){
+            const auto at=MainBus::memory_offset(0x2a3cf0);
+            const auto count=uint16_t(before[at]<<8|before[at+1]);
+            const bool rejected=Presentation::native_request_rejected(count);
+            const bool written=expected_w[at]||expected_w[at+1];
+            if(rejected==written)throw std::runtime_error("detached request rejection differs from MAME");
+            if(rejected)++producer_rejections;
+            else {
+                const auto object=MainBus::memory_offset(be32(h+12));
+                const auto q=Presentation::wide_request(std::span(before).subspan(object,21));
+                const auto ptr=MainBus::memory_offset(0x2a3c04);
+                const auto dst=MainBus::memory_offset(be32(before.data()+ptr)+int16_t(uint16_t(count<<4)));
+                if(!std::equal(q.begin(),q.end(),after.begin()+dst))throw std::runtime_error("detached request copy differs from MAME");
+                ++producer_copies;
+            }
+        }
         for (size_t i=0;i<N;++i)
             differences += writes[i]!=expected_w[i] || (expected_w[i] && memory.bytes[i]!=after[i]);
         if (differences)
@@ -98,6 +115,7 @@ int main(int argc, char** argv) try
               << "Coverage: " << active << " calls with writes; entries";
     for (auto e:entries) std::cout << ' ' << std::hex << e.first << std::dec << '=' << e.second;
     std::cout << '\n';
+    std::cout << "Detached producer vs MAME: "<<producer_copies<<" exact copies, "<<producer_rejections<<" native capacity rejections\n";
     return total && identical && !failed ? 0 : 1;
 }
 catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

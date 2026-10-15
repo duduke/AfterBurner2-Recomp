@@ -1,4 +1,6 @@
+#include "wide_ground_reference.hpp"
 #include "hwvideo/wide_scene.hpp"
+#include "hwvideo/wide_projection.hpp"
 #include "frontend/sprite_filter.hpp"
 #include <iostream>
 #include <cstring>
@@ -55,5 +57,34 @@ int main()try {
         unsigned visible=0;for(unsigned x=0;x<398;++x)if((right?x>=359:x<39)&&view.sprites[80*398+x])++visible;
         require(visible>0,"sprite disappeared at a native edge instead of a wide edge");require(edge.sprites==bank,"wide sprite feedback write");
     }
-    std::cout<<"Wide geometry: independent planar-ROM side/column wrap, partial palettes, both signed sprite edges and immutable feedback passed\n";
+    // An actual ROM horizon asset provides the size/zoom/terminator. Only
+    // viewport policy changes: hidden at native bounds, visible on both sides.
+    std::array<uint8_t,0x8000> shared{};Presentation::WideSpriteProjection projector;
+    const uint32_t frame=uint32_t(roms.maincpu.rom[0x11000])<<24|uint32_t(roms.maincpu.rom[0x11001])<<16|uint32_t(roms.maincpu.rom[0x11002])<<8|roms.maincpu.rom[0x11003];
+    std::array<uint8_t,16> request{};auto reqword=[&](unsigned i,uint16_t v){request[i]=v>>8;request[i+1]=v;};
+    reqword(0,0x7f);reqword(6,100);request[3]=0xe8;for(unsigned i=0;i<4;++i)request[12+i]=frame>>(24-i*8);
+    Presentation::EffectAssets effect_assets({roms.maincpu.rom,roms.maincpu.length},{roms.subcpu.rom,roms.subcpu.length});
+    for(bool right:{false,true}){unsigned witnesses=0;
+        for(int distance=160;distance<=210;++distance){reqword(4,uint16_t(right?distance:-distance));auto narrow=projector.project(request,shared,{roms.subcpu.rom,roms.subcpu.length},0),wide=projector.project(request,shared,{roms.subcpu.rom,roms.subcpu.length},39);
+            if(!(narrow.descriptor[0]&0x40)||(wide.descriptor[0]&0x50))continue;
+            std::array<uint8_t,32> bank{};std::copy(wide.descriptor.begin(),wide.descriptor.end(),bank.begin());bank[16]=0x80;
+            std::array anchors{wide.x,INT32_MIN};unsigned pixels=0,wrong_side=0;
+            Presentation::decode(bank,{roms.sprites.rom,roms.sprites.length},0,223,effect_assets,[&](int x,unsigned,uint16_t,Presentation::Effect){++pixels;if(right?x<0:x>=320)++wrong_side;},-39,358,anchors);
+            if(pixels){require(!wrong_side,"unwrapped wide sprite appeared on the opposite edge");++witnesses;}
+        }
+        require(witnesses,"native-hidden sprite projection did not recover both wide edges");
+    }
+    // A real ROM strip, not a screen-color heuristic: non-flight scenes use
+    // the same horizon silhouettes and must receive the same safe correction.
+    auto horizon_clip=road_clip;horizon_clip.sprites.fill(0);horizon_clip.sprites[0]=0x80;
+    for(int x=-192;x<=192;x+=24){reqword(4,uint16_t(x));auto p=projector.project(request,shared,{roms.subcpu.rom,roms.subcpu.length},39);
+        if(!(p.descriptor[0]&0x50))horizon_clip.extended_sprites.push_back({p.descriptor,p.x,0,true,3});}
+    for(unsigned mode:{1u,15u,16u}){horizon_clip.mode=mode;Presentation::WideScene plain(roms),fixed(roms);
+        plain.render(std::span(&horizon_clip,1),1,false);fixed.render(std::span(&horizon_clip,1),1,true);auto a=plain.view(),b=fixed.view();unsigned changed=0,left=0,right=0;
+        for(unsigned i=0;i<a.ground_indices.size();++i)if(a.ground_indices[i]!=b.ground_indices[i]){++changed;left+=i%398<39;right+=i%398>=359;
+            require(valid_wide_ground_change(a,b,i),"non-flight correction changed terrain");}
+        require(changed&&left&&right,"non-flight outer sky-fill missing");
+        require(std::equal(a.sprites.begin(),a.sprites.end(),b.sprites.begin())&&std::equal(a.protection.begin(),a.protection.end(),b.protection.begin()),"non-flight correction changed protected layers");
+    }
+    std::cout<<"Wide geometry: independent planar-ROM side/column wrap, partial palettes, both signed sprite edges, non-flight correction and immutable feedback passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

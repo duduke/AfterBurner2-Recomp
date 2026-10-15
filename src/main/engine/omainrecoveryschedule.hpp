@@ -3,7 +3,7 @@
 #include <cstdint>
 // Generated instruction manifest; shared capture/coverage definitions.
 struct OMainRecoveryInstruction { uint32_t pc; unsigned phases; int offset; unsigned tail,source,branch; };
-inline constexpr std::array<OMainRecoveryInstruction,12404> main_recovery_instructions{{
+inline constexpr std::array<OMainRecoveryInstruction,12405> main_recovery_instructions{{
     {0x402,4,0,0,0,0},
     {0x406,4,0,0,0,0},
     {0x40c,2,0,0,0,0},
@@ -12408,6 +12408,7 @@ inline constexpr std::array<OMainRecoveryInstruction,12404> main_recovery_instru
     {0xe5a4,3,0,0,0,0},
     {0xe5aa,4,0,0,0,0},
     {0xe5ae,2,-1,0,0,2},
+    {0x15c10,4,0,0,0,0},
 }};
 inline const OMainRecoveryInstruction* main_recovery_instruction(uint32_t pc) {
     for(const auto& i:main_recovery_instructions)if(i.pc==pc)return &i;return nullptr;

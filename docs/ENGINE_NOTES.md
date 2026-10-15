@@ -9835,3 +9835,653 @@ and about 59.6 warm simulation/display FPS:
 restart remains explicitly logged. The reproducible dependency builder finishes
 with a matching archive checksum and copied notices in
 `build/oracle/spatial-audio/dependency-build-final.log`.
+
+## Reported enemy-coordinate overflow stop at `$15C10` (2026-10-14)
+
+Live play reported `unported caller instruction at PC 89104`, possibly during
+stage 18. Decimal 89104 is `$15C10`, `SUB.W D0,34(A5)`. The enemy movement
+controller adds velocity to its coordinate at `$15C0A`; `$15C0E` skips the
+subtraction when signed overflow did not occur. The subtraction restores the
+previous coordinate on overflow. Normal-path stage checks did not establish
+coverage of this fallback. The adjacent `$15C1E` rollback was already translated.
+
+The fix appends one literal instruction using the existing word-subtraction
+flags and bus-phase helpers. All 12,404 retained recovery instruction bodies
+remain byte-identical; no generator, scheduler, device or gameplay policy is
+changed. Independent original-ROM fixtures exercise both CCR extremes and
+signed overflow, unsigned borrow, zero and boundary operands: **14/14 identical,
+zero differences/skips, 56 bus phases**. Three deliberate subtraction,
+destination and prefetch mutations reject after a passing baseline. All 143
+earlier recovery mutation definitions remain unchanged. Capture and
+mutation logs remain under ignored `build/oracle/enemy_overflow.*`.
+
+The previous complete corpus is preserved as
+`build/oracle/cpu_recovery_before_enemy_overflow.bin`; the 14 verified records
+are merged without modifying existing records. Complete recovery passes
+**12,405 PCs, 1,255 branches with both outcomes and 77,954 MAME fixtures**, zero
+differences/skips, at `build/workflow/20261014T195913.455584Z/`. An earlier replay
+started before the atomic corpus merge finished and failed the missing-PC gate;
+the final replay above uses the completed merge and passes.
+
+`test` (42.42 s) and `verify-stage1` (186.86 s) pass at
+`build/workflow/20261014T195710.518285Z/`; `native-release` passes at
+`build/workflow/20261014T195808.858780Z/` and the standard build at
+`build/workflow/20261014T200035.100811Z/`.
+The directed stage-18 sweep completes **600/600 input-window frames** at
+`build/workflow/20261014T195841.067358Z/`. This is supplementary stage coverage,
+not a reproduction of the user's exact physical inputs or proof that the sweep
+executed `$15C10`. The rebuilt release passes a 120-frame SDL dummy smoke
+(`build/oracle/enemy_overflow_smoke.log`). Older unchanged mutation results remain
+the preceding checkpoint's evidence; these focused checks do not claim a fresh
+full-suite or whole-credit CPU/device/RGB/audio acceptance pass.
+
+The retained Easy / 99-credit physical recording completes all **74,452 frames**
+in 832.01 s at `build/workflow/20261014T195951.728689Z/`. All ten named transition
+observation columns match the unchanged MAME reference **74,452/74,452**, zero
+differences/skips; the ending/state gate and all nine observation/ending mutations pass
+at `build/workflow/20261014T201350.458806Z/`. The recording crosses ordered stage
+18 and reaches the ending, ranking and return to attract. It is the existing
+declared trajectory, not the user's unrecorded session, and does not extend
+acceptance to continuous whole-credit CPU/bus/device/RGB/audio comparison.
+
+## Wider object visibility and horizon coverage (2026-10-15)
+
+The 398×224 preview now has a detached visibility policy for the identified
+native-edge limits. `WideVisibility` observes completed native entry/bus phases;
+its private copies never supply CPU execution or write native RAM, math chips,
+request counts, feedback, collision/targeting state or sound commands.
+
+`WideSpriteProjection` copies the verified Sub `$7B8..$9E2` transform. Only its
+horizontal visibility/clip bounds extend by 39 pixels; unwrapped X anchors avoid
+nine-bit coordinate wrap at the added right edge. Native request depth order,
+flip/zoom/pitch, palette metadata and `$726` interpolation are preserved. The
+no-sort path retains the previous full projection and updates its half-frame
+positions. Dynamic presentation descriptor banks can include extra render-only
+objects; the native producer's 192-request cap remains unchanged.
+
+The Main `$8B94..$8BB8` scenery cull retains a private 64-byte object
+and owned size record. Its shared world pair is read from the current camera
+state, rather than retained as object-owned data. The verified `$8AF2..$8C14` update advances that copy with
+current camera inputs until it leaves the wider bounds or passes the native
+near-depth limit. Native slot reuse cannot overwrite it. Stage/mode changes and
+restart clear the retained objects. Capture disable clears the observer; enabling
+mid-session starts with subsequent publications, without reconstructing earlier
+already-freed objects. Other object/despawn controllers and capacity rejection
+still need coverage before promising complete visibility in every scene.
+
+For the horizon, the observer captures `$10FBA` after `$10ED8` has stepped its
+fifteen parts. Extra endpoints use the actual 16.16 X/Y increments, current ROM
+frame/quadrant flips and previous-frame positions. This extends the procedural
+strip instead of repeating border pixels or fitting a guessed line. Corrected
+ground measures the extended sprites across the full width and still replaces
+only plain `$1700..$1707` fill on the sky side with the row's `$1720..$172F` sky
+index. Terrain/tile indices, aircraft, shadows and layer protection stay intact.
+Original ground and the legacy snapshot renderer remain available as references;
+extended visibility can add sprites overlapping the original center.
+
+Independent retained MAME checks pin the copied math before widening:
+
+- Sub directed: **240/240 passes identical**, zero skips; **7,200** detached
+  descriptors identical. Boot: **1,199/1,200**, one input-race skip; **103,617**
+  detached descriptors identical. Gameplay: **1,198/1,200**, two input-race skips;
+  **120,320** detached descriptors identical. Original comparison regions,
+  write-set checks and race gates remain intact.
+- Scenery: **377** accepted natural and **18** accepted directed updates match
+  all 64 object bytes from MAME. The same windows include **18/38** native culls;
+  skipped records remain **12/8**, respectively, due to other-CPU input writes.
+  The final Main replay also checks kept/culled status independently against
+  MAME's `$9556` free-list writes (`20261014T211702.624331Z/`); the height mutation
+  still rejects with that stronger gate in
+  `build/oracle/widescreen/visibility-mutations/mame-scenery-height-final-run.log`.
+- Five new negative controls reject early native-bound retirement, a short
+  horizon, a native-memory alias, wrong Sub pitch and wrong Main vertical
+  projection. The last two fail the independent MAME comparisons. All six
+  earlier wide controls remain, plus the new narrow-bound and wrapped-X controls.
+
+Final focused `test` (4.41 s) and `verify-stage1` (146.51 s) pass at
+`build/workflow/20261014T205411.814658Z/`. Wide capture preserves **1,560 native
+RGB/PCM/time frames**, and the legacy scene reconstructs their exact centers.
+The extended view records **5,967 recovered descriptor observations** (including
+**4,122 retained scenery** and **616 added horizon** observations), **2,556,982
+side-pixel differences**, and **424,392 eligible sky-fill corrections**. Outer
+correction counts for the two ROM-measured roll-normal signs are
+**101,668/64,908**; both are required by the test. Allocator-reuse/retirement,
+immutable native memory/time, pause/reset/disable and shared observers pass.
+
+Additional directed ordered stage slots **6, 12 and 18** each pass 360-frame
+left/right input windows, with native RGB/PCM/time unchanged and terrain-safe
+correction. Including their boots, **2,880 counted frames** match. These are
+stage-skip fixtures, not natural progression; their 180/180 direction windows
+are delivered inputs, not a claim of full rolls. Toggling feedback capture keeps
+the wide observer active. They add **1,044,369 eligible sky-fill corrections**
+and **8,303 retained scenery observations**. Sea and land captures for both
+roll directions were inspected locally; assets/captures remain ignored.
+
+MAME/geometry/mutation logs are
+`build/workflow/20261014T204143.211006Z/`,
+`20261014T204142.087532Z/` and the final
+`20261014T210448.031149Z/`. A first MAME mutation correctly detected bad pitch
+but aborted through an uncaught test exception; the fixture executable now
+reports that semantic failure with exit 1, and all five controls pass in the
+final run. No passing baseline or historical coverage was removed.
+
+The updated real-Metal fixture matches CPU output **12/12** across all six
+filters and both opacity policies, **5,527,424 pixels**, zero skips:
+`build/oracle/widescreen/visibility-gpu-final.log`. Make release and standard
+builds pass at `20261014T204920.816704Z/` and `20261014T210354.145699Z/`.
+CMake product/geometry/scene/stage builds and geometry CTest pass in
+`build/oracle/widescreen/cmake-visibility*.log`. A finite 240-frame Metal wide
+launch with Corrected ground passes; warmed samples are about **59.3–59.7 fps**,
+**13.6 ms board** and **1.8–1.9 ms wide scene**. Its initial display rate is lower
+while warming up. This is a finite smoke, not sustained/peak-stage acceptance:
+`build/oracle/widescreen/visibility-metal-smoke.log`.
+
+These are focused presentation checks, not a fresh complete `required` run or
+whole-credit CPU/device/RGB/audio acceptance. The prior full core/device profile
+and the `$15C10` recovery results above retain their declared scopes. Complete
+object/scene/lifecycle coverage, Windows/Linux hardware, sustained performance,
+16:10/ultrawide and removal of the native request cap remain open.
+
+## User-reported macOS completion (2026-10-15)
+
+The user reported finishing the game from start to finish on their Mac with
+the current saved preferences. The files were read from
+`~/Library/Application Support/AfterBurner2-Recomp/AfterBurner2/` after that report;
+they describe the reported configuration, rather than a captured runtime trace.
+
+| Area | Saved configuration |
+| --- | --- |
+| DIP switches | Normal difficulty; three ships per credit; Ship Increase off |
+| Video | 16:9 preview; Corrected ground; pixel-art scaling; ScaleFX 3X sprites; windowed; FPS display |
+| Translucency | Clouds, trails, explosions and full-throttle afterburner enabled |
+| Music | All six replacement tracks mapped; music/effects and per-track gains at 100% (replacement music retains the -12 dB baseline) |
+| Audio output | Headphones HRTF requested; MacBook Pro Speakers selected; default resampler |
+| Rumble | Enabled; body and trigger strengths 50%; cannon, missile, impact and boost enabled; motor swap off; saved Xbox controller selected |
+
+This is successful manual macOS playthrough evidence with three starting ships
+and Normal difficulty. The report does not specify continues, executable/version,
+frame timings or observed audio/HRTF status. No input recording or independent
+MAME comparison accompanies this run, so reproducible whole-credit acceptance
+and other platform/configuration coverage remain open.
+
+## Local capture deduplication (2026-10-15)
+
+Audited all seventeen `cpu_recovery*.bin` files against the current complete
+corpus. Eleven historical files had exact plan and payload prefixes in
+`cpu_recovery_complete.bin`: the 9,077-, 9,540-, 10,012-, 10,326- and 10,491-PC
+snapshots, `pre_natural`, `natural_verified`, and the four `before_*` snapshots.
+Removed those duplicate physical files, reclaiming **99,828,453,034 bytes
+(92.97 GiB)**. All their original fixture bytes remain in the retained corpus;
+no fixture or mutation coverage was reduced. Different-plan baseline, native
+and release corpora remain, as do coverage reports, merge provenance, original
+increment captures, logs and unrelated whole-host recordings.
+
+The local audit records each original SHA-256 and reconstruction ranges, with
+a restoration helper described in [the workflow](WORKFLOW.md#capture-discipline).
+The recovery manifest/branch gate passes before and after deletion: **12,405
+PCs, 1,255 branches with both outcomes, 77,954 fixtures across two active
+captures**. This is a storage-only audit; no new engine replay or acceptance
+claim is implied.
+
+An additional exact-file audit of captures/traces larger than 64 MiB found
+36 duplicate copies across 16 groups. On this Mac's filesystem, replaced each
+duplicate with an APFS copy-on-write clone of its identical peer, preserving
+every filename, byte and modification timestamp. Independent-write behavior was
+tested first; subsequent writes to one clone do not modify its peer. This freed
+another **18,774,145,037 bytes (17.48 GiB)**, confirmed by filesystem available
+space, without changing active fixture paths. Local hashes and sharing records
+are in `build/cleanup/exact-duplicates.json` and `shared-exact-files.json`.
+The 6.81 GiB `cpu_recovery_9077.bin` historical snapshot was also restored and
+matched its original SHA-256 before removing that redundant physical copy again.
+Total capture storage reclaimed is **118,602,598,071 bytes (110.46 GiB)**.
+
+## Widescreen capacity and stage/lifecycle checks (2026-10-15)
+
+The opt-in wider observer now samples Main `$B628` before the native signed
+`$C0` request rejection. `wide_request.hpp` copies the verified producer format:
+object bytes 0–15, with request byte 12 replaced by object byte 20. It records
+both accepted and rejected submissions, keyed to the native publication/request
+buffer. Native counters, allocation, combat rules, bus phases and hardware
+sprite banks are unchanged.
+
+At the matching Sub pass, submissions travel with the actual sorted bank. At
+latch, the enhanced bank preserves native descriptors/metadata, removes stale
+repeated request offsets from a full depth bucket and recovers requests missing
+from the native bank. Capacity rejects and bucket drops have separate provenance
+kinds (4 and 5). Extra descriptors use the already verified wider projection,
+interpolation and stable depth insertion. Dynamic decoder storage also removes
+the former presentation-only 64 KiB descriptor-bank guard; native hardware banks
+remain bounded. This expands visible rendering capacity without generating new
+gameplay objects or changing the original object pools.
+
+Publication replacement and reset clear detached submissions. Enabling during
+a Sub pass preserves uncaptured native slots, including the no-sort/interpolated
+pass, until their projection is available. Previously default-filled leading
+slots could masquerade as request zero; validity now gates both replacement and
+duplicate detection.
+
+Independent retained MAME producer checks pass 1,201/1,201 records with zero
+skips (`build/workflow/20261015T080048.451839Z/`). The directed set includes
+the 191/192/193 boundary and reports 291 exact copies and 290 rejected calls.
+The request helper and original append port are unchanged after that pass.
+
+Capacity fixtures retain 512 rejected requests while the native counter stays
+192, recover 34 missing requests from the real Sub sorter's final 30-entry depth
+bucket without duplicates, and render the last entry of a 5,001-descriptor bank.
+They also check publication lifetime, reset, mid-pass enabling and immutable
+native RAM/time. Existing scenery, horizon and MAME arithmetic controls remain;
+new controls discard capacity/bucket recovery, retain stale duplicates, replace
+uncaptured slots, reinstate the decoder bound, corrupt producer metadata and move
+the signed capacity boundary.
+
+`wide_stage_visibility` covers all 23 ordered ROM slots, 360 input-window frames
+per slot, both bank-input directions, pitch and weapons, then pause, three
+Original/Wide cycles and cold restart. Directed stage setup/wait intervals are
+not counted as natural progression or compared by that test. The compared
+windows require native RGB/PCM/time identity, complete wider rows and safe ground
+correction. Their legacy 320-wide reconstruction must also match native pixels.
+
+`wide_lifecycle_visibility` uses the retained ending, neutral, continue and
+weapons physical recordings from cold boot. Each frame compares all ten retained
+MAME observation columns, reconstructs the original image exactly and renders
+both wider ground policies, preserving terrain, sprites and protection. The
+ending gate requires all 23 natural flight indices, all 13 observed carrier
+selectors, all eight refuel selectors and the ending/ranking/attract modes.
+A changed reference mode is a deliberate failing comparison control. CMake
+registers all four recordings as separate tests.
+
+These are finite directed windows and retained natural paths, not every possible
+input trajectory, alternate lifecycle or hardware configuration. MAME transition
+column comparison is not continuous whole-credit CPU/device/RGB/audio acceptance.
+Remaining pre-publication object controllers, custom stages/objects, other
+aspects, physical Windows/Linux GPU checks and sustained performance remain
+separate work. All generated screenshots, fixtures and logs stay ignored.
+
+Focused final-code checks: the capacity/mid-pass fixtures and 1,560-frame wide
+scene comparison pass in the final integration run. It preserves native
+RGB/PCM/time and exact legacy reconstruction, with 6,497 recovered/projected
+descriptor observations and unchanged eligible ground-correction counts
+(424,392; outer roll-sign witnesses 101,668/64,908). The updated scene fixture
+passes GPU readback **12/12**, all six filters and both opacity policies,
+**5,527,424 pixels**, zero skips:
+`build/oracle/widescreen/capacity-metal-gpu.log`. Display-service access was
+required outside the macOS sandbox; the first sandboxed launch had no displays.
+The rebuilt release completes a bounded 240-frame wider/Corrected/all-effects
+launch in `capacity-metal-smoke.log`. This is a smoke, not sustained performance.
+Make release build passes at `build/workflow/20261015T083151.243226Z/`.
+CMake builds both new replay/sweep executables; its focused stage-12 run passes
+978 counted native frames, all 360 legacy image reconstructions and the
+pause/viewport/restart checks (`capacity-cmake-build.log`,
+`capacity-cmake-stage12.log`). The altered-reference control rejects as expected.
+
+Visual inspection of the first all-stage sweep found an additional canyon issue
+in slots 8/17: isolated gradient/ground blocks appeared in the outer bands.
+A controlled stage-8 replay removed each extension class in turn; only removing
+added horizon descriptors removed the blocks (`capacity-canyon-diagnostic.png`).
+The controller could update its fifteen positions without actually submitting
+the strip for drawing. The observer now checks submissions from those native
+object slots before extending that strip. A dedicated inactive-publication
+fixture and rejected mutation cover that distinction. The focused stage-8
+replay still matches native RGB/PCM/time and legacy pixels, and its capture is
+clean (`capacity-canyon-fixed.png`, `capacity-stage8-final.log`). No native
+controller behavior or terrain data was changed; the affected stage/integration
+and oracle checks are repeated after this presentation-only fix.
+
+After the canyon fix, final `test` passes (5.44 s) at
+`build/workflow/20261015T090006.500451Z/`, and the complete `verify-stage1`
+target passes (885.08 s) at `build/workflow/20261015T090012.142240Z/`.
+The repeated **23-slot sweep** preserves **22,494 counted native RGB/PCM/time
+frames**, including **8,280 pixel-exact legacy reconstructions**, and passes
+pause, repeated viewport changes and cold restart in every slot. It records
+**17,115,517** eligible sky-fill corrections with protected terrain/sprite layers
+unchanged and **49,613** retained-scenery descriptor observations. These are
+observations across frames, not unique extra objects. The setup/skip intervals
+remain excluded from the counted comparison. The surrounding 781-frame session,
+1,800-frame music, 1,560-frame ground and 4,200-frame feedback checks also pass.
+
+Final release rebuild passes (45.90 s) at
+`build/workflow/20261015T090109.896831Z/`. Updated GPU replay again matches
+**12/12**, **5,527,424 pixels**, zero skips (`capacity-metal-gpu-final.log`), and
+the bounded release launch passes (`capacity-metal-smoke-final.log`). Final
+CMake builds pass; its stage-17 canyon check also passes all 978 counted native
+frames and 360 legacy reconstructions (`capacity-cmake-stage17-final.log`).
+The stage screenshots and final contact sheet remain local under
+`build/oracle/widescreen/`.
+
+The first full lifecycle pass completes the 74,452-frame ending path, including
+all 23 flight indices, 13 carrier/eight refuel selectors, ending/ranking and
+return to attract, with zero ten-column differences/skips and exact legacy
+pixels. It then correctly stops at neutral frame 372: the harness had paired
+requested input with a capture of MAME's actual input pins. The retained notes
+already require replaying observed pins to preserve MAME input-update latency.
+No reference/recording was changed, shifted or regenerated. The harness now
+explicitly pairs ending with `natural_ending_sequences.inputs` (byte-identical
+to the ending input used in the earlier pass), and the other three captures
+with their `natural_*_sequences.mame.csv.inputs` companions. The corrected
+12,000-frame neutral replay passes, including death/game-over/ranking/attract.
+The complete lifecycle set and comparison mutation are repeated after this
+fixture-pairing repair. Requested and observed pin recordings are both retained.
+
+The earlier parallel audio test timeout exposed independent Make targets
+regenerating the same deterministic WAV/FLAC files while consumers decoded
+them. `audio-test-fixtures` is now one shared phony prerequisite for menu,
+GPU-menu, music and spatial-audio tests. It runs once per Make invocation before
+any consumer; no fixture content, decoder or test assertion changed, and no
+result cache was added. The parallel dry-run graph contains exactly one
+fixture-generation command; `test -j4` passes (4.60 s) at
+`build/workflow/20261015T093548.567263Z/`. The complete regression is repeated
+with the corrected dependency graph and unchanged compiler settings.
+
+Focused observed-pin replays also pass **10,000/10,000 continue** and
+**8,000/8,000 weapons** frames, zero ten-column differences/skips and exact
+legacy reconstruction. Their final logs are
+`capacity-lifecycle-continue-final.log` and `capacity-lifecycle-weapons-final.log`;
+neutral is `capacity-lifecycle-neutral-final.log`. Together with the completed
+ending pass, the four declared paths cover **104,452 physical frames**. A fresh
+complete profile repeats those paths with the repaired harness/build graph before
+claiming final full-suite acceptance.
+
+The fresh run at `build/workflow/20261015T093902.465525Z/` repeats `test`
+(4.49 s) and the complete `verify-stage1` (886.83 s) successfully. Its four
+widescreen lifecycle replays all pass on the final observed-pin pairing:
+**74,452 ending + 12,000 neutral + 10,000 continue + 8,000 weapons = 104,452
+frames**, every retained MAME observation column identical, zero skips, with
+pixel-exact original image reconstruction on every frame. The altered-reference
+mode is rejected.
+
+That clean run completes successfully: `oracle-test` **3,937.16 s**,
+`oracle-joint-main-progress-full` **37.66 s**,
+`oracle-joint-reset-window` **7.97 s**, and `native-release` **0.32 s**.
+All retained mutation controls, including the widened visibility/capacity and
+lifecycle controls, remain enabled. Existing documented race skips in older
+routine-level oracles remain reported in their logs; the new lifecycle paths
+skip no frames. The supplemental long joint comparison matches **20,532,168
+instruction/IRQ records**, **53,449,620 ordered phases** and **40,714,240 RGB
+pixels**, zero differences/skips. The reset window matches **1,449,740 records**
+and **3,763,047 ordered phases**, zero differences/skips. These are their retained
+bounded windows, not a whole-credit CPU/device/RGB/audio comparison. Full logs
+and target timings are in that run directory and its `results.json`.
+
+### Attract/takeoff outer-strip omission (2026-10-15)
+
+The user subsequently identified missing sprites specifically in the added side
+bands during attract and initial takeoff. The earlier lifecycle gates established
+native fidelity and complete wider rows, not visual completeness of every
+extended scene. One concrete omission was the Main publication observer clearing
+fresh horizon-extension requests whenever the game mode was not normal flight
+(`$10`), including attract (`$01`) and takeoff (`$0F`). The native controller had
+actually submitted those strips.
+
+The observer now preserves each freshly generated strip through publication,
+still requires a matching actual native submission, and consumes it immediately
+afterward. Scenery ghost lifetime remains restricted as before. Stage changes
+invalidate interpolation history before generating the next strip. This changes
+presentation copies only; native controller execution and assets are untouched.
+Fixtures cover attract/takeoff/flight publication, inactive canyon strips and
+stale-strip reuse. New deliberate controls restore the flight-only gate and
+retain a stale strip. Lifecycle replays now require explicit horizon-extension
+witnesses in attract and takeoff, rather than inferring coverage from progression.
+
+A focused 1,560-frame comparison passes with native RGB/PCM/time and the original
+image reconstruction unchanged, zero skips; the wider view now observes 3,070
+extra horizon descriptors across the window (previously 616). The real neutral
+replay independently observes extra strips in modes 1, 3 and 15. Diagnostic
+captures/logs stay in `build/oracle/widescreen/startup-*`. This addresses the
+identified strip omission; it is not an exhaustive audit of all scene-controller
+bounds or of artwork authored only for the original viewport.
+
+Final focused results: `test` passes (5.17 s) and `verify-wide-scene` passes at
+`build/workflow/20261015T112656.449588Z/`. All **15 visibility mutation controls**
+reject (426.81 s), followed by a release rebuild (36.86 s), at
+`build/workflow/20261015T112821.203015Z/`. The updated neutral lifecycle replay
+passes **12,000/12,000** ten-column MAME observations, zero skips, and exact
+original image reconstruction; its horizon witnesses explicitly include modes
+1 and 15 (`attract-takeoff-lifecycle-final.log`). Its altered-reference control
+also rejects (`attract-takeoff-reference-mutation.log`). The complete integration
+stage sweep is repeated separately. These are focused follow-up results, not
+a new complete oracle-suite run after this presentation fix.
+
+The complete `verify-stage1` follow-up passes **975.49 s** at
+`build/workflow/20261015T112907.169886Z/`, including all 23 ordered stage slots,
+both bank directions, pause, repeated viewport changes and restart. Its native
+RGB/PCM/time comparisons and legacy image reconstruction remain exact. The
+rebuilt release also completes a 240-frame macOS Metal attract launch using a
+local copy of the user's settings (`attract-takeoff-metal.log/.png`); the saved
+settings are untouched. The capture shows the extended horizon in the attract
+scene. This bounded smoke is not a sustained-performance measurement.
+
+### Non-flight fill blocks and horizon joins (2026-10-15)
+
+The user still saw blocks at mid-right/lower-left and gaps between horizon
+pieces in attract and carrier takeoff. Restoring strip submission alone did not
+close those visual defects. Two further flight-only policies were responsible:
+`WideScene` skipped Corrected ground outside mode `$10`, and `WideVisibility`
+discarded previous strip coordinates on every non-flight publication. The first
+left the original road-fill wedges exposed in the added bands; the second made
+extra segments use current coordinates alongside interpolated native segments.
+
+Corrected wide rendering now uses the existing ROM-asset/silhouette/road-index
+guards in every mode. It still changes only eligible plain road-0 sky fill,
+preserving terrain, sprites, tile priority and shadows. Strip history now follows
+the last controller update within the same mode/stage; a scene change resets
+history before generation. The original halfway arithmetic therefore applies to
+the extra segments in attract and takeoff as well. Native simulation, buffers,
+RGB, audio and timing are untouched.
+
+Before changing production code, two added tests failed against the previous
+build: `non-flight outer sky-fill missing` and `non-flight horizon interpolation
+differs` (local `nonflight-ground-before.log` and
+`nonflight-interpolation-before.log`). Both pass after the fix. Geometry uses
+actual ROM horizon assets to require safe correction on both outer bands in
+modes 1/15/16. Visibility fixtures require an eight-pixel full-step to become a
+four-pixel halfway step, and prohibit interpolation across scene changes. The
+1,560-frame real integration also requires corrections in attract and takeoff;
+native RGB/PCM/time and the legacy image remain exact, zero skips. New retained
+fault controls reintroduce flight-only correction/history or cross-scene history.
+The user's tearing description was gaps/joins in the horizon, rather than a
+whole-window presentation split.
+
+A controlled takeoff replay first applied the existing correction to the same
+immutable snapshots outside flight; this removed the right-hand fill rectangle.
+The final paired diagnostic then renders the previous and corrected strip/fill
+policies alongside one native run. All **1,200/1,200** MAME observation rows and
+legacy images match. Local comparison animations are
+`attract-before-after.gif` (frames 200–260) and `takeoff-before-after.gif`
+(560–640), previous policy on the left and corrected policy on the right, slowed
+to 30 displayed frames/s. They visibly reproduce/remove the lower-left block and
+the right-hand horizon notch. These are finite rendered sequences, not a claim
+about every possible transition or display platform.
+
+The final neutral lifecycle replay passes **12,000/12,000** ten-column MAME
+observations and exact legacy image reconstructions, zero skips, with terrain
+and protected layers preserved (`nonflight-correction-lifecycle-final.log`).
+The altered-reference control rejects. Final release build passes (43.44 s) at
+`build/workflow/20261015T115723.719815Z/`; its 240-frame Metal attract smoke and
+capture complete (`nonflight-metal-final.log/.png`). Native VSync is requested;
+the reported horizon gaps are tested as geometry/interpolation, rather than
+treated as evidence of a whole-window synchronization failure.
+
+All **17 visibility controls** reject (507.08 s), including lost non-flight
+history and cross-scene history; all **nine geometry controls** reject (48.54 s),
+including the flight-only correction. Logs are at
+`build/workflow/20261015T115839.735614Z/`. The final integration run also confirms
+2,662,172 eligible sky-fill corrections in its 1,560-frame window, retaining the
+native comparison and terrain/protection gates. No fixtures or earlier controls
+were removed. The new comparisons/animations remain ignored local evidence.
+
+Final `test` passes **5.39 s** and complete `verify-stage1` passes **1,008.38 s**
+at `build/workflow/20261015T115700.469482Z/`. This repeats all 23 directed slots,
+both roll-input directions, pause, viewport cycles and restart, with 22,494
+counted native RGB/PCM/time frames and 8,280 exact legacy reconstructions.
+The surrounding game-session, music, ground and feedback integrations also pass.
+This is the focused follow-up integration/visibility/geometry/lifecycle validation;
+the earlier complete oracle-suite pass remains separately scoped to its earlier
+tree, rather than being presented as a new full run after these presentation fixes.
+
+### Screenshot-driven outer background coverage (2026-10-15)
+
+Three further user screenshots expose gaps the preceding finite samples missed:
+translucent clouds reveal a hard original-viewport background boundary at left,
+the initial carrier sea has a cyan rectangular exterior, and departure shows a
+dark-blue vertical band at right. The same defects reproduce in cold-boot attract
+and retained neutral-input snapshots. Opaque sprite-only captures hid part of the
+cloud-background problem; inspect the composed translucent result as well.
+
+The blue column occurs when the strip is near the bottom: the measured profile
+can see its sky marker but its ground marker is below the viewport. Only in the
+new side bands, an actual silhouette edge can now use the ROM-derived normal
+when that local marker pair is clipped. The original 320-wide correction policy
+is unchanged. The cloud/sea gaps need the reverse operation too: beyond the
+ground-facing silhouette, the enhanced wide plane may replace plain road
+exterior sky with an eligible ground index observed on the same native row.
+This preserves priority/tiles, uses only native road-0 indices, and does nothing
+without an actual native-row source. It does not stretch clouds/waves, invent
+asset data or change native controllers, framebuffers, audio or timing.
+
+The comparison contract permits that reverse change only in the enhanced wide
+plane, with the destination present in the original row. All previous terrain,
+sprite and protection checks remain. New fixtures test clipped-marker fallback,
+center preservation, source absence, exact native color and priority protection.
+The prior policy (with only a signature compatibility shim) rejects at
+`bottom-clipped outer sky column survived`; local before/prototype captures
+also reproduce/remove the three reported classes. The new 840-frame no-input
+attract replay compares raw native RGB/PCM/time and original reconstruction, then
+checks the cloud-background witness. Neutral lifecycle frames 500 and 960 assert
+the carrier-side fill and absence of the departure column. These complement the
+existing 1,560-frame roll and 23-slot checks; they are not exhaustive scene
+acceptance. Views are still unfilled when their required silhouette/source is
+unavailable.
+
+The first new attract witness incorrectly compared two post-sprite background
+pixels that could be shaded differently. It now checks pre-sprite ground indices
+and native-row provenance, with the existing protected-layer gates retained. Its
+840-frame replay and the 1,560-frame side-band comparison pass at
+`build/workflow/20261015T124613.391907Z/` (107.15 s). The new side-band mutation
+controls belong to the wide unit gate; they are not assigned to the original
+320-wide recorded corpus, where they correctly have no effect. The repaired
+complete ground mutation target and unchanged recorded fixture pass at
+`build/workflow/20261015T124536.458085Z/` (34.31/5.95 s). The recorded gate retains
+160/160 original MAME RGB frames, zero skips, 58,471 exposed wedge pixels removed
+and 2,643,597 preserved terrain pixels.
+
+Separate `edge-cloud.bin`, `edge-carrier.bin` and `edge-departure.bin` fixtures
+retain the three new actual scenes for GPU replay. `wide_gpu_regression` accepts
+an optional fixture path, preserving its original default and all comparisons.
+macOS Metal passes **36/36** scene/filter/opacity cases, **16,582,272 pixels**,
+zero skips, including ScaleFX and translucent composition. Logs are
+`build/oracle/widescreen/edge-{cloud,carrier,departure}-metal.log`; captures,
+fixture bytes and contact sheets remain ignored local evidence.
+
+The enlarged ScaleFX cloud preview then exposed a narrower seam: the first two
+columns inside the original viewport also contain exterior sky below the strip.
+Ground-plane extension now includes confirmed ground-side holes there, rather
+than stopping exactly at the old viewport boundary. The original 320-wide
+presentation still does not use this extension. Unit and real-attract witnesses
+check those two columns, and an additional rejected mutation restores the seam.
+Side-only prototypes/fixtures and their logs are retained separately; final
+acceptance repeats the affected integration, lifecycle, GPU and mutation gates.
+
+The final ground mutation target passes **18 controls** (15 unit + three retained
+MAME-fixture controls, 42.30 s); the original recorded gate again passes all
+160 frames (6.30 s) at `build/workflow/20261015T125618.849113Z/`. Its release
+build passes (48.19 s). All three regenerated complete-plane GPU fixtures again
+pass **36/36 cases**, **16,582,272 pixels**, zero skips
+(`edge-*-plane-complete-metal.log`). The actual release completes the bounded
+240-frame Metal smoke with VSync reported enabled
+(`edge-plane-complete-release-metal.log`). This is not a sustained-performance
+measurement. The six-panel ScaleFX/translucent comparison is
+`reported-edge-cases-before-after.png`, previous policy left and corrected
+policy right. Final images include removal of the two-column native-edge seam.
+
+The final complete-plane neutral replay passes **12,000/12,000** ten-column
+MAME observations and exact original image reconstructions, zero skips, with
+the carrier/departure assertions and terrain/protected-layer gates enabled
+(`edge-plane-complete-lifecycle-final.log`). The altered-reference control also
+rejects. Ground-fill changes include confirmed reverse fills in the enhanced
+wide plane; raw native output and the Original viewport policy remain unchanged.
+
+Final widened-visibility and geometry mutation targets pass at
+`build/workflow/20261015T125757.010024Z/` (**515.26/44.85 s**): all 17 visibility
+and nine geometry controls remain enabled and reject. Alongside the 18 ground
+controls above, this retains 44 relevant negative controls. Final CPU/GPU and
+release results refer to the complete wide plane including the native-edge
+seam fix, not just the earlier side-only prototype.
+
+Final clean `test` and complete `verify-stage1` pass at
+`build/workflow/20261015T125755.871942Z/` (**5.35/992.82 s**). All 23 directed
+slots preserve **22,494** counted native RGB/PCM/time frames and **8,280** exact
+legacy reconstructions, with pause, viewport cycles and restart. The additional
+840-frame attract replay and 1,560-frame roll comparison pass. The latter
+records 5,234,269 fill changes; the stage windows record 23,677,511. These counters
+include confirmed ground-side extension as well as sky correction, despite their
+retained `sky-fill` log label. Native and protected terrain/layer checks remain
+enabled. The surrounding game-session, ground, music and feedback checks pass.
+This is final focused follow-up validation; it does not claim a new complete
+oracle-suite or exhaustive widescreen acceptance on this tree.
+
+### Rolling scenery, takeoff waves and banked cloud corners (2026-10-15)
+
+Three follow-up fixes remain confined to the detached widescreen presentation:
+
+- Retained scenery now reads its **live shared rotation/position pair**. Keeping
+  that pair frozen at native deletion could place ground objects in the sky as
+  the camera rolled. Private object and size records still survive allocator
+  reuse. Retention also runs during attract and takeoff, with stage/mode changes
+  clearing the preceding scene.
+- Takeoff extends the water field with adjacent world cells. The original
+  `$884E..$8860` distribution has sixteen columns at `3*64` world units; the
+  enhancement repeats that period alongside the native field. Wave frames come
+  from the runtime `$3F918` animation list, with native depth, projection and
+  animation phase. Previous positions support interpolation. This adds actual
+  wave artwork, rather than only filling the surrounding sea color. It applies
+  to takeoff (`$0F`) only; native spawning and gameplay remain unchanged.
+- Corrected ground projects the observed horizon envelope onto the ROM normal
+  in the wider viewport. This classifies corners where neither the pixel's row
+  nor its column intersects the strip, removing the reproduced banked attract
+  color blocks. Clipped-marker sky correction also covers the enhanced center;
+  otherwise inversion can leave a short road-color strip at the top of the sky.
+  It still requires an observed native-row ground color, respects
+  protected layers and leaves the original 320-wide correction policy intact.
+
+Fixtures cover live camera changes after zoom settles, attract/takeoff/flight
+retention, stage retirement, both water edges and takeoff-only scope, and the
+recorded attract frame-140 corner. Synthetic corner checks include upright and
+inverted orientations. Captures and comparisons remain under ignored
+`build/oracle/widescreen/`; no ROM-derived assets are added to the repository.
+
+The focused scene gate passes at `build/workflow/20261015T155456.349103Z/`
+(126.62 s): 840 attract frames, the existing 1,560-frame comparison and a new
+720-frame directed inversion tail preserve native RGB/PCM/time and legacy
+images. The combined flight windows include 12/36 near-full-inversion frames
+by actual negative/positive angle change. Full-stick reversals are held for
+120 frames, respecting the native `$C0A` trigger and offset decay; alternating
+inputs alone did not prove completed rolls in both directions. A specific
+inverted top-center road-fill witness now passes. Ground mutations and the
+160-frame retained MAME roll fixture also pass at
+`build/workflow/20261015T154620.561166Z/` (zero original RGB differences/skips).
+
+Final visibility/MAME fault controls (21) and geometry controls (9) pass at
+`build/workflow/20261015T154824.191378Z/` (594.26/57.67 s); all 19 ground controls
+remain enabled. The 12,000-frame neutral lifecycle replay matches all ten
+retained MAME observation columns with zero skips and exact legacy images;
+its altered-reference control rejects. Logs are `roll-water-cloud-neutral-final.log`
+and `roll-water-cloud-reference-control.log` under `build/oracle/widescreen/`.
+Seven GPU readback fixtures cover the banked cloud corner, carrier waves,
+both actual inversion directions and the earlier scene/cloud/departure cases:
+84/84 filter/opacity cases match the CPU compositor, 38,691,968 pixels, zero
+skips (`*-followup-metal.log`). A sampled 1,200-frame native takeoff replay also
+retains the wave-field and departure comparisons locally. These finite checks
+are presentation follow-up evidence, not exhaustive widescreen acceptance.
+
+
+Final `test`, complete `verify-stage1` and `native-release` pass at
+`build/workflow/20261015T155816.097755Z/` (4.65/973.41/37.97 s). All 23 ordered
+slots preserve 22,494 counted native RGB/PCM/time frames and 8,280 legacy
+reconstructions; pause, viewport cycles and restart remain covered. The 840-frame
+attract check, 1,560-frame scene comparison and 720-frame actual-direction
+inversion tail also pass. The rebuilt release completes a 240-frame Metal /
+VSync smoke with a local copy of the saved widescreen/Corrected/ScaleFX/effect
+settings (`roll-water-cloud-release.log` and `.png`). The real settings file is
+unchanged. GPU fixture hashes remain unchanged after the final capture replays.
+This is a finite launch/performance smoke and focused integration follow-up,
+not a new full oracle-suite or exhaustive widescreen milestone.

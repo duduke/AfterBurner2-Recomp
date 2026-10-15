@@ -5,10 +5,18 @@ import os,subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
 source=(root/'src/main/hwvideo/ground_horizon.hpp').read_text()
 mutations={
+ 'lost clipped side normal':('profile.sky(x,y,nx,ny,extend_plane)','profile.sky(x,y,nx,ny,false)'),
+ 'missing banked corner plane':('if(extend_plane&&profile.measured)','if(false&&extend_plane&&profile.measured)'),
+ 'native-edge seam':('else if(extend_plane&&!priority[i]','else if((original<0||original>=320)&&!priority[i]'),
+ 'missing side ground':('else if(extend_plane&&!priority[i]','else if(false&&extend_plane&&!priority[i]'),
+ 'side ground overwrites center':('profile.sky(x,y,nx,ny,extend_plane)','profile.sky(x,y,nx,ny,true)'),
+ 'invented ground color':('if(ground>=0){indices[i]=ground;','if(true){indices[i]=ground;'),
+ 'wrong native ground color':('indices[i]=ground;','indices[i]=0x1707;'),
+ 'side ground priority overwrite':('extend_plane&&!priority[i]&&indices[i]>=0x1720','extend_plane&&indices[i]>=0x1720'),
  'local gradient reversal':('return sky_max<ground_min?1:ground_max<sky_min?-1:0;','return sky_max<ground_min?-1:ground_max<sky_min?1:0;'),
  'fitted-plane shortcut':('yedge=ny>0?upper[x]:lower[x]','yedge=ny>0?upper[0]:lower[0]'),
  'reversed ROM orientation':('return {int8_t(main[0x33e98+angle]),-int(int8_t(main[0x33e58+angle]))};','return {-int(int8_t(main[0x33e98+angle])),int8_t(main[0x33e58+angle])};'),
- 'opposite sky side':('profile.sky(x,y,nx,ny)','!profile.sky(x,y,nx,ny)'),
+ 'opposite sky side':('profile.sky(x,y,nx,ny,extend_plane)','!profile.sky(x,y,nx,ny,extend_plane)'),
  'foreground overwrite':('!priority[i] && indices[i]>=0x1700','indices[i]>=0x1700'),
  'solid fill overwrite':('if(data&0xa00)continue;','if(false && (data&0xa00))continue;'),
  'lost clip frontier':('for(unsigned y=top;y<=bottom;++y)','for(unsigned y=top;y<224;++y)'),
@@ -26,8 +34,8 @@ for name,(before,after) in mutations.items():
 
 # The recorded visual gate must reject failures on the actual MAME roll corpus.
 fixture_mutations={
- 'recorded sea overwrite':('profile.sky(x,y,nx,ny)','true'),
- 'recorded sky side reversal':('profile.sky(x,y,nx,ny)','!profile.sky(x,y,nx,ny)'),
+ 'recorded sea overwrite':('profile.sky(x,y,nx,ny,extend_plane)','true'),
+ 'recorded sky side reversal':('profile.sky(x,y,nx,ny,extend_plane)','!profile.sky(x,y,nx,ny,extend_plane)'),
  'recorded fitted-plane shortcut':('yedge=ny>0?upper[x]:lower[x]','yedge=ny>0?upper[0]:lower[0]'),
 }
 for name,(before,after) in fixture_mutations.items():

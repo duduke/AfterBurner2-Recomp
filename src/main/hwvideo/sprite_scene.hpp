@@ -81,14 +81,14 @@ public:
 // feedback. Ordering, address wrapping, clipping and zoom follow HWSprites.
 template<class Pixel>
 void decode(std::span<const uint8_t> bank,std::span<const uint8_t> rom,unsigned top,unsigned bottom,
-            const EffectAssets& assets,Pixel emit,int clip_left=0,int clip_right=319){
-    if(bank.size()!=0x1000 || rom.empty() || rom.size()%0x40000 || top>bottom || bottom>=224 || clip_left>clip_right || clip_left < -512 || clip_right>831)throw std::invalid_argument("Invalid sprite scene source");
-    for(unsigned slot=0;slot<256;++slot){
+            const EffectAssets& assets,Pixel emit,int clip_left=0,int clip_right=319,std::span<const int> anchors={}){
+    if(bank.empty() || bank.size()%16 || (!anchors.empty()&&anchors.size()<bank.size()/16) || rom.empty() || rom.size()%0x40000 || top>bottom || bottom>=224 || clip_left>clip_right || clip_left < -512 || clip_right>831)throw std::invalid_argument("Invalid sprite scene source");
+    for(unsigned slot=0;slot<bank.size()/16;++slot){
         std::array<uint16_t,8>d{};for(unsigned i=0;i<8;++i)d[i]=uint16_t(bank[slot*16+i*2])<<8|bank[slot*16+i*2+1];
         if(d[0]&0x8000)break;if(d[0]&0x5000)continue;
         const auto kind=assets.identify(d);
         const int ystart=(d[0]&511)-256,yd=(d[4]&0x8000)?1:-1,xd=(d[4]&0x2000)?1:-1;
-        int xs=d[2]&511;if(xs<128 && xd<0)xs+=512;xs-=190;
+        int xs=d[2]&511;if(xs<128 && xd<0)xs+=512;xs-=190;if(!anchors.empty()&&anchors[slot]!=INT32_MIN)xs=anchors[slot];
         const unsigned hz=std::max(64u,unsigned(d[4]&2047)),vz=std::max(64u,unsigned(d[3]&2047)),rows=(d[5]&4095)+1;
         const int pitch=int16_t((d[2]>>1)|((d[4]&0x1000)<<3))>>8;
         const unsigned rb=((d[0]>>9)&7)%(rom.size()/0x40000),flags=((d[6]&255)<<4)|(((d[3]>>12)&7)<<12);

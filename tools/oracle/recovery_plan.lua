@@ -57,6 +57,16 @@ for _,pc in ipairs(pcs)do
   if op&0xf0f8==0x50c8 then c.counter_reg=op&7;c.counter_value=n&1 end
   cases[#cases+1]=c
  end
+ -- $15C10 rolls back the word-coordinate addition at $15C0A when V is set.
+ -- Exercise signed overflow, unsigned borrow, zero and both input CCR extremes.
+ if pc==0x15c10 then
+  for _,pair in ipairs({{0x8000,1},{0x7fff,0xffff},{0,1},{0xffff,0xffff},{0x1234,0},{0x8000,0x8000}})do
+   for _,ccr in ipairs({0,31})do
+    cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|pair[2],d1=17,
+     memory_word_address=0x3ffc22,memory_word_value=pair[1]}
+   end
+  end
+ end
  -- Ground award queue countdown and queue length: wrap/carry, zero and sign
  -- boundaries, preserving the adjacent queue byte in each direction.
  if pc==0xe570 or pc==0xe5aa then

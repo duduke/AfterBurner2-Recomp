@@ -103315,3 +103315,15 @@ case 0xe5ae: {
     branch(sr&8,0xe5f2,2);
     break;
 }
+// $015C10: SUB.W D0,34(A5)
+case 0x15c10: {
+    const auto operand=uint16_t(r.d[0]);
+    read16(0x15c14);
+    const auto old=read16(r.a[5]+(34));
+    const auto value=addsub_word(old,operand,true,true);
+    read16(0x15c16);
+    latch();
+    write16(r.a[5]+(34),value);
+    next=0x15c14;
+    break;
+}

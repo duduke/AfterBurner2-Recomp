@@ -124,15 +124,16 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-14)
+## Current checkpoint (2026-10-15)
 
 `main` contains the SDL3 native engine, merged at `1f584d7` from the validated
 `play-native` implementation `2a0c76b`. `make play-native` remains the launch
-target; there is no longer a separate play-native branch. Building on enhancement
-commit `9a5c4ac`, this checkpoint adds DIP/Video menus, corrected effect selection,
-external-music balance/live switching, ground correction during both roll
-directions and SDL body/trigger rumble. Documentation now includes a compact
-guide, retained checkpoint history and haptics/true-widescreen plans. The retained `codex/threejs-game-engine` branch
+target; there is no longer a separate play-native branch. Building on `fa30d2b`,
+this checkpoint expands detached widescreen sprite capacity and scenery,
+adds stage/lifecycle visibility checks, fixes reproduced roll/cloud/takeoff
+artifacts and recovers the enemy-coordinate overflow instruction at `$15C10`.
+Existing enhancements include OpenAL cockpit audio, DIP/Video menus, GPU effects,
+replacement music and SDL body/trigger rumble. The retained `codex/threejs-game-engine` branch
 exists locally and on origin; its prototype source and targets are absent from main.
 
 | Area | Verified status | Limits |
@@ -149,7 +150,8 @@ exists locally and on origin; its prototype source and targets are absent from m
 | Spatial audio (experimental) | Optional OpenAL Soft headphone HRTF, 2.1/5.1 modes, chip-rate interpolation, direct stereo music and live output menu; 1,800 native frames unchanged, 117,509 MAME ownership observations exact, six controls reject | Unclassified voices remain stereo; physical localization/channels, complete sound/cabinet audit and sustained latency remain open |
 | Ground/horizon correction | Optional Corrected mode preserves terrain while removing sky-side wedges; 160/160 retained MAME frames reconstruct exactly, with both roll directions and retained mutations checked | Original stays default; finite roll/Metal/software coverage, not every-stage visual acceptance |
 | Controller feedback | Cannon/missile/player-impact/full-throttle cues; 4,200 native RGB/PCM/time frames unchanged, independent MAME witnesses and eleven rejected mutations; Xbox Bluetooth body and both triggers physically confirmed on macOS | Windows/Linux and simple-haptic fallback hardware, full gameplay/lifecycle feel, incoming warnings and advanced FFB remain open |
-| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames, passive sprite planes/individual layers and immutable partial-render scene snapshots, output PCM processing and optional music/effects stems and events | Widescreen, new assets, gameplay modes and save states need deeper interfaces |
+| Widescreen preview | Detached scenery retention, recovered Sub requests, unwrapped X, added horizon segments and dynamic presentation capacity beyond native queue/depth limits; original simulation stays unchanged | Native gameplay/object pools remain original; exhaustive object/scene audit, sustained performance, Windows/Linux and other aspects remain open |
+| Extension foundation | `GameSession` exposes controls, pause/restart, completed RGB frames, passive sprite planes/individual layers and immutable partial-render scene snapshots, output PCM processing and optional music/effects stems and events | Complete widescreen scene coverage, new assets, gameplay modes and save states need deeper interfaces |
 | Three.js | Prototype source and browser-specific tests retained only on `codex/threejs-game-engine` | Removed from main; arcade projection, true 3D world geometry, widescreen and standalone WASM remain future work |
 
 Current enhancements include Video/Controls/Audio/DIP Switches menus, GPU sprite
@@ -170,7 +172,55 @@ acceptance. See
 [README](../README.md#current-enhancements) for the current feature list, and
 [ENGINE_NOTES](ENGINE_NOTES.md) for detailed coverage and exclusions.
 
+A subsequent live-play stop at decimal PC 89104 (`$15C10`, enemy-coordinate
+overflow rollback) adds one verified instruction. Its 14 MAME fixtures and three
+rejected mutations pass; complete recovery now covers 12,405 PCs and 77,954
+fixtures. Focused test/integration, release and stage-18 checks pass; the retained
+74,452-frame ending replay matches all ten MAME transition observation columns.
+This is additional recovery coverage, not a new full `required` or whole-credit pass;
+see [the recovery notes](ENGINE_NOTES.md#reported-enemy-coordinate-overflow-stop-at-15c10-2026-10-14).
+
+The 16:9 preview's subsequent visibility/roll update recovers hidden Sub requests,
+retains scenery beyond the native cull boundary and extends the ROM horizon
+segments. Focused MAME, geometry, lifecycle, both-roll and GPU checks pass;
+Original simulation stays unchanged; the later detached-capacity extension also
+recovers requests discarded by the native 192-request queue and full depth
+buckets. All 23 ordered stage slots and retained natural lifecycle paths have
+dedicated validation targets. See
+[visibility coverage](ENGINE_NOTES.md#wider-object-visibility-and-horizon-coverage-2026-10-15).
+The [capacity and stage/lifecycle checks](ENGINE_NOTES.md#widescreen-capacity-and-stagelifecycle-checks-2026-10-15)
+describe the detached queue expansion and the exact coverage of the new sweeps.
+The final clean `required` and supplemental `full` targets pass at
+`build/workflow/20261015T093902.465525Z/`, followed by the release target.
+The stage sweep preserves 22,494 counted native RGB/PCM/time frames; the four
+natural lifecycle replays match all ten retained MAME observation columns and
+original image reconstruction across 104,452 frames, zero skips. This closes
+those finite widescreen checks, not the broader whole-credit acceptance below.
+An outer-edge attract/takeoff report then exposed a flight-only gate discarding
+freshly submitted horizon extensions. The [follow-up fix and validation](ENGINE_NOTES.md#attracttakeoff-outer-strip-omission-2026-10-15)
+retain those strips and add explicit non-flight coverage; complete visual scene
+coverage remains distinct from the lifecycle progression checks.
+Further reported non-flight blocks and horizon joins exposed flight-only sky
+correction and lost interpolation history. The [follow-up coverage](ENGINE_NOTES.md#non-flight-fill-blocks-and-horizon-joins-2026-10-15)
+now checks both side-band correction and matching halfway movement in attract
+and takeoff, alongside the original native-output comparisons.
+Further [screenshot-driven side-band checks](ENGINE_NOTES.md#screenshot-driven-outer-background-coverage-2026-10-15)
+cover translucent cloud backgrounds, carrier sea fill and a bottom-clipped
+departure horizon. Added ground fill requires an observed native-row color;
+unknown silhouettes/source coverage remain explicit preview limitations.
+The subsequent [rolling scenery, takeoff waves and banked cloud fixes](ENGINE_NOTES.md#rolling-scenery-takeoff-waves-and-banked-cloud-corners-2026-10-15)
+use live shared camera data, repeat the native takeoff wave field at the wider
+edges and classify clipped horizon corners. Directed rolls cover both actual
+rotation directions; original RGB/PCM/time and protected-layer checks remain
+enabled. These fixes do not close exhaustive widescreen acceptance.
+
 ## Next acceptance tasks
+
+On 2026-10-15, the user reported finishing the game from start to finish on
+macOS with the saved Normal / three-ship configuration and current enhancements.
+See [the manual completion settings](ENGINE_NOTES.md#user-reported-macos-completion-2026-10-15).
+This supplies manual completion evidence; an input recording and independent
+whole-credit comparison remain outstanding.
 
 1. **Standard single-credit completion:** the uninterrupted Easy / 99-credit
    recording reaches the ending naturally and matches every named observation.
@@ -380,7 +430,8 @@ work does not close the separate full-game acceptance tasks.
   establish full-credit or every-stage peak-load performance. See the native
   performance continuation in `ENGINE_NOTES.md` for checks and measurements.
 - [ ] **Wide-Screen Support (16:9, 16:10, 21:9 Ultrawide):**
-  - *Implementation plan:* [True widescreen](WIDESCREEN_PLAN.md): a staged 16:9-first plan for passive partial-frame export, wider road/tile/sprite rendering, visibility audits, corrected-ground/effect integration and frontend/CPU/GPU acceptance. Experimental 16:9 Preview is implemented: 398×224 road/tile/published-sprite rendering, centered HUD, existing CPU/GPU filters/effects and persisted Video setting. Native pre-publication culling and outer horizon gaps remain; full visibility, sustained performance, 16:10 and ultrawide acceptance are open. Original combat and sprite limits remain unchanged; unlimited sprites/custom stages are separate.
+  - *Implementation plan:* [True widescreen](WIDESCREEN_PLAN.md): a staged 16:9-first plan for passive partial-frame export, wider road/tile/sprite rendering, visibility audits, corrected-ground/effect integration and frontend/CPU/GPU acceptance. Experimental 16:9 Preview is implemented: 398×224 road/tile/published-sprite rendering, centered HUD, existing CPU/GPU filters/effects and persisted Video setting. Detached scenery retention, wider Sub projection and horizon segment extension address the identified edge/roll gaps. Dynamic presentation lists also recover native request-capacity/depth-bucket drops. All 23 ordered slots and retained natural lifecycle paths have dedicated checks. Exhaustive object/scene coverage, sustained performance, 16:10 and ultrawide acceptance remain open. Original combat and gameplay object allocation stay unchanged; custom stages are separate.
+  - *Scene follow-up:* Retained scenery uses live shared roll/position data; takeoff extends the native water field, and Corrected ground handles clipped and banked wide-plane corners. See [implementation and validation](ENGINE_NOTES.md#rolling-scenery-takeoff-waves-and-banked-cloud-corners-2026-10-15).
   - *Expanded Viewport:* Retain native 320×224 simulation; derive wider presentation dimensions from target display and pixel aspect, without stretching. See the plan for rounding and the separate 4:3-correction policy.
   - *Extended Road/Ground Raster:* Render immutable native scanline data across wider bounds in a separate presentation renderer; integrate the optional corrected-ground silhouettes without changing Sub CPU execution.
   - *Tilemap Surface Wrapping:* Leverage X-Board's 1024×512 virtual tilemap surface to render wider scrolling backgrounds without clipping.
@@ -405,6 +456,10 @@ work does not close the separate full-game acceptance tasks.
   clipping and composition, retaining original mode as the regression reference.
   Account for both the hardware's 256 descriptor slots and the game's 192-request
   cap; increasing renderer capacity alone does not increase game-produced sprites.
+  The wider renderer now captures requests before the native queue rejection,
+  recovers full-depth-bucket drops and uses dynamic descriptor storage. This
+  removes those presentation bottlenecks without changing native object pools;
+  larger/full-color/replacement assets remain separate work.
   Add visual particles, denser scenery and longer trails through an enhancement
   interface; additional gameplay objects require separate game-logic work.
   Measure sustained performance and preserve intended depth, HUD priority and

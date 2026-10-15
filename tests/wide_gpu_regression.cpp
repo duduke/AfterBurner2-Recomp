@@ -3,8 +3,11 @@
 #include <iostream>
 #include <cstring>
 void require(bool c,const char* m){if(!c)throw std::runtime_error(m);}
-int main()try{
-    std::ifstream f("build/oracle/widescreen/scene.bin",std::ios::binary);char magic[8];uint32_t dim[3];
+int main(int argc,char** argv)try{
+    require(argc<=2,"Usage: wide_gpu_regression [wide-scene-fixture]");
+    const char* path=argc==2?argv[1]:"build/oracle/widescreen/scene.bin";
+    std::cout<<"Wide GPU fixture: "<<path<<'\n';
+    std::ifstream f(path,std::ios::binary);char magic[8];uint32_t dim[3];
     require(bool(f.read(magic,8))&&!memcmp(magic,"AB2WIDE1",8)&&bool(f.read(reinterpret_cast<char*>(dim),sizeof(dim))),"wide GPU fixture missing");
     const unsigned w=dim[0],h=dim[1],count=dim[2],n=w*h;require(w==398&&h==224&&count<8000000,"wide GPU fixture dimensions");
     std::vector<uint32_t> bg(n),sp(n),heads(n);std::vector<uint8_t> protection(n);std::vector<Presentation::Fragment> fragments(count);

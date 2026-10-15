@@ -69,7 +69,68 @@ Repeated checks rerun executables without recompiling unchanged sources.
 `make clean-checks` removes only these check objects and executables when a
 fresh build is wanted. Existing game and oracle build rules remain separate.
 
+## macOS preview release
+
+The current downloadable preview targets **Apple Silicon, macOS 26+**. This is
+the deployment target of the executable and its bundled SDL3/OpenAL libraries,
+not a claim of compatibility with older macOS or Intel Macs. It is ad-hoc
+signed, without Developer ID signing or notarization.
+
+Before publishing, run the final-tree `required` profile and build
+`native-release`. Retain the full logs and inspect failures; a focused check
+does not substitute for the release gate. Complete any additional checks
+required by the roadmap for the affected code. Prepare the matching upstream
+SDL3 3.4.16 source archive under `build/deps/SDL3-3.4.16.tar.gz` from
+[the official release](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16).
+The optional OpenAL builder provides its library, source archive and notices.
+
+After committing the intended tree:
+
+```sh
+python3 tools/package_macos.py v0.1.0-preview.1
+```
+
+Use a fresh version for later releases. The packager requires a clean working
+tree, verifies the pinned dependency source hashes and refuses to overwrite an
+existing package. It creates an allowlisted folder and ZIP under ignored
+`build/releases/`, rewrites library paths, removes build-machine search paths,
+ad-hoc signs the binaries and records source commit/file hashes. Project and
+dependency sources are included. ROMs, captures, soundtracks and preferences
+are excluded. Keep the shared libraries replaceable for local compatible builds.
+
+Before uploading, extract the ZIP into a separate folder. Verify its SHA-256,
+executable permissions, signatures and dependency paths, then launch from a
+different working directory with temporary settings and user-provided ROMs.
+Check a bounded Metal launch and OpenAL output; remove all temporary ROM links
+from the extracted smoke copy. Upload only the original ZIP and checksum.
+Release notes must name the exact commit, minimum OS/architecture, validation
+scope, missing ROMs, signing status and remaining preview limitations.
+
 ## Capture discipline
+
+For widescreen capacity and stage/lifecycle work, use focused targets first:
+
+```sh
+python3 tools/workflow.py run oracle-wide-requests verify-wide-visibility-mutations -j 4
+python3 tools/workflow.py run verify-wide-stages verify-wide-lifecycle-mutations -j 4
+```
+
+`verify-wide-stages` covers all 23 ordered ROM slots, both bank-input windows,
+pitch/weapons, pause, repeated viewport switches and restart. Its stage skips are
+directed setup, not natural progression. `verify-wide-lifecycle` replays the
+retained ending, neutral, continue and weapons inputs through the wider renderer;
+it compares all ten MAME transition columns on every frame and checks row coverage
+and terrain/protected-layer preservation. `verify-wide-lifecycle-mutations` also
+rejects an altered MAME mode. It needs the ignored `natural_*` recordings and
+`natural_*_sequences.mame.csv` files. Whole-credit CPU/device/RGB/audio equivalence
+remains a separate acceptance scope. Full acceptance still follows ROADMAP's
+complete `required`/`full` cadence.
+
+Lifecycle replay uses **observed MAME pins**, preserving input-update latency:
+`natural_ending_sequences.inputs` for ending, and each other capture's
+`natural_*_sequences.mame.csv.inputs` companion. The earlier requested
+`natural_*.inputs` files are retained but are not interchangeable with those
+observed inputs. No frames are shifted or omitted to make a comparison pass.
 
 Reuse a valid capture when its inputs, probe and capture script still apply.
 After changing capture semantics or relevant MAME instrumentation, regenerate
@@ -82,6 +143,31 @@ new exploratory outputs under `build/oracle/`; remove them once their findings
 are recorded and the canonical fixture has replaced them. Keep referenced
 fixtures and hand-written local tools. Inspect space with `du -hd 1 build/oracle`
 before launching large captures. No cleanup runs automatically.
+
+The 2026-10-15 local storage audit consolidated eleven historical recovery
+snapshots into `build/oracle/cpu_recovery_complete.bin`: their plan entries and
+fixture payloads were verified byte-for-byte as prefixes of that retained
+corpus before removing the duplicate files. No unique fixtures, coverage
+reports, merge provenance or mutation inputs were removed. Historical filenames
+in earlier notes can be reconstructed with:
+
+```sh
+python3 build/cleanup/restore_recovery.py cpu_recovery_before_enemy_overflow.bin
+```
+
+The ignored `build/cleanup/recovery-prefix-audit.json` records original hashes,
+sizes, timestamps and reconstruction ranges; `retained-corpus.json` identifies
+the retained corpus. Keep these local recovery tools and manifests alongside
+the captures. Restoration verifies the original SHA-256 before publishing a
+file. Preserve the canonical corpus, or an append-only successor containing its
+unchanged plan/fixture prefixes; a changed prefix fails restoration.
+
+The same audit shared storage for 36 byte-identical captures/traces using APFS
+copy-on-write clones. All existing names and modification timestamps remain;
+each file can still be rewritten independently. `build/cleanup/shared-exact-files.json`
+records the original hashes and peer paths. File-size tools such as `du` may
+count the shared extents repeatedly; filesystem available space reflects the
+actual savings. These clones need no special restore step or test-loader changes.
 
 No additional service or dependency is needed for this workflow: Python,
 make and compiler dependency files provide the improvements locally. Full
@@ -425,18 +511,20 @@ not reproduce a user's exact trajectory by itself.
 Video → Viewport → 16:9 Preview selects 398×224 presentation with a centered
 native HUD/menu. Original is the default. Published sprites and wider road/tile
 samples are rendered from immutable partial-frame snapshots; gameplay stays
-native. Pre-publication culling can leave edge popping and outer horizon gaps.
+native. Detached scenery retention, wider Sub projection and extra horizon
+segments cover the identified native-edge gaps. Original sprite capacity and
+complete scene/platform acceptance remain open.
 See [WIDESCREEN_PLAN](WIDESCREEN_PLAN.md) for the remaining acceptance work.
 
 ```sh
-python3 tools/workflow.py run verify-wide-geometry verify-wide-scene verify-wide-mutations -j 4
+python3 tools/workflow.py run verify-wide-geometry verify-wide-scene verify-wide-stages verify-wide-mutations verify-wide-visibility-mutations oracle-wide-projection -j 4
 python3 tools/workflow.py run verify-wide-gpu
 ```
 
 The GPU check requires a real device/display and compares all six filters under
 opaque/translucent policies. `verify-wide-scene` generates its ignored local
-fixture; CMake GPU checks also need that fixture first. Geometry/scene checks are
-part of `verify-stage1`, mutations of `oracle-test`. All old fixtures remain.
+fixture; CMake GPU checks also need that fixture first. Geometry/scene/stage checks are
+part of `verify-stage1`, both mutation groups of `oracle-test`. All old fixtures remain.
 Captures stay under `build/oracle/widescreen/`; never commit runtime ROM data.
 `--profile` reports the added CPU scene cost as `wide_scene_ms`; compare Original
 and Wide with the same audio/device setup before attributing pacing changes.
