@@ -140,7 +140,7 @@ exists locally and on origin; its prototype source and targets are absent from m
 | --- | --- | --- |
 | Live game | `XBoardGame` / `XBoardHost` cold-boots the literal main/sub 68000 translations and original Z80 program; ROM code drives attract, coin/start, flight, weapons, HUD and sound | Unknown instructions stop explicitly; the declared natural ending/state stream passes, while whole-credit CPU/device/RGB/audio acceptance remains open |
 | Whole host | Cold 121-/603-frame and expanded 781-frame MAME corpora; the expanded run matches 28,128,435 CPU snapshots, 73,593,282 bus phases, 55,982,080 RGB pixels and 627,841 stereo frames, zero supplied execution/state/read seeds and zero differences/skips; 15 owner mutations reject | Finite input/state coverage, not every operand, branch, DIP setting or reset/suspend path |
-| Instruction recovery | 12,404 recovery PCs, both outcomes at 1,255 branches, 77,940 MAME fixtures identical with zero skips; all 143 retained recovery mutations reject at the daily main checkpoint; optimized native natural replays pass | Declared manifest only; future gameplay may expose more instructions |
+| Instruction recovery | 12,405 recovery PCs, both outcomes at 1,255 branches, 77,954 MAME fixtures identical with zero skips; all 146 retained recovery mutations reject at the macOS preview checkpoint; optimized native natural replays pass | Declared manifest only; future gameplay may expose more instructions |
 | Natural transitions | Cold 74,452-frame Easy / 99-credit run visits all 23 ordered slots, six refuels, ending, ranking and return to attract; every frame matches MAME across ten observation columns. Default three-life failure/continue/weapons runs match 12,000/10,000/8,000 frames; new multi-credit continue recording matches 10,000 frames, zero skipped | Named RAM/timestamp stream only; standard single-credit completion, continuous whole-credit CPU/device/RGB/audio, name entry and NVRAM persistence remain open; carrier states 13–15 are directed-only |
 | Stage discovery | All 23 ordered ROM slots complete 600 scripted input frames each, 13,800 frames total with zero stops | Debug entries bypass natural progression and do not recreate every previous-stage state; special stages can suppress actions |
 | Selected-stage palettes | Stages 5, 8, 13 and 17 execute preceding ROM palette preparation; 56/56 gradient words match MAME, zero skipped | Directed debug startup, not full-credit acceptance |
@@ -162,12 +162,16 @@ is implemented for gamepads/raw joysticks, including trigger
 motors and simple haptic fallback. Bluetooth Xbox body and both trigger motors
 are physically confirmed on macOS; Windows/Linux hardware acceptance remains open.
 
-The complete core/device `required` profile passes at
-`build/workflow/20261014T142055.116214Z/` (`test`, `verify-stage1`, complete
-`oracle-test`, all retained mutations). Final frontend-only output fallback and
-preview fixes have additional passing test/menu, playback and Make/CMake checks
-recorded in ENGINE_NOTES. This does not close whole-credit or physical platform
-acceptance. See
+The macOS preview's fresh complete `required` profile passes at
+`build/workflow/20261015T162805.304852Z/` (`test`, `verify-stage1`, complete
+`oracle-test`, all retained mutations), including the final rolling scenery,
+water-field and clipped-horizon fixes. All 23 directed stage slots preserve
+22,494 counted native RGB/PCM/time frames. The four natural lifecycle replays
+match all ten MAME observation columns and exact original image reconstruction
+across 104,452 frames, zero skips. These finite checks do not close whole-credit
+CPU/device/RGB/audio or physical platform acceptance. The
+[macOS package notes](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15)
+record dependency, source, signing and smoke-test scope. See
 [checkpoint history](CHECKPOINT_HISTORY.md) for retained counts, timings and logs,
 [README](../README.md#current-enhancements) for the current feature list, and
 [ENGINE_NOTES](ENGINE_NOTES.md) for detailed coverage and exclusions.
@@ -177,8 +181,8 @@ overflow rollback) adds one verified instruction. Its 14 MAME fixtures and three
 rejected mutations pass; complete recovery now covers 12,405 PCs and 77,954
 fixtures. Focused test/integration, release and stage-18 checks pass; the retained
 74,452-frame ending replay matches all ten MAME transition observation columns.
-This is additional recovery coverage, not a new full `required` or whole-credit pass;
-see [the recovery notes](ENGINE_NOTES.md#reported-enemy-coordinate-overflow-stop-at-15c10-2026-10-14).
+The complete release gate now includes this port; whole-credit acceptance remains
+open. See [the recovery notes](ENGINE_NOTES.md#reported-enemy-coordinate-overflow-stop-at-15c10-2026-10-14).
 
 The 16:9 preview's subsequent visibility/roll update recovers hidden Sub requests,
 retains scenery beyond the native cull boundary and extends the ROM horizon
@@ -190,8 +194,8 @@ dedicated validation targets. See
 [visibility coverage](ENGINE_NOTES.md#wider-object-visibility-and-horizon-coverage-2026-10-15).
 The [capacity and stage/lifecycle checks](ENGINE_NOTES.md#widescreen-capacity-and-stagelifecycle-checks-2026-10-15)
 describe the detached queue expansion and the exact coverage of the new sweeps.
-The final clean `required` and supplemental `full` targets pass at
-`build/workflow/20261015T093902.465525Z/`, followed by the release target.
+The earlier capacity checkpoint’s clean `required` and supplemental `full` targets
+pass at `build/workflow/20261015T093902.465525Z/`, followed by the release target.
 The stage sweep preserves 22,494 counted native RGB/PCM/time frames; the four
 natural lifecycle replays match all ten retained MAME observation columns and
 original image reconstruction across 104,452 frames, zero skips. This closes

@@ -17,8 +17,10 @@ The native build supports cold boot, attract mode, coin/start, flight, weapons,
 HUD, original audio, stage transitions and pause/restart. All 23 directed stage
 slots have scripted coverage. A 74,452-frame Easy / 99-credit recording reaches
 the ending and matches the retained MAME transition observations.
+A complete playthrough has also been reported on macOS with Normal difficulty
+and three ships; an input recording and independent comparison are still needed.
 
-**Full-game acceptance remains open:** standard single-credit completion,
+**Full-game acceptance remains open:** recorded standard single-credit completion,
 continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
 performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
 other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
@@ -158,7 +160,9 @@ acceptance](docs/SPATIAL_AUDIO_PLAN.md).
 Preferences live in SDL's application preference directory. `--settings-file
 path` overrides their base path; input/music/output/feedback use
 `.inputs`/`.audio`/`.output`/`.haptics` suffixes.
-It does not relocate `soundtrack/`. Useful launch options: `--frames 180`,
+On macOS the default is
+`~/Library/Application Support/AfterBurner2-Recomp/AfterBurner2/settings.cfg`.
+`--settings-file` does not relocate `soundtrack/`. Useful launch options: `--frames 180`,
 `--profile` and `--record path`. `make play-native STAGE=7` is a directed debug
 entry, not natural stage progression.
 

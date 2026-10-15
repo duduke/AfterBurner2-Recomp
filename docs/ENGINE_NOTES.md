@@ -10485,3 +10485,54 @@ settings (`roll-water-cloud-release.log` and `.png`). The real settings file is
 unchanged. GPU fixture hashes remain unchanged after the final capture replays.
 This is a finite launch/performance smoke and focused integration follow-up,
 not a new full oracle-suite or exhaustive widescreen milestone.
+
+### macOS preview packaging (2026-10-15)
+
+`tools/package_macos.py` packages a clean committed tree and the optimized
+native executable into a ROM-free Apple Silicon ZIP. The current executable,
+SDL3 3.4.16 and OpenAL Soft 1.25.2 declare macOS 26.0 deployment targets.
+The package bundles the two replaceable shared libraries, removes development
+library search paths, rewrites dependencies to package-relative paths and
+ad-hoc signs/verifies each binary. It is not Developer ID signed or notarized.
+An allowlist includes setup documentation, notices, complete project source
+and checksum-verified upstream dependency source archives. Neither local ROMs
+nor settings, soundtracks or captures are copied. A manifest records the source
+commit and payload hashes; the ZIP has a separate SHA-256 file.
+
+The preflight package from `4cb5bd2` was extracted into a separate temporary
+directory and launched from a different working directory using temporary
+settings and a temporary link to user-provided ROMs. All manifest hashes,
+executable permissions, signatures and package-relative dependencies passed.
+The 240-frame launch reported Metal/VSync and OpenAL Soft headphone HRTF enabled
+with the built-in dataset (`build/releases/preflight-smoke.log`). A startup
+stream restart was logged; this finite smoke does not establish sustained
+latency or performance. The temporary ROM link was removed; the original ZIP
+contains only ROM setup instructions/listing. See the
+[release workflow](WORKFLOW.md#macos-preview-release) for reproduction.
+
+
+The fresh macOS release `required` gate passes at
+`build/workflow/20261015T162805.304852Z/`: `test` **4.86 s**, complete
+`verify-stage1` **917.01 s**, complete `oracle-test` **3,870.46 s**. All retained
+mutation categories execute, including all **146** recovery controls and the
+three `$15C10` controls. Existing fixture race exclusions remain explicit in
+the individual logs; they are not omitted failures. Recovery covers 12,405 PCs
+and 77,954 identical fixtures. Integration includes all 23 directed slots,
+22,494 counted native RGB/PCM/time frames, 8,280 exact legacy reconstructions,
+840 attract frames and both actual inversion directions. Four natural lifecycle
+replays preserve all ten MAME observation columns, original image reconstruction
+and terrain/protected layers across **104,452 frames**, zero skips; the altered
+MAME-reference control rejects.
+
+The supplemental `full` targets and `native-release` pass at
+`build/workflow/20261015T174807.542965Z/` (**37.41/7.92/0.30 s**). The 600-frame
+joint window compares 40,714,240 RGB pixels and 53,449,620 ordered phases exactly;
+its retained initial contexts and reset-window scope remain as documented in
+the logs. The earlier seven-fixture Metal readback evidence is **reused**, not
+reported as a fresh run: 84 cases / 38,691,968 pixels, zero skips, from
+`*-followup-metal.log`. Rendering sources, compiler/options and comparison
+harness are unchanged, and all seven hashes in
+`roll-water-cloud-gpu-fixtures.json` remain identical after the fresh integration
+and lifecycle replays. Subsequent release-note/README changes are documentation
+only. These gates establish the declared finite release coverage, not exhaustive
+widescreen, physical-platform or continuous whole-credit acceptance.
