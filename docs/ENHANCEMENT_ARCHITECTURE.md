@@ -1,5 +1,9 @@
 # Extending the translated game
 
+Updated **2026-10-15** against the published macOS preview. Implemented interfaces
+are listed below; future features and dependencies live in the
+[enhancement backlog](ENHANCEMENT_PLAN.md).
+
 The native application uses SDL3's GPU renderer and compute sprite filters.
 The Three.js scene prototype is retained only on
 [`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine),
@@ -13,8 +17,8 @@ boundary; application features do not need access to CPU registers or RAM.
 The original mode remains the reference while enhancements are developed.
 Cycle accuracy is not a requirement for new features, but removing existing
 scheduling must preserve the game's update order and observable behaviour.
-The accepted finite MAME corpora remain regression checks. Full-credit/stage
-coverage is still incomplete and is not advanced by this application API.
+The accepted finite MAME corpora remain regression checks. Exhaustive scene and
+whole-credit fidelity acceptance remain open; this API does not close them.
 
 ## Available interfaces
 
@@ -26,6 +30,10 @@ coverage is still incomplete and is not advanced by this application API.
 | `frame()` | Read-only completed native 320×224 RGB plus frame number and board time | GPU presentation, scaling, shaders, screenshots and overlays |
 | `capture_sprite_scene`, `sprite_scene()` | Opt-in read-only per-pixel ordered fragment chains from published ROM sprite descriptors; clip-frontier palette and priority retained, reset on restart | Independent cloud/trail/explosion/flame opacity and future per-sprite materials |
 | `capture_sprite_presentation`, `sprite_presentation()` | Opt-in read-only native-sized ARGB background/sprite copies and tile/shadow protection; valid after the next completed frame, invalidated on disable/restart | Sprite-only frontend filtering, with original native raster retained |
+| `capture_wide_scene`, `wide_scene()` | Immutable partial-render clips with frame/time identity and detached presentation descriptors; native RGB/PCM/time stay authoritative | Implemented 16:9 renderer, wider projection/scenery and capacity recovery |
+| `capture_feedback`, `take_feedback()` | Passive verified cue events and continuous-state snapshot; restart clears history | Implemented body/trigger rumble; additional warning/telemetry cues need verification |
+| `capture_music`, `take_music()` | Native music/effects stems and typed start/stop/fade events; original `take_audio()` stays intact | Implemented replacement tracks and independent gains |
+| `capture_cockpit` with `take_music()` | Optional chip-rate FM/PCM voice ownership/streams | Implemented OpenAL resampling and cockpit output; unknown voices retain stereo fallback |
 | `Extensions::frame_complete` | Called once per completed frame, including each catch-up frame | Capture/recording and frame-driven frontend features |
 | `Extensions::process_audio` | Processes outgoing 48 kHz signed 16-bit stereo after the original devices have mixed it | Master volume, output effects and supplemental audio mixing |
 | `Extensions::restarted` | Called after an explicit restart; registered functions persist | Reset extension playback cursors/history |
@@ -64,9 +72,9 @@ feature can be implemented as a postprocessing effect.
 
 | Feature | Next interface needed |
 | --- | --- |
-| Rumble, motion telemetry, near-miss bonuses | Typed semantic events/state read from verified producers, with explicit event ordering and original-mode comparisons |
+| Additional feedback, motion telemetry, near-miss bonuses | Extend the implemented typed feedback events/state with independently verified producers and explicit ordering; basic rumble is already implemented |
 | Additional music/effect policies | Use the implemented verified stem/event interface; final mixed PCM alone cannot separate original music |
-| True widescreen and replacement sprites | Renderer/asset interfaces before native clipping and composition; stretching the completed raster cannot reveal additional world content |
+| Additional widescreen controllers/aspects and replacement sprites | Reuse immutable scene clips and detached visibility; add verified controller coverage and descriptor-to-asset mapping. Basic 16:9 rendering/capacity recovery is already implemented |
 | Stage selection, shuffled missions and new formations | A verified stage/mission descriptor interface, followed by an explicit enhanced mode and original-mode regression tests |
 | New flight/combat rules or wingman play | Readable subsystem adapters extracted from verified player/object/collision routines; maintain native arithmetic and update order in original mode |
 | Save states | Complete versioned serialization of board/device and pending CPU continuation state, plus extension state; a RAM dump is insufficient |
@@ -181,12 +189,32 @@ all-opaque identity. No extra native producer or descriptor writes are introduce
 `hwvideo/ground_horizon.hpp` reads horizon families from ROM $11000 and the
 palette $E8, then clips misplaced plain road-0 fill against the published
 strip's actual row/column silhouette. Ordered sky/terrain endpoint pens determine
-the local direction; ambiguous lines retain Original. A fitted plane or global
-centroid is insufficient during clipping/interpolation. Partial palettes, foreground
-priority, sprite ordering and shadow resolution are retained in both GPU and
-CPU presentation. Only active flight/direct normal-road control 4 is eligible;
-other road modes retain their original image. Original is the default. This
-corrects a known roll wedge without replacing the ROM terrain/pitch/roll model.
+the local direction. Original-width correction remains active-flight-only and
+uses those local silhouettes. The wider renderer also corrects attract/takeoff
+and other submitted normal-road horizons: the observed envelope and ROM normal
+handle clipped/banked corners, while ground-side extension requires an observed
+native-row ground/sea color. A guessed fitted plane is not a substitute for the
+observed strip. Missing silhouette/color evidence remains unfilled.
+Both paths require normal-road control 4 and preserve protected terrain/layers,
+partial palettes, sprite ordering and shadows. Original is the default. This
+is a targeted fill correction, not a replacement terrain/pitch/roll model.
+
+## Detached widescreen presentation
+
+`SceneClip` captures buffered road/sprite state, tile/text/palette/register data
+and detached descriptors before each native partial render. `WideVisibility`
+observes verified producers without timed bus reads or native writes. It widens
+Sub projection, retains audited scenery against live camera data, extends actual
+horizon submissions/takeoff waves and recovers native queue/depth-bucket drops.
+Native request counts, hardware banks, object pools and combat stay unchanged.
+
+`WideScene` renders those clips into width-aware background, sprite, protection
+and ordered-fragment planes. Its view reports dimensions and native origin;
+borrowed spans must be copied before asynchronous use. CPU/GPU composition uses
+the same scene contract. Original 320×224 reconstruction remains a strict
+reference; additional wide objects may overlap that center in the enhanced view.
+Current frontend support is 398×224. See [the widescreen plan](WIDESCREEN_PLAN.md)
+for controller/scene, aspect, platform and sustained-load gaps.
 
 ## SDL3 native input adapter
 

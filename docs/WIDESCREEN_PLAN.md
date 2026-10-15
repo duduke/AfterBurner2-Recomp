@@ -1,6 +1,7 @@
 # True widescreen implementation plan
 
-**Status: experimental 16:9 preview implemented 2026-10-14; full acceptance remains open.**
+**Status: experimental 16:9 preview released; exhaustive acceptance remains open.**
+Updated **2026-10-15** against [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
 
 Render additional scene content left and
 right of the original view, preserving object proportions, vertical coverage and
@@ -76,36 +77,35 @@ separate presentation policy. GPU readback checks all six filters and both
 opacity policies against the wide CPU reference. See ENGINE_NOTES for counts,
 logs and exclusions.
 
-## Proposed first release
+## Delivered preview and remaining gates
 
-Start with **Original and 16:9**, retaining current square-pixel proportions,
-224 logical rows, native combat rules and a centered HUD. Add 16:10 and measured
-ultrawide ratios after 16:9 passes. Original remains the default. Pixel-aspect
-correction, relocated HUD and gameplay changes are separate opt-in follow-ups.
+The published preview provides **Original and 16:9**, with 224 logical rows,
+current square-pixel proportions, native combat rules and a centered HUD.
+The final code passed the complete `required` and supplemental `full` gates;
+this is a released experimental increment, not completed widescreen acceptance.
 
-The first deliverable was an **audit and passive snapshot contract**, followed by
-the implemented CPU-rendered 16:9 preview. A background-only preview is a development milestone;
-release requires sprites, visibility, layers, effects and lifecycle gates too.
-Do not ship unseen native-edge disappearance as complete widescreen.
-
-| Milestone | Deliverable | Gate before continuing |
+| Milestone | Current state | Remaining acceptance |
 | --- | --- | --- |
-| 1. Scene audit/export | Immutable road, tile, sprite and palette data at each partial-render frontier; clipping/culling inventory | Capture on/off preserves native CPU/device state, RGB, PCM and time |
-| 2. CPU backgrounds | Genuine additional sky/road/tile content in 398×224, with 39 columns per side | Original 320×224 center matches at unfiltered/opaque/Original ground settings; side content and both roll directions checked |
-| 3. Sprites and visibility | Signed wide clipping, layer priority, shadows and coverage of pre-render rejection | Sprites cross both edges correctly; source wrap and native-boundary popping accounted for |
-| 4. Existing enhancements | Wide CPU/GPU planes, all sprite filters, translucency and corrected ground | GPU matches the wide CPU reference; original presentation and terrain-preservation checks remain intact |
-| 5. Frontend integration | Viewport setting, centered HUD/menu coordinates, resize/fullscreen/capture handling | Pause/restart/mode switches, high DPI, pointer alignment and restored arcade attract startup pass |
-| 6. 16:9 acceptance | Supported-scene/aspect matrix and sustained performance measurements | Relevant fixtures and rejected mutations, then the complete required profile for release |
+| 1. Scene audit/export | Immutable partial-frame snapshots and passive capture implemented | Audit additional object controllers/unsupported scenes |
+| 2. CPU backgrounds | Wide road/sky/tiles and exact legacy reconstruction implemented | Broader stage/input/scene trajectories |
+| 3. Sprites and visibility | Wider projection, retained scenery, horizon/wave extension and queue/depth-drop recovery implemented | Remaining controller/culling and visible-but-untargetable cases |
+| 4. Existing enhancements | Wide CPU/GPU filters, translucency and corrected ground implemented | Other backends and peak-load behavior |
+| 5. Frontend integration | Persisted viewport, centered HUD/menu, capture and switching implemented | Complete physical high-DPI/resize/fullscreen/input matrix |
+| 6. Release/acceptance | macOS preview release gates pass for the recorded scope | Exhaustive scene audit and sustained performance before broader acceptance; 16:10/ultrawide separately |
 
-Current progress: snapshot export, CPU rendering, published-sprite clipping,
-CPU/GPU effects and the frontend setting are implemented. Milestone 3 now includes
-detached scenery retention and wider Sub projection; milestone 4 includes added
-horizon segments and full-width correction. Complete object/scene coverage and
-full release acceptance in milestone 6 remain open.
+The release integration run covers all 23 directed slots: 22,494 counted native
+RGB/PCM/time frames unchanged and 8,280 exact legacy reconstructions. It also
+covers 840 attract frames and a 720-frame inversion tail with both actual roll
+directions. Four natural lifecycle replays match ten MAME observation columns,
+legacy images and terrain/protected-layer gates across 104,452 frames, zero skips.
+The unchanged seven Metal fixtures retain 84 passing filter/opacity cases;
+this is reused GPU evidence, not a new readback run. See
+[the complete release checkpoint](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
 
-Each milestone records unsupported scenes and dependencies. New probes or literal
-ports need independent MAME witnesses; side bands have no automatic MAME oracle,
-so validate their addressing/geometry independently and use deliberate mutations.
+Next: finish 16:9 controller/scene and sustained-load audits, establish named
+Windows/Linux/GPU coverage, then implement and validate 16:10/ultrawide. Optional
+pixel-aspect correction, edge-anchored HUD and wider gameplay rules are separate
+features. Do not promote finite lifecycle coverage into exhaustive visual coverage.
 
 ## Scope and aspect policy
 
@@ -136,18 +136,20 @@ aspect, not a universal width labelled 21:9. Cap supported width explicitly.
 `native partial-frame snapshots -> read-only wide renderer -> enhanced planes -> SDL presentation`
 
 Retain the native 320×224 render, scheduler, bus access order, sprite feedback and
-original RGB/PCM. `GameSession::frame()` keeps its current contract. Add an opt-in
-wide presentation result with width, height, stride, native origin and frame/time
-identity; copy borrowed data before asynchronous use. Disable capture in Original
-mode and clear enhanced history on restart/mode change.
+original RGB/PCM. `GameSession::frame()` keeps its current contract. The implemented
+`capture_wide_scene` / `wide_scene()` interface supplies immutable clips and frame/time
+identity; `WideScene::view()` exposes width, height, native origin and tightly
+packed planes. Copy borrowed data before asynchronous use. Capture is opt-in;
+clear enhanced history on restart/mode change.
 
 Do not simply construct a wider `Screen` or call the native sprite rasterizer
 again on live state. `HWSprites` writes word-7 scaler feedback, while road/tile/
 palette/sprite state changes at native partial-render frontiers. Export immutable
 snapshots synchronously at those frontiers, including the buffered data actually
 used for that row range. A final-frame RAM snapshot alone is insufficient.
-The existing `Screen::layers_rendered` and passive `sprite_scene` observer are
-starting points, not complete wide scene exports. Compose wide capture with the
+The implemented `SceneClip` export includes buffered road/sprite data, tile/text/
+palette/register state and detached descriptors. A native-sized sprite plane
+alone does not supply this complete wide scene contract. Compose wide capture with the
 existing ground/effect observers; do not overwrite their callbacks. Capture must
 serve the same published data and clip-frontier palette across all consumers.
 
@@ -158,9 +160,15 @@ the source address wrapping, signed screen position and destination clipping.
 Translating a descriptor must not turn offscreen coordinates into visible wrap
 duplicates. The original 320×224 rectangle is the center-crop reference.
 
-## Delivery stages
+## Delivery contracts
+
+The following contracts describe implemented stages and constraints for extending
+them. Remaining audits are identified explicitly; imperative wording does not
+mean the existing snapshot, renderer or menu still needs to be built.
 
 ### 1. Audit and passive scene export
+
+**Current state:** Implemented for the recorded paths; further controller/scene audit remains.
 
 Trace road buffered RAM/control, tile pages/scroll/category, sprite descriptor
 publication/feedback, palette changes and native clipping. Identify projection,
@@ -175,6 +183,8 @@ no native CPU/device state, time, RGB or PCM. Keep clips and ordering across
 multiple updates in one frame. Avoid timed bus reads in presentation callbacks.
 
 ### 2. Road, sky and tile backgrounds
+
+**Current state:** Implemented at 398×224; exhaustive scene/aspect coverage remains.
 
 Render road/sky across the wide destination using the original per-row control,
 color and horizontal phase. Extend sampling with signed `native_x`, not a recentered
@@ -191,6 +201,8 @@ opacity/HUD relocation off. Side bands must visibly contain genuine additional
 road/tile content. This background milestone is not complete widescreen.
 
 ### 3. Sprites, priority and effects
+
+**Current state:** Implemented, including detached capacity and both-edge/roll checks; broader backend/load acceptance remains.
 
 Generalize the read-only sprite decoder to a signed wide clip and dynamic stride;
 remove presentation-only 320-pixel bounds while retaining descriptor semantics,
@@ -215,6 +227,8 @@ for every enhanced filter setting.
 
 ### 4. Projection and gameplay visibility
 
+**Current state:** Wider Sub projection and audited scenery retention are implemented; native combat rules remain unchanged.
+
 The first render-only increment preserves native object positions, spawning,
 collision, targeting, weapon limits and scoring. It cannot reveal objects culled
 before publication or guarantee waves use the added space. Do not call that
@@ -235,7 +249,9 @@ request capacity to compensate for missing content without a separate plan.
 
 ### 5. HUD, menus and settings
 
-Initially add Options → Video → Viewport: Original or 16:9. Add 16:10 and
+**Current state:** Original/16:9 setting and centered safe area are implemented; extra aspects and optional HUD relocation remain.
+
+Options → Video → Viewport already offers Original or 16:9. Add 16:10 and
 supported ultrawide/custom aspects after their separate acceptance gates. Persist independently from window scaling/fullscreen. Reallocate enhanced
 resources at a safe frame boundary; preserve board state and pause status.
 Map window resize, high DPI, letterboxing and mouse coordinates consistently.
@@ -299,7 +315,8 @@ and `python3 tools/workflow.py run <target> -j 4`: focused checks/oracles/mutati
 complete `required` for core merges/releases/acceptance. Keep ROM-derived captures
 and screenshots under ignored `build/oracle/`.
 
-Ship 16:9 only after background, sprite, visibility, HUD and lifecycle gates pass;
-then validate 16:10 and ultrawide independently. Record supported scenes/aspects,
+The released 16:9 preview passes its declared background, sprite, visibility,
+HUD and lifecycle gates. Broader scene/performance acceptance remains open;
+validate 16:10 and ultrawide independently. Record supported scenes/aspects,
 fallbacks, enhanced gameplay differences and unverified cases. True widescreen
 does not establish full-credit arcade equivalence.

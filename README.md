@@ -180,7 +180,9 @@ and preserve all fixtures. Never commit ROMs, captures, recordings or personal
 music. GPU readback tests require a working graphics backend.
 
 Start with the [documentation guide](docs/README.md), [workflow](docs/WORKFLOW.md)
-and [roadmap](docs/ROADMAP.md). [Engine notes](docs/ENGINE_NOTES.md) retain the
+and [summarized roadmap](docs/ROADMAP.md#summarized-roadmap). The
+[enhancement backlog](docs/ENHANCEMENT_PLAN.md) separates delivered features from
+future proposals. [Engine notes](docs/ENGINE_NOTES.md) retain the
 ROM evidence and verification history; [enhancement architecture](docs/ENHANCEMENT_ARCHITECTURE.md)
 describes extension contracts. The Three.js prototype is retained only on
 [`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).

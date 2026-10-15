@@ -1,6 +1,8 @@
 # OpenAL Soft cockpit audio
 
-**Status: experimental implementation, 2026-10-14.** Original SDL remains the
+**Status: experimental implementation shipped in the macOS preview.**
+Updated **2026-10-15** against [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
+Original SDL remains the
 default native PCM reference. The enhanced path changes playback, never the
 Z80 program, chip clocks, game logic or exported native audio.
 
@@ -108,6 +110,16 @@ apply backpressure outside board execution. Pause, restart, device/profile
 changes and shutdown stop/clear the appropriate playback state. Unsupported
 output leaves the game running. Source underruns are logged and restarted;
 sustained latency/performance acceptance remains open.
+
+## Current release checkpoint
+
+The macOS ZIP bundles OpenAL Soft 1.25.2 with embedded HRTF data, SDL3 3.4.16,
+complete sources and notices. The final extracted-package 240-frame smoke
+reported Metal/VSync and active headphone HRTF through CoreAudio. This proves
+initialization/playback, not measured front/rear localization or physical 5.1.
+The complete `required` and supplemental `full` gates pass; see
+[release evidence](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
+No new classification or cabinet-wiring acceptance is implied by that release.
 
 ## Validation and remaining acceptance
 

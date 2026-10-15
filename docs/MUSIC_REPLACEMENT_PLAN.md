@@ -1,7 +1,9 @@
 # Per-track music replacement
 
-Status: implemented in the native SDL3 frontend; validation coverage and remaining
-music contexts are listed below. Original is the default for every track.
+**Status: shipped in the native frontend; natural-context acceptance remains open.**
+Updated **2026-10-15** against [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
+Six mappings, -12 dB balance and live active-song changes are implemented.
+Original is the default for every track.
 
 ## Using the menu
 
@@ -112,11 +114,17 @@ but their natural stage/ending/game-over/ranking contexts remain unverified.
 Replacement fade is unit-tested; these natural captures contain no fade updates.
 This feature does not establish full-game audio or progression acceptance.
 
-Historical validation on 2026-10-13: the complete `required` profile passed before
-the subsequent balance/live-selection corrections, along
-with release/CMake builds, four targeted CTests, menu integration and finite
-software/Metal smokes using generated replacements with muted gains. Existing
-historical oracle skips retain their documented policies; the new routing and
-presentation checks have zero skips. The later corrections pass focused regression, native integration, routing, all
-six mutations and release/smoke checks. Revision-specific details and logs are recorded
-in [ENGINE_NOTES](ENGINE_NOTES.md#native-music-presentation-adapter-2026-10-13).
+## Current checkpoint and next work
+
+The fresh complete `required` profile, supplemental `full` targets and optimized
+build pass at the [macOS release checkpoint](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15),
+including the balance/live-selection corrections and all six music controls.
+The packaged launch also activates OpenAL headphone HRTF; physical mix/localization
+and long-session acceptance remain separate. Earlier revision-specific routing,
+build and smoke evidence remains in
+[the music notes](ENGINE_NOTES.md#native-music-presentation-adapter-2026-10-13).
+
+Next: capture the four remaining songs in their natural contexts and natural fade
+updates, then extend listening/headroom and device/lifecycle checks. Keep the
+existing two-song recordings and every retained control; descriptor-layout and
+unit fade checks do not substitute for those missing natural contexts.

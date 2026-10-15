@@ -3,7 +3,9 @@
 | Task | Start here |
 | --- | --- |
 | Build, play or configure the game | [Project README](../README.md) |
-| See current coverage, rules and next tasks | [Roadmap](ROADMAP.md) |
+| Scan priorities, current coverage and working rules | [Summarized roadmap](ROADMAP.md#summarized-roadmap) |
+| Plan whole-credit fidelity and lifecycle acceptance | [Fidelity plan](FIDELITY_PLAN.md) |
+| See implemented enhancements and future proposals | [Enhancement backlog](ENHANCEMENT_PLAN.md) |
 | Run tests, captures or recover a missing instruction | [Workflow](WORKFLOW.md) |
 | Package the macOS preview | [macOS release workflow](WORKFLOW.md#macos-preview-release) |
 | Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |

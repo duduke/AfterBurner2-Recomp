@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-14) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-15) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -10487,6 +10487,9 @@ This is a finite launch/performance smoke and focused integration follow-up,
 not a new full oracle-suite or exhaustive widescreen milestone.
 
 ### macOS preview packaging (2026-10-15)
+
+Published as [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1)
+from `2ce8446`; both uploaded asset digests match the verified local ZIP/checksum.
 
 `tools/package_macos.py` packages a clean committed tree and the optimized
 native executable into a ROM-free Apple Silicon ZIP. The current executable,

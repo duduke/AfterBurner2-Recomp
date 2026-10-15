@@ -1,6 +1,7 @@
 # SDL rumble and force feedback
 
-**Status: basic SDL rumble implemented; advanced force feedback planned.**
+**Status: basic SDL rumble shipped in the macOS preview; advanced FFB planned.**
+Updated **2026-10-15** against [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
 The shared adapter supports Windows, Linux and macOS through SDL 3.4.
 Capabilities and API results determine which outputs are available.
 
@@ -125,6 +126,19 @@ comparisons require identical RGB/PCM/time. Retain all fixtures and mutations;
 virtual callbacks prove calls, not physical feel. See
 [WORKFLOW](WORKFLOW.md#controller-feedback) and the
 [ROADMAP validation cadence](ROADMAP.md#working-on-the-remaining-tasks-read-this-first).
+
+## Current validation checkpoint
+
+The macOS preview's fresh complete `required` and supplemental `full` gates
+passed. Feedback integration preserves 4,200 native RGB/PCM/time frames;
+independent MAME witnesses and all eleven feedback controls pass. Full release
+logs are in [ENGINE_NOTES](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
+These automated results were obtained on macOS; the shared adapter and virtual
+callbacks do not establish Windows/Linux build or physical-output acceptance.
+
+Next: record named Windows/Linux devices and transports, simple-haptic fallback,
+and actual gameplay/lifecycle feel. Keep warning cues disabled until their ROM
+producer is independently verified; add advanced stick effects separately.
 
 ## Remaining force-feedback work
 
