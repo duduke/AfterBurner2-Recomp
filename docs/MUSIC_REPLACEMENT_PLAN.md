@@ -50,6 +50,42 @@ The catalog maps these commands to stable settings keys:
 | 0x95 | After Burner | after_burner |
 | 0x96 / 0x97 alias | City 202 | city_202 |
 
+### Sega Saturn (SEGA AGES) soundtrack tracklist
+
+The Japanese Sega Saturn release of *SEGA AGES: After Burner II* (Catalog `GS-9109`,
+September 27, 1996) is structured as a mixed-mode CD with a Mode 1 data track
+(`Track 01`) and 17 Redbook CD-DA audio tracks (`Track 02` through `Track 18`).
+These audio tracks correspond directly to the in-game Extended Music Test menu
+(accessible via `R x 3` on the Saturn Options screen) across three sound suites:
+- **REV.B / ARCADE** (Tracks 02-07): arcade-accurate arrangements without lead melody
+- **REV.A** (Tracks 08-13): arrangements featuring lead melodies
+- **AB1** (Tracks 14-18): original *After Burner 1* arcade sequences (omits *City 202*)
+
+Because forward slashes (`/`) and double quotes (`"`) are reserved in Windows and
+POSIX filenames, the recommended filenames replace the menu's slash with a hyphen
+(` - `) and preserve the track numbers for sorted alphabetical display in the menu.
+
+| Track | In-game sound test title | Recommended file basename | Duration | Target arcade cue |
+| --- | --- | --- | --- | --- |
+| 02 | `MAXIMUM POWER REV.B/ARCADE` | `Track 02 - MAXIMUM POWER (REV.B - ARCADE)` | 2:05 | 0x92 Maximum Power |
+| 03 | `FINAL TAKE OFF REV.B/ARCADE` | `Track 03 - FINAL TAKE OFF (REV.B - ARCADE)` | 6:25 | 0x91 Final Take Off |
+| 04 | `RED OUT REV.B/ARCADE` | `Track 04 - RED OUT (REV.B - ARCADE)` | 4:08 | 0x94 Red Out |
+| 05 | `SUPER STRIPE REV.B/ARCADE` | `Track 05 - SUPER STRIPE (REV.B - ARCADE)` | 4:08 | 0x93 Super Stripe |
+| 06 | `AFTER BURNER REV.B/ARCADE` | `Track 06 - AFTER BURNER (REV.B - ARCADE)` | 5:22 | 0x95 After Burner |
+| 07 | `CITY 202 REV.B/ARCADE` | `Track 07 - CITY 202 (REV.B - ARCADE)` | 2:39 | 0x96 City 202 |
+| 08 | `MAXIMUM POWER REV.A` | `Track 08 - MAXIMUM POWER (REV.A)` | 0:48 | 0x92 Maximum Power |
+| 09 | `FINAL TAKE OFF REV.A` | `Track 09 - FINAL TAKE OFF (REV.A)` | 4:14 | 0x91 Final Take Off |
+| 10 | `RED OUT REV.A` | `Track 10 - RED OUT (REV.A)` | 3:14 | 0x94 Red Out |
+| 11 | `SUPER STRIPE REV.A` | `Track 11 - SUPER STRIPE (REV.A)` | 3:28 | 0x93 Super Stripe |
+| 12 | `AFTER BURNER REV.A` | `Track 12 - AFTER BURNER (REV.A)` | 5:22 | 0x95 After Burner |
+| 13 | `CITY 202 REV.A` | `Track 13 - CITY 202 (REV.A)` | 1:40 | 0x96 City 202 |
+| 14 | `MAXIMUM POWER AB1` | `Track 14 - MAXIMUM POWER (AB1)` | 0:52 | 0x92 Maximum Power |
+| 15 | `FINAL TAKE OFF AB1` | `Track 15 - FINAL TAKE OFF (AB1)` | 4:14 | 0x91 Final Take Off |
+| 16 | `RED OUT AB1` | `Track 16 - RED OUT (AB1)` | 1:42 | 0x94 Red Out |
+| 17 | `SUPER STRIPE AB1` | `Track 17 - SUPER STRIPE (AB1)` | 1:48 | 0x93 Super Stripe |
+| 18 | `AFTER BURNER AB1` | `Track 18 - AFTER BURNER (AB1)` | 5:01 | 0x95 After Burner |
+
+
 `MusicRouting` reads descriptor roots from ROM at runtime. It observes the actual
 sequencer initialization read at sound PC $0C76, so requests postponed by the
 native driver do not start replacements early. Each descriptor initializes eight

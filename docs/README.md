@@ -9,7 +9,7 @@
 | Run tests, captures or recover a missing instruction | [Workflow](WORKFLOW.md) |
 | Package the macOS preview | [macOS release workflow](WORKFLOW.md#macos-preview-release) |
 | Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |
-| Configure or understand replacement music | [Music replacement](MUSIC_REPLACEMENT_PLAN.md) |
+| Configure or understand replacement music | [Music replacement](MUSIC_REPLACEMENT_PLAN.md) — custom audio routing, settings and [Saturn tracklist](MUSIC_REPLACEMENT_PLAN.md#sega-saturn-sega-ages-soundtrack-tracklist) |
 | Configure headphone HRTF, speakers or interpolation | [OpenAL Soft cockpit audio](SPATIAL_AUDIO_PLAN.md) |
 | Implement rumble or force feedback | [Haptics notes](HAPTICS_PLAN.md) — rumble implemented, advanced FFB planned |
 | Extend the visible scene without stretching | [True widescreen plan](WIDESCREEN_PLAN.md) — experimental 16:9 preview |

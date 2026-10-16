@@ -192,7 +192,8 @@ A loaded selection for the current song applies on resume and starts the file
 from the beginning. Other mappings apply at their native cue. Music, effects and
 track volumes range from 0–100%; gameplay and preview use the same -12 dB
 replacement baseline. Original at 100% preserves exact native PCM. See
-[music behavior and coverage](docs/MUSIC_REPLACEMENT_PLAN.md).
+[music behavior and coverage](docs/MUSIC_REPLACEMENT_PLAN.md) and
+[Sega Saturn (SEGA AGES) track naming](docs/MUSIC_REPLACEMENT_PLAN.md#sega-saturn-sega-ages-soundtrack-tracklist).
 
 For optional spatial playback, open **Options → Audio → Output** and choose
 Headphones HRTF, 2.1 Speakers or 5.1 Speakers. Interpolation lists the resamplers
