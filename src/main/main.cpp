@@ -124,10 +124,10 @@ int main(int argc, char** argv)try
     SDL_GPUDevice* gpu_device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,false,nullptr);
     SDL_Renderer* renderer=gpu_device?SDL_CreateGPURenderer(gpu_device,window):nullptr;
     if(!renderer) {
-        std::cerr<<"SDL GPU unavailable; using CPU/software presentation: "<<SDL_GetError()<<'\n';
+        std::cerr<<"SDL GPU compute unavailable; trying SDL renderer with CPU filters: "<<SDL_GetError()<<'\n';
         if(gpu_device)SDL_DestroyGPUDevice(gpu_device);
         gpu_device=nullptr;
-        renderer=SDL_CreateRenderer(window,"software");
+        renderer=SDL_CreateRenderer(window,nullptr);
     }
     if (!renderer)
     {
@@ -142,7 +142,9 @@ int main(int argc, char** argv)try
     if(profile) {
         int vsync=0; SDL_GetRenderVSync(renderer, &vsync);
         std::cout<<"Native renderer: "<<SDL_GetRendererName(renderer)
-                 <<" backend="<<(gpu_device?SDL_GetGPUDeviceDriver(gpu_device):"software")
+                 <<" backend="<<(gpu_device?SDL_GetGPUDeviceDriver(gpu_device):SDL_GetRendererName(renderer))
+                 <<" continuation="<<XBoardCpuContinuation::backend_name()
+                 <<" filters="<<(gpu_device?"gpu":"cpu")
                  <<" SDL="<<SDL_GetVersion()<<" vsync="<<vsync<<'\n';
     }
 
@@ -362,7 +364,11 @@ int main(int argc, char** argv)try
             previous_counter = counter;
             if (accumulated_seconds < tick_seconds)
             {
-                SDL_Delay(1);
+                // Sleep toward the board deadline with SDL's high resolution
+                // timer, capped to keep event/input polling responsive.
+                const double remaining=std::max(0.0,tick_seconds-accumulated_seconds-
+                    (SDL_GetPerformanceCounter()-counter)/counter_frequency);
+                SDL_DelayPrecise(Uint64(std::min(remaining,0.002)*1e9));
                 continue;
             }
         }

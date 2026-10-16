@@ -5,15 +5,26 @@
 #include <exception>
 #include <functional>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <memory>
 
 // On Apple Silicon the cooperative CPUs share the host thread. Save the ABI's
 // callee-saved registers on separate stacks rather than waking OS workers at
-// every instruction. The portable worker backend remains available for other
-// platforms and for differential validation.
+// every instruction. Windows uses OS fibers for the same cooperative handoff.
+// The worker backend remains available for differential validation.
 #ifndef __has_feature
 #define __has_feature(x) 0
+#endif
+#if defined(_WIN32) && !defined(AB2_FORCE_THREAD_CONTINUATION)
+#define AB2_WINDOWS_FIBER 1
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #endif
 #if defined(__APPLE__) && defined(__aarch64__) && !defined(AB2_FORCE_THREAD_CONTINUATION) && !defined(__SANITIZE_ADDRESS__) && !__has_feature(address_sanitizer) && !__has_feature(thread_sanitizer) && !defined(__arm64e__)
 #define AB2_STACK_CONTINUATION 1
@@ -36,6 +47,10 @@ asm(
 "mov x0,x19\nblr x20\nbrk #0\n");
 #endif
 
+#if AB2_STACK_CONTINUATION || AB2_WINDOWS_FIBER
+#define AB2_COOPERATIVE_CONTINUATION 1
+#endif
+
 // Cooperative adapter for the literal 68000 ports. Only the granted CPU runs;
 // the other continuation is parked before its next clock/bus checkpoint. A host
 // stack preserves a port's local variables across a grant (notably RMW data).
@@ -45,6 +60,15 @@ asm(
 class XBoardCpuContinuation {
 public:
     static constexpr uint64_t CYCLE_NS=80, BUS_NS=4*CYCLE_NS;
+    static constexpr const char* backend_name(){
+#if AB2_WINDOWS_FIBER
+        return "windows-fiber";
+#elif AB2_STACK_CONTINUATION
+        return "apple-arm64-stack";
+#else
+        return "worker-thread";
+#endif
+    }
 #if AB2_STACK_CONTINUATION
     XBoardCpuContinuation():stack(new uint64_t[STACK_WORDS]{}){
         auto top=reinterpret_cast<uintptr_t>(stack.get()+STACK_WORDS)&~uintptr_t(15);
@@ -56,14 +80,22 @@ public:
         asm volatile("mrs %0,fpsr" : "=r"(saved[21]));
         fiber_stack=saved;
     }
+#elif AB2_WINDOWS_FIBER
+    XBoardCpuContinuation():host_fiber(acquire_host_fiber()){
+        fiber=CreateFiberEx(0,1024*1024,FIBER_FLAG_FLOAT_SWITCH,&enter,this);
+        if(!fiber)throw std::runtime_error("CreateFiberEx failed: "+std::to_string(GetLastError()));
+    }
 #else
     XBoardCpuContinuation():worker([this]{work();}){}
 #endif
     XBoardCpuContinuation(const XBoardCpuContinuation&)=delete;
     ~XBoardCpuContinuation(){
         stopping=true;publish(Stopping);
-#if AB2_STACK_CONTINUATION
+#if AB2_COOPERATIVE_CONTINUATION
         if(fiber_started)resume();
+#if AB2_WINDOWS_FIBER
+        DeleteFiber(fiber);
+#endif
 #else
         worker.join();
 #endif
@@ -157,6 +189,11 @@ private:
             if(in_fiber)ab2_context_swap(&fiber_stack,host_stack);
             else resume();
         }
+#elif AB2_WINDOWS_FIBER
+        while(turn.load(std::memory_order_acquire)==value){
+            if(in_fiber)SwitchToFiber(host_fiber->pointer);
+            else resume();
+        }
 #else
         for(unsigned n=0;n<2048;++n){
             if(turn.load(std::memory_order_acquire)!=value)return;
@@ -192,6 +229,44 @@ private:
         // Return to the destructor only after the instruction's C++ locals
         // have unwound. This completed stack is never resumed again.
         ab2_context_swap(&self->fiber_stack,self->host_stack);
+        std::terminate();
+    }
+#elif AB2_WINDOWS_FIBER
+    // All continuations on this host thread share its conversion. Revert only
+    // our own conversion after the last continuation dies, in any order.
+    // A caller that already runs as a fiber retains ownership of that fiber.
+    struct HostFiber {
+        void* pointer{};
+        bool converted=false;
+        HostFiber(){
+            if(IsThreadAFiber())pointer=GetCurrentFiber();
+            else {
+                pointer=ConvertThreadToFiberEx(nullptr,FIBER_FLAG_FLOAT_SWITCH);
+                if(!pointer)throw std::runtime_error("ConvertThreadToFiberEx failed: "+std::to_string(GetLastError()));
+                converted=true;
+            }
+        }
+        ~HostFiber(){if(converted)ConvertFiberToThread();}
+    };
+    static std::shared_ptr<HostFiber> acquire_host_fiber(){
+        static thread_local std::weak_ptr<HostFiber> current;
+        auto host=current.lock();
+        if(!host){host=std::make_shared<HostFiber>();current=host;}
+        return host;
+    }
+    std::shared_ptr<HostFiber> host_fiber;
+    void* fiber{};
+    bool in_fiber=false,fiber_started=false;
+    void resume(){
+        fiber_started=true;in_fiber=true;
+        SwitchToFiber(fiber);
+        in_fiber=false;
+    }
+    static void WINAPI enter(void* pointer){
+        auto* self=static_cast<XBoardCpuContinuation*>(pointer);
+        self->work();
+        // Unwind the instruction before the host deletes this fiber stack.
+        SwitchToFiber(self->host_fiber->pointer);
         std::terminate();
     }
 #else

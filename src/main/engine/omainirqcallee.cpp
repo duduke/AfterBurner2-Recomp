@@ -4,6 +4,7 @@
 // in omainirqcallee.inc can execute; ROM tables are read through MainBus.
 #include "engine/omainirqservice.hpp"
 #include <stdexcept>
+#include <string>
 
 uint32_t OMainIrqService::frame_complex(uint32_t entry,OMainObjects::Registers& r,uint32_t stack) {
     if(observe_leaf)observe_leaf(true,entry,r,ns);

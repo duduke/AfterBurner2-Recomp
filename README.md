@@ -25,9 +25,14 @@ continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
 performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
 other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
-[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-15) for scope.
+[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-16) for scope.
 
-Latest work expands the experimental 16:9 view beyond the original sprite
+Preview 2 adds Windows cooperative CPU fibers, checked release LTO/optimization,
+precise frame-deadline waits and accelerated renderer fallback. The Windows x64
+package is cross-built and experimental: execution, Vulkan output and sustained
+FPS still need Windows validation. See [release notes](docs/RELEASE_NOTES.md).
+
+The widescreen work expands the experimental 16:9 view beyond the original sprite
 queue and depth-bucket limits, retains scenery as it crosses the wider edges,
 and fixes reproduced rolling scenery, takeoff wave coverage and attract-cloud
 corner artifacts. It also fixes the reported enemy-coordinate overflow stop
@@ -69,13 +74,23 @@ validation, 16:10 and ultrawide remain open. See the
 
 ## Build and play
 
-For a packaged **Apple Silicon / macOS 26+** preview, see
-[GitHub Releases](https://github.com/duduke/AfterBurner2-Recomp/releases).
-Extract the ZIP, put your own extracted ROM files in its `roms/` directory,
-then open `Launch.command`. SDL3 and OpenAL Soft are included, along with their
+Download [v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
+and extract the complete ZIP for your platform. Put your own extracted ROM
+files in its `roms/` directory. Sources, notices and SHA-256 files accompany
+the packages; ROMs, captures and personal settings are excluded.
+
+The **Apple Silicon / macOS 26+** package opens with `Launch.command`.
+SDL3 and OpenAL Soft are included, along with their
 sources and notices. The preview is ad-hoc signed and **not notarized**; macOS
 may require approval in Privacy & Security. Intel Macs are not included in this
 build. See the package's `START-HERE.txt` for setup.
+
+The **experimental Windows 10/11 x64** package opens with `Launch.cmd`; keep
+its three DLLs beside the EXE. Run `Check-Continuations.cmd` for the ROM-free
+fiber/worker checks, then `Launch.cmd --profile` for backend and timing output.
+This unsigned package is cross-built only; Windows runtime/FPS acceptance is
+open. Original SDL stereo and replacement music are included; optional OpenAL
+spatial audio is disabled in this Windows package.
 
 Requirements: your ROM dump, SDL3 **3.4+**, a C++20 compiler, and either Make with
 `pkg-config sdl3` or CMake with the installed `SDL3::SDL3` package. Run from the
@@ -99,6 +114,35 @@ cmake -S . -B build/cmake
 cmake --build build/cmake -j4
 ./build/cmake/afterburner2
 ```
+
+CMake enables checked LTO and release optimization for Release and RelWithDebInfo
+builds. For Windows with GCC/MinGW and Ninja, select Release explicitly (retain
+your SDL3 installation's `SDL3_DIR` or `CMAKE_PREFIX_PATH` if needed):
+
+```sh
+cmake -S . -B build/windows-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/windows-release --target afterburner2 cpu_continuation_regression cpu_continuation_thread_regression -j4
+./build/windows-release/afterburner2.exe --profile
+ctest --test-dir build/windows-release -R "^cpu_continuation(_thread)?_regression$" --output-on-failure
+```
+
+Multi-configuration generators require `--config Release` at build time; their
+default build is Debug. Use a compiler that supports the engine requirements
+below.
+
+Use the output directory selected by your generator (single-configuration builds
+place the executable directly in the chosen build directory). `-DAB2_ENABLE_IPO=OFF` disables
+LTO for toolchains without compatible linker support. The existing engine uses
+`unsigned __int128`; a Windows compiler must support it, such as Clang targeting
+x64. These changes do not establish MSVC compiler compatibility.
+
+Windows uses cooperative fibers for emulated CPU continuations. `--profile`
+reports `continuation=windows-fiber`, the renderer/backend, and `filters=gpu`
+or `filters=cpu`. GPU filters use the embedded Vulkan/SPIR-V shaders on Windows;
+the SDL3 build and graphics driver must support Vulkan. Direct3D 12 compute
+shaders are not included. If GPU compute initialization fails, SDL tries its
+available renderers, including accelerated presentation, with CPU filters.
+Compare the same stage, video settings and audio settings when profiling.
 
 Native runtime checks are currently recorded on macOS; cross-platform build and
 physical-device acceptance must be established separately.

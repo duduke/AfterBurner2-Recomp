@@ -87,7 +87,7 @@ The optional OpenAL builder provides its library, source archive and notices.
 After committing the intended tree:
 
 ```sh
-python3 tools/package_macos.py v0.1.0-preview.1
+python3 tools/package_macos.py v0.1.0-preview.2
 ```
 
 Use a fresh version for later releases. The packager requires a clean working
@@ -105,6 +105,56 @@ Check a bounded Metal launch and OpenAL output; remove all temporary ROM links
 from the extracted smoke copy. Upload only the original ZIP and checksum.
 Release notes must name the exact commit, minimum OS/architecture, validation
 scope, missing ROMs, signing status and remaining preview limitations.
+
+## Experimental Windows preview release
+
+Preview 2 adds a **cross-built Windows 10/11 x64 experiment**. Windows runtime,
+Vulkan output, input hardware and sustained performance are not verified.
+Keep that limitation in the release title/notes and package setup instructions.
+The artifact is unsigned. Optional OpenAL is disabled; original SDL audio and
+replacement music remain enabled. Do not describe the macOS regression pass
+as Windows execution evidence.
+
+`tools/package_windows.py` packages the committed, clean `build/windows-cross`
+Release/LTO build. Its Makefile cross-build uses LLVM-MinGW 20261006 / Clang
+23.1.3 and the official SDL3 3.4.16 MinGW SDK. Reproduce the build with extracted
+toolchain and SDK roots (native GCC/Ninja build instructions are in README):
+
+```sh
+cmake -S . -B build/windows-cross -G "Unix Makefiles" \
+  -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_BUILD_TYPE=Release -DAB2_ENABLE_OPENAL=OFF \
+  -DCMAKE_CXX_COMPILER="$AB2_TOOLCHAIN_ROOT/bin/x86_64-w64-mingw32-clang++" \
+  -DCMAKE_RC_COMPILER="$AB2_TOOLCHAIN_ROOT/bin/x86_64-w64-mingw32-windres" \
+  -DSDL3_DIR="$AB2_SDL_ROOT/x86_64-w64-mingw32/lib/cmake/SDL3"
+cmake --build build/windows-cross --target afterburner2 cpu_continuation_regression cpu_continuation_thread_regression -j4
+python3 tools/package_windows.py v0.1.0-preview.2 \
+  --toolchain "$AB2_TOOLCHAIN_ROOT" \
+  --toolchain-archive "$AB2_TOOLCHAIN_ARCHIVE" --sdl-archive "$AB2_SDL_ARCHIVE"
+```
+
+The official binary archives are
+[LLVM-MinGW 20261006](https://github.com/mstorsjo/llvm-mingw/releases/tag/20261006)
+(`llvm-mingw-20261006-ucrt-macos-universal.tar.xz`) and
+[SDL3 3.4.16](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16)
+(`SDL3-devel-3.4.16-mingw.tar.gz`). The packager checks their pinned SHA-256
+digests and copies only the x64 SDL/C++/unwind DLLs directly from those archives.
+It checks x64 PE headers, recursive DLL dependencies and the game's Windows fiber
+imports, rejects unbundled non-system DLLs, and includes both continuation tests.
+
+Prepare these corresponding source archives in `build/deps/`; the packager pins
+and verifies their SHA-256 digests too:
+
+- `SDL3-3.4.16.tar.gz`, also used by the macOS packager.
+- [llvm-project-23.1.3.src.tar.xz](https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/llvm-project-23.1.3.src.tar.xz), including libc++/libc++abi/libunwind.
+- [mingw-w64-a3d93999.tar.gz](https://github.com/mingw-w64/mingw-w64/archive/a3d93999ef0521681d45e445c39964a7af0f593f.tar.gz), matching the toolchain build recipe's MinGW revision.
+- [llvm-mingw-20261006-source.tar.gz](https://github.com/mstorsjo/llvm-mingw/archive/refs/tags/20261006.tar.gz), containing the toolchain build scripts.
+
+The ZIP contains sources, notices, setup/launch scripts, payload hashes and a
+separate checksum. No Microsoft system DLLs, ROMs, captures or personal settings
+are bundled. Independently extract and verify all manifest hashes and DLL closure
+before uploading the original ZIP/checksum. `Check-Continuations.cmd` must still
+be executed on Windows, followed by `Launch.cmd --profile` and GPU/audio/input
+checks, before recording Windows platform acceptance. Preserve earlier releases.
 
 ## Capture discipline
 
@@ -532,9 +582,13 @@ and Wide with the same audio/device setup before attributing pacing changes.
 ### SDL GPU sprite filtering
 
 The native app requests an SDL GPU device with Metal/MSL or Vulkan/SPIR-V
-support, then creates an SDL GPU 2D renderer. GPU compute shaders implement
-all five sprite filters and protected background composition. Unsupported GPU
-systems and dummy-video checks report an explicit CPU/software fallback.
+support, then creates an SDL GPU 2D renderer. Vulkan/SPIR-V is also the Windows
+compute path; Direct3D 12 compute shaders are not embedded. GPU compute shaders
+implement all five sprite filters and protected background composition. If GPU
+compute is unavailable, SDL selects an available renderer for presentation while
+filters run on the CPU. This permits accelerated presentation where available;
+dummy-video checks still use software. `--profile` reports both selections and
+the CPU continuation backend.
 The CPU board renderer and sprite feedback remain authoritative.
 
 ```sh

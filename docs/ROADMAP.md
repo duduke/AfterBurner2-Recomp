@@ -140,9 +140,10 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-15)
+## Current checkpoint (2026-10-16)
 
-Release source is `2ce8446` (implementation `4cb5bd2`). The SDL3 native game is
+Release source is tagged `v0.1.0-preview.2`; the package manifests identify the
+exact source commit. The SDL3 native game is
 on `main`; the separate Three.js prototype remains on
 [`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).
 
@@ -157,17 +158,30 @@ on `main`; the separate Three.js prototype remains on
 | Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes | Four songs' natural contexts and natural fades |
 | Spatial audio | Optional OpenAL Soft interpolation, headphone HRTF, 2.1/5.1 profiles and direct stereo music; 117,509 MAME ownership observations exact | Unclassified voices, physical localization/channels, cabinet audit and long-session latency |
 | Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
-| Distribution | ROM-free Apple Silicon ZIP with SDL3/OpenAL, sources/notices, checksum and extracted-package Metal/HRTF smoke | Not notarized/Developer ID signed; Intel/older macOS and Windows/Linux packages unverified |
+| Distribution | ROM-free Apple Silicon ZIP with SDL3/OpenAL and experimental Windows x64 cross-build with SDL/C++ runtime DLLs; sources, notices, manifests and checksums | macOS is ad-hoc signed; Windows unsigned and runtime/FPS/Vulkan unverified; Intel/older macOS and Linux packages remain open |
 
-The fresh complete `required` profile passed at
-`build/workflow/20261015T162805.304852Z/`; supplemental `full` and `native-release`
-passed at `build/workflow/20261015T174807.542965Z/`. All retained mutations ran.
-Individual oracle input-race exclusions remain documented. The unchanged seven
-Metal fixtures retain 84 passing filter/opacity cases; this is reused evidence,
-not a new run. See [release validation and packaging](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15),
+The complete final-engine-tree `required` pass at
+`build/workflow/20261015T202242.843626Z/` is reused for this release: engine sources,
+compiler/options, fixtures and harness remain unchanged. All retained mutations
+ran, and individual input-race exclusions remain explicit. Supplemental joint/reset
+checks and `native-release` pass freshly at `build/workflow/20261016T034347.883905Z/`.
+Native GPU/menu checks pass 4,128/4,128 cases; standalone filters pass 630/630
+with six rejected controls, zero skips. Windows x64 game and both continuation
+tests cross-build; this does not establish Windows runtime acceptance.
+See [Preview 2 release notes](RELEASE_NOTES.md),
+[release validation and packaging](ENGINE_NOTES.md#windows-performance-portability-2026-10-15),
 [checkpoint history](CHECKPOINT_HISTORY.md) and the focused plans for scope.
 
 ## Next acceptance tasks
+
+Windows performance portability work is described in
+[ENGINE_NOTES](ENGINE_NOTES.md#windows-performance-portability-2026-10-15):
+cooperative fibers, checked CMake release LTO, precise presentation waits and
+accelerated renderer fallback. Windows execution/performance and Vulkan filter
+acceptance remain open. The final macOS `required` profile passes at
+`build/workflow/20261015T202242.843626Z/`, with all retained mutations; optimized
+builds, GPU checks and Windows x64 cross-builds also pass. macOS checks and
+cross-builds do not close the Windows runtime gates.
 
 On 2026-10-15, the user reported finishing the game from start to finish on
 macOS with the saved Normal / three-ship configuration and current enhancements.

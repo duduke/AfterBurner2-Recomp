@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-15) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-16) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -7787,6 +7787,74 @@ full-credit gameplay, arbitrary input trajectories, later stages or peak-load
 real-time performance. CMake test registrations were added but CMake was
 unavailable locally; these results use Make. No ROM data or captures are
 committed.
+
+## Windows performance portability (2026-10-15)
+
+The user reported very slow Windows gameplay using an apparent GCC 16 / Ninja /
+CMake build, without a saved profile. Code inspection found that Apple Silicon
+used cooperative stacks while Windows used OS worker handoffs at CPU execution
+checkpoints. Windows now uses `CreateFiberEx` / `SwitchToFiber` on the host
+thread, with 1 MiB reserved stacks and `FIBER_FLAG_FLOAT_SWITCH`. A shared host
+conversion survives CPU destruction in either order and restores a thread only
+if this adapter converted it. Existing caller-owned fibers remain caller-owned.
+Grant/debt, bus timing, cancellation, unwinding and exception propagation retain
+the existing continuation protocol; no literal CPU port or board clock changes.
+`AB2_FORCE_THREAD_CONTINUATION` retains the worker backend for comparisons.
+
+CMake now checks IPO support and enables LTO for Release/RelWithDebInfo, with
+`-O3` for GCC/Clang or `/O2` for MSVC-style drivers. Debug stays unoptimized.
+`AB2_ENABLE_IPO=OFF` permits disabling LTO. No fast-math or build-host CPU ISA
+requirement is introduced. This does not port the engine's existing
+`unsigned __int128` to MSVC. GCC/MinGW x64 supports the existing engine requirement.
+
+The GPU path already embeds Metal/MSL and Vulkan/SPIR-V; Vulkan is the Windows
+compute option, subject to the installed SDL build and GPU driver. Direct3D 12
+compute shader binaries remain absent. A failed GPU-device/renderer setup now
+lets SDL choose an available renderer (including accelerated presentation) with
+CPU filters instead of forcing software. `--profile` reports the selected
+continuation, renderer/backend and CPU/GPU filter path. Frame-deadline waits use
+`SDL_DelayPrecise` with a 2 ms polling cap and subtract already-spent host time;
+the board's fixed tick and catch-up limits remain unchanged.
+
+The existing continuation tests cover interleaved locals/FPU state, deferred
+jobs, reset, cancellation, exceptions and destructor unwinding. Windows-only
+cases additionally check shared conversion lifetime, non-LIFO destruction and
+caller-owned fiber preservation. The optimized macOS CMake build and both
+continuation tests pass; logs are in `build/cmake-windows-perf/` (`build-final.log`
+and `ctest-final.log`). A 120-frame dummy-video smoke passed; a forced compute
+failure used accelerated Metal presentation with CPU filters (`smoke-dummy.log`
+and `smoke-fallback.log`). These are macOS results, not Windows performance or
+fiber execution evidence. The Windows checks and representative/peak-load
+Windows profiling remain required before platform acceptance.
+
+The final game and both continuation regression executables also cross-build as
+Windows x64 PE binaries using LLVM-MinGW 20261006 (Clang 23.1.3), SDL 3.4.16,
+Release/LTO and optional OpenAL disabled. Toolchain/SDK downloads were checked
+against their official release SHA-256 digests and extracted under the local
+temporary directory, without system installation. Cross-build logs are
+`build/cmake-windows-perf/cross-configure.log` and `cross-build-final.log`;
+executables are in `build/windows-cross/`. This exposed missing `<string>`
+includes in `omainhost.cpp` and `omainirqcallee.cpp`, now explicit. Cross-building
+does not execute the Windows fiber tests or validate Vulkan output. The prior
+`required` run at `build/workflow/20261015T201350.493071Z/` was deliberately
+interrupted after those include fixes; it is not a complete acceptance pass.
+
+Final-tree `test` and `verify-stage1` pass at
+`build/workflow/20261015T202242.843626Z/`; the directed sweep covers all 23 stages.
+Final `native-release` and `verify-gpu-native-menu` pass at
+`build/workflow/20261015T203355.998841Z/` (4,128/4,128 native GPU cases identical,
+zero skipped). The unchanged standalone GPU filters also pass 630/630 cases,
+zero skipped, with six rejected controls at
+`build/workflow/20261015T201706.542431Z/`. Final CMake GPU, accelerated-fallback
+and dummy/software smokes are retained as `smoke-*-final.log` under
+`build/cmake-windows-perf/`. The complete final-tree `required` profile passes
+at `build/workflow/20261015T202242.843626Z/`: `test`, `verify-stage1` and
+`oracle-test`, including all retained mutations. The four lifecycle replays
+match 104,452/104,452 ten-column MAME observations with zero skips; individual
+legacy oracle input-race exclusions remain reported in the full log. No
+captures or ROM data were committed. This is macOS regression evidence and
+Windows cross-build evidence; Windows fiber execution, Vulkan output and
+sustained performance remain unverified.
 
 ## Native rendering and playable release continuation (2026-10-11)
 

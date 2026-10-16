@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <initializer_list>
 #include <stdexcept>
+#include <string>
 
 namespace {
 bool contains(uint32_t entry,std::initializer_list<uint32_t> entries) {

@@ -14,6 +14,16 @@ the pinned upstream SDL/OpenAL source archives. No Homebrew installation is
 needed to run that package. The shared libraries remain replaceable by
 ABI-compatible local builds. See the [release workflow](WORKFLOW.md#macos-preview-release).
 
+## Experimental Windows preview dependencies
+
+The Windows x64 ZIP bundles SDL3 3.4.16, LLVM-MinGW 20261006's LLVM 23.1.3
+`libc++.dll` and `libunwind.dll`. LLVM uses Apache-2.0 with LLVM exceptions;
+the LLVM and MinGW notices are copied into `Notices/`. `Sources/` includes the
+complete project tree, SDL source, LLVM source (including libc++/libc++abi/libunwind),
+the exact MinGW-w64 source revision and LLVM-MinGW build scripts. Microsoft
+system/UCRT DLLs are provided by Windows and are not bundled. Optional OpenAL
+is disabled in this package. See the [Windows release workflow](WORKFLOW.md#experimental-windows-preview-release).
+
 ## Native audio path
 
 - `src/third_party/ymfm/`: Aaron Giles's YMFM synthesis core (BSD-3-Clause);

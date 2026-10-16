@@ -7,6 +7,26 @@
 #include <cfenv>
 namespace {void check(bool value){if(!value)throw std::runtime_error("CPU continuation regression");}}
 int main()try{
+#if AB2_WINDOWS_FIBER
+    // Conversion is shared across CPUs, even when destroyed out of order.
+    // An embedding application's existing fiber must remain its own property.
+    const bool caller_was_fiber=IsThreadAFiber();
+    {
+        auto first=std::make_unique<XBoardCpuContinuation>();
+        auto second=std::make_unique<XBoardCpuContinuation>();
+        check(IsThreadAFiber());first.reset();check(IsThreadAFiber());
+        unsigned visits=0;
+        second->start(0,[&]{second->clock(0);++visits;second->instruction_completed(320);});
+        check(second->advance(320)==320&&visits==1&&second->done());
+    }
+    check(bool(IsThreadAFiber())==caller_was_fiber);
+    if(!caller_was_fiber){
+        auto* caller=ConvertThreadToFiberEx(nullptr,FIBER_FLAG_FLOAT_SWITCH);check(caller);
+        {XBoardCpuContinuation borrowed;borrowed.start(0,[&]{borrowed.clock(0);borrowed.instruction_completed(320);});
+         check(borrowed.advance(320)==320&&borrowed.done());}
+        check(IsThreadAFiber()&&GetCurrentFiber()==caller);check(ConvertFiberToThread());
+    }
+#endif
     // The live host defers an instruction until its first grant. It must not
     // touch the bus when merely prepared, or after RESET cancels that job.
     {XBoardCpuContinuation deferred;unsigned visits=0;
@@ -115,6 +135,6 @@ int main()try{
          idle.clock(0);published=42;idle.bus_completed(0);idle.instruction_completed(320);});
      std::this_thread::sleep_for(std::chrono::milliseconds(5));
      check(idle.advance(320)==320&&idle.done()&&published==42);}
-    std::cout<<"CPU continuation: indivisible internal clocks, private bus/tail debt, retained RMW, reuse, cancellation and error propagation passed\n";
+    std::cout<<"CPU continuation ("<<XBoardCpuContinuation::backend_name()<<"): indivisible internal clocks, private bus/tail debt, retained RMW, reuse, cancellation and error propagation passed\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

@@ -2,7 +2,7 @@
 
 Historical validation records moved from the roadmap. These retain their original
 source/fixture scope; an earlier pass does not validate later changes. Current
-status is in [ROADMAP](ROADMAP.md#current-checkpoint-2026-10-15); detailed ROM
+status is in [ROADMAP](ROADMAP.md#current-checkpoint-2026-10-16); detailed ROM
 evidence remains in [ENGINE_NOTES](ENGINE_NOTES.md).
 
 The documentation-consolidation baseline required checks passed

@@ -9,6 +9,26 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
 
+option(AB2_ENABLE_IPO "Enable checked release interprocedural optimization (LTO)" ON)
+if(AB2_ENABLE_IPO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT AB2_IPO_SUPPORTED OUTPUT AB2_IPO_ERROR LANGUAGES CXX)
+  if(AB2_IPO_SUPPORTED)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+  else()
+    message(WARNING "LTO unavailable: ${AB2_IPO_ERROR}")
+  endif()
+endif()
+
+# Match the optimized Make build without changing floating-point semantics or
+# requiring the build machine's CPU instruction set on distribution machines.
+if(MSVC)
+  add_compile_options($<$<CONFIG:Release,RelWithDebInfo>:/O2>)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  add_compile_options($<$<CONFIG:Release,RelWithDebInfo>:-O3>)
+endif()
+
 find_package(SDL3 3.4 REQUIRED CONFIG COMPONENTS SDL3)
 find_package(Threads REQUIRED)
 option(AB2_ENABLE_OPENAL "Enable optional OpenAL Soft spatial audio" ON)
