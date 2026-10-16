@@ -27,13 +27,17 @@ public:
     // The deadline is an explicit boundary for devices outside this bounded
     // main/sub execution port. CPU order and budget conversion are computed.
     void timers_delivered(){boosted=s.base<s.boost_expiry;}
-    Time grant(Time deadline,const Run& run,const std::array<bool,3>& enabled={true,true,true}){
+    template<class Run>
+    Time grant(Time deadline,Run&& run,const std::array<bool,3>& enabled={true,true,true}){
         if(deadline<=s.base)throw std::runtime_error("undelivered arbiter timer");
         Time target=std::min(deadline,s.base+quantum());
-        for(unsigned cpu=0;cpu<3;++cpu){const Time cycle=cpu==2?SOUND_CYCLE:CYCLE;
-            if(enabled[cpu]&&target>=s.local[cpu]+cycle){auto cycles=(target-s.local[cpu])/cycle;
+        for(unsigned cpu=0;cpu<3;++cpu){const uint64_t cycle=cpu==2?uint64_t(SOUND_CYCLE):uint64_t(CYCLE);
+            if(enabled[cpu]&&target>=s.local[cpu]+cycle){
+                const Time span=target-s.local[cpu];
+                const auto cycles=span<=UINT64_MAX?uint64_t(span)/cycle:uint64_t(span/cycle);
                 auto end=run(cpu,target,unsigned(cycles));
-                if(end<s.local[cpu]||(end-s.local[cpu])%cycle)throw std::runtime_error("invalid CPU completion yield");
+                const Time ran=end-s.local[cpu];
+                if(end<s.local[cpu]||(ran<=UINT64_MAX?uint64_t(ran)%cycle!=0:ran%cycle!=0))throw std::runtime_error("invalid CPU completion yield");
                 s.local[cpu]=end;if(end<target)target=std::max(end,s.base);
             }
         }

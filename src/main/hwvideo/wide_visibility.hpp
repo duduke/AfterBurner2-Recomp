@@ -32,6 +32,8 @@ class WideVisibility {
     uint32_t serial{},selected{};bool interpolated{};uint16_t stage=0xffff,scene_mode=0xffff;
     Roms& rom;unsigned margin;
     WideSpriteProjection projector;
+    MainBus::Memory scratch_memory{};
+    MainBus scratch_bus;
     static uint16_t word(std::span<const uint8_t> b,unsigned i){return uint16_t(b[i]<<8|b[i+1]);}
     static uint32_t longword(std::span<const uint8_t> b,unsigned i){return uint32_t(word(b,i))<<16|word(b,i+2);}
     static void put(Request& b,unsigned i,uint16_t v){b[i]=v>>8;b[i+1]=v;}
@@ -52,24 +54,32 @@ class WideVisibility {
         if((mode!=1&&mode!=15&&mode!=16)||stage!=next_stage||scene_mode!=mode){ghosts.clear();water_history.clear();}
         stage=next_stage;scene_mode=mode;
     }
+    void sync_scratch(const Host& h){
+        std::copy_n(h.memory.bytes.begin(),0x10000,scratch_memory.bytes.begin());
+    }
+    void restore_scratch(const Host& h,uint32_t addr,unsigned count){
+        const auto o=MainBus::memory_offset(addr);
+        if(o!=MainBus::UNMAPPED&&o+count<=0x10000)std::copy_n(h.memory.bytes.begin()+o,count,scratch_memory.bytes.begin()+o);
+    }
     void recover(const Host& h,const Host::Entry& e){
         sync_scene(h);
         auto regs=e.state.registers;const auto p=regs.a[5];
         const int half=int16_t(read(h,0x2a3800+unsigned(region(h,p+20,1)[0])*4))>>1;
         if(int16_t(read(h,p+4))>half+160+int(margin)||int16_t(read(h,p+4))<=-half-160-int(margin))return;
-        MainBus::Memory copy=h.memory;MainBus bus(rom.maincpu.rom,rom.maincpu.length,rom.subcpu.rom,rom.subcpu.length,copy);
-        if(!SceneryProjection::finish(bus,regs))return;
+        restore_scratch(h,p,64);restore_scratch(h,0x29c080,0x100);
+        if(!SceneryProjection::finish(scratch_bus,regs))return;
         Ghost g;g.object=p;g.size=unsigned(half*2);
-        for(unsigned i=0;i<64;++i)g.data[i]=bus.read8(p+i);
+        for(unsigned i=0;i<64;++i)g.data[i]=scratch_bus.read8(p+i);
         ghosts.emplace(++serial,g);
     }
-    void extend_water(const Host& h,std::vector<Extra>& out,const std::vector<Submission>& generation){
+    void extend_water(const Host& h,std::vector<Extra>& out,const std::vector<Submission>& generation,bool scratch_synced){
         if(scene_mode!=15)return;
         // $884E..$8860 distributes water over sixteen columns, 3*64 world
         // units apart. Repeat that native pattern in adjacent world cells;
         // retain its art, depth, camera projection and animation phase.
         constexpr int period=16*3*64;constexpr uint32_t scratch=0x3fc400;
-        MainBus::Memory copy=h.memory;MainBus bus(rom.maincpu.rom,rom.maincpu.length,rom.subcpu.rom,rom.subcpu.length,copy);
+        if(!scratch_synced)sync_scratch(h);
+        auto& bus=scratch_bus;
         std::map<uint32_t,WaterPosition> next;
         for(const auto& s:generation){const auto frame=longword(s.request,12)&0xffffff;
             if(std::find(water_frames.begin(),water_frames.end(),frame)==water_frames.end())continue;
@@ -96,19 +106,28 @@ class WideVisibility {
         sync_scene(h);
         auto& out=pending[readlong(h,0x2a3c04)&0xfffff];out.clear();
         submitted[readlong(h,0x2a3c04)&0xfffff]=std::move(collecting);collecting.clear();
-        for(auto i=ghosts.begin();i!=ghosts.end();){auto& g=i->second;MainBus::Memory copy=h.memory;
-            MainBus bus(rom.maincpu.rom,rom.maincpu.length,rom.subcpu.rom,rom.subcpu.length,copy);
+        const bool need_scratch=!ghosts.empty()||scene_mode==15;
+        if(need_scratch)sync_scratch(h);
+        auto& bus=scratch_bus;
+        for(auto i=ghosts.begin();i!=ghosts.end();){auto& g=i->second;
+            const uint32_t width_addr=0x2a3800+unsigned(g.data[20])*4;
             for(unsigned n=0;n<64;++n)bus.write8(g.object+n,g.data[n]);
             // The pointed-to pair is shared camera/roll state, not object-owned
             // storage. Keep the current native pair when advancing the copy.
-            bus.write16(0x2a3800+unsigned(g.data[20])*4,g.size);
+            bus.write16(width_addr,g.size);
             OMainObjects::Registers regs;regs.a[5]=g.object;regs.a[6]=0x2e4000;
-            if(!g.fresh&&!SceneryProjection::update(bus,regs,margin)){i=ghosts.erase(i);continue;}g.fresh=false;
+            if(!g.fresh&&!SceneryProjection::update(bus,regs,margin)){
+                restore_scratch(h,g.object,64);restore_scratch(h,width_addr,2);
+                i=ghosts.erase(i);continue;
+            }
+            g.fresh=false;
             auto r=request(bus,g.object);out.push_back({r,2});
-            auto projected=projector.project(r,std::span(copy.bytes).subspan(MainBus::SHARED,0x8000),{rom.subcpu.rom,rom.subcpu.length},margin);g.size=projected.width;
-            for(unsigned n=0;n<64;++n)g.data[n]=bus.read8(g.object+n);++i;
+            auto projected=projector.project(r,std::span(scratch_memory.bytes).subspan(MainBus::SHARED,0x8000),{rom.subcpu.rom,rom.subcpu.length},margin);g.size=projected.width;
+            for(unsigned n=0;n<64;++n)g.data[n]=bus.read8(g.object+n);
+            restore_scratch(h,g.object,64);restore_scratch(h,width_addr,2);
+            ++i;
         }
-        extend_water(h,out,submitted[readlong(h,0x2a3c04)&0xfffff]);
+        extend_water(h,out,submitted[readlong(h,0x2a3c04)&0xfffff],need_scratch);
         // A controller can update fifteen positions without publishing its
         // strip (notably the canyon). Only extend actual producer submissions.
         const auto& generation=submitted[readlong(h,0x2a3c04)&0xfffff];
@@ -185,7 +204,7 @@ class WideVisibility {
             WideDescriptor d{p.descriptor,p.x,q[2],true,extra.second};auto where=std::find_if(current.begin(),current.end(),[&](auto& x){return x.depth>d.depth;});current.insert(where,d);}
     }
 public:
-    explicit WideVisibility(Roms& r,unsigned m=39):rom(r),margin(m){
+    explicit WideVisibility(Roms& r,unsigned m=39):rom(r),margin(m),scratch_bus(r.maincpu.rom,r.maincpu.length,r.subcpu.rom,r.subcpu.length,scratch_memory){
         const auto main=std::span(r.maincpu.rom,r.maincpu.length);
         // Native water animation header and seven frame pointers.
         for(unsigned i=0;i<main[0x3f918];++i)water_frames.push_back(longword(main,0x3f91c+i*4)&0xffffff);

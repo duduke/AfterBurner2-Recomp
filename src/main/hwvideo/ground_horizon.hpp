@@ -9,7 +9,7 @@ namespace Presentation {
 // at runtime, just as the passive sprite scene does, rather than guessing colors.
 class GroundHorizon {
     struct Range {unsigned bank,begin,end,pitch;bool operator==(const Range&)const=default;};
-    std::vector<Range> ranges;
+    std::array<std::vector<Range>,8> by_bank;
     std::span<const uint8_t> main;
 public:
     GroundHorizon(std::span<const uint8_t> m,std::span<const uint8_t> sub):main(m) {
@@ -20,7 +20,8 @@ public:
                 const unsigned rows=word(a+2)+1,bank=(word(a+4)>>9)&7,start=word(a+6),pitch=word(a+8);
                 if(!pitch || rows>4096 || start+pitch*rows>65536)throw std::runtime_error("Invalid horizon asset extent");
                 const Range range{bank,start,start+pitch*rows,pitch};
-                if(std::find(ranges.begin(),ranges.end(),range)==ranges.end())ranges.push_back(range);
+                auto& vec=by_bank[bank];
+                if(std::find(vec.begin(),vec.end(),range)==vec.end())vec.push_back(range);
             }
         }
     }
@@ -34,8 +35,8 @@ public:
         // $10E6E initializes every horizon segment with palette $E8.
         if((d[6]&255)!=0xe8)return false;
         const unsigned bank=(d[0]>>9)&7;
-        const int pitch=int16_t((d[2]>>1)|((d[4]&0x1000)<<3))>>8;
-        for(const auto& r:ranges)if(bank==r.bank && d[1]>=r.begin && d[1]<r.end && unsigned(std::abs(pitch))==r.pitch)return true;
+        const unsigned abs_pitch=unsigned(std::abs(int16_t((d[2]>>1)|((d[4]&0x1000)<<3))>>8));
+        for(const auto& r:by_bank[bank])if(d[1]>=r.begin && d[1]<r.end && abs_pitch==r.pitch)return true;
         return false;
     }
     struct Profile {
@@ -109,6 +110,12 @@ public:
         }
         return changed;
     }
+    mutable std::vector<uint8_t> horizon_scratch,cached_horizon,pens_scratch;
+    mutable std::vector<int> cached_anchors;
+    mutable Profile cached_profile{320};
+    mutable unsigned cached_width{};
+    mutable int cached_left{};
+    mutable bool cache_valid{};
     unsigned apply(std::span<uint16_t> indices,std::span<const uint8_t> priority,
                    std::span<const uint8_t> road,uint8_t control,std::span<const uint8_t> bank,
                    std::span<const uint8_t> sprites,unsigned top,unsigned bottom,uint8_t angle,
@@ -116,20 +123,29 @@ public:
         if(bank.empty()||bank.size()%16||bank.size()>0x10000)throw std::invalid_argument("Invalid horizon sprite bank");
         if(control!=4)return 0;
         // This is a copy: the hardware's descriptor/word-7 feedback is untouched.
-        std::vector<uint8_t> horizon(bank.begin(),bank.end());
+        horizon_scratch.assign(bank.begin(),bank.end());
         unsigned selected=0;
         for(unsigned slot=0;slot<bank.size()/16;++slot){std::array<uint16_t,8>d{};for(unsigned w=0;w<8;++w)d[w]=uint16_t(bank[slot*16+2*w])<<8|bank[slot*16+2*w+1];
             if(d[0]&0x8000)break;
             if(!(d[0]&0x5000) && matches(d)){++selected;continue;}
-            horizon[slot*16]|=0x50;
+            horizon_scratch[slot*16]|=0x50;
         }
         if(!selected)return 0;
         auto [nx,ny]=normal(angle);
-        Profile profile(width);std::vector<uint8_t> pens(width*224);
-        decode(horizon,sprites,0,223,assets,[&](int x,unsigned y,uint16_t raw,Effect){pens[y*width+unsigned(x-native_left)]=raw&15;},native_left,native_left+int(width)-1,anchors);
-        for(unsigned y=0;y<224;++y)for(unsigned x=0;x<width;++x)if(pens[y*width+x])profile.pixel(x,y,pens[y*width+x]);
-        profile.measured=true;
-        return correct(indices,priority,road,top,bottom,nx,ny,profile,native_left);
+        if(!cache_valid || cached_width!=width || cached_left!=native_left || cached_horizon!=horizon_scratch || !std::equal(anchors.begin(),anchors.end(),cached_anchors.begin(),cached_anchors.end())){
+            cached_horizon=horizon_scratch;cached_anchors.assign(anchors.begin(),anchors.end());cached_width=width;cached_left=native_left;
+            cached_profile=Profile(width);
+            pens_scratch.assign(width*224,0);
+            unsigned min_y=224,max_y=0;
+            decode(horizon_scratch,sprites,0,223,assets,[&](int x,unsigned y,uint16_t raw,Effect){
+                pens_scratch[y*width+unsigned(x-native_left)]=raw&15;
+                if(y<min_y)min_y=y;
+                if(y>max_y)max_y=y;
+            },native_left,native_left+int(width)-1,anchors);
+            if(min_y<=max_y)for(unsigned y=min_y;y<=max_y;++y)for(unsigned x=0;x<width;++x)if(pens_scratch[y*width+x])cached_profile.pixel(x,y,pens_scratch[y*width+x]);
+            cached_profile.measured=true;cache_valid=true;
+        }
+        return correct(indices,priority,road,top,bottom,nx,ny,cached_profile,native_left);
     }
 };
 }

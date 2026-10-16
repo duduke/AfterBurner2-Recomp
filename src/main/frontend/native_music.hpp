@@ -39,7 +39,7 @@ public:
     void track_volume(unsigned track,int delta){settings.track_volume[track]=std::clamp(settings.track_volume[track]+delta*5,0,100);save();}
     void defaults(){settings.music=settings.effects=100;settings.track_volume.fill(100);save();}
     void originals(){settings.files.fill({});pending=candidate=-1;mapping_dirty=true;stop_preview();save();}
-    std::string selection(unsigned track)const{return settings.files[track].empty()?"ORIGINAL":settings.files[track];}
+    std::string selection(unsigned track)const{const auto& f=pending==int(track)?pending_file:settings.files[track];return f.empty()?"ORIGINAL":f;}
     void cycle(unsigned track,int delta) {
         const auto& current=candidate==int(track)?pending_file:settings.files[track];
         int i=0;for(unsigned j=0;j<files.size();++j)if(files[j]==current)i=int(j)+1;
@@ -59,7 +59,7 @@ public:
         else {notice=it->second.error;pending=-1;}
     }
     void preview(unsigned track) {
-        stop_preview();const auto file=settings.files[track];if(file.empty()){notice="ORIGINAL PLAYS IN GAME";return;}
+        stop_preview();const auto file=pending==int(track)?pending_file:settings.files[track];if(file.empty()){notice="ORIGINAL PLAYS IN GAME";return;}
         preview_data=lookup(file);if(!preview_data){request(file);notice="FILE NOT READY FOR PREVIEW";return;}
         if(output){preview_track=int(track);preview_cursor=0;notice="PREVIEWING - SPACE TO STOP";output->clear();return;}
         SDL_AudioSpec spec{SDL_AUDIO_F32,2,48000};preview_stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,nullptr,nullptr);
@@ -67,6 +67,7 @@ public:
         preview_track=int(track);preview_cursor=0;notice="PREVIEWING - SPACE TO STOP";
     }
     bool previewing()const{return preview_stream!=nullptr || (output && bool(preview_data));}
+    int previewing_track()const{return previewing()?preview_track:-1;}
     void stop_preview(){if(output && preview_data)output->clear();if(preview_stream){SDL_DestroyAudioStream(preview_stream);notice="PREVIEW STOPPED";}preview_stream=nullptr;preview_data.reset();}
     void update_preview() {
         if(output && preview_data){
@@ -155,7 +156,8 @@ private:
     void request(const std::string& file) {
         if(!music_filename(file) || file.empty())return;
         std::lock_guard lock(mutex);auto [it,added]=cache.try_emplace(file);
-        if(added){jobs.push_back(file);wake.notify_one();}
+        if(added){jobs.push_front(file);wake.notify_one();}
+        else if(!it->second.done){auto j=std::find(jobs.begin(),jobs.end(),file);if(j!=jobs.end()){jobs.erase(j);jobs.push_front(file);}}
         if(!it->second.done)notice="LOADING MUSIC FILE";
     }
     void decode_jobs() {

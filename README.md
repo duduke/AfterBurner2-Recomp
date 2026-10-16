@@ -28,9 +28,17 @@ recorded Metal/software checks remain open. See the
 [roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-16) for scope.
 
 Preview 2 adds Windows cooperative CPU fibers, checked release LTO/optimization,
-precise frame-deadline waits and accelerated renderer fallback. The Windows x64
-package is cross-built and experimental: execution, Vulkan output and sustained
-FPS still need Windows validation. See [release notes](docs/RELEASE_NOTES.md).
+precise frame-deadline waits, OpenAL Soft `alSourceRewindv` stream-restart fixes
+and cross-platform CPU/video/widescreen/GPU-filter optimizations. Both the Apple
+Silicon macOS and Windows x64 packages include SDL3 and OpenAL Soft 1.25.2
+spatial audio. Windows x64 runtime execution, Vulkan GPU sprite filters,
+fullscreen switching, OpenAL headphone HRTF and sustained `59.6374` FPS pacing
+(Stage 1 and Stage 5 with 16:9 widescreen, Corrected ground, ScaleFX 3x,
+translucency and Integer/Pixel-Art scaling) are now verified on Windows 11.
+The macOS arm64 package on the release predates the Windows runtime/performance
+commit; rebuilding and re-running the full macOS regression/oracle suite on the
+updated source tree is the next step on the macOS side. See
+[release notes](docs/RELEASE_NOTES.md).
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
 queue and depth-bucket limits, retains scenery as it crosses the wider edges,
@@ -85,12 +93,12 @@ sources and notices. The preview is ad-hoc signed and **not notarized**; macOS
 may require approval in Privacy & Security. Intel Macs are not included in this
 build. See the package's `START-HERE.txt` for setup.
 
-The **experimental Windows 10/11 x64** package opens with `Launch.cmd`; keep
-its three DLLs beside the EXE. Run `Check-Continuations.cmd` for the ROM-free
+The **Windows 10/11 x64** package opens with `Launch.cmd`; keep `SDL3.dll` and
+`OpenAL32.dll` beside the EXE. Run `Check-Continuations.cmd` for the ROM-free
 fiber/worker checks, then `Launch.cmd --profile` for backend and timing output.
-This unsigned package is cross-built only; Windows runtime/FPS acceptance is
-open. Original SDL stereo and replacement music are included; optional OpenAL
-spatial audio is disabled in this Windows package.
+This unsigned package is built and runtime-verified on Windows x64 with Vulkan
+GPU sprite filters, original SDL stereo, replacement music and OpenAL Soft 1.25.2
+spatial audio (HRTF, 2.1 and 5.1 profiles).
 
 Requirements: your ROM dump, SDL3 **3.4+**, a C++20 compiler, and either Make with
 `pkg-config sdl3` or CMake with the installed `SDL3::SDL3` package. Run from the

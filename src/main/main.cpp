@@ -82,13 +82,16 @@ int main(int argc, char** argv)try
         // Original cold boot with the same physical coin/start pulses as the
         // verified bridge. Never seed gameplay state or skip board frames.
         for(unsigned f=0;f<600;++f) {
+            if ((f & 15) == 0) SDL_PumpEvents();
             GameControls input;
             input.coin=f>=360&&f<372; input.start=f>=420&&f<432;
             advance(input);
             take_audio();game.take_feedback();
         }
         if (start_stage) {
+            SDL_PumpEvents();
             game.debug_skip_to_stage(start_stage);if(music_player)music_player->mix({},game.take_music());
+            SDL_PumpEvents();
             std::cout << "Debug stage skip: entered stage " << start_stage << std::endl;
         }
     };
@@ -123,6 +126,7 @@ int main(int argc, char** argv)try
 
     SDL_GPUDevice* gpu_device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,false,nullptr);
     SDL_Renderer* renderer=gpu_device?SDL_CreateGPURenderer(gpu_device,window):nullptr;
+    if (renderer && gpu_device) SDL_SetGPUAllowedFramesInFlight(gpu_device, 3);
     if(!renderer) {
         std::cerr<<"SDL GPU compute unavailable; trying SDL renderer with CPU filters: "<<SDL_GetError()<<'\n';
         if(gpu_device)SDL_DestroyGPUDevice(gpu_device);
@@ -138,7 +142,16 @@ int main(int argc, char** argv)try
     }
     // SDL3 selects the available backend; software/dummy renderers may not
     // support vsync. Physical board pacing remains independent of this setting.
+    // On Windows Vulkan (e.g. amdvlk64), VK_PRESENT_MODE_FIFO_KHR stalls for two
+    // VBlanks (~30 ms / ~32 FPS) per SDL_RenderPresent even with 0 ms of CPU work,
+    // whereas main loop SDL_DelayPrecise already paces frames at 59.826 Hz.
+#ifdef _WIN32
+    const bool win_vulkan_gpu = gpu_device && SDL_GetGPUDeviceDriver(gpu_device) &&
+        std::string_view(SDL_GetGPUDeviceDriver(gpu_device)) == "vulkan";
+    SDL_SetRenderVSync(renderer, win_vulkan_gpu ? 0 : 1);
+#else
     SDL_SetRenderVSync(renderer, 1);
+#endif
     if(profile) {
         int vsync=0; SDL_GetRenderVSync(renderer, &vsync);
         std::cout<<"Native renderer: "<<SDL_GetRendererName(renderer)
@@ -265,7 +278,7 @@ int main(int argc, char** argv)try
     double profile_core=0, profile_present=0, profile_filter=0, profile_scene=0;
     unsigned filter_frames=0;
     Frontend::Performance performance;
-    double accumulated_seconds = tick_seconds;
+    double accumulated_seconds = 0.0;
     bool running = true;
     auto reset_pacing=[&] {
         accumulated_seconds=0; previous_counter=SDL_GetPerformanceCounter();
@@ -351,32 +364,10 @@ int main(int argc, char** argv)try
         feedback->update(game.paused() || menu->is_open());
         GameControls input=input_manager->read(menu->is_open());
 
-        if (game.paused())
-        {
-            previous_counter = SDL_GetPerformanceCounter();
-            SDL_Delay(10);
-        }
-        else
-        {
-            const uint64_t counter = SDL_GetPerformanceCounter();
-            // Bound catch-up after a suspended window or debugger pause.
-            accumulated_seconds = std::min(0.25, accumulated_seconds + (counter - previous_counter) / counter_frequency);
-            previous_counter = counter;
-            if (accumulated_seconds < tick_seconds)
-            {
-                // Sleep toward the board deadline with SDL's high resolution
-                // timer, capped to keep event/input polling responsive.
-                const double remaining=std::max(0.0,tick_seconds-accumulated_seconds-
-                    (SDL_GetPerformanceCounter()-counter)/counter_frequency);
-                SDL_DelayPrecise(Uint64(std::min(remaining,0.002)*1e9));
-                continue;
-            }
-        }
-        // Keep input polling and presentation responsive when the native
-        // board takes longer than real time. Every simulated frame still
-        // executes all CPU/device work; wall-time backlog cannot monopolize UI.
-        unsigned catchup_frames = 0;
-        while (!game.paused() && accumulated_seconds >= tick_seconds && catchup_frames++ < 2)
+        // Keep input polling and presentation responsive 1:1 with simulated
+        // frames. Every simulated frame executes all CPU/device work and is
+        // presented immediately, then paced to the exact frame period.
+        if (!game.paused())
         {
             const bool measure=profile || menu->settings.stats!=Frontend::Stats::off;
             const auto core_start=measure ? SDL_GetPerformanceCounter() : 0;
@@ -387,10 +378,9 @@ int main(int argc, char** argv)try
             ++profile_frames;
             // Playback owns bounded queues and never clocks the emulated board.
             take_audio();
-            accumulated_seconds -= tick_seconds;
             ++simulated_frames;
             if (frame_limit && simulated_frames >= frame_limit)
-            { running = false; break; }
+                running = false;
         }
 
         auto planes=game.sprite_presentation();auto scene=game.sprite_scene();
@@ -448,8 +438,39 @@ int main(int argc, char** argv)try
         SDL_RenderPresent(renderer);
         ++profile_displays;
         {
-            const auto now=SDL_GetPerformanceCounter();
-            profile_present+=(now-present_start)*1000.0/counter_frequency;
+            const auto present_end=SDL_GetPerformanceCounter();
+            profile_present+=(present_end-present_start)*1000.0/counter_frequency;
+            if (game.paused())
+            {
+                SDL_Delay(10);
+                previous_counter = SDL_GetPerformanceCounter();
+            }
+            else
+            {
+                uint64_t counter = present_end;
+                // Bound catch-up after a suspended window or debugger pause.
+                accumulated_seconds = std::min(tick_seconds * 4.0, accumulated_seconds + (counter - previous_counter) / counter_frequency);
+                previous_counter = counter;
+                if (accumulated_seconds < tick_seconds)
+                {
+                    for (;;)
+                    {
+                        counter = SDL_GetPerformanceCounter();
+                        const double elapsed = (counter - previous_counter) / counter_frequency;
+                        const double remaining = tick_seconds - (accumulated_seconds + elapsed);
+                        if (remaining <= 0.0)
+                        {
+                            accumulated_seconds += elapsed;
+                            previous_counter = counter;
+                            break;
+                        }
+                        if (remaining > 0.0045)
+                            SDL_Delay(1);
+                    }
+                }
+                accumulated_seconds -= tick_seconds;
+            }
+            const auto now=previous_counter;
             const double seconds=(now-profile_start)/counter_frequency;
             if(seconds>=1.0) {
                 performance={profile_frames/seconds,profile_displays/seconds,seconds*1000/profile_displays,

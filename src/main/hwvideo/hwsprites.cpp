@@ -92,30 +92,37 @@ void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, in
         if (vzoom < 0x40) vzoom = 0x40;
         if (hzoom < 0x40) hzoom = 0x40;
 
-        const int ytarget = top + ydelta * height_rows;
-        int yacc = 0;
+        const int yend = top + ydelta * (height_rows - 1);
+        const int ymin = ydelta > 0 ? top : yend;
+        const int ymax = ydelta > 0 ? yend : top;
+        if (ymax < clip_top || ymin > clip_bottom)
+            continue;
 
-        for (int y = top; y != ytarget; y += ydelta)
+        const int row_begin = ydelta > 0 ? std::max(0, clip_top - top) : std::max(0, top - clip_bottom);
+        const int row_end = ydelta > 0 ? std::min(height_rows - 1, clip_bottom - top) : std::min(height_rows - 1, top - clip_top);
+
+        for (int row = row_begin; row <= row_end; ++row)
         {
-            if (y >= clip_top && y <= clip_bottom)
+            const int y = top + ydelta * row;
+            uint16_t* dest = pixels + y * width;
+            int xacc = 0;
+            int x;
+
+            // walking read pointer for this row; starts at the row's base address
+            uint16_t read_addr = static_cast<uint16_t>(addr + pitch * ((row * vzoom) >> 9));
+
+            for (x = xpos; (xdelta > 0 && x < width) || (xdelta < 0 && x >= 0);)
             {
-                uint16_t* dest = pixels + y * width;
-                int xacc = 0;
-                int x;
-
-                // walking read pointer for this row; starts at the row's base address
-                uint16_t read_addr = addr;
-
-                for (x = xpos; (xdelta > 0 && x < width) || (xdelta < 0 && x >= 0);)
+                uint32_t word = spritedata[read_addr];
+                if (flip)
                 {
-                    uint32_t word = spritedata[read_addr];
-                    if (flip)
+                    read_addr--;
+                }
+                else
+                {
+                    read_addr++;
+                    if (word)
                     {
-                        read_addr--;
-                    }
-                    else
-                    {
-                        read_addr++;
                         // reverse nibble order: forward reads walk ROM address ascending but
                         // pixel-within-word from MSB to LSB (see docs/HARDWARE.md section 3.1)
                         word = ((word << 28) & 0xf0000000u) | ((word << 20) & 0x0f000000u) |
@@ -123,34 +130,49 @@ void HWSprites::render(uint16_t* pixels, int width, int height, int origin_x, in
                                ((word >> 4) & 0x0000f000u) | ((word >> 12) & 0x00000f00u) |
                                ((word >> 20) & 0x000000f0u) | ((word >> 28) & 0x0000000fu);
                     }
-                    const bool last_word = (word & 0x0f000000u) == 0x0f000000u;
-
-                    for (int k = 0; k < 8; k++)
+                }
+                if (!word)
+                {
+                    while (xacc < 0x1000)
                     {
-                        const int pix = static_cast<int>(word & 0xf);
+                        x += xdelta;
+                        xacc += hzoom;
+                    }
+                    xacc -= 0x1000;
+                    continue;
+                }
+                const bool last_word = (word & 0x0f000000u) == 0x0f000000u;
+
+                for (int k = 0; k < 8; k++)
+                {
+                    const int pix = static_cast<int>(word & 0xf);
+                    if (pix != 0 && pix != 15)
+                    {
+                        const uint16_t raw_pixel = static_cast<uint16_t>(colpri | pix);
                         while (xacc < 0x200)
                         {
-                            if (x >= 0 && x < width && pix != 0 && pix != 15)
-                                dest[x] = static_cast<uint16_t>(colpri | pix);
+                            if (static_cast<unsigned>(x) < static_cast<unsigned>(width))
+                                dest[x] = raw_pixel;
                             x += xdelta;
                             xacc += hzoom;
                         }
-                        xacc -= 0x200;
-                        word >>= 4;
                     }
-
-                    if (last_word)
-                        break;
+                    else
+                    {
+                        while (xacc < 0x200)
+                        {
+                            x += xdelta;
+                            xacc += hzoom;
+                        }
+                    }
+                    xacc -= 0x200;
+                    word >>= 4;
                 }
-                data[7]=read_addr;
-            }
 
-            // accumulate vertical zoom; carrying into the high bit steps the row-start
-            // address by `pitch` rows (Bresenham-style — this is what makes the scaler
-            // "hardware": the source row advances at a fractional rate set by vzoom)
-            yacc += vzoom;
-            addr = static_cast<uint16_t>(addr + pitch * (yacc >> 9));
-            yacc &= 0x1ff;
+                if (last_word)
+                    break;
+            }
+            data[7]=read_addr;
         }
     }
 }

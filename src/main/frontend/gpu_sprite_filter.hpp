@@ -66,7 +66,7 @@ public:
             const size_t bytes=n*4+fragments.size_bytes();
             if(bytes>layer_capacity){
                 if(layers)SDL_ReleaseGPUBuffer(device,layers);if(layer_upload)SDL_ReleaseGPUTransferBuffer(device,layer_upload);
-                layer_capacity=Uint32(bytes);
+                layer_capacity=std::max<Uint32>(Uint32(bytes*2),2u*1024u*1024u);
                 SDL_GPUBufferCreateInfo info{};info.usage=SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;info.size=layer_capacity;
                 layers=SDL_CreateGPUBuffer(device,&info);
                 SDL_GPUTransferBufferCreateInfo transfer{SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,layer_capacity,0};layer_upload=SDL_CreateGPUTransferBuffer(device,&transfer);

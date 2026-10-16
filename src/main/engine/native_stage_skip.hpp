@@ -85,8 +85,9 @@ void enter(Host& host, const Roms& rom, unsigned stage, Tick tick) {
     struct RestorePhase {
         Host& host;
         decltype(host.phase) previous;
-        ~RestorePhase() { host.phase = std::move(previous); }
+        ~RestorePhase() { ++host.tile_gen; ++host.palette_gen; host.phase = std::move(previous); }
     } restore{host, std::move(host.phase)};
+    ++host.tile_gen; ++host.palette_gen;
     host.phase = [&](const Host::Phase& phase) {
         if (restore.previous) restore.previous(phase);
         if (phase.cpu == 0 && phase.entry && phase.entry->state.pc == 0x13ce8

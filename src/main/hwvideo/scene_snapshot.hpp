@@ -19,6 +19,7 @@ struct SceneClip {
     std::vector<WideDescriptor> extended_sprites;
     HWTiles::FrameRegisters registers{};
     uint8_t road_control{};uint16_t mode{},throttle{},roll{};
+    uint64_t tile_gen{},palette_gen{};
     template<size_t N> static void words(std::array<uint16_t,N>& out,std::span<const uint8_t> bytes){
         if(bytes.size()!=N*2)throw std::invalid_argument("Invalid scene snapshot region");
         for(size_t i=0;i<N;++i)out[i]=uint16_t(bytes[2*i]<<8|bytes[2*i+1]);

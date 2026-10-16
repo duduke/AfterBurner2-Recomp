@@ -1,5 +1,6 @@
 #pragma once
 #include "../../third_party/ymfm/ymfm_opm.h"
+#include "../../third_party/ymfm/ymfm_fm.ipp"
 // Read-only output taps after the original chip clock/generate operation.
 // Never clock operators a second time or modify the original DAC output.
 class PresentationYm2151 : public ymfm::ym2151 {

@@ -63,7 +63,7 @@ public:
         XBoardGame::Host::Input input;
         input.buttons = physical.buttons;
         input.analog = physical.analog;
-        scene_ready=false;if(capture_wide)wide_clips.clear();
+        scene_ready=false;if(capture_wide)wide_clip_count=0;
         game.tick(input);
         if(capture_feedback_)feedback_frame=feedback.take(info().number,info().time_ns,feedback_word(0x29c09c),feedback_word(0x29c0d2));
         auto samples = game.take_audio();
@@ -82,7 +82,7 @@ public:
         if(visibility)visibility->reset();
         feedback.clear();feedback_frame={};if(capture_feedback_)bind_feedback_capture();
         presentation_ready = false;
-        wide_clips.clear();wide_pending.reset();if(capture_wide){bind_wide_capture();bind_feedback_capture();}
+        wide_clip_count=0;wide_clip_open=false;if(capture_wide){bind_wide_capture();bind_feedback_capture();}
         if (capture_sprites) bind_sprite_capture();
         audio.clear();
         paused_ = false;
@@ -138,11 +138,11 @@ public:
     }
     struct ScenePresentation {FrameInfo info;std::span<const Presentation::SceneClip> clips;bool ready{};};
     void capture_wide_scene(bool enabled){
-        if(enabled==capture_wide)return;capture_wide=enabled;wide_clips.clear();wide_pending.reset();
+        if(enabled==capture_wide)return;capture_wide=enabled;wide_clip_count=0;wide_clip_open=false;
         if(enabled){if(!visibility)visibility=std::make_unique<Presentation::WideVisibility>(rom);bind_wide_capture();}else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};if(visibility)visibility->reset();}
         bind_feedback_capture();
     }
-    ScenePresentation wide_scene()const{return {info(),wide_clips,capture_wide&&!wide_clips.empty()};}
+    ScenePresentation wide_scene()const{return {info(),std::span<const Presentation::SceneClip>(wide_clips.data(),wide_clip_count),capture_wide&&wide_clip_count!=0};}
     void capture_feedback(bool enabled) {
         if(enabled==capture_feedback_)return;
         capture_feedback_=enabled;feedback.clear();feedback_frame={};
@@ -160,30 +160,41 @@ public:
 
 private:
     std::unique_ptr<Presentation::WideVisibility> visibility;
-    bool capture_wide{};
+    bool capture_wide{}, wide_clip_open{};
+    size_t wide_clip_count{};
     std::vector<Presentation::SceneClip> wide_clips;
-    std::unique_ptr<Presentation::SceneClip> wide_pending;
     void publish_wide(uint64_t ns,unsigned top,unsigned bottom,bool display){
-        if(!capture_wide || !wide_pending)return;
-        wide_pending->ns=ns;wide_pending->top=top;wide_pending->bottom=bottom;wide_pending->display=display;
-        wide_clips.push_back(std::move(*wide_pending));wide_pending.reset();
+        if(!capture_wide || !wide_clip_open || !wide_clip_count)return;
+        auto& clip=wide_clips[wide_clip_count-1];
+        clip.ns=ns;clip.top=top;clip.bottom=bottom;clip.display=display;
+        wide_clip_open=false;
     }
     void bind_wide_capture(){
         game.board().rendering_started=[this]{
-            auto p=std::make_unique<Presentation::SceneClip>();const auto& m=game.board().memory;const auto bytes=std::span(m.bytes);
-            Presentation::SceneClip::words(p->tiles,bytes.subspan(MainBus::TILE,0x10000));
-            Presentation::SceneClip::words(p->text,bytes.subspan(MainBus::TEXT,0x1000));
-            Presentation::SceneClip::words(p->palette,bytes.subspan(MainBus::PALETTE,0x4000));
-            p->road=m.road_buffer;p->sprites=m.sprite_buffer;p->road_control=m.road_control;p->registers=game.video_registers();
-            if(visibility)p->extended_sprites=visibility->descriptors();
-            p->mode=feedback_word(0x29c09c);p->throttle=feedback_word(0x29c0d2);p->roll=feedback_word(0x29c09e);
-            wide_pending=std::move(p);
+            if(wide_clip_count==wide_clips.size())wide_clips.emplace_back();
+            const auto idx=wide_clip_count++;
+            auto& p=wide_clips[idx];const auto& h=game.board();const auto& m=h.memory;const auto bytes=std::span(m.bytes);
+            if(p.tile_gen!=h.tile_gen){
+                if(idx>0&&wide_clips[idx-1].tile_gen==h.tile_gen)p.tiles=wide_clips[idx-1].tiles;
+                else Presentation::SceneClip::words(p.tiles,bytes.subspan(MainBus::TILE,0x10000));
+                p.tile_gen=h.tile_gen;
+            }
+            Presentation::SceneClip::words(p.text,bytes.subspan(MainBus::TEXT,0x1000));
+            if(p.palette_gen!=h.palette_gen){
+                if(idx>0&&wide_clips[idx-1].palette_gen==h.palette_gen)p.palette=wide_clips[idx-1].palette;
+                else Presentation::SceneClip::words(p.palette,bytes.subspan(MainBus::PALETTE,0x4000));
+                p.palette_gen=h.palette_gen;
+            }
+            p.road=m.road_buffer;p.sprites=m.sprite_buffer;p.road_control=m.road_control;p.registers=game.video_registers();
+            if(visibility)p.extended_sprites=visibility->descriptors();else p.extended_sprites.clear();
+            p.mode=feedback_word(0x29c09c);p.throttle=feedback_word(0x29c0d2);p.roll=feedback_word(0x29c09e);
+            wide_clip_open=true;
         };
         if(!capture_sprites)game.board().rendered=[this](auto ns,auto top,auto bottom,auto display){publish_wide(ns,top,bottom,display);};
     }
     Feedback::Capture feedback;Feedback::Frame feedback_frame;bool capture_feedback_{};
     uint16_t feedback_word(uint32_t a) const {const auto o=MainBus::memory_offset(a);const auto& m=game.board().memory.bytes;return uint16_t(m[o]<<8|m[o+1]);}
-    void bind_feedback_capture(){if(!capture_feedback_&&!capture_wide){game.board().phase={};return;}game.board().phase=[this](const auto& p){if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
+    void bind_feedback_capture(){if(!capture_feedback_&&!capture_wide){game.board().phase={};game.board().presentation_phase=false;return;}game.board().presentation_phase=true;game.board().phase=[this](const auto& p){if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
     XBoardGame game;
     Roms& rom;
     Extensions extensions;

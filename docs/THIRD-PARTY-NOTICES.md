@@ -16,13 +16,16 @@ ABI-compatible local builds. See the [release workflow](WORKFLOW.md#macos-previe
 
 ## Experimental Windows preview dependencies
 
-The Windows x64 ZIP bundles SDL3 3.4.16, LLVM-MinGW 20261006's LLVM 23.1.3
-`libc++.dll` and `libunwind.dll`. LLVM uses Apache-2.0 with LLVM exceptions;
-the LLVM and MinGW notices are copied into `Notices/`. `Sources/` includes the
-complete project tree, SDL source, LLVM source (including libc++/libc++abi/libunwind),
-the exact MinGW-w64 source revision and LLVM-MinGW build scripts. Microsoft
-system/UCRT DLLs are provided by Windows and are not bundled. Optional OpenAL
-is disabled in this package. See the [Windows release workflow](WORKFLOW.md#experimental-windows-preview-release).
+The native Windows x64 ZIP bundles dynamically linked SDL3 3.4.18 (`SDL3.dll`,
+zlib license) and OpenAL Soft 1.25.2 (`OpenAL32.dll`, LGPL-2.0-or-later), built
+with w64devkit GCC 16.2.0 (`libstdc++`/`libgcc` linked statically). `Notices/`
+contains the SDL3, OpenAL Soft (including fmt/GSL/pffft) and MinGW-w64 runtime
+licenses; `Sources/` includes the complete project tree, SDL3 source archive and
+OpenAL Soft source archive. When built via the alternative macOS LLVM-MinGW
+cross-build path, the ZIP instead bundles SDL3 3.4.16 and LLVM 23.1.3
+`libc++.dll`/`libunwind.dll` alongside their upstream source archives. Microsoft
+system/MSVCRT DLLs are provided by Windows and are not bundled. See the
+[Windows release workflow](WORKFLOW.md#experimental-windows-preview-release).
 
 ## Native audio path
 

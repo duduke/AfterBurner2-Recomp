@@ -39,9 +39,11 @@ OSubIrq::State OSubIrq::enter(SubBus& bus,State s,uint32_t bus_pc,const Clock& c
 }
 
 OSubIrq::State OSubIrq::step(SubBus& bus,State s,const Clock& advance,const Phase& phase,const OSubProgress::Select& select,const Checkpoint& checkpoint) const {
-    const Clock clock=[&](uint64_t ns){advance(ns);if(checkpoint){auto live=s;if(live.sr&0x2000)live.ssp=live.sp;else live.usp=live.sp;checkpoint(live);}};
+    auto clock=[&](uint64_t ns){advance(ns);if(checkpoint){auto live=s;if(live.sr&0x2000)live.ssp=live.sp;else live.usp=live.sp;checkpoint(live);}};
     if(!startup_instruction(s.pc)&&s.pc!=0x420 && s.pc!=0x428 && (s.pc<0x55e || s.pc>0x592)){
-        static_cast<OSubProgress::State&>(s)=OSubProgress{}.step(bus,s,advance,phase,select,[&](const OSubProgress::State& partial){if(checkpoint){auto live=s;static_cast<OSubProgress::State&>(live)=partial;if(live.sr&0x2000)live.ssp=live.sp;else live.usp=live.sp;checkpoint(live);}});
+        OSubProgress::Checkpoint sub_cp;
+        if(checkpoint)sub_cp=[&s,&checkpoint](const OSubProgress::State& partial){auto live=s;static_cast<OSubProgress::State&>(live)=partial;if(live.sr&0x2000)live.ssp=live.sp;else live.usp=live.sp;checkpoint(live);};
+        static_cast<OSubProgress::State&>(s)=OSubProgress{}.step(bus,s,advance,phase,select,sub_cp);
         if(s.sr&0x2000)s.ssp=s.sp;else s.usp=s.sp;
         return s;
     }
@@ -125,12 +127,12 @@ OSubIrq::State OSubIrq::step(SubBus& bus,State s,const Clock& advance,const Phas
 }
 
 OSubIrq::Instruction OSubIrq::instruction(SubBus& bus,State s,const Clock& clock,const Phase& phase,const Poll& poll,const Checkpoint& checkpoint) const {
-    Instruction result;bool selected=false;
-    result.state=step(bus,s,clock,phase,[&](uint64_t ns,uint16_t sr){
-        selected=true;result.poll_ns=ns;auto level=poll(ns);
+    struct Selection { Instruction result{}; bool selected=false; } sel;
+    sel.result.state=step(bus,s,clock,phase,[&sel,&poll](uint64_t ns,uint16_t sr){
+        sel.selected=true;sel.result.poll_ns=ns;auto level=poll(ns);
         if(level!=0&&level!=4)throw std::runtime_error("unsupported sub IPL");
-        result.irq=level>((sr>>8)&7)?level:0;
+        sel.result.irq=level>((sr>>8)&7)?level:0;
     },checkpoint);
-    if(!selected)throw std::runtime_error("sub instruction has no interrupt selection");
-    return result;
+    if(!sel.selected)throw std::runtime_error("sub instruction has no interrupt selection");
+    return sel.result;
 }

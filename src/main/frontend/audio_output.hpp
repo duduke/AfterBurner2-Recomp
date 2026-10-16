@@ -3,6 +3,7 @@
 #include <array>
 #include <condition_variable>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <thread>
@@ -43,7 +44,9 @@ inline OutputSettings load_output_settings(const std::string& path){
 inline bool save_output_settings(const std::string& path,const OutputSettings& s){
     if(path.empty()||unsigned(s.profile)>3||s.device.find_first_of("\r\n")!=std::string::npos||s.resampler.find_first_of("\r\n")!=std::string::npos)return false;
     std::ofstream out(path+".tmp");out<<"AB2OUTPUT1\nprofile="<<int(s.profile)<<"\ndevice="<<s.device<<"\nresampler="<<s.resampler<<'\n';out.close();
-    return out && std::rename((path+".tmp").c_str(),path.c_str())==0;
+    std::error_code ec;if(out)std::filesystem::rename(path+".tmp",path,ec);
+    if(!out||ec){std::remove((path+".tmp").c_str());return false;}
+    return true;
 }
 // PCM buffers are independent of any device/context and safe to pass to the
 // playback owner. 0 = direct stereo music, 1/2 = unclassified stereo effects,
@@ -113,12 +116,18 @@ private:
     struct Queued {ALuint buffer;double seconds;};std::array<std::deque<Queued>,13> queued;
     bool started{},al_paused{};int direct{};bool connected_extension{};
     void check(){const auto err=alGetError();if(err!=AL_NO_ERROR)throw std::runtime_error("OpenAL error "+std::to_string(err));}
-    void reap(){for(unsigned i=0;i<sources.size();++i){ALint done=0;alGetSourcei(sources[i],AL_BUFFERS_PROCESSED,&done);while(done--){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}}check();}
+    void reap(){if(!started)return;for(unsigned i=0;i<sources.size();++i){ALint done=0;alGetSourcei(sources[i],AL_BUFFERS_PROCESSED,&done);while(done--){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}if(queued[i].empty()){ALint state=0;alGetSourcei(sources[i],AL_SOURCE_STATE,&state);if(state==AL_STOPPED)alSourceRewind(sources[i]);}}check();}
     double latency(){reap();double n=0;for(unsigned i=0;i<sources.size();++i){double sum=0;for(auto q:queued[i])sum+=q.seconds;ALfloat offset=0;alGetSourcef(sources[i],AL_SEC_OFFSET,&offset);n=std::max(n,sum-offset);}return n;}
-    void clear_al(){if(!context)return;alSourceStopv(int(sources.size()),sources.data());for(unsigned i=0;i<sources.size();++i){while(!queued[i].empty()){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}}started=al_paused=false;check();}
+    void clear_al(){if(!context)return;alSourceStopv(int(sources.size()),sources.data());for(unsigned i=0;i<sources.size();++i){while(!queued[i].empty()){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}}alSourceRewindv(int(sources.size()),sources.data());started=al_paused=false;check();}
     void open_al(const OutputSettings& s,Status& info){
+        const bool enumerate=alcIsExtensionPresent(nullptr,"ALC_ENUMERATE_ALL_EXT");
+        if(const auto* p=alcGetString(nullptr,enumerate?ALC_ALL_DEVICES_SPECIFIER:ALC_DEVICE_SPECIFIER))while(*p){info.devices.emplace_back(p);p+=std::strlen(p)+1;}
         if(loopback){auto open=reinterpret_cast<LPALCLOOPBACKOPENDEVICESOFT>(alcGetProcAddress(nullptr,"alcLoopbackOpenDeviceSOFT"));if(!open)throw std::runtime_error("OpenAL loopback unavailable");device=open(nullptr);}
-        else device=alcOpenDevice(s.device.empty()?nullptr:s.device.c_str());if(!device)throw std::runtime_error("OpenAL device unavailable");
+        else {
+            device=alcOpenDevice(s.device.empty()?nullptr:s.device.c_str());
+            if(!device && !s.device.empty()){SDL_Log("OpenAL device '%s' unavailable; trying default device",s.device.c_str());device=alcOpenDevice(nullptr);}
+        }
+        if(!device)throw std::runtime_error("OpenAL device unavailable");
         std::vector<ALCint> attrs{ALC_FREQUENCY,48000};
         if(loopback){attrs.insert(attrs.end(),{ALC_FORMAT_CHANNELS_SOFT,s.profile==AudioProfile::speakers51?ALC_5POINT1_SOFT:ALC_STEREO_SOFT,ALC_FORMAT_TYPE_SOFT,ALC_FLOAT_SOFT});}
         const bool hrtf_ext=alcIsExtensionPresent(device,"ALC_SOFT_HRTF"),mode_ext=alcIsExtensionPresent(device,"ALC_SOFT_output_mode");
@@ -129,8 +138,6 @@ private:
         if(hrtf_ext){ALCint active=0;alcGetIntegerv(device,ALC_HRTF_SOFT,1,&active);info.hrtf=active==ALC_TRUE;alcGetIntegerv(device,ALC_HRTF_STATUS_SOFT,1,&info.hrtf_status);}
         if(mode_ext)alcGetIntegerv(device,ALC_OUTPUT_MODE_SOFT,1,&info.mode);
         connected_extension=alcIsExtensionPresent(device,"ALC_EXT_disconnect");
-        const bool enumerate=alcIsExtensionPresent(nullptr,"ALC_ENUMERATE_ALL_EXT");
-        if(const auto* p=alcGetString(nullptr,enumerate?ALC_ALL_DEVICES_SPECIFIER:ALC_DEVICE_SPECIFIER))while(*p){info.devices.emplace_back(p);p+=std::strlen(p)+1;}
         direct=alIsExtensionPresent("AL_SOFT_direct_channels_remix")?AL_REMIX_UNMATCHED_SOFT:alIsExtensionPresent("AL_SOFT_direct_channels")?AL_TRUE:0;
         if(!direct)throw std::runtime_error("OpenAL direct stereo unsupported");
         ALint selected=-1;
@@ -153,13 +160,27 @@ private:
         SDL_Log("Audio requested=%s actual=%s mode=%x HRTF=%d status=%d dataset=%s resampler=%s version=%s",audio_profiles[int(s.profile)],info.text.c_str(),info.mode,info.hrtf,info.hrtf_status,dataset?dataset:"none",s.resampler.empty()?"default":s.resampler.c_str(),version);
     }
     void queue_al(const AudioPacket& packet){
+        reap();
         for(unsigned i=0;i<sources.size();++i){const auto& stream=packet.streams[i];if(stream.pcm.empty())continue;
             if(stream.rate<=0||(stream.channels!=1&&stream.channels!=2)||stream.pcm.size()%stream.channels||stream.pcm.size()>size_t(INT_MAX)/2)throw std::runtime_error("invalid OpenAL packet");
             ALuint b=0;alGenBuffers(1,&b);alBufferData(b,stream.channels==1?AL_FORMAT_MONO16:AL_FORMAT_STEREO16,stream.pcm.data(),int(stream.pcm.size()*2),stream.rate);
             alSourceQueueBuffers(sources[i],1,&b);queued[i].push_back({b,double(stream.pcm.size())/stream.channels/stream.rate});
         }check();
-        if(!started){alSourcePlayv(int(sources.size()),sources.data());started=true;}
-        else {std::array<ALuint,13> restart{};unsigned n=0;for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty()){ALint state=0;alGetSourcei(sources[i],AL_SOURCE_STATE,&state);if(state!=AL_PLAYING)restart[n++]=sources[i];}if(n){SDL_Log("OpenAL stream underrun: restarting %u sources",n);alSourcePlayv(n,restart.data());}}check();
+        if(!started){
+            if(loopback || latency()>=0.025){
+                std::array<ALuint,13> active{};unsigned n=0;
+                for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty())active[n++]=sources[i];
+                if(n){alSourcePlayv(int(n),active.data());started=true;}
+            }
+        } else {
+            std::array<ALuint,13> restart{};unsigned n=0,underruns=0;
+            for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty()){
+                ALint state=0;alGetSourcei(sources[i],AL_SOURCE_STATE,&state);
+                if(state!=AL_PLAYING && state!=AL_PAUSED){restart[n++]=sources[i];if(state==AL_STOPPED)++underruns;}
+            }
+            if(underruns)SDL_Log("OpenAL stream underrun: restarting %u sources",underruns);
+            if(n)alSourcePlayv(int(n),restart.data());
+        }check();
     }
 #endif
     bool audio_initialized{};uint64_t test_until{};
@@ -173,7 +194,7 @@ private:
     }
     void open(const OutputSettings& s){close();Status info;
 #ifdef AB2_OPENAL
-        if(s.profile!=AudioProfile::original){try{open_al(s,info);std::lock_guard lock(mutex);report=info;return;}catch(const std::exception& e){SDL_Log("OpenAL unavailable: %s; using SDL",e.what());info=Status{};info.text=std::string("SDL FALLBACK: ")+e.what();close();}}
+        if(s.profile!=AudioProfile::original){try{open_al(s,info);std::lock_guard lock(mutex);report=info;return;}catch(const std::exception& e){SDL_Log("OpenAL unavailable: %s; using SDL",e.what());auto devs=std::move(info.devices);info=Status{};info.devices=std::move(devs);info.text=std::string("SDL FALLBACK: ")+e.what();close();}}
 #endif
         if(!audio_initialized){info.text="AUDIO UNAVAILABLE";}else{
             SDL_AudioSpec spec{SDL_AUDIO_S16,2,48000};SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES,"1024");sdl=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,nullptr,nullptr);
@@ -195,7 +216,11 @@ private:
     }
     void run(){
         for(;;){try{OutputSettings s;AudioPacket packet;bool reset=false,clear_now=false,test_now=false,is_paused=false,is_preview=false,have=false;
-            {std::unique_lock lock(mutex);wake.wait_for(lock,std::chrono::milliseconds(5));if(stopping)break;
+            {std::unique_lock lock(mutex);
+                wake.wait_for(lock,std::chrono::milliseconds(5),[&]{
+                    return stopping||reconfigure||clear_requested||test_requested||render_pending||(!packets.empty()&&(!paused||previewing));
+                });
+                if(stopping)break;
                 reset=std::exchange(reconfigure,false);if(reset)s=desired;clear_now=std::exchange(clear_requested,false);test_now=std::exchange(test_requested,false);is_paused=paused;is_preview=previewing;
             }
             if(reset)open(s);
@@ -210,7 +235,11 @@ private:
 #ifdef AB2_OPENAL
             if(context){if(connected_extension){ALCint connected=1;alcGetIntegerv(device,ALC_CONNECTED,1,&connected);if(!connected){SDL_Log("OpenAL device disconnected; reverting to default SDL");auto fallback=s;fallback.profile=AudioProfile::original;open(fallback);}}
                 if(context){full=!loopback&&latency()>.10;const bool stop=is_paused&&!is_preview&&!testing;
-                    if(stop!=al_paused&&started){if(stop)alSourcePausev(int(sources.size()),sources.data());else alSourcePlayv(int(sources.size()),sources.data());al_paused=stop;}
+                    if(stop!=al_paused&&started){
+                        if(stop)alSourcePausev(int(sources.size()),sources.data());
+                        else {std::array<ALuint,13> active{};unsigned n=0;for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty())active[n++]=sources[i];if(n)alSourcePlayv(int(n),active.data());}
+                        al_paused=stop;
+                    }
                 }
             }
 #endif

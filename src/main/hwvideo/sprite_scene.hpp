@@ -21,12 +21,12 @@ struct Fragment {uint32_t color{},previous=UINT32_MAX,kind{},raw{};};
 // $14EC8 uses the same $164B0 record. LOD offsets come from sub $9E4.
 class EffectAssets {
     struct Range {unsigned bank,begin,end,pitch,color;Effect kind;bool operator==(const Range&)const=default;};
-    std::vector<Range> ranges;
+    std::array<std::vector<Range>,8> by_bank;
 public:
     EffectAssets(std::span<const uint8_t> main,std::span<const uint8_t> sub){
         const auto word=[&](uint32_t a){if(a+1>=sub.size())throw std::runtime_error("Effect frame outside sub ROM");return unsigned(sub[a])<<8|sub[a+1];};
         std::vector<int> offsets{0};for(unsigned z=1;z<64;++z){int o=int16_t(word(0x9e4+8*z+4));if(std::find(offsets.begin(),offsets.end(),o)==offsets.end())offsets.push_back(o);}
-        const auto family=[&](uint32_t frame,Effect kind,unsigned color=256){for(int o:offsets){const uint32_t a=frame+o;unsigned height=word(a+2)+1,bank=(word(a+4)>>9)&7,start=word(a+6),pitch=word(a+8);if(!pitch || height>4096 || start+pitch*height>65536)throw std::runtime_error("Invalid effect asset extent");Range range{bank,start,start+pitch*height,pitch,color,kind};if(std::find(ranges.begin(),ranges.end(),range)==ranges.end())ranges.push_back(range);}};
+        const auto family=[&](uint32_t frame,Effect kind,unsigned color=256){for(int o:offsets){const uint32_t a=frame+o;unsigned height=word(a+2)+1,bank=(word(a+4)>>9)&7,start=word(a+6),pitch=word(a+8);if(!pitch || height>4096 || start+pitch*height>65536)throw std::runtime_error("Invalid effect asset extent");Range range{bank,start,start+pitch*height,pitch,color,kind};auto& vec=by_bank[bank];if(std::find(vec.begin(),vec.end(),range)==vec.end())vec.push_back(range);}};
         if(main.size()<0x28c68)throw std::runtime_error("Effect pointer outside main ROM");
         uint32_t trail=0;for(unsigned i=0;i<4;++i)trail=trail<<8|main[0x28c64+i];
         family(trail&0xffffff,Effect::missile_trail);family(0x16500,Effect::cloud);family(0x16550,Effect::cloud);
@@ -68,8 +68,8 @@ public:
 
     Effect identify(const std::array<uint16_t,8>& d)const{
         const unsigned bank=(d[0]>>9)&7,color=d[6]&255;
-        const int pitch=int16_t((d[2]>>1)|((d[4]&0x1000)<<3))>>8;
-        for(const auto& r:ranges)if(bank==r.bank && d[1]>=r.begin && d[1]<r.end && unsigned(std::abs(pitch))==r.pitch){
+        const unsigned abs_pitch=unsigned(std::abs(int16_t((d[2]>>1)|((d[4]&0x1000)<<3))>>8));
+        for(const auto& r:by_bank[bank])if(d[1]>=r.begin && d[1]<r.end && abs_pitch==r.pitch){
             if(r.color!=256 && r.color!=color)continue;
             if(r.kind==Effect::missile_trail && !((color>=0xe9&&color<=0xf0)||(color>=0xf5&&color<=0xfc)))continue;
             return r.kind;
@@ -86,22 +86,34 @@ void decode(std::span<const uint8_t> bank,std::span<const uint8_t> rom,unsigned 
     for(unsigned slot=0;slot<bank.size()/16;++slot){
         std::array<uint16_t,8>d{};for(unsigned i=0;i<8;++i)d[i]=uint16_t(bank[slot*16+i*2])<<8|bank[slot*16+i*2+1];
         if(d[0]&0x8000)break;if(d[0]&0x5000)continue;
-        const auto kind=assets.identify(d);
         const int ystart=(d[0]&511)-256,yd=(d[4]&0x8000)?1:-1,xd=(d[4]&0x2000)?1:-1;
+        const unsigned rows=(d[5]&4095)+1;
+        const int yend=ystart+yd*int(rows-1);
+        const int ymin=yd>0?ystart:yend,ymax=yd>0?yend:ystart;
+        if(ymax<int(top)||ymin>int(bottom))continue;
+        const auto kind=assets.identify(d);
         int xs=d[2]&511;if(xs<128 && xd<0)xs+=512;xs-=190;if(!anchors.empty()&&anchors[slot]!=INT32_MIN)xs=anchors[slot];
-        const unsigned hz=std::max(64u,unsigned(d[4]&2047)),vz=std::max(64u,unsigned(d[3]&2047)),rows=(d[5]&4095)+1;
+        const unsigned hz=std::max(64u,unsigned(d[4]&2047)),vz=std::max(64u,unsigned(d[3]&2047));
         const int pitch=int16_t((d[2]>>1)|((d[4]&0x1000)<<3))>>8;
         const unsigned rb=((d[0]>>9)&7)%(rom.size()/0x40000),flags=((d[6]&255)<<4)|(((d[3]>>12)&7)<<12);
         const bool flip=(~d[4]>>14)&1;
-        for(unsigned row=0;row<rows;++row){int y=ystart+yd*int(row);if(y<int(top)||y>int(bottom))continue;
+        const uint8_t* bank_rom=rom.data()+rb*0x40000;
+        const unsigned row_begin=yd>0?unsigned(std::max(0,int(top)-ystart)):unsigned(std::max(0,ystart-int(bottom)));
+        const unsigned row_end=yd>0?std::min(rows-1,unsigned(int(bottom)-ystart)):std::min(rows-1,unsigned(ystart-int(top)));
+        for(unsigned row=row_begin;row<=row_end;++row){int y=ystart+yd*int(row);
             uint16_t address=uint16_t(d[1]+pitch*int((row*vz)>>9));int x=xs;unsigned acc=0;
             while(xd>0?x<=clip_right:x>=clip_left){
-                const size_t offset=rb*0x40000+unsigned(address)*4;
-                uint32_t word=uint32_t(rom[offset])|uint32_t(rom[offset+1])<<8|uint32_t(rom[offset+2])<<16|uint32_t(rom[offset+3])<<24;
+                const size_t offset=unsigned(address)*4;
+                uint32_t word=uint32_t(bank_rom[offset])|uint32_t(bank_rom[offset+1])<<8|uint32_t(bank_rom[offset+2])<<16|uint32_t(bank_rom[offset+3])<<24;
                 address=uint16_t(address+(flip?-1:1));
+                if(!word){while(acc<4096){x+=xd;acc+=hz;}acc-=4096;continue;}
                 bool last=false;
                 for(unsigned k=0;k<8;++k){const unsigned pen=(word>>(flip?k*4:(7-k)*4))&15;if(k==6)last=pen==15;
-                    while(acc<512){if(x>=clip_left&&x<=clip_right&&pen!=0&&pen!=15)emit(x,unsigned(y),uint16_t(flags|pen),kind);x+=xd;acc+=hz;}
+                    if(pen!=0&&pen!=15){const uint16_t raw_pixel=uint16_t(flags|pen);
+                        while(acc<512){if(x>=clip_left&&x<=clip_right)emit(x,unsigned(y),raw_pixel,kind);x+=xd;acc+=hz;}
+                    }else{
+                        while(acc<512){x+=xd;acc+=hz;}
+                    }
                     acc-=512;
                 }
                 if(last)break;

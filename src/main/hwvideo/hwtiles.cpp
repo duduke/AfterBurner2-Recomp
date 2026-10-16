@@ -44,26 +44,6 @@ void HWTiles::init_gfx(const uint8_t* rom, uint32_t rom_length)
     }
 }
 
-uint16_t HWTiles::read_tile(uint32_t word_offset) const
-{
-    return tile_ram[word_offset % (NUM_PAGES * PAGE_WORDS)];
-}
-
-void HWTiles::write_tile(uint32_t word_offset, uint16_t data)
-{
-    tile_ram[word_offset % (NUM_PAGES * PAGE_WORDS)] = data;
-}
-
-uint16_t HWTiles::read_text(uint32_t word_offset) const
-{
-    return text_ram[word_offset % TEXT_RAM_WORDS];
-}
-
-void HWTiles::write_text(uint32_t word_offset, uint16_t data)
-{
-    text_ram[word_offset % TEXT_RAM_WORDS] = data;
-}
-
 void HWTiles::latch_frame_registers()
 {
     for (int i = 0; i < 4; i++)
@@ -103,26 +83,22 @@ void HWTiles::draw_layer(uint16_t* pixels, uint8_t* priority, int width, int hei
         uint16_t* prow = pixels + y * width;
         uint8_t* prirow = priority + y * width;
 
+        const uint16_t raw_ex = alternate ? latched_xscroll[which + 2] : ((xscroll & 0x8000) ? rowscroll : xscroll);
+        const uint16_t ep = alternate ? latched_pageselect[which + 2] : pages;
+        const uint32_t ex = static_cast<uint32_t>((0xc0 - raw_ex) & 0x3ff);
+        const bool use_col_scroll = !alternate && column_scroll;
+        const uint16_t fixed_ey = static_cast<uint16_t>((alternate ? latched_yscroll[which + 2] : yscroll) & 0x1ff);
+        const uint32_t fixed_vy = (static_cast<uint32_t>(y) + fixed_ey) & 0x1ff;
+
         for (int x = 0; x < width; x++)
         {
-            uint16_t ex, ey, ep;
-            if (alternate)
+            const uint32_t vx = (static_cast<uint32_t>(x + native_left) + ex) & 0x3ff;
+            uint32_t vy = fixed_vy;
+            if (use_col_scroll)
             {
-                ex = latched_xscroll[which + 2];
-                ey = latched_yscroll[which + 2];
-                ep = latched_pageselect[which + 2];
+                const uint16_t ey = text_ram[column_table + (native_left == 0 ? static_cast<uint32_t>((x + 8) / 16) : static_cast<uint32_t>((x + native_left + 8) & 511) / 16)] & 0x1ff;
+                vy = (static_cast<uint32_t>(y) + ey) & 0x1ff;
             }
-            else
-            {
-                ex = (xscroll & 0x8000) ? rowscroll : xscroll;
-                ey = column_scroll ? text_ram[column_table + (native_left==0?static_cast<uint32_t>((x + 8) / 16):static_cast<uint32_t>((x+native_left+8)&511)/16)] : yscroll;
-                ep = pages;
-            }
-            ex = static_cast<uint16_t>((0xc0 - ex) & 0x3ff);
-            ey = static_cast<uint16_t>(ey & 0x1ff);
-
-            const uint32_t vx = (static_cast<uint32_t>(x+native_left) + ex) & 0x3ff;
-            const uint32_t vy = (static_cast<uint32_t>(y) + ey) & 0x1ff;
             const uint32_t page = (ep >> ((((vy >> 8) * 2) + (vx >> 9)) * 4)) & 0xf;
             const uint16_t entry = tile_ram[page * PAGE_WORDS + ((vy & 255) >> 3) * PAGE_COLS + ((vx & 511) >> 3)];
             const int entry_category = (entry >> 15) & 1;

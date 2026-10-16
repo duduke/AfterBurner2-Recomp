@@ -108,17 +108,26 @@ scope, missing ROMs, signing status and remaining preview limitations.
 
 ## Experimental Windows preview release
 
-Preview 2 adds a **cross-built Windows 10/11 x64 experiment**. Windows runtime,
-Vulkan output, input hardware and sustained performance are not verified.
-Keep that limitation in the release title/notes and package setup instructions.
-The artifact is unsigned. Optional OpenAL is disabled; original SDL audio and
-replacement music remain enabled. Do not describe the macOS regression pass
-as Windows execution evidence.
+Preview 2 includes a **Windows 10/11 x64** package. `tools/package_windows.py`
+supports both a native Windows x64 Release build (`--native-build build/win`,
+with SDL3 3.4.18 and OpenAL Soft 1.25.2 enabled) and the macOS LLVM-MinGW
+cross-build (`build/windows-cross`). The artifact is unsigned.
 
-`tools/package_windows.py` packages the committed, clean `build/windows-cross`
-Release/LTO build. Its Makefile cross-build uses LLVM-MinGW 20261006 / Clang
-23.1.3 and the official SDL3 3.4.16 MinGW SDK. Reproduce the build with extracted
-toolchain and SDK roots (native GCC/Ninja build instructions are in README):
+To package a native Windows x64 build on Windows (with `SDL3-3.4.18.tar.gz`,
+`SDL3-3.4.18-mingw.zip`, `openal-soft-1.25.2.tar.gz` and
+`openal-soft-1.25.2-bin.zip` in `build/deps/`):
+
+```sh
+cmake -S . -B build/win -G Ninja -DCMAKE_BUILD_TYPE=Release -DAB2_ENABLE_OPENAL=ON \
+  -DSDL3_DIR="$PWD/build/deps/SDL3-3.4.18/x86_64-w64-mingw32/lib/cmake/SDL3" \
+  -DOpenAL_DIR="$PWD/build/deps/openal"
+cmake --build build/win --target afterburner2 cpu_continuation_regression cpu_continuation_thread_regression -j4
+python3 tools/package_windows.py v0.1.0-preview.2 --native-build build/win
+```
+
+Alternatively, `tools/package_windows.py` packages the committed, clean
+`build/windows-cross` Release/LTO cross-build using LLVM-MinGW 20261006 / Clang
+23.1.3 and the official SDL3 3.4.16 MinGW SDK:
 
 ```sh
 cmake -S . -B build/windows-cross -G "Unix Makefiles" \
@@ -132,29 +141,15 @@ python3 tools/package_windows.py v0.1.0-preview.2 \
   --toolchain-archive "$AB2_TOOLCHAIN_ARCHIVE" --sdl-archive "$AB2_SDL_ARCHIVE"
 ```
 
-The official binary archives are
-[LLVM-MinGW 20261006](https://github.com/mstorsjo/llvm-mingw/releases/tag/20261006)
-(`llvm-mingw-20261006-ucrt-macos-universal.tar.xz`) and
-[SDL3 3.4.16](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16)
-(`SDL3-devel-3.4.16-mingw.tar.gz`). The packager checks their pinned SHA-256
-digests and copies only the x64 SDL/C++/unwind DLLs directly from those archives.
-It checks x64 PE headers, recursive DLL dependencies and the game's Windows fiber
-imports, rejects unbundled non-system DLLs, and includes both continuation tests.
-
-Prepare these corresponding source archives in `build/deps/`; the packager pins
-and verifies their SHA-256 digests too:
-
-- `SDL3-3.4.16.tar.gz`, also used by the macOS packager.
-- [llvm-project-23.1.3.src.tar.xz](https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/llvm-project-23.1.3.src.tar.xz), including libc++/libc++abi/libunwind.
-- [mingw-w64-a3d93999.tar.gz](https://github.com/mingw-w64/mingw-w64/archive/a3d93999ef0521681d45e445c39964a7af0f593f.tar.gz), matching the toolchain build recipe's MinGW revision.
-- [llvm-mingw-20261006-source.tar.gz](https://github.com/mstorsjo/llvm-mingw/archive/refs/tags/20261006.tar.gz), containing the toolchain build scripts.
+The packager checks pinned SHA-256 digests for all bundled DLL and source
+archives, verifies x64 PE headers, recursive DLL dependencies and the game's
+Windows fiber imports, rejects unbundled non-system DLLs, and includes both
+continuation tests.
 
 The ZIP contains sources, notices, setup/launch scripts, payload hashes and a
 separate checksum. No Microsoft system DLLs, ROMs, captures or personal settings
 are bundled. Independently extract and verify all manifest hashes and DLL closure
-before uploading the original ZIP/checksum. `Check-Continuations.cmd` must still
-be executed on Windows, followed by `Launch.cmd --profile` and GPU/audio/input
-checks, before recording Windows platform acceptance. Preserve earlier releases.
+before uploading the original ZIP/checksum. Preserve earlier releases.
 
 ## Capture discipline
 

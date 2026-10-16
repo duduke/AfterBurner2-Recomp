@@ -82,7 +82,7 @@ public:
     }
 #elif AB2_WINDOWS_FIBER
     XBoardCpuContinuation():host_fiber(acquire_host_fiber()){
-        fiber=CreateFiberEx(0,1024*1024,FIBER_FLAG_FLOAT_SWITCH,&enter,this);
+        fiber=CreateFiberEx(0,1024*1024,0,&enter,this);
         if(!fiber)throw std::runtime_error("CreateFiberEx failed: "+std::to_string(GetLastError()));
     }
 #else
@@ -166,6 +166,11 @@ public:
         cancelling=false;aborted=false;local=bus_end=next=ns;
     }
     void instruction_completed(uint64_t ns){bus_end=ns;}
+    bool continue_grant(uint64_t ns){
+        bus_end=ns;
+        if(!grant_active||aborted||stopping||cancelling||ns>=grant_target)return false;
+        local=ns;return true;
+    }
 
     bool done()const{return finished;}
     uint64_t time()const{return local;}
@@ -178,19 +183,23 @@ private:
     std::atomic<unsigned> turn{Finished};
     std::atomic<unsigned> sleepers{0};
     void publish(Turn value){
+#if AB2_COOPERATIVE_CONTINUATION
+        turn.store(value,std::memory_order_relaxed);
+#else
         // The sequentially consistent registration/recheck below closes the
         // sleep race. Hot handoffs need no kernel wakeup when nobody slept.
         turn.store(value,std::memory_order_seq_cst);
         if(sleepers.load(std::memory_order_seq_cst))turn.notify_one();
+#endif
     }
     void wait_change(Turn value){
 #if AB2_STACK_CONTINUATION
-        while(turn.load(std::memory_order_acquire)==value){
+        while(turn.load(std::memory_order_relaxed)==value){
             if(in_fiber)ab2_context_swap(&fiber_stack,host_stack);
             else resume();
         }
 #elif AB2_WINDOWS_FIBER
-        while(turn.load(std::memory_order_acquire)==value){
+        while(turn.load(std::memory_order_relaxed)==value){
             if(in_fiber)SwitchToFiber(host_fiber->pointer);
             else resume();
         }
@@ -241,7 +250,7 @@ private:
         HostFiber(){
             if(IsThreadAFiber())pointer=GetCurrentFiber();
             else {
-                pointer=ConvertThreadToFiberEx(nullptr,FIBER_FLAG_FLOAT_SWITCH);
+                pointer=ConvertThreadToFiberEx(nullptr,0);
                 if(!pointer)throw std::runtime_error("ConvertThreadToFiberEx failed: "+std::to_string(GetLastError()));
                 converted=true;
             }

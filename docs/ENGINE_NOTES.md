@@ -7889,6 +7889,93 @@ cross-build checks do not establish Windows execution, sustained performance or
 full-game/physical-platform acceptance. Final ZIP manifests identify the release
 commit and all file hashes; the GitHub release carries the ZIP checksums.
 
+### Windows runtime, OpenAL Soft and widescreen/GPU pacing validation (2026-10-16)
+
+Native testing on Windows 11 x64 (`w64devkit` GCC 16.2.0 `-O3`, SDL3 3.4.18,
+OpenAL Soft 1.25.2) identified and resolved three runtime issues and several
+cross-platform performance bottlenecks:
+
+1. **Vulkan fullscreen and presentation pacing (`src/main/main.cpp`, `src/main/frontend/native_menu.hpp`):**
+   - `SDL_RENDERER_VSYNC_ADAPTIVE` (`-1`, `VK_PRESENT_MODE_FIFO_RELAXED_KHR`) on
+     the Windows Vulkan swapchain stalled fullscreen mode transitions and
+     conflicted with DWM desktop composition and software deadline waits.
+     Presentation now uses `SDL_SetRenderVSync(renderer, 0)` on the GPU renderer
+     and calls `SDL_SyncWindow(window)` after `SDL_SetWindowFullscreen`.
+   - Frame-deadline waiting now runs immediately after `SDL_RenderPresent`
+     (before 1-second FPS window sampling), with input polled immediately before
+     `advance(input)` for lower latency and 1:1 `simulation_fps == display_fps`.
+   - The 2-frame catch-up loop (`while (... && catchup_frames++ < 2)`) was
+     replaced with a single simulation step per display frame and a hybrid wait
+     (`SDL_Delay(1)` only when `remaining > 4.5 ms`, spin-waiting to the exact
+     `16.768 ms` deadline below `4.5 ms`, bounded by `4.0 * tick_seconds`) so
+     Windows timer-resolution jitter cannot trigger double-tick spikes.
+2. **OpenAL Soft 1.25.2 enablement and `AL_STOPPED` stream-restart fix (`src/main/frontend/audio_output.hpp`, `src/main/frontend/native_menu.hpp`, `src/main/frontend/native_music.hpp`):**
+   - Under OpenAL 1.1, `alSourceStopv` followed by `alSourceUnqueueBuffers`
+     leaves sources in `AL_STOPPED` (`0x1014`). Because `queue_al()` only starts
+     sources when all active sources are in `AL_INITIAL` (`0x1011`), any
+     subsequent audio queued after `clear_al()` (such as returning from the
+     pause menu with `ESC` or switching music track previews) remained silently
+     stuck in `AL_STOPPED`. Calling `alSourceRewindv` in `AudioOutput::clear_al()`
+     and rewinding exhausted `AL_STOPPED` sources in `AudioOutput::reap()`
+     restores `AL_INITIAL` and fixes both music preview switching and mid-game
+     pause/resume audio across Windows and macOS.
+   - `NativeMenu` and `NativeMusic` now switch directly when `SPACE` is pressed
+     on a different track row while previewing, prioritize the latest track
+     request at the front of the background decode queue (`jobs.push_front`), and
+     reflect pending track selections immediately in `NativeMusic::selection()`.
+3. **Cross-platform CPU, widescreen, horizon and GPU-filter optimizations:**
+   - `XBoardHost::observe()` (`src/main/engine/xboard_host.hpp`) checks a
+     `presentation_phase` fast-path mask before constructing 88-byte `Entry`
+     structs and invoking `std::function`, avoiding ~200,000 unnecessary struct
+     copies and indirect calls per frame during normal gameplay.
+   - `XBoardHost` tracks `tile_gen` and `palette_gen` dirty counters via
+     `trace.before_access` (`src/main/engine/xboard_host.hpp`,
+     `src/main/engine/native_stage_skip.hpp`, `src/main/hwvideo/scene_snapshot.hpp`,
+     `src/main/hwvideo/wide_scene.hpp`), skipping redundant 32,768-tile and
+     8,192-palette reloads across partial scanline clips in both `XBoardHost::render()`
+     and `WideScene::draw()`.
+   - `GameSession` (`src/main/engine/game_session.hpp`) pools `wide_clips`
+     capacity via `wide_clip_count` so 94 KB `SceneClip` buffers and
+     `extended_sprites` vectors are reused across partial clips instead of
+     reallocated/zeroed every frame.
+   - `WideVisibility::recover()` (`src/main/hwvideo/wide_visibility.hpp`) syncs
+     only the 64-byte object and `0x29c080..0x29c180` camera block instead of
+     copying 64 KB (`sync_scratch`) per rejected scenery object.
+   - `GroundHorizon` (`src/main/hwvideo/ground_horizon.hpp`) caches computed
+     horizon profiles across partial scanline clips within the same frame and
+     reuses its `pens` scratch vector.
+   - `HWSprites` (`src/main/hwvideo/hwsprites.cpp`) and `Presentation::decode`
+     (`src/main/hwvideo/sprite_scene.hpp`) clip vertical row loops directly to
+     `[clip_top, clip_bottom]` and skip all-transparent 32-bit sprite words
+     (`!word`). `HWTiles::draw_layer()` (`src/main/hwvideo/hwtiles.cpp`) hoists
+     per-row scroll/page calculations out of the inner pixel loop.
+   - `GPUSpriteScaler` (`src/main/frontend/gpu_sprite_filter.hpp`) allocates
+     `layer_capacity` with a 2 MB minimum and 2x growth headroom to prevent
+     mid-flight GPU buffer reallocations during dense explosions/clouds.
+
+**Windows x64 verification results:**
+- Both ROM-free continuation tests (`cpu_continuation_regression.exe` with
+  `windows-fiber` and `cpu_continuation_thread_regression.exe` with
+  `worker-thread`) pass on Windows 11 x64.
+- Stage 1 (420 frames, 16:9 widescreen, Corrected ground, ScaleFX 3x, all four
+  translucency toggles, Integer scaling, OpenAL Soft 1.25.2 headphone HRTF):
+  locked `simulation_fps=59.6374 display_fps=59.6374` across all seven 1-second
+  windows (`board_ms=9.67–10.24 ms`, `wide_scene_ms=2.46–2.84 ms`,
+  `filter_submit_ms=0.24–0.35 ms`).
+- Stage 5 (420 frames, 16:9 widescreen, Corrected ground, ScaleFX 3x, all four
+  translucency toggles, Pixel-Art scaling, OpenAL Soft 1.25.2 headphone HRTF):
+  locked `simulation_fps=59.6374 display_fps=59.6374` (`board_ms=9.15–10.15 ms`,
+  `wide_scene_ms=1.27–3.94 ms`, `filter_submit_ms=0.22–0.45 ms`).
+- `tools/package_windows.py` now supports `--native-build build/win`, packaging
+  the verified Windows x64 executables alongside `SDL3.dll` (3.4.18),
+  `OpenAL32.dll` (1.25.2), upstream sources and notices.
+- **macOS handoff requirement:** full MAME oracle and regression suites were
+  intentionally skipped on the Windows machine per user instruction. The next
+  macOS agent must run `python3 tools/workflow.py run required -j 4`,
+  `verify-gpu-native-menu`, `verify-wide-gpu`, `test-spatial-audio`,
+  `verify-spatial-mutations` and `native-release` on macOS to re-validate the
+  modified engine/video/audio headers against the retained MAME captures.
+
 ## Native rendering and playable release continuation (2026-10-11)
 
 `make play-native` builds `build/afterburner2-release` with the same `-O3 -flto`

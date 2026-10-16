@@ -114,7 +114,7 @@ public:
             if(key==SDLK_UP)selected=(selected+rows-1)%rows;
             if(key==SDLK_DOWN)selected=(selected+1)%rows;
             const bool enter=key==SDLK_RETURN || key==SDLK_KP_ENTER;
-            if(audio_page==2 && key==SDLK_SPACE && selected<6) {if(music->previewing())music->stop_preview();else music->preview(selected);return Action::none;}
+            if(audio_page==2 && key==SDLK_SPACE && selected<6) {if(music->previewing() && music->previewing_track()==selected)music->stop_preview();else music->preview(selected);return Action::none;}
             if(key==SDLK_LEFT || key==SDLK_RIGHT || enter) {
                 const auto delta=key==SDLK_LEFT?-1:1;
                 if(audio_page==1) {
@@ -255,7 +255,7 @@ public:
                 } else if(audio_page==4 && audio){
                     const char* labels[]{"PROFILE","DEVICE","INTERPOLATION","SPEAKER TEST","BACK"};label=labels[i];
                     if(i==0)value=audio_profiles[int(audio->settings.profile)];
-                    if(i==1)value=audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device;
+                    if(i==1){value=audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device;if(value.starts_with("OpenAL Soft on "))value.erase(0,15);}
                     if(i==2)value=audio->settings.profile==AudioProfile::original?"NATIVE":audio->settings.resampler.empty()?"DEFAULT":audio->settings.resampler;
                 } else if(i<6) {label=music_titles[i];value=audio_page==2?music->selection(i):std::to_string(music->settings.track_volume[i])+"%";}
                 else label=i==6?(audio_page==2?"ALL ORIGINAL":"RESET VOLUMES"):"BACK";
@@ -263,10 +263,12 @@ public:
                 auto color=i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
                 text(label,32,64+i*16,color);text(value.substr(0,15),176,64+i*16,{54,184,255,255});if(i==selected)cursor(8,64+i*16);
             }
-            if(audio_page==2 && selected<6) {
-                auto filename=music->selection(selected);std::transform(filename.begin(),filename.end(),filename.begin(),[](unsigned char ch){return std::toupper(ch);});
-                if(filename.size()>38){filename+="    ";const auto offset=(SDL_GetTicks()/250)%filename.size();filename=filename.substr(offset)+filename.substr(0,offset);}
-                centered(filename.substr(0,38),188,{54,184,255,255});
+            if((audio_page==2 && selected<6) || (audio_page==4 && audio && (selected==1 || selected==2))) {
+                auto detail=audio_page==2?music->selection(selected):selected==1?(audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device):(audio->settings.profile==AudioProfile::original?"NATIVE":audio->settings.resampler.empty()?"DEFAULT":audio->settings.resampler);
+                if(audio_page==4 && selected==1 && detail.starts_with("OpenAL Soft on "))detail.erase(0,15);
+                std::transform(detail.begin(),detail.end(),detail.begin(),[](unsigned char ch){return std::toupper(ch);});
+                if(detail.size()>38){detail+="    ";const auto offset=(SDL_GetTicks()/250)%detail.size();detail=detail.substr(offset)+detail.substr(0,offset);}
+                centered(detail.substr(0,38),188,{54,184,255,255});
             }
             centered((audio_page==4 && audio?audio->status().text:music->notice).substr(0,38),203,{125,153,180,255});
             return;

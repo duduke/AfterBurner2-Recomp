@@ -60,9 +60,8 @@ void HWPalette::build_weight_tables()
     }
 }
 
-void HWPalette::write(uint32_t offset, uint16_t data)
+void HWPalette::write_changed(uint32_t offset, uint16_t data)
 {
-    if (last_words[offset] == data) return;
     last_words[offset] = data;
     // sBGR BBBB GGGG RRRR: each channel is its "5th" (doubling) bit from the
     // top nibble plus its 4 weighted bits from its own nibble.

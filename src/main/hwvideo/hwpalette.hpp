@@ -35,7 +35,11 @@ public:
     explicit HWPalette(uint32_t num_entries);
 
     // Handle a CPU write to palette RAM at word `offset`.
-    void write(uint32_t offset, uint16_t data);
+    inline void write(uint32_t offset, uint16_t data)
+    {
+        if (last_words[offset] == data) return;
+        write_changed(offset, data);
+    }
 
     // Resolved output pens: index [0, num_entries) = normal brightness,
     // [num_entries, 2*num_entries) = shadow-or-hilight effects pen.
@@ -44,6 +48,7 @@ public:
     uint32_t num_entries() const { return entries; }
 
 private:
+    void write_changed(uint32_t offset, uint16_t data);
     uint32_t entries;
     std::vector<RGB888> pens;
     // Sentinel keeps the first zero write distinct from an uninitialized pen.

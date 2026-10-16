@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -82,7 +83,9 @@ inline bool save_settings(const std::string& path, const Settings& settings) {
          << "\nlives=" << settings.lives << "\ndifficulty=" << settings.difficulty
          << "\nfullscreen=" << settings.fullscreen << "\nstats=" << static_cast<int>(settings.stats) << "\nsprites=" << sprite_filter_keys[static_cast<int>(settings.sprites)] << '\n';
     file.close();
-    if (!file || std::rename(temporary.c_str(),path.c_str())!=0) {
+    std::error_code ec;
+    if (file) std::filesystem::rename(temporary, path, ec);
+    if (!file || ec) {
         std::remove(temporary.c_str()); return false;
     }
     return true;

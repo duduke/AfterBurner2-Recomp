@@ -36,14 +36,26 @@ public:
     void init_gfx(const uint8_t* rom, uint32_t rom_length);
 
     // CPU-side tile RAM access (word offset within the 0x10000-byte window).
-    uint16_t read_tile(uint32_t word_offset) const;
-    void write_tile(uint32_t word_offset, uint16_t data);
+    inline uint16_t read_tile(uint32_t word_offset) const
+    {
+        return tile_ram[word_offset & (NUM_PAGES * PAGE_WORDS - 1)];
+    }
+    inline void write_tile(uint32_t word_offset, uint16_t data)
+    {
+        tile_ram[word_offset & (NUM_PAGES * PAGE_WORDS - 1)] = data;
+    }
 
     // CPU-side text RAM access (word offset within the 0x1000-byte window;
     // covers both the 64x28 text tilemap at the start and the scroll/page
     // registers from 0xE80 on).
-    uint16_t read_text(uint32_t word_offset) const;
-    void write_text(uint32_t word_offset, uint16_t data);
+    inline uint16_t read_text(uint32_t word_offset) const
+    {
+        return text_ram[word_offset & (TEXT_RAM_WORDS - 1)];
+    }
+    inline void write_text(uint32_t word_offset, uint16_t data)
+    {
+        text_ram[word_offset & (TEXT_RAM_WORDS - 1)] = data;
+    }
 
     // The FG/BG page-select and global scroll registers are latched once
     // per frame (real hardware: at scanline 261) rather than taking effect
@@ -96,6 +108,7 @@ private:
     inline uint8_t tile_pixel(uint32_t tile_index, int x, int y) const
     {
         if (num_tiles == 0) return 0;
-        return tile_pixels[(tile_index % num_tiles) * 64 + static_cast<uint32_t>(y * 8 + x)];
+        const uint32_t idx = tile_index < num_tiles ? tile_index : (tile_index % num_tiles);
+        return tile_pixels[idx * 64 + static_cast<uint32_t>(y * 8 + x)];
     }
 };

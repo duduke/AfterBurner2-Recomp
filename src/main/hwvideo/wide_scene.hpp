@@ -30,15 +30,17 @@ public:
     void reset(){
         ground_indices.assign(w*224,0);indices.assign(w*224,0);priority.assign(w*224,0);raw.assign(w*224,0xffff);
         background.assign(w*224,0xff000000);sprites.assign(w*224,0);protection.assign(w*224,0);
-        for(auto& r:row_fragments)r.clear();row_heads.assign(w*224,UINT32_MAX);seen.fill(false);
-        heads.clear();fragments.clear();last_frame=0;last_ns=0;ready=false;
+        for(auto& r:row_fragments)r.clear();row_heads.assign(w*224,UINT32_MAX);heads.assign(w*224,UINT32_MAX);seen.fill(false);
+        fragments.clear();last_frame=0;last_ns=0;loaded_tile_gen=loaded_palette_gen=0;ready=false;
     }
     void render(std::span<const SceneClip> clips,uint64_t frame,bool corrected_ground,bool extend_visibility=true){
         if(frame==last_frame || clips.empty())return;
         if(frame<last_frame)reset();last_frame=frame;
+        const SceneClip* prev=nullptr;
         for(const auto& c:clips){
             if(c.top>c.bottom || c.bottom>=224 || c.ns<last_ns)throw std::invalid_argument("Unordered wide scene clips");
-            last_ns=c.ns;draw(c,corrected_ground,extend_visibility);
+            last_ns=c.ns;draw(c,corrected_ground,extend_visibility,prev);
+            if(c.display)prev=&c;
         }
         ready=std::all_of(seen.begin(),seen.end(),[](bool x){return x;});flatten();
     }
@@ -47,13 +49,14 @@ private:
     unsigned w,margin;HWRoad road;HWTiles tiles;HWPalette palette;
     EffectAssets assets;GroundHorizon ground;std::span<const uint8_t> sprite_rom;
     std::vector<uint16_t> ground_indices,indices,raw,text_indices=std::vector<uint16_t>(320*224);
-    std::vector<uint8_t> priority,protection,text_priority=std::vector<uint8_t>(320*224);
+    std::vector<uint8_t> priority,protection,text_priority=std::vector<uint8_t>(320*224),projected;
+    std::vector<int> anchors;
     std::vector<uint32_t> background,sprites,row_heads,heads;
     std::vector<Fragment> fragments;std::array<std::vector<Fragment>,224> row_fragments;
-    std::array<bool,224> seen{};uint64_t last_frame{},last_ns{};bool ready{};
+    std::array<bool,224> seen{};uint64_t last_frame{},last_ns{},loaded_tile_gen{},loaded_palette_gen{};bool ready{};
     static uint32_t argb(RGB888 p){return 0xff000000|uint32_t(p.r)<<16|uint32_t(p.g)<<8|p.b;}
-    void draw(const SceneClip& c,bool corrected,bool extend_visibility){
-        std::vector<uint8_t> projected;std::vector<int> anchors;std::span<const uint8_t> bank=c.sprites;
+    void draw(const SceneClip& c,bool corrected,bool extend_visibility,const SceneClip* prev=nullptr){
+        projected.clear();anchors.clear();std::span<const uint8_t> bank=c.sprites;
         if(w>320&&extend_visibility&&!c.extended_sprites.empty()){
             projected.resize((c.extended_sprites.size()+1)*16);anchors.assign(c.extended_sprites.size()+1,INT32_MIN);
             for(unsigned i=0;i<c.extended_sprites.size();++i){std::copy(c.extended_sprites[i].bytes.begin(),c.extended_sprites[i].bytes.end(),projected.begin()+i*16);anchors[i]=c.extended_sprites[i].x;}
@@ -62,11 +65,20 @@ private:
         for(unsigned y=c.top;y<=c.bottom;++y){seen[y]=true;row_fragments[y].clear();
             std::fill(row_heads.begin()+y*w,row_heads.begin()+(y+1)*w,UINT32_MAX);}
         if(!c.display){for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){background[i]=0xff000000;sprites[i]=0;protection[i]=0;}return;}
-        for(unsigned i=0;i<c.tiles.size();++i)tiles.write_tile(i,c.tiles[i]);
-        for(unsigned i=0;i<c.text.size();++i)tiles.write_text(i,c.text[i]);tiles.load_initial_frame_registers(c.registers);
-        for(unsigned i=0;i<c.palette.size();++i)palette.write(i,c.palette[i]);
-        for(unsigned i=0;i<0x800;++i)road.write16(2*i,uint16_t(c.road[2*i]<<8|c.road[2*i+1]));
-        road.read_road_control();road.write_road_control(c.road_control);
+        if(c.tile_gen ? loaded_tile_gen!=c.tile_gen : (!prev || prev->tiles!=c.tiles)){
+            for(unsigned i=0;i<c.tiles.size();++i)tiles.write_tile(i,c.tiles[i]);
+            loaded_tile_gen=c.tile_gen;
+        }
+        for(unsigned i=0;i<c.text.size();++i)tiles.write_text(i,c.text[i]);
+        tiles.load_initial_frame_registers(c.registers);
+        if(c.palette_gen ? loaded_palette_gen!=c.palette_gen : (!prev || prev->palette!=c.palette)){
+            for(unsigned i=0;i<c.palette.size();++i)palette.write(i,c.palette[i]);
+            loaded_palette_gen=c.palette_gen;
+        }
+        if(!prev || prev->road!=c.road || prev->road_control!=c.road_control){
+            for(unsigned i=0;i<0x800;++i)road.write16(2*i,uint16_t(c.road[2*i]<<8|c.road[2*i+1]));
+            road.read_road_control();road.write_road_control(c.road_control);
+        }
         std::fill(priority.begin()+c.top*w,priority.begin()+(c.bottom+1)*w,0);
         std::fill(raw.begin()+c.top*w,raw.begin()+(c.bottom+1)*w,0xffff);
         road.render_background(indices.data(),w,224,c.top,c.bottom);road.render_foreground(indices.data(),w,224,c.top,c.bottom,-int(margin));
@@ -97,10 +109,17 @@ private:
         }
     }
     void flatten(){
-        heads=row_heads;fragments.clear();
-        for(unsigned y=0;y<224;++y){const unsigned base=fragments.size();
-            for(auto f:row_fragments[y]){if(f.previous!=UINT32_MAX)f.previous+=base;fragments.push_back(f);}
-            for(unsigned x=0;x<w;++x)if(heads[y*w+x]!=UINT32_MAX)heads[y*w+x]+=base;}
+        std::copy(row_heads.begin(),row_heads.end(),heads.begin());
+        size_t total=0;for(const auto& r:row_fragments)total+=r.size();
+        fragments.resize(total);
+        unsigned base=0;
+        for(unsigned y=0;y<224;++y){
+            const auto& r=row_fragments[y];if(r.empty())continue;
+            auto* dst=fragments.data()+base;const unsigned n=unsigned(r.size());
+            for(unsigned j=0;j<n;++j){auto f=r[j];if(f.previous!=UINT32_MAX)f.previous+=base;dst[j]=f;}
+            if(base){auto* h=heads.data()+y*w;for(unsigned x=0;x<w;++x)if(h[x]!=UINT32_MAX)h[x]+=base;}
+            base+=n;
+        }
     }
 };
 }
