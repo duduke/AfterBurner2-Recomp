@@ -60,6 +60,11 @@ Supplemental joint/reset checks and the native release build pass freshly at
 - Windows x64 game and both continuation tests compile/link; runtime execution
   remains unverified. Some legacy oracle fixtures retain documented input-race
   exclusions, reported in their full logs.
+- Extracted preflight packages pass manifest/source hashes, ROM exclusions,
+  architecture and dependency checks. The macOS package passes signature and
+  launch checks with Metal GPU filters and OpenAL HRTF. Corrupt dependency data
+  and attempts to overwrite existing artifacts are rejected. Final packages are
+  re-extracted and verified before upload.
 
 Recorded correctness checks do not establish sustained Windows performance,
 exhaustive widescreen coverage, physical-platform acceptance or continuous

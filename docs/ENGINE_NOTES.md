@@ -7856,6 +7856,39 @@ captures or ROM data were committed. This is macOS regression evidence and
 Windows cross-build evidence; Windows fiber execution, Vulkan output and
 sustained performance remain unverified.
 
+### Preview 2 packaging (2026-10-16)
+
+`v0.1.0-preview.2` includes the updated macOS arm64 package and a separate,
+unsigned experimental Windows x64 package. README, release notes, roadmap and
+dependency notices describe platform requirements and the Windows runtime gap.
+The new `tools/package_windows.py` accepts the clean committed Release/LTO
+cross-build with OpenAL disabled, checks pinned dependency/source archives,
+copies x64 DLL bytes from the official archives and verifies PE architecture,
+fiber imports and dependency closure. Both continuation test executables and a
+ROM-free check launcher are included. Project, SDL, LLVM runtime, exact MinGW
+runtime and toolchain build-script sources accompany the DLLs and notices.
+Microsoft system DLLs, ROMs, captures and personal settings are excluded.
+
+Preflight packages from implementation commit `bab6a4f` pass independent ZIP
+and payload hash checks, complete source-tree comparison with Git, executable
+launcher permissions, package-relative Mach-O dependencies/signatures and
+Windows x64 DLL closure. The 240-frame extracted macOS launcher smoke uses
+temporary settings/ROM links, Metal GPU filters, widescreen/effects and OpenAL
+headphone HRTF; all temporary ROM links are removed afterward. Windows execution
+is not attempted on macOS. Records: `build/releases/preview2-preflight-audit.json`
+and `.log`; checksum/overwrite rejection controls are retained in
+`build/releases/preview2-package-controls.json`.
+
+The complete engine `required` pass at `build/workflow/20261015T202242.843626Z/`
+is explicitly reused: engine sources, transitive dependencies, compiler/options,
+fixtures and comparison/mutation harness remain unchanged. Supplemental
+`oracle-joint-main-progress-full`, `oracle-joint-reset-window` and `native-release`
+pass freshly at `build/workflow/20261016T034347.883905Z/` (37.49/7.90/0.34 s).
+Subsequent changes are release packaging and documentation. Package smoke and
+cross-build checks do not establish Windows execution, sustained performance or
+full-game/physical-platform acceptance. Final ZIP manifests identify the release
+commit and all file hashes; the GitHub release carries the ZIP checksums.
+
 ## Native rendering and playable release continuation (2026-10-11)
 
 `make play-native` builds `build/afterburner2-release` with the same `-O3 -flto`
