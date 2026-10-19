@@ -27,7 +27,10 @@
 namespace Frontend {
 enum class AudioProfile { original, headphones, speakers21, speakers51 };
 inline constexpr const char* audio_profiles[]{"ORIGINAL SDL","HEADPHONES HRTF","2.1 SPEAKERS","5.1 SPEAKERS"};
-inline constexpr std::array<std::array<float,3>,4> cockpit_positions{{{-.5f,0,-.866f},{.5f,0,-.866f},{-.5f,-.5f,.866f},{.5f,-.5f,.866f}}};
+inline constexpr std::array<std::array<float,3>,4> cockpit_positions{{{-.5f,0,-.866f},{.5f,0,-.866f},{-.5f,0,.866f},{.5f,0,.866f}}};
+// The Deluxe manual labels a rear speaker and lists a roof speaker. Headphones
+// present a raised rear image; conventional 5.1 channels stay at ear height.
+inline constexpr float headphone_rear_elevation=.5f;
 struct OutputSettings {
     AudioProfile profile{};std::string device,resampler;
     bool operator==(const OutputSettings&)const=default;
@@ -148,7 +151,9 @@ private:
         alListener3f(AL_POSITION,0,0,0);const ALfloat orientation[]{0,0,-1,0,1,0};alListenerfv(AL_ORIENTATION,orientation);alDistanceModel(AL_NONE);alDopplerFactor(0);
         alGenSources(int(sources.size()),sources.data());
         for(unsigned i=0;i<sources.size();++i){alSourcei(sources[i],AL_SOURCE_RELATIVE,AL_TRUE);alSourcef(sources[i],AL_ROLLOFF_FACTOR,0);
-            if(i>=3 && i<11){const auto& p=cockpit_positions[(i-3)%4];alSource3f(sources[i],AL_POSITION,p[0],p[1],p[2]);}
+            if(i>=3 && i<11){const unsigned slot=(i-3)%4;const auto& p=cockpit_positions[slot];
+                const float elevation=s.profile==AudioProfile::headphones&&slot>=2?headphone_rear_elevation:0.f;
+                alSource3f(sources[i],AL_POSITION,p[0],p[1]+elevation,p[2]);}
             else {alSource3f(sources[i],AL_POSITION,0,0,0);if(direct)alSourcei(sources[i],AL_DIRECT_CHANNELS_SOFT,direct);}
             if(selected>=0)alSourcei(sources[i],AL_SOURCE_RESAMPLER_SOFT,selected);
         }check();info.openal=info.ready=true;

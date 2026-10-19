@@ -98,6 +98,9 @@ public:
             }
         }
         AudioPacket packet;
+        // The positional pair already consists of the board's left and right
+        // channels. Keep their full level in headphones before HRTF filtering.
+        const float positional_pair_gain=output&&output->settings.profile==AudioProfile::headphones?1.f:.707106781f;
         size_t out=0;
         for(auto& chunk:chunks) {
             std::vector<float> native_music_envelope;native_music_envelope.reserve(chunk.music.size());
@@ -132,7 +135,8 @@ public:
                     const size_t index=at<=chunk.first?0:std::min<size_t>(at-chunk.first,effects_envelope.size()-1);
                     const float gain=effects_envelope[index]*chip_gain/32768.f;const auto v=block.groups[g][i];
                     if(g==0){auto& stream=packet.streams[1+block.chip];stream.rate=rate;stream.pcm.push_back(XBoardSpeaker::pcm(v.left*gain));stream.pcm.push_back(XBoardSpeaker::pcm(v.right*gain));}
-                    else for(unsigned ch=0;ch<2;++ch){auto& stream=packet.streams[3+block.chip*4+(g-1)*2+ch];stream.rate=rate;stream.channels=1;stream.pcm.push_back(XBoardSpeaker::pcm((ch?v.right:v.left)*gain*.707106781f));}
+                    else for(unsigned ch=0;ch<2;++ch){auto& stream=packet.streams[3+block.chip*4+(g-1)*2+ch];stream.rate=rate;stream.channels=1;
+                        stream.pcm.push_back(XBoardSpeaker::pcm((ch?v.right:v.left)*gain*positional_pair_gain));}
                 }
             }
         }
