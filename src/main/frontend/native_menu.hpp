@@ -55,17 +55,18 @@ public:
         if (opened) return;
         if(feedback)feedback->stop();
         was_paused=game.paused(); initial=game.info().number==0;
-        game.set_paused(true); opened=true; options=false; video=false; dips=false; controls=false;feedback_page=false;audio_page=0; selected=0;
+        game.set_paused(true); opened=true; options=false; video=false; dips=false; controls=false;calibration_page=false;feedback_page=false;audio_page=0; selected=0;
     }
     void close(GameSession& game) {
         if (!opened) return;
-        if(feedback)feedback->stop();feedback_page=false;if(audio)audio->clear();
+        if(feedback)feedback->stop();feedback_page=false;calibration_page=false;if(audio)audio->clear();
         game.set_paused(was_paused); opened=false;audio_page=0;if(music)music->stop_preview(); if(input)input->cancel();
     }
     bool is_open() const { return opened; }
     bool in_video() const { return video; }
     bool in_dips() const { return dips; }
     bool in_controls() const {return controls;}
+    bool in_calibration() const {return calibration_page;}
     bool in_options() const { return options; }
     int selection() const { return selected; }
     bool fullscreen_toggle() {
@@ -77,9 +78,15 @@ public:
         return change(changed);
     }
     Action key(SDL_Keycode key) {
+        if(calibration_page && input) {
+            if(key==SDLK_ESCAPE || key==SDLK_F1 || key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER) {
+                calibration_page=false;selected=16;
+            }
+            return Action::none;
+        }
         if(feedback_page && feedback) {
             const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
-            if(key==SDLK_ESCAPE || key==SDLK_F1 || (enter && selected==15)){feedback->stop();feedback_page=false;selected=16;return Action::none;}
+            if(key==SDLK_ESCAPE || key==SDLK_F1 || (enter && selected==15)){feedback->stop();feedback_page=false;selected=17;return Action::none;}
             if(key==SDLK_UP || key==SDLK_DOWN){feedback->stop();selected=(selected+16+(key==SDLK_UP?-1:1))%16;}
             if(key==SDLK_LEFT || key==SDLK_RIGHT || enter){
                 if(selected<9)feedback->adjust(selected,key==SDLK_LEFT?-1:1);
@@ -151,7 +158,8 @@ public:
                 else if(selected==3)input->throttle_mode();
                 else if(enter && selected<15)input->begin(selected-4);
                 else if(enter && selected==15)input->reset();
-                else if(enter && selected==16 && feedback){feedback_page=true;selected=0;feedback->stop();}
+                else if(enter && selected==16 && input->controller_selected()){calibration_page=true;}
+                else if(enter && selected==17 && feedback){feedback_page=true;selected=0;feedback->stop();}
                 else if(enter && selected==control_rows()-1) {controls=false;selected=1;}
             }
             return Action::none;
@@ -181,6 +189,7 @@ public:
         return Action::quit;
     }
     Action pointer(float x,float y,bool click) {
+        if(calibration_page && input){if(click){calibration_page=false;selected=16;}return Action::none;}
         if(feedback_page && feedback){const int first=selected/8*8;
             for(int i=first;i<std::min(first+8,16);++i)if(x>=24&&x<=304&&y>=58+(i-first)*17&&y<75+(i-first)*17){if(selected!=i)feedback->stop();selected=i;return click?key(SDLK_RETURN):Action::none;}return Action::none;}
         if(dips) {
@@ -211,6 +220,32 @@ public:
         return Action::none;
     }
     void draw() {
+        if(calibration_page && input){
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
+            centered("INPUT CALIBRATION",16,{255,255,255,255});
+            if(!input->controller_selected()){
+                centered("CONTROLLER DISCONNECTED",96,{255,255,255,255});
+                centered("ENTER OR ESC TO RETURN",208,{125,153,180,255});return;
+            }
+            auto name=input->device_name();std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return std::toupper(c);});
+            centered(name.substr(0,38),38,{54,184,255,255});
+            const auto sample=input->calibration();
+            const char* labels[]{"STICK X","STICK Y","THROTTLE"};
+            const float raw[]{sample.raw.stick_x,sample.raw.stick_y,sample.raw.throttle};
+            const float mapped[]{sample.mapped.stick_x,sample.mapped.stick_y,sample.mapped.throttle};
+            text("RAW",151,59,{135,157,181,255});text("MAPPED",216,59,{54,184,255,255});
+            for(int i=0;i<3;++i){
+                const int y=82+i*35;
+                text(labels[i],24,y,{255,255,255,255});
+                text(std::to_string(int(std::round(raw[i]*100))),151,y,{135,157,181,255});
+                text(std::to_string(int(std::round(mapped[i]*100))),224,y,{54,184,255,255});
+                SDL_SetRenderDrawColor(renderer,65,75,88,255);SDL_RenderLine(renderer,24,y+17,296,y+17);
+                SDL_SetRenderDrawColor(renderer,54,184,255,255);
+                SDL_RenderLine(renderer,160,y+17,160+int(std::round(std::clamp(mapped[i],-1.f,1.f)*136)),y+17);
+            }
+            centered("DEAD ZONE "+std::to_string(input->profile().deadzone)+"%  SENSITIVITY "+std::to_string(input->profile().sensitivity)+"%",192,{125,153,180,255});
+            centered("ENTER OR ESC TO RETURN",208,{125,153,180,255});return;
+        }
         if(feedback_page && feedback){
             SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
             centered("CONTROLLER FEEDBACK",16,{255,255,255,255});centered("LEFT/RIGHT CHANGE - ENTER TEST",36,{125,153,180,255});
@@ -284,8 +319,9 @@ public:
                 else if(i==2) {label="SENSITIVITY";value=std::to_string(input->profile().sensitivity)+"%";}
                 else if(i==3) {label="THROTTLE";value=input->raw_device()?(input->profile().full_throttle?"FULL AXIS":"HALF AXES"):"BUTTONS/TRIGGERS";}
                 else if(i<15) {label=NativeInput::labels[i-4];value=input->binding_name(i-4);}
-                else label=i==15?"RESET DEFAULTS":i==16&&feedback?"FEEDBACK":"BACK";
-                auto color=i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
+                else if(i==16){label="CALIBRATION";if(!input->controller_selected())value="SELECT DEVICE";}
+                else label=i==17&&feedback?"FEEDBACK":"BACK";
+                auto color=i==16&&!input->controller_selected()?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
                 std::transform(value.begin(),value.end(),value.begin(),[](unsigned char ch){return std::toupper(ch);});
                 text(label,32,64+(i-first)*20,color);text(value.substr(0,18),144,64+(i-first)*20,{54,184,255,255});
                 if(i==selected)cursor(8,64+(i-first)*20);
@@ -301,7 +337,7 @@ public:
             const char* labels[]{"UPSCALING","SPRITES","CLOUDS","TRAILS","EXPLOSIONS","AFTERBURNER","SCREEN","STATS","GROUND","VIEWPORT","BACK"};
             const char* scales[]{"NEAREST","SMOOTH","INTEGER","PIXEL ART"};
             const char* stats[]{"OFF","FPS","DETAILED"};
-            const char* values[]{scales[static_cast<int>(settings.scaling)],sprite_filter_labels[static_cast<int>(settings.sprites)],settings.clouds?"TRANSLUCENT":"OPAQUE",settings.trails?"TRANSLUCENT":"OPAQUE",settings.explosions?"TRANSLUCENT":"OPAQUE",settings.afterburner?"TRANSLUCENT":"OPAQUE",settings.fullscreen?"FULLSCREEN":"WINDOWED",stats[static_cast<int>(settings.stats)],settings.ground?"CORRECTED":"ORIGINAL",settings.widescreen?"16:9 PREVIEW":"ORIGINAL",""};
+            const char* values[]{scales[static_cast<int>(settings.scaling)],sprite_filter_labels[static_cast<int>(settings.sprites)],settings.clouds?"TRANSLUCENT":"OPAQUE",settings.trails?"TRANSLUCENT":"OPAQUE",settings.explosions?"TRANSLUCENT":"OPAQUE",settings.afterburner?"TRANSLUCENT":"OPAQUE",settings.fullscreen?"FULLSCREEN":"WINDOWED",stats[static_cast<int>(settings.stats)],settings.ground?"CORRECTED":"ORIGINAL",viewport_labels[static_cast<unsigned>(settings.viewport)],""};
             for(int i=option_first();i<std::min(visible_rows(),option_first()+8);++i) {
                 const SDL_Color color=i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
                 text(labels[i],32,option_top(i),color);
@@ -363,8 +399,8 @@ private:
         SDL_SetRenderDrawColor(renderer,41,65,90,255);SDL_RenderFillRect(renderer,&track);
         SDL_SetRenderDrawColor(renderer,54,184,255,255);SDL_RenderFillRect(renderer,&thumb);
     }
-    bool feedback_page{};
-    int control_rows() const {return feedback?18:17;}
+    bool feedback_page{},calibration_page{};
+    int control_rows() const {return feedback?19:18;}
     SDL_Renderer* renderer;
     SDL_Texture* atlas{};
     int scale_count,selected{};
@@ -398,7 +434,7 @@ private:
         if(selected==6) changed.fullscreen=!settings.fullscreen;
         if(selected==7) changed.stats=static_cast<Stats>((static_cast<int>(settings.stats)+3+direction)%3);
         if(selected==8) changed.ground=!settings.ground;
-        if(selected==9)changed.widescreen=!changed.widescreen;
+        if(selected==9)changed.viewport=static_cast<Viewport>((static_cast<int>(settings.viewport)+viewport_count+direction)%viewport_count);
         if(selected<10) change(changed);
     }
     void tile(unsigned code,float x,float y,SDL_Color color,float scale=1) {

@@ -23,7 +23,7 @@ mutations=[
  ('pcm-update',audio,'update_fm(ns);update_pcm(ns);','update_fm(ns);',False),
  ('irq-boost',joint,'if(native_boost&&main_board.main_irq_level())native_boost(board_advancing?main_board.now():main_phase_ns);','/* omitted IRQ boost owner */',False),
  ('reset-boost',joint,'if(owns_boost){native_boost(ns);++index;}','if(owns_boost){++index;}',False),
- ('timer-b-phase','src/third_party/ymfm/ymfm_fm.ipp','-(m_total_clocks & 15)','0',True),
+ ('timer-b-schedule',audio,'void ymfm_set_timer(uint32_t n,int32_t clocks) override {timers[n]=','void ymfm_set_timer(uint32_t n,int32_t clocks) override {if(n==1)return;timers[n]=',True),
 ]
 commands={}
 for target,source in [('build/oracle_publication_schedule',joint),('build/oracle_sound_execution','tests/oracle_sound_execution.cpp')]:

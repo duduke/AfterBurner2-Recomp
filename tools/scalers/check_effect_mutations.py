@@ -8,7 +8,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 header = (ROOT / 'src/main/hwvideo/sprite_scene.hpp').read_text()
 mutations = {
-    'opaque exhaust pixels': ('uint16_t(flags|pen),kind', 'uint16_t(flags|pen),kind==Effect::afterburner?Effect::opaque:kind'),
+    'opaque exhaust pixels': ('emit(x,unsigned(y),raw_pixel,kind);', 'emit(x,unsigned(y),raw_pixel,kind==Effect::afterburner?Effect::opaque:kind);'),
     'wrong exhaust palette': ('Effect::afterburner,0x80', 'Effect::afterburner,0xf2'),
     'ordinary-throttle flame': ('mode==0x10 && int16_t(throttle)>=0xfd', 'mode==0x10'),
     'throttle endpoint': ('int16_t(throttle)>=0xfd', 'int16_t(throttle)>=0xfc'),

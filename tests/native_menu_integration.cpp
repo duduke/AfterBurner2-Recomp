@@ -40,7 +40,7 @@ int main(int argc,char** argv) try {
         menu.key(SDLK_ESCAPE);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
         auto controls_top=thumb("build/oracle/scrollbar-controls-top.bmp");
         for(int i=0;i<6;++i)menu.key(SDLK_DOWN);auto controls_middle=thumb();
-        for(int i=0;i<11;++i)menu.key(SDLK_DOWN);auto controls_bottom=thumb("build/oracle/scrollbar-controls-bottom.bmp");
+        for(int i=0;i<12;++i)menu.key(SDLK_DOWN);auto controls_bottom=thumb("build/oracle/scrollbar-controls-bottom.bmp");
         require(controls_top[0]==64 && controls_middle[0]>controls_top[0] && controls_bottom[0]>controls_middle[0] && controls_bottom[1]==183,"Controls scrollbar position failed");
         menu.key(SDLK_UP);menu.key(SDLK_RETURN);auto feedback_top=thumb("build/oracle/scrollbar-feedback-top.bmp");
         for(int i=0;i<8;++i)menu.key(SDLK_DOWN);auto feedback_bottom=thumb("build/oracle/scrollbar-feedback-bottom.bmp");
@@ -88,13 +88,22 @@ int main(int argc,char** argv) try {
             std::memcmp(pixels.data(),game.frame().pixels.data(),pixels.size()*sizeof(RGB888))==0,
             "UI rendering mutated native frame/time");
         menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.ground,"ground correction UI failed");menu.draw(); // Ground scrolls the Video viewport.
-        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.widescreen,"Viewport entry missing");
+        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(Frontend::is_wide(menu.settings),"Viewport entry missing");
         require(SDL_GetRenderLogicalPresentation(renderer,&w,&h,&presentation)&&w==398&&h==224,"wide logical viewport not applied");
         SDL_Rect safe{39,0,320,224};require(SDL_SetRenderViewport(renderer,&safe),"centered menu viewport failed");
         float wx,wy;require(SDL_RenderCoordinatesToWindow(renderer,60,65,&wx,&wy),"wide mouse transform unavailable");
         SDL_Event pointer{};pointer.type=SDL_EVENT_MOUSE_MOTION;pointer.motion.windowID=SDL_GetWindowID(window);pointer.motion.x=wx;pointer.motion.y=wy;
         require(SDL_ConvertEventToRenderCoordinates(renderer,&pointer)&&std::abs(pointer.motion.x-60)<.01f&&std::abs(pointer.motion.y-65)<.01f,"wide menu pointer did not match centered drawing");
-        menu.key(SDLK_LEFT);require(!menu.settings.widescreen,"Original viewport return failed");SDL_SetRenderViewport(renderer,nullptr);
+        menu.key(SDLK_RIGHT);require(menu.settings.viewport==Frontend::Viewport::wide16_10,"16:10 viewport entry missing");
+        require(SDL_GetRenderLogicalPresentation(renderer,&w,&h,&presentation)&&w==358&&h==224,"16:10 logical viewport not applied");
+        safe.x=19;require(SDL_SetRenderViewport(renderer,&safe),"16:10 centered menu viewport failed");
+        require(SDL_RenderCoordinatesToWindow(renderer,60,65,&wx,&wy),"16:10 mouse transform unavailable");
+        pointer.motion.x=wx;pointer.motion.y=wy;
+        require(SDL_ConvertEventToRenderCoordinates(renderer,&pointer)&&std::abs(pointer.motion.x-60)<.01f&&std::abs(pointer.motion.y-65)<.01f,"16:10 menu pointer did not match centered drawing");
+        menu.key(SDLK_RIGHT);require(menu.settings.viewport==Frontend::Viewport::original,"viewport forward wrap failed");
+        menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide16_10,"viewport reverse wrap failed");
+        menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide16_9,"16:9 viewport return failed");
+        menu.key(SDLK_LEFT);require(!Frontend::is_wide(menu.settings),"Original viewport return failed");SDL_SetRenderViewport(renderer,nullptr);
         menu.pointer(60,65,false); // Hover its first visible row without shifting it.
         const auto prior_clouds=menu.settings.clouds;menu.key(SDLK_RIGHT);
         require(menu.settings.clouds!=prior_clouds,"scrolled mouse row selected the wrong option");
@@ -160,20 +169,41 @@ int main(int argc,char** argv) try {
         Frontend::NativeInput input("");Frontend::NativeHaptics feedback(input,"");
         GameSession game(roms);Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.input=&input;menu.feedback=&feedback;
         menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
-        for(int i=0;i<16;++i)menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
+        for(int i=0;i<17;++i)menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
         require(menu.selection()==0,"Feedback submenu entry");menu.key(SDLK_RETURN);require(feedback.settings.enabled,"Feedback enabled UI");
         for(int row=0;row<16;++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}
-        menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.selection()==16,"Feedback Escape navigation");menu.key(SDLK_RETURN);
+        menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.selection()==17,"Feedback Escape navigation");menu.key(SDLK_RETURN);
         menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(feedback.settings.body==60,"Feedback strength UI");
         menu.close(game);require(!menu.is_open(),"Feedback menu close");
     }
     {
         const auto config=(std::filesystem::temp_directory_path()/"ab2-menu-input.cfg").string();
+        SDL_VirtualJoystickDesc descriptor;SDL_INIT_INTERFACE(&descriptor);
+        descriptor.type=SDL_JOYSTICK_TYPE_FLIGHT_STICK;descriptor.naxes=3;descriptor.nbuttons=6;descriptor.nhats=1;
+        descriptor.name="Calibration test joystick";
+        const auto virtual_id=SDL_AttachVirtualJoystick(&descriptor);require(virtual_id!=0,"calibration joystick attach failed");
         Frontend::NativeInput input(config);
         GameSession game(roms);Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.input=&input;
         menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
         menu.key(SDLK_DOWN);
         menu.key(SDLK_RETURN);require(menu.in_controls(),"Controls entry unavailable");
+        for(int i=0;i<16;++i)menu.key(SDLK_DOWN);
+        menu.key(SDLK_RETURN);require(!menu.in_calibration(),"Keyboard calibration should be disabled");
+        for(int i=0;i<16;++i)menu.key(SDLK_UP);
+        for(size_t i=0;i<input.connected().size() && input.device_name()!="Calibration test joystick";++i)menu.key(SDLK_RIGHT);
+        require(input.device_name()=="Calibration test joystick","Controls device selection failed");
+        for(int i=0;i<16;++i)menu.key(SDLK_DOWN);
+        menu.key(SDLK_RETURN);require(menu.in_calibration(),"Joystick calibration did not open");
+        const auto joystick=std::find_if(input.connected().begin(),input.connected().end(),[&](const auto& d){return d.id==virtual_id;});
+        require(joystick!=input.connected().end() && SDL_SetJoystickVirtualAxis(joystick->stick,0,16384),"calibration joystick movement failed");
+        SDL_UpdateJoysticks();require(input.calibration().mapped.stick_x>.4f,"live joystick calibration did not respond");
+        menu.draw();
+        auto* calibration_image=SDL_RenderReadPixels(renderer,nullptr);require(calibration_image,"Calibration readback failed");
+        require(SDL_SaveBMP(calibration_image,"build/oracle/input-calibration.bmp"),"Calibration image save failed");SDL_DestroySurface(calibration_image);
+        menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.selection()==16,"Calibration return navigation");
+        for(int i=0;i<16;++i)menu.key(SDLK_UP);
+        for(size_t i=0;i<input.connected().size() && input.controller_selected();++i)menu.key(SDLK_LEFT);
+        require(!input.controller_selected(),"Controls keyboard return failed");
         for(int i=0;i<4;++i)menu.key(SDLK_DOWN);
         menu.key(SDLK_RETURN);require(input.waiting(),"UI did not start key capture");
         SDL_Event e{};e.type=SDL_EVENT_KEY_DOWN;e.key.key=SDLK_D;e.key.scancode=SDL_SCANCODE_D;
@@ -188,7 +218,7 @@ int main(int argc,char** argv) try {
             SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);
         }
         menu.key(SDLK_ESCAPE);require(!menu.in_controls() && menu.in_options(),"Controls back navigation");
-        menu.close(game);std::filesystem::remove(config);
+        menu.close(game);require(SDL_DetachVirtualJoystick(virtual_id),"calibration joystick detach failed");std::filesystem::remove(config);
     }
     {
         const auto folder=std::filesystem::path("build/oracle/music-fixtures");

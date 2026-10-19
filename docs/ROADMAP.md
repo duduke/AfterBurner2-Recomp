@@ -11,7 +11,7 @@ Original remains the regression reference.
 | Priority | Workstream | Next outcome |
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
-| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Finish controller/scene audits and sustained 16:9 validation; then add independently tested 16:10/ultrawide |
+| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Finish controller/scene audits and sustained 16:9/16:10 validation; 16:10 is a local source addition after preview 2; ultrawide remains future work |
 | 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification |
 | 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | CRT/pacing work, sprite extraction, replacement assets, richer effects and optional HUD improvements |
@@ -153,13 +153,24 @@ on `main`; the separate Three.js prototype remains on
 | Native game | Cold boot, attract, coin/start, flight, weapons, HUD, original audio and transitions; 12,405 recovery PCs / 77,954 identical fixtures / 146 rejected controls | New execution paths, standard-credit recording and continuous whole-credit fidelity |
 | Whole host | Expanded 781-frame independent MAME corpus: CPU/bus/device/RGB/audio comparisons pass with zero supplied execution/state/read seeds | Finite input/operand coverage; broader DIP/reset/persistent-state paths |
 | Natural lifecycle | Four replays match ten MAME columns and native original-image reconstruction across 104,452 frames, zero skips; ending run visits all 23 stages | Name entry, NVRAM, alternate carrier/collision paths and whole-credit CPU/device/RGB/audio |
-| Menus and controls | Video/Controls/Audio/DIP submenus, scroll hints, persisted settings, keyboard/gamepad/raw-joystick remapping and hotplug | Service/coin options, calibration UI and broader physical device acceptance |
+| Menus and controls | Video/Controls/Audio/DIP submenus, live bound-input calibration display, scroll hints, persisted settings, keyboard/gamepad/raw-joystick remapping and hotplug | Service/coin options and broader physical device acceptance |
 | Display and ground | Five GPU filters plus Off, four opacity controls, full-throttle-only flame translucency and optional ground correction | Other backends, replacement art, continuous terrain projection and sustained performance |
 | Widescreen | 398×224 preview; detached scenery, native queue/depth-drop recovery, horizon/water extensions and roll/cloud fixes; 23 directed slots preserve 22,494 counted native RGB/PCM/time frames | Exhaustive controller/scene audit, other aspects/platforms and sustained load; gameplay object pools remain native |
 | Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes | Four songs' natural contexts and natural fades |
 | Spatial audio | Optional OpenAL Soft interpolation, headphone HRTF, 2.1/5.1 profiles and direct stereo music; `alSourceRewindv` state fix verified on Windows; 117,509 MAME ownership observations exact | Unclassified voices, physical localization/channels, cabinet audit and long-session latency |
 | Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
 | Distribution | ROM-free Apple Silicon ZIP and runtime-verified Windows x64 ZIP with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS is ad-hoc signed (ZIP predates latest Windows commit); Windows unsigned; Intel/older macOS and Linux packages remain open |
+
+Local source update **2026-10-17**: the viewport selector now offers Original,
+16:9 (398×224) and 16:10 (358×224), with width-specific detached visibility and
+centered HUD/menu placement. `test`, `verify-stage1`, independent geometry,
+18 geometry mutation runs and Metal menu/wide GPU checks pass. Each aspect's
+23 directed stage slots preserve 22,540 counted native RGB/PCM/time frames.
+See [the local widescreen validation records](WIDESCREEN_PLAN.md#delivered-preview-and-remaining-gates).
+The complete `required` gate and supplemental `full` profile pass on the
+integrated 2026-10-19 macOS source; see the validation record below. Broader
+scene/platform and sustained-load work remains open.
+Published packages have not been refreshed.
 
 On Windows 11 x64, both ROM-free continuation tests (`windows-fiber` and
 `worker-thread`) pass, and native `afterburner2.exe` with Vulkan GPU sprite
@@ -172,14 +183,14 @@ Stage 5 profiles (`board_ms=9.15–10.24 ms`, `wide_scene_ms=1.27–3.94 ms`,
 headers were modified on Windows without running MAME oracle or full regression
 suites on the Windows host, the earlier macOS `required` pass at
 `build/workflow/20261015T202242.843626Z/` is no longer current for the modified
-headers and must be re-run on macOS.
+headers. The integrated macOS source was rechecked on 2026-10-19; see below.
 See [Preview 2 release notes](RELEASE_NOTES.md),
 [Windows runtime and pacing notes](ENGINE_NOTES.md#windows-runtime-openal-soft-and-widescreengpu-pacing-validation-2026-10-16),
 [checkpoint history](CHECKPOINT_HISTORY.md) and the focused plans for scope.
 
 ## Next acceptance tasks
 
-**Immediate handoff for the next macOS agent:** the Windows session modified
+**macOS regression handoff completed 2026-10-19:** the Windows session modified
 `src/main/engine/*`, `src/main/hwmath/*`, `src/main/hwvideo/*`,
 `src/main/hwaudio/*`, `src/main/frontend/*` and `src/main/main.cpp` to resolve
 Windows Vulkan fullscreen stalls, fix the OpenAL 1.1 `AL_STOPPED` (`alSourceRewindv`)
@@ -187,16 +198,17 @@ stream-restart bug, and optimize CPU/video/widescreen/horizon/GPU-filter frame
 times across platforms (see
 [ENGINE_NOTES](ENGINE_NOTES.md#windows-runtime-openal-soft-and-widescreengpu-pacing-validation-2026-10-16)).
 Oracle and regression suites were intentionally skipped on Windows per user
-instruction. On macOS, start by running:
+instruction. The following macOS recheck is now complete:
 
-1. **macOS regression, oracle and package refresh:** run
-   `python3 tools/workflow.py run required -j 4`,
-   `python3 tools/workflow.py run verify-gpu-native-menu verify-wide-gpu test-spatial-audio verify-spatial-mutations native-release -j 4`,
-   and the supplemental `full` profile on macOS to verify that all MAME oracles,
-   mutations, Metal GPU readback checks and OpenAL Soft loopback checks pass with
-   the new cross-platform optimizations and `alSourceRewindv` fix. Optionally
-   repackage and upload `AfterBurner2-v0.1.0-preview.2-macOS-arm64.zip` so the
-   macOS download includes the OpenAL rewind fix and performance improvements.
+1. **macOS regression passed; package refresh remains optional:** complete
+   `required` (`test`, `verify-stage1`, `oracle-test`) passes at
+   `build/workflow/20261019T042949.062480Z/`; supplemental `full` passes at
+   `build/workflow/20261019T050739.004809Z/`. Focused Metal menu/wide GPU and
+   OpenAL Soft checks passed earlier on their unchanged relevant sources; see
+   the [widescreen plan](WIDESCREEN_PLAN.md) and
+   [spatial-audio plan](SPATIAL_AUDIO_PLAN.md). Optionally repackage
+   and upload `AfterBurner2-v0.1.0-preview.2-macOS-arm64.zip` so the macOS
+   download includes the OpenAL rewind fix and performance improvements.
 
 On 2026-10-15, the user reported finishing the game from start to finish on
 macOS with the saved Normal / three-ship configuration and current enhancements.

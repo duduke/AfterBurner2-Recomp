@@ -48,9 +48,13 @@ int main()try {
         SDL_SetJoystickVirtualAxis(p,SDL_GAMEPAD_AXIS_LEFT_TRIGGER,32767);pump(input);require(input.read().throttle==-1,"brake precedence");
         input.block();require(!input.read().throttle,"held buttons leak from menu");
         for(int a:{SDL_GAMEPAD_AXIS_LEFT_TRIGGER,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER})SDL_SetJoystickVirtualAxis(p,a,-32768);pump(input);input.read();
-        input.cycle(2);require(input.raw_device(),"raw selection");
+        input.cycle(2);require(input.raw_device() && input.controller_selected(),"raw selection");
         input.deadzone(1);input.sensitivity(1);input.read();
         SDL_SetJoystickVirtualAxis(j,0,16384);pump(input);require(std::abs(input.read().stick_x-.4125f)<.001f,"deadzone rescaling and sensitivity");
+        const auto calibration=input.calibration();
+        require(std::abs(calibration.raw.stick_x-.5f)<.001f &&
+                std::abs(calibration.mapped.stick_x-.4125f)<.001f,
+                "calibration raw/mapped stick values");
         SDL_SetJoystickVirtualAxis(j,0,0);pump(input);input.read();
         input.profile().bindings[10]={'b',5,1};input.read();
         SDL_SetJoystickVirtualButton(j,5,true);pump(input);require(input.menu_pressed() && !input.menu_pressed(),"menu binding rising edge");
@@ -65,6 +69,7 @@ int main()try {
         SDL_SetJoystickVirtualAxis(j,2,0);pump(input);SDL_SetJoystickVirtualAxis(j,2,32767);pump(input);
         require(!input.waiting() && input.profile().bindings[4]==NativeInput::Binding{'a',2,1},"raw axis capture");
         input.throttle_mode();input.read();require(input.read().throttle==1,"full range throttle output");
+        require(input.calibration().mapped.throttle==1,"calibration full-axis throttle");
         SDL_SetJoystickVirtualAxis(j,2,-32768);pump(input);require(input.read().throttle==-1,"full range throttle negative");
         input.begin(0);SDL_SetJoystickVirtualHat(j,0,SDL_HAT_RIGHT);pump(input);require(input.profile().bindings[0].kind=='h',"hat capture");
         SDL_SetJoystickVirtualHat(j,0,SDL_HAT_CENTERED);pump(input);input.read();SDL_SetJoystickVirtualHat(j,0,SDL_HAT_RIGHT);pump(input);require(input.read().stick_x==1,"hat polling");
@@ -80,6 +85,8 @@ int main()try {
         NativeInput restored(path);pump(restored);require(restored.profile().bindings[6].index==SDL_SCANCODE_C,"keyboard persistence");
         restored.cycle(2);require(restored.profile().full_throttle && restored.profile().deadzone==20 && restored.profile().sensitivity==110 && restored.profile().bindings[6].index==3,"device profile persistence");
         restored.begin(0);require(SDL_DetachVirtualJoystick(raw),"detach raw");pump(restored);require(restored.connected().size()==1 && !restored.waiting(),"unplug during capture");
+        require(restored.device_name()=="KEYBOARD" && !restored.controller_selected() && restored.calibration().mapped.stick_x==0,
+                "calibration did not fall back after unplug");
         raw=attach(false);pump(restored);restored.cycle(2);require(restored.profile().bindings[6].index==3,"GUID reconnect profile");
         require(SDL_DetachVirtualJoystick(pad),"detach pad");pump(restored);require(restored.connected().size()==1 && restored.read().cannon==false,"unplug held state");
     }

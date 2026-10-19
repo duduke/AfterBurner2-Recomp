@@ -557,8 +557,8 @@ Video → Viewport → 16:9 Preview selects 398×224 presentation with a centere
 native HUD/menu. Original is the default. Published sprites and wider road/tile
 samples are rendered from immutable partial-frame snapshots; gameplay stays
 native. Detached scenery retention, wider Sub projection and extra horizon
-segments cover the identified native-edge gaps. Original sprite capacity and
-complete scene/platform acceptance remain open.
+segments cover the identified native-edge gaps. Native gameplay object limits
+remain unchanged; complete scene/platform acceptance remains open.
 See [WIDESCREEN_PLAN](WIDESCREEN_PLAN.md) for the remaining acceptance work.
 
 ```sh
@@ -573,6 +573,25 @@ part of `verify-stage1`, both mutation groups of `oracle-test`. All old fixtures
 Captures stay under `build/oracle/widescreen/`; never commit runtime ROM data.
 `--profile` reports the added CPU scene cost as `wide_scene_ms`; compare Original
 and Wide with the same audio/device setup before attributing pacing changes.
+
+### Local 16:10 viewport
+
+Source after preview 2 also offers Video → Viewport → 16:10 Preview (358×224,
+19 additional columns on each side). The selector cycles Original → 16:9 →
+16:10 in either direction. Legacy `widescreen=1` preferences still select 16:9;
+new files additionally persist `viewport=original|16:9|16:10`.
+
+```sh
+python3 tools/workflow.py run test-native-settings verify-wide-geometry verify-wide-stages-16-10 -j 4
+python3 tools/workflow.py run verify-wide-gpu-16-10 -j 4
+```
+
+The first command generates retained Stage 1/5 fixtures under
+`build/oracle/widescreen/`; the second requires a real GPU/display and reads
+those fixtures without repeating the stage sweep. The 16:10 sweep is also part
+of `verify-stage1`. Geometry mutation checks exercise both widths independently.
+This local implementation is newer than the published packages; broader 16:10
+controller/scene, physical-platform and sustained-load acceptance remains open.
 
 ### SDL GPU sprite filtering
 
@@ -630,6 +649,10 @@ whole-credit visuals and peak-load performance remain open.
 Use Options → Controls for keyboard, gamepad and joystick bindings. The SDL3
 gamepad database is embedded for offline deployment. Preferences live beside
 `settings.cfg` in `settings.cfg.inputs`; `--settings-file` also relocates them.
+Controls → Calibration is enabled after selecting a gamepad or joystick. It
+displays bound stick/throttle values before and after dead zone and sensitivity,
+including full-axis throttle; unplugging the selected device shows a disconnect
+notice and returns Controls to Keyboard.
 `python3 tools/workflow.py run test-native-input verify-native-menu native-release`
 checks SDL virtual-device discovery/remapping/hotplug, UI and native compilation.
 `test-native-input` is included in `test` and CMake CTest. Physical hardware

@@ -18,15 +18,15 @@ MUTATIONS = [
      'sprite disappeared at a native edge instead of a wide edge', 1),
     ('road-origin', 'hwroad.cpp', ') & 0xfff) + native_left;', ') & 0xfff);',
      'wide road origin changed the native center', 2),
-    ('tile-origin', 'hwtiles.cpp', 'static_cast<uint32_t>(x+native_left)', 'static_cast<uint32_t>(x)',
+    ('tile-origin', 'hwtiles.cpp', 'static_cast<uint32_t>(x + native_left)', 'static_cast<uint32_t>(x)',
      'wide side column/source wrap differs', 1),
-    ('column-wrap', 'hwtiles.cpp', '((x+native_left+8)&511)', '(std::max(0,x+native_left+8))',
+    ('column-wrap', 'hwtiles.cpp', '((x + native_left + 8) & 511)', '(std::max(0,x+native_left+8))',
      'wide side column/source wrap differs', 1),
     ('clip-palette', 'wide_scene.hpp', 'for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){\n            background[i]',
      'for(unsigned i=0;i<(c.bottom+1)*w;++i){\n            background[i]',
      'wide renderer lost partial-frontier palette/row ownership', 1),
-    ('native-feedback', 'wide_scene.hpp', 'void draw(const SceneClip& c,bool corrected,bool extend_visibility){',
-     'void draw(const SceneClip& c,bool corrected,bool extend_visibility){const_cast<SceneClip&>(c).sprites[15]^=1;',
+    ('native-feedback', 'wide_scene.hpp', 'void draw(const SceneClip& c,bool corrected,bool extend_visibility,const SceneClip* prev=nullptr){',
+     'void draw(const SceneClip& c,bool corrected,bool extend_visibility,const SceneClip* prev=nullptr){const_cast<SceneClip&>(c).sprites[15]^=1;',
      'wide renderer wrote native sprite feedback', 1),
 ]
 
@@ -51,12 +51,14 @@ def main():
             cmd += ['src/main/engine/subbus.cpp','src/main/roms.cpp', 'src/main/romloader.cpp', '-o', str(binary)] + flags
             with (logs / f'{name}-build.log').open('w') as log:
                 subprocess.run(cmd, cwd=ROOT, check=True, stdout=log, stderr=subprocess.STDOUT)
-            result = subprocess.run([str(binary)], cwd=ROOT, capture_output=True, text=True)
-            output = result.stdout + result.stderr
-            (logs / f'{name}-run.log').write_text(output)
-            if result.returncode != 1 or witness not in output:
-                raise RuntimeError(f'{name}: expected semantic rejection missing')
-            print(f'Wide mutation {name}: rejected by independent geometry witness', flush=True)
+            for width in (398, 358):
+                result = subprocess.run([str(binary), '--width', str(width)], cwd=ROOT, capture_output=True, text=True)
+                output = result.stdout + result.stderr
+                suffix = '' if width == 398 else '-358'
+                (logs / f'{name}{suffix}-run.log').write_text(output)
+                if result.returncode != 1 or witness not in output:
+                    raise RuntimeError(f'{name} ({width}): expected semantic rejection missing')
+                print(f'Wide mutation {name} ({width}): rejected by independent geometry witness', flush=True)
 
 
 if __name__ == '__main__':

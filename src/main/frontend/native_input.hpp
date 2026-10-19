@@ -36,6 +36,29 @@ public:
     void deadzone(int delta) {profile().deadzone=std::clamp(profile().deadzone+delta*5,0,50);save();block();}
     void sensitivity(int delta) {profile().sensitivity=std::clamp(profile().sensitivity+delta*10,50,200);save();block();}
     bool raw_device() const {return editing && !devices[editing-1].pad;}
+    bool controller_selected() const {return editing!=0;}
+    struct Calibration { GameControls raw{}, mapped{}; };
+    Calibration calibration() const {
+        const auto* keys=SDL_GetKeyboardState(nullptr);
+        const Device* device=editing?&devices[editing-1]:nullptr;
+        const auto& p=profiles.at(editing?device->key:"keyboard");
+        auto sample=[&](bool adjusted) {
+            std::array<float,6> v{};
+            for(int a=0;a<6;++a) {
+                v[a]=value(p.bindings[a],device,keys,adjusted?p.deadzone:0);
+                if(adjusted && a<4)v[a]=std::min(1.f,v[a]*p.sensitivity/100.f);
+            }
+            GameControls result;
+            result.stick_x=v[0]>0?v[0]:-v[1];
+            result.stick_y=v[3]>0?-v[3]:v[2];
+            result.throttle=v[5]>0?-v[5]:v[4];
+            if(device && !device->pad && p.full_throttle && p.bindings[4].kind=='a' &&
+               p.bindings[4].index<SDL_GetNumJoystickAxes(device->stick))
+                result.throttle=std::clamp(axis(*device,p.bindings[4].index)*p.bindings[4].direction/32767.f,-1.f,1.f);
+            return result;
+        };
+        return {sample(false),sample(true)};
+    }
     void throttle_mode() {if(raw_device()) {profile().full_throttle=!profile().full_throttle;save();block();}}
     void reset() {profile()=editing?device_defaults(devices[editing-1]):defaults(false,true);save();block();}
     void clear(int action) {profile().bindings[action]={};save();block();}

@@ -20,6 +20,11 @@ inline constexpr uint8_t difficulty_bits[]{0x80,0xc0,0x40,0x00};
 inline constexpr const char* lives_labels[]{"3","4"};
 inline constexpr const char* difficulty_labels[]{"EASY","NORMAL","HARD","HARDEST"};
 enum class Stats { off, fps, detailed };
+enum class Viewport { original, wide16_9, wide16_10 };
+inline constexpr const char* viewport_keys[]{"original","16:9","16:10"};
+inline constexpr const char* viewport_labels[]{"ORIGINAL","16:9 PREVIEW","16:10 PREVIEW"};
+inline constexpr unsigned viewport_widths[]{320,398,358};
+inline constexpr int viewport_count=3;
 struct Settings {
     Scaling scaling{Scaling::nearest};
     bool fullscreen{};
@@ -27,18 +32,23 @@ struct Settings {
     SpriteFilter sprites{SpriteFilter::none};
     bool clouds{},trails{},explosions{},afterburner{};
     unsigned lives{},difficulty{1};
-    bool ground{},widescreen{};
+    bool ground{};
+    Viewport viewport{Viewport::original};
     bool operator==(const Settings&) const = default;
 };
-inline unsigned viewport_width(const Settings& s){return s.widescreen?398:320;}
+inline bool is_wide(const Settings& s){return s.viewport!=Viewport::original;}
+inline unsigned viewport_width(const Settings& s){return viewport_widths[static_cast<unsigned>(s.viewport)];}
 inline std::array<uint8_t,3> dip_switches(const Settings& settings) {
     return {0xff,0xff,uint8_t((0xdd & ~0xd8) | lives_bits[settings.lives] | difficulty_bits[settings.difficulty])};
 }
 inline Settings load_settings(const std::string& path, bool pixel_art) {
-    Settings result;
+    Settings result;Viewport explicit_viewport{};bool has_viewport=false;
     std::ifstream file(path); std::string line;
     if (!std::getline(file,line) || line != "AB2SETTINGS1") return result;
     while (std::getline(file,line)) {
+        for(int i=0;i<viewport_count;++i)if(line==std::string("viewport=")+viewport_keys[i]){
+            explicit_viewport=static_cast<Viewport>(i);has_viewport=true;
+        }
         for(unsigned i=0;i<4;++i) {
             if(line=="lives="+std::to_string(i)) result.lives=i;
             if(line=="difficulty="+std::to_string(i)) result.difficulty=i;
@@ -59,19 +69,21 @@ inline Settings load_settings(const std::string& path, bool pixel_art) {
         else if (line=="explosions=0") result.explosions=false;
         else if (line=="afterburner=1") result.afterburner=true;
         else if (line=="afterburner=0") result.afterburner=false;
-        else if (line=="widescreen=1") result.widescreen=true;
-        else if (line=="widescreen=0") result.widescreen=false;
+        else if (line=="widescreen=1") result.viewport=Viewport::wide16_9;
+        else if (line=="widescreen=0") result.viewport=Viewport::original;
         else if (line=="ground=1") result.ground=true;
         else if (line=="ground=0") result.ground=false;
         else if (line=="stats=0") result.stats=Stats::off;
         else if (line=="stats=1") result.stats=Stats::fps;
         else if (line=="stats=2") result.stats=Stats::detailed;
     }
+    if(has_viewport)result.viewport=explicit_viewport;
     return result;
 }
 inline bool save_settings(const std::string& path, const Settings& settings) {
     if (path.empty() || settings.lives>3 || settings.difficulty>3 || static_cast<unsigned>(settings.scaling)>3 ||
-        static_cast<unsigned>(settings.stats)>2 || static_cast<unsigned>(settings.sprites)>=sprite_filter_count) return false;
+        static_cast<unsigned>(settings.stats)>2 || static_cast<unsigned>(settings.sprites)>=sprite_filter_count ||
+        static_cast<unsigned>(settings.viewport)>=viewport_count) return false;
     const char* scales[]{"nearest","linear","integer","pixel-art"};
     const auto temporary=path+".tmp";
     std::ofstream file(temporary,std::ios::trunc);
@@ -79,7 +91,7 @@ inline bool save_settings(const std::string& path, const Settings& settings) {
     file << "AB2SETTINGS1\nscaling=" << scales[static_cast<int>(settings.scaling)]
          << "\nclouds=" << settings.clouds << "\ntrails=" << settings.trails
          << "\nexplosions=" << settings.explosions << "\nafterburner=" << settings.afterburner
-         << "\nwidescreen=" << settings.widescreen << "\nground=" << settings.ground
+         << "\nwidescreen=" << is_wide(settings) << "\nviewport=" << viewport_keys[static_cast<unsigned>(settings.viewport)] << "\nground=" << settings.ground
          << "\nlives=" << settings.lives << "\ndifficulty=" << settings.difficulty
          << "\nfullscreen=" << settings.fullscreen << "\nstats=" << static_cast<int>(settings.stats) << "\nsprites=" << sprite_filter_keys[static_cast<int>(settings.sprites)] << '\n';
     file.close();

@@ -52,12 +52,12 @@ the wider presentation still needs exhaustive scene and platform validation.
 | Area | Implemented features |
 | --- | --- |
 | Menus | Arcade-font Enter Arcade/Options/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation; slim scrollbars show hidden items and position |
-| Widescreen | Experimental 16:9 Preview (398×224): additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default |
+| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. The 16:10 option is a local source addition after preview 2 |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; fullscreen; FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
 | Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains the default |
 | Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |
-| Controls | Keyboard, gamepad and raw joystick remapping; axes/buttons/hats; deadzone, sensitivity, polarity and full-axis throttle; hotplug and persisted device profiles |
+| Controls | Keyboard, gamepad and raw joystick remapping; axes/buttons/hats; live calibration display, deadzone, sensitivity, polarity and full-axis throttle; hotplug and persisted device profiles |
 | Controller feedback | Optional SDL body and Xbox trigger rumble; cannon, missile, player-impact and full-throttle cues; strengths, motor tests, device selection and lifecycle stops |
 | Arcade settings | Lives/Credit (3 or 4), Ship Increase (credit-multiplied lives) and Difficulty; Apply & Restart, F5 or next launch applies saved DIP choices |
 | Audio | Six WAV/FLAC track replacements, preview, live current-song switching, Original fallback; independent music/effects/per-track volume; replacement music balanced at -12 dB |
@@ -172,6 +172,9 @@ and Back/Start for coin/start. Raw joysticks default to axes 0/1 and buttons 0�
 Remap in **Options → Controls**: Enter captures, Backspace clears and Escape
 cancels/returns. For throttle sliders, choose Full Axis and bind Boost toward
 maximum; this replaces Brake. Identical device models share a GUID/type profile.
+Select a gamepad or joystick, then open **Calibration** to compare bound stick
+and throttle input before and after dead zone and sensitivity are applied.
+Remapped axis direction is reflected live; Calibration is disabled for Keyboard.
 
 Enable rumble in **Options → Controls → Feedback**. Choose the output device,
 turn Enabled On, and adjust body/trigger strengths independently. Motor tests

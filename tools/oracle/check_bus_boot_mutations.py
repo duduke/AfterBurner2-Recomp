@@ -31,8 +31,8 @@ def main():
          'for(unsigned cpu=0;cpu<3;++cpu)',
          'for(unsigned order=0;order<3;++order) if(unsigned cpu=2-order;true)'),
         ('extra-budget-clock', 'src/main/hwmath/xboard_bus_arbiter.hpp',
-         'auto cycles=(target-s.local[cpu])/cycle;',
-         'auto cycles=(target-s.local[cpu])/cycle+1;'),
+         'const auto cycles=span<=UINT64_MAX?uint64_t(span)/cycle:uint64_t(span/cycle);',
+         'const auto cycles=(span<=UINT64_MAX?uint64_t(span)/cycle:uint64_t(span/cycle))+1;'),
         ('boost-duration', 'src/main/hwmath/xboard_bus_arbiter.hpp',
          'IRQ_DURATION=100000000000000ULL', 'IRQ_DURATION=60000000000000ULL'),
     ]

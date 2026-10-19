@@ -1,18 +1,21 @@
 # True widescreen implementation plan
 
-**Status: experimental 16:9 preview released; exhaustive acceptance remains open.**
-Updated **2026-10-15** against [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
+**Status: experimental 16:9 preview released; local source adds 16:10; exhaustive acceptance remains open.**
+Updated **2026-10-17**. The 16:10 source addition is newer than the published
+[v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
 
 Render additional scene content left and
 right of the original view, preserving object proportions, vertical coverage and
-native simulation. Initial target: 16:9; follow with 16:10 and ultrawide. Stretch,
+native simulation. Initial target: 16:9; 16:10 now uses the same pipeline, with ultrawide still future work. Stretch,
 crop-to-fill, repeated border columns and invented scenery are not acceptance
 substitutes. Keep Original as the default and regression reference.
 
 ## Implemented preview
 
-**Options → Video → Viewport → 16:9 Preview** selects 398×224 square-pixel
-presentation, with 39 additional columns on each side. Original remains the
+**Options → Video → Viewport** cycles Original, **16:9 Preview** (398×224,
+39 additional columns per side) and **16:10 Preview** (358×224, 19 per side).
+Both wide modes render additional scene content with square-pixel proportions.
+Widths are rounded to even numbers for symmetric margins. Original remains the
 default. The HUD/menu stay in the centered 320×224 safe area. Window resizing,
 pointer conversion, full-width captures, saved preferences, existing sprite
 filters, translucency and optional corrected ground use the selected viewport.
@@ -64,7 +67,9 @@ This expands rendering capacity, not native spawning or gameplay capacity.
 All 23 ordered stage slots and retained natural lifecycle recordings have
 dedicated validation targets (see [coverage and results](ENGINE_NOTES.md#widescreen-capacity-and-stagelifecycle-checks-2026-10-15)). These are finite input
 windows and recordings, not proof of every possible object/input trajectory.
-16:10/ultrawide, sustained performance and Windows/Linux GPU checks remain open.
+Broader 16:10 acceptance, ultrawide and sustained performance remain open. Windows
+has finite Stage 1/5 runtime evidence; the new 16:10 mode still needs physical
+Windows/Linux checks.
 Other object controllers still require audit before promising complete visibility
 in every possible scene.
 
@@ -90,7 +95,7 @@ this is a released experimental increment, not completed widescreen acceptance.
 | 2. CPU backgrounds | Wide road/sky/tiles and exact legacy reconstruction implemented | Broader stage/input/scene trajectories |
 | 3. Sprites and visibility | Wider projection, retained scenery, horizon/wave extension and queue/depth-drop recovery implemented | Remaining controller/culling and visible-but-untargetable cases |
 | 4. Existing enhancements | Wide CPU/GPU filters, translucency and corrected ground implemented | Other backends and peak-load behavior |
-| 5. Frontend integration | Persisted viewport, centered HUD/menu, capture and switching implemented | Complete physical high-DPI/resize/fullscreen/input matrix |
+| 5. Frontend integration | Persisted Original/16:9/16:10 viewport, centered HUD/menu, capture and switching implemented | Complete physical high-DPI/resize/fullscreen/input matrix |
 | 6. Release/acceptance | macOS preview release gates pass for the recorded scope | Exhaustive scene audit and sustained performance before broader acceptance; 16:10/ultrawide separately |
 
 The release integration run covers all 23 directed slots: 22,494 counted native
@@ -102,8 +107,37 @@ The unchanged seven Metal fixtures retain 84 passing filter/opacity cases;
 this is reused GPU evidence, not a new readback run. See
 [the complete release checkpoint](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
 
-Next: finish 16:9 controller/scene and sustained-load audits, establish named
-Windows/Linux/GPU coverage, then implement and validate 16:10/ultrawide. Optional
+The local 16:10 implementation shares the renderer and width-derived visibility
+margin with 16:9. `viewport=original|16:9|16:10` is persisted; legacy
+`widescreen=1` migrates to 16:9. The explicit viewport wins regardless of file
+order. Switching widths rebuilds presentation resources and clears detached
+visibility history without advancing native time; fresh clips arrive on the
+next completed frame. HUD/menu width remains 320.
+
+Local validation on 2026-10-17:
+
+| Check | Result / local record |
+| --- | --- |
+| ROM-free tests and optimized native build | Pass; `build/workflow/20261017T202212.268264Z/` |
+| Independent geometry at 398×224 and 358×224 | Both pass; `build/workflow/20261017T202530.947304Z/` |
+| Geometry negative controls | 18/18 rejected (nine per width); `build/workflow/20261017T202625.741852Z/` |
+| Native GPU/menu | 4,128/4,128 cases identical, zero skips; both viewport selections, centered pointer coordinates and wrap navigation pass; `build/workflow/20261017T202419.403322Z/` |
+| Stage 1 integration and directed stage sweeps | `verify-stage1` passes in 454.91 s; all 23 slots at each width preserve 22,540 counted native RGB/PCM/time frames per width, zero differences/skips; `build/workflow/20261017T202233.433957Z/01-verify-stage1.log` |
+| 16:9 GPU retained scene | 12/12 filter/opacity cases identical to CPU, zero skips; `build/oracle/widescreen/aspect-398-gpu-final.log` |
+| 16:10 GPU Stage 1/5 fixtures | 24/24 filter/opacity cases identical to CPU, zero skips; final pass `build/workflow/20261017T203029.378955Z/` |
+| Existing MAME projection corpora | 240/240, 1,199/1,200 and 1,198/1,200 passes identical; zero differences; respectively 0, 1 and 2 input-race skips; `build/workflow/20261017T202729.742570Z/` |
+| 16:10 native launch | 120-frame Metal and 60-frame dummy/software smokes pass; `build/oracle/widescreen/viewport-16-10-{metal,smoke}.log`; finite launch checks, not sustained performance |
+
+GPU checks require desktop display access: sandbox-only attempts could not
+enumerate a display; their reruns with desktop access pass. On 2026-10-19 the
+complete `required` gate, including retained mutations, passed on the integrated
+source at `build/workflow/20261019T042949.062480Z/`; the supplemental `full`
+profile passed at `build/workflow/20261019T050739.004809Z/`. Earlier
+release/lifecycle results above retain their historical scope. These checks do
+not declare a new release or exhaustive scene acceptance.
+
+Next: finish controller/scene and sustained-load audits for both widths,
+establish named Windows/Linux/GPU coverage, then implement ultrawide. Optional
 pixel-aspect correction, edge-anchored HUD and wider gameplay rules are separate
 features. Do not promote finite lifecycle coverage into exhaustive visual coverage.
 
@@ -249,9 +283,9 @@ request capacity to compensate for missing content without a separate plan.
 
 ### 5. HUD, menus and settings
 
-**Current state:** Original/16:9 setting and centered safe area are implemented; extra aspects and optional HUD relocation remain.
+**Current state:** Original/16:9/16:10 settings and centered safe area are implemented in local source; ultrawide and optional HUD relocation remain.
 
-Options → Video → Viewport already offers Original or 16:9. Add 16:10 and
+Options → Video → Viewport offers Original, 16:9 and 16:10 in local source. Add
 supported ultrawide/custom aspects after their separate acceptance gates. Persist independently from window scaling/fullscreen. Reallocate enhanced
 resources at a safe frame boundary; preserve board state and pause status.
 Map window resize, high DPI, letterboxing and mouse coordinates consistently.

@@ -203,11 +203,12 @@ int main(int argc, char** argv)try
     unsigned sprite_texture_factor=0;
     uint64_t last_sprite_frame=UINT64_MAX;
     const auto configure_sprite_texture=[&](const Frontend::Settings& value) {
-        if(value.widescreen && !wide_renderer)wide_renderer=std::make_unique<Presentation::WideScene>(roms);
-        if(!value.widescreen)wide_renderer.reset();game.capture_wide_scene(value.widescreen);
+        if(Frontend::is_wide(value) && (!wide_renderer || wide_renderer->view().width!=Frontend::viewport_width(value)))
+            wide_renderer=std::make_unique<Presentation::WideScene>(roms,Frontend::viewport_width(value));
+        if(!Frontend::is_wide(value))wide_renderer.reset();game.capture_wide_scene(Frontend::is_wide(value),Frontend::viewport_width(value));
 
         if(gpu_scaler) {last_sprite_frame=UINT64_MAX;return true;}
-        if(value.sprites==Frontend::SpriteFilter::none && !value.clouds && !value.trails && !value.explosions && !value.afterburner && !value.ground && !value.widescreen) return true;
+        if(value.sprites==Frontend::SpriteFilter::none && !value.clouds && !value.trails && !value.explosions && !value.afterburner && !value.ground && !Frontend::is_wide(value)) return true;
         const auto factor=Frontend::sprite_factor(value.sprites);
         auto* next=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,Frontend::viewport_width(value)*factor,SCREEN_HEIGHT*factor);
@@ -219,9 +220,9 @@ int main(int argc, char** argv)try
         std::cerr<<"Saved sprite filter unavailable: "<<SDL_GetError()<<'\n';
         settings.sprites=Frontend::SpriteFilter::none;
     }
-    game.capture_ground_horizon(settings.ground&&!settings.widescreen);
-    game.capture_sprite_scene(!settings.widescreen && (settings.clouds || settings.trails || settings.explosions || settings.afterburner));
-    game.capture_sprite_presentation(!settings.widescreen && (gpu_scaler || settings.sprites!=Frontend::SpriteFilter::none || settings.clouds || settings.trails || settings.explosions || settings.afterburner || settings.ground));
+    game.capture_ground_horizon(settings.ground&&!Frontend::is_wide(settings));
+    game.capture_sprite_scene(!Frontend::is_wide(settings) && (settings.clouds || settings.trails || settings.explosions || settings.afterburner));
+    game.capture_sprite_presentation(!Frontend::is_wide(settings) && (gpu_scaler || settings.sprites!=Frontend::SpriteFilter::none || settings.clouds || settings.trails || settings.explosions || settings.afterburner || settings.ground));
     auto menu=std::make_unique<Frontend::NativeMenu>(renderer,roms,settings,Frontend::pixel_art_available());
     menu->feedback=feedback.get();menu->input=input_manager.get();menu->music=music_player.get();
     menu->apply=[&](const Frontend::Settings& changed) {
@@ -234,10 +235,10 @@ int main(int argc, char** argv)try
             configure_sprite_texture(previous);Frontend::apply_settings(window,renderer,texture,previous);
             return false;
         }
-        game.capture_ground_horizon(changed.ground&&!changed.widescreen);
-        game.capture_sprite_scene(!changed.widescreen && (changed.clouds || changed.trails || changed.explosions || changed.afterburner));
-        game.capture_sprite_presentation(!changed.widescreen && (gpu_scaler || changed.sprites!=Frontend::SpriteFilter::none || changed.clouds || changed.trails || changed.explosions || changed.afterburner || changed.ground));
-        if(changed.widescreen!=previous.widescreen&&!changed.fullscreen){
+        game.capture_ground_horizon(changed.ground&&!Frontend::is_wide(changed));
+        game.capture_sprite_scene(!Frontend::is_wide(changed) && (changed.clouds || changed.trails || changed.explosions || changed.afterburner));
+        game.capture_sprite_presentation(!Frontend::is_wide(changed) && (gpu_scaler || changed.sprites!=Frontend::SpriteFilter::none || changed.clouds || changed.trails || changed.explosions || changed.afterburner || changed.ground));
+        if(changed.viewport!=previous.viewport&&!changed.fullscreen){
             int ww,wh;SDL_GetWindowSize(window,&ww,&wh);
             SDL_SetWindowSize(window,int(std::lround(wh*Frontend::viewport_width(changed)/224.0)),wh);
             // Refresh the resized GPU swapchain before submitting the new menu.

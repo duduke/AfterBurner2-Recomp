@@ -137,9 +137,13 @@ public:
         return {scene_heads,scene_fragments,true};
     }
     struct ScenePresentation {FrameInfo info;std::span<const Presentation::SceneClip> clips;bool ready{};};
-    void capture_wide_scene(bool enabled){
-        if(enabled==capture_wide)return;capture_wide=enabled;wide_clip_count=0;wide_clip_open=false;
-        if(enabled){if(!visibility)visibility=std::make_unique<Presentation::WideVisibility>(rom);bind_wide_capture();}else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};if(visibility)visibility->reset();}
+    void capture_wide_scene(bool enabled,unsigned logical_width=398){
+        if(logical_width<320||logical_width>640||logical_width%2)throw std::invalid_argument("Unsupported wide capture width");
+        if(enabled==capture_wide&&(!enabled||logical_width==wide_width))return;
+        if(enabled&&(!visibility||logical_width!=wide_width))visibility=std::make_unique<Presentation::WideVisibility>(rom,(logical_width-320)/2);
+        if(enabled)wide_width=logical_width;
+        capture_wide=enabled;wide_clip_count=0;wide_clip_open=false;
+        if(enabled){bind_wide_capture();}else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};if(visibility)visibility->reset();}
         bind_feedback_capture();
     }
     ScenePresentation wide_scene()const{return {info(),std::span<const Presentation::SceneClip>(wide_clips.data(),wide_clip_count),capture_wide&&wide_clip_count!=0};}
@@ -161,6 +165,7 @@ public:
 private:
     std::unique_ptr<Presentation::WideVisibility> visibility;
     bool capture_wide{}, wide_clip_open{};
+    unsigned wide_width{398};
     size_t wide_clip_count{};
     std::vector<Presentation::SceneClip> wide_clips;
     void publish_wide(uint64_t ns,unsigned top,unsigned bottom,bool display){

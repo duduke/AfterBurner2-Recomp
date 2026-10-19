@@ -1691,9 +1691,16 @@ build/wide_stage_visibility: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
 verify-wide-stages: build/wide_stage_visibility
 	./build/wide_stage_visibility
+verify-wide-stages-16-10: build/wide_stage_visibility
+	./build/wide_stage_visibility --width 358
+# Consume the retained fixtures produced by verify-wide-stages-16-10.
+verify-wide-gpu-16-10: build/wide_gpu_regression
+	./build/wide_gpu_regression build/oracle/widescreen/aspect-358-stage-1-210.bin
+	./build/wide_gpu_regression build/oracle/widescreen/aspect-358-stage-5-270.bin
 verify-stage1: verify-wide-stages
+verify-stage1: verify-wide-stages-16-10
 -include build/native_obj/tests/wide_stage_visibility.d
-.PHONY: verify-wide-stages
+.PHONY: verify-wide-stages verify-wide-stages-16-10 verify-wide-gpu-16-10
 
 build/wide_lifecycle_visibility: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/wide_lifecycle_visibility.cpp $(filter-out src/main/main.cpp,$(SRCS))))
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)

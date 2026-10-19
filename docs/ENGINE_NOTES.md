@@ -7976,6 +7976,44 @@ cross-platform performance bottlenecks:
   `verify-spatial-mutations` and `native-release` on macOS to re-validate the
   modified engine/video/audio headers against the retained MAME captures.
 
+## Local 16:9 and 16:10 viewport selection (2026-10-17)
+
+The local source now exposes Original, 16:9 Preview (398×224, 39 side columns)
+and 16:10 Preview (358×224, 19 side columns). Both enhanced modes retain 224
+logical rows and square-pixel proportions; the even widths approximate their
+named display ratios. This is additional scene rendering, not stretching or
+cropping the native frame. The published preview 2 packages predate this change.
+
+`Frontend::Viewport` replaces the Boolean runtime setting. Preferences retain
+`widescreen=0|1` for older readers and add `viewport=original|16:9|16:10`;
+the explicit recognized viewport overrides the legacy setting in either file
+order. Existing `widescreen=1` files select 16:9. The menu cycles in both
+directions; logical presentation, window sizing and the centered 320×224
+HUD/menu safe area follow the selected width.
+
+`GameSession::capture_wide_scene(enabled, logical_width)` retains the 398 default
+for existing callers, validates dimensions and supplies `(width-320)/2` to the
+detached visibility observer. Width changes recreate that observer, clear ready
+clips and rebuild the frontend wide renderer/textures without advancing native
+time. The next completed board frame publishes fresh clips. Native CPU ports,
+bus timing, spawning, collision, targeting and hardware sprite limits are unchanged.
+
+The independent geometry tests retain 398-wide coverage and additionally check
+358-wide tile/column wrapping, partial palettes, both sprite edges, original-road
+center alignment, non-flight correction and immutable feedback. All nine retained
+geometry mutations are applied independently at both widths; three anchors were
+updated to match the earlier optimization's whitespace/signature changes.
+Directed stage tests accept `--width 398|358`, retain all 23 existing stage slots,
+and add live width switching, native RGB/PCM/time comparisons, legacy native-image
+reconstruction, both roll-input directions, terrain protection, pause and restart.
+The new `verify-wide-stages-16-10` is included in `verify-stage1`.
+`verify-wide-gpu-16-10` consumes the Stage 1/5 fixtures from that sweep and compares
+all six filters and both opacity policies with the CPU renderer.
+
+Validation records and remaining scope are recorded in the widescreen plan.
+These finite checks do not close every controller/trajectory, sustained load,
+physical Windows/Linux 16:10 or continuous whole-credit fidelity acceptance.
+
 ## Native rendering and playable release continuation (2026-10-11)
 
 `make play-native` builds `build/afterburner2-release` with the same `-O3 -flto`

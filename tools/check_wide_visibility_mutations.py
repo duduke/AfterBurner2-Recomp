@@ -5,12 +5,12 @@ import os,shlex,subprocess,tempfile
 ROOT=Path(__file__).resolve().parents[1]
 MUTATIONS=[
  ('water-depth-advance','wide_visibility.hpp','w(d[1],bus.read16(scratch+36))','w(d[1],bus.read16(scratch+36)-256)','takeoff water projection changed native depth or coordinates'),
- ('takeoff-water-field','wide_visibility.hpp','extend_water(h,out,submitted[readlong(h,0x2a3c04)&0xfffff]);','/* omit adjacent water cells */','takeoff water field extension missing or leaked into another mode'),
+ ('takeoff-water-field','wide_visibility.hpp','extend_water(h,out,submitted[readlong(h,0x2a3c04)&0xfffff],need_scratch);','/* omit adjacent water cells */','takeoff water field extension missing or leaked into another mode'),
  ('nonflight-scenery','wide_visibility.hpp','(mode!=1&&mode!=15&&mode!=16)','mode!=16','non-flight scenery retention missing'),
  ('frozen-shared-pair','wide_visibility.hpp','// The pointed-to pair is shared camera/roll state, not object-owned','bus.write32(bus.read32(g.object+54)+4,0); // freeze the rotation pair','retained scenery froze the shared rotation pair'),
  ('scenery-native-cull','wide_visibility.hpp','SceneryProjection::update(bus,regs,margin)','SceneryProjection::update(bus,regs,0)','retained scenery lost after native slot reuse'),
  ('horizon-length','wide_visibility.hpp','const unsigned extra=(margin+23)/24+1;','const unsigned extra=0;','horizon extension missing at wide edges'),
- ('native-memory-alias','wide_visibility.hpp','MainBus::Memory copy=h.memory;','MainBus::Memory& copy=const_cast<MainBus::Memory&>(h.memory);','wide observer changed native memory/time'),
+ ('native-memory-alias','wide_visibility.hpp','bus.write16(width_addr,g.size);','const_cast<MainBus::Memory&>(h.memory).bytes[MainBus::memory_offset(width_addr)]^=1;bus.write16(width_addr,g.size);','wide observer changed native memory/time'),
  ('capacity-discard','wide_visibility.hpp','if(s.rejected||!present)','if(!s.rejected&&!present)','capacity overflow requests missing'),
  ('bucket-discard','wide_visibility.hpp','if(s.rejected||!present)','if(s.rejected)','missing native bucket request not recovered'),
  ('bucket-duplicate','wide_visibility.hpp','if(represented[index])continue;','if(false)continue;','depth bucket overflow lost requests or duplicated stale native order'),
