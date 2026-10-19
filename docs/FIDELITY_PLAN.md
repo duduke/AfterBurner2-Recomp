@@ -1,7 +1,8 @@
 # Full-game fidelity and transition acceptance
 
 **Status: recording/transition foundation implemented; whole-credit fidelity open.**
-Updated 2026-10-15 against [macOS preview v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
+Updated 2026-10-19 against the local source after
+[preview v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
 
 | Acceptance area | Current evidence | Remaining gate |
 | --- | --- | --- |
@@ -13,9 +14,9 @@ Updated 2026-10-15 against [macOS preview v0.1.0-preview.1](https://github.com/d
 | Configuration and performance | Directed stage/DIP/lifecycle checks and bounded macOS smokes | Broader DIP/operand/reset coverage and sustained peak-load measurements |
 
 The ten-column natural stream and native image reconstruction do **not** establish
-continuous MAME CPU/device/RGB/audio equality. The release's complete `required`
-and supplemental `full` gates passed; counts, logs and exclusions are in
-[the release checkpoint](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
+continuous MAME CPU/device/RGB/audio equality. The integrated macOS source
+passed `required` and supplemental `full` on 2026-10-19; counts, logs and
+exclusions are in [the gate record](ENGINE_NOTES.md#integrated-macos-acceptance-gate-2026-10-19).
 
 ## Retained workflow
 

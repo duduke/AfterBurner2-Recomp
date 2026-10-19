@@ -1,7 +1,8 @@
 # Per-track music replacement
 
 **Status: shipped in the native frontend; natural-context acceptance remains open.**
-Updated **2026-10-15** against [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
+Updated **2026-10-19** against local source after
+[v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
 Six mappings, -12 dB balance and live active-song changes are implemented.
 Original is the default for every track.
 
@@ -152,13 +153,12 @@ This feature does not establish full-game audio or progression acceptance.
 
 ## Current checkpoint and next work
 
-The fresh complete `required` profile, supplemental `full` targets and optimized
-build pass at the [macOS release checkpoint](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15),
-including the balance/live-selection corrections and all six music controls.
-The packaged launch also activates OpenAL headphone HRTF; physical mix/localization
-and long-session acceptance remain separate. Earlier revision-specific routing,
-build and smoke evidence remains in
+The integrated macOS source passed complete `required` and supplemental `full`
+on 2026-10-19; see the [gate record](ENGINE_NOTES.md#integrated-macos-acceptance-gate-2026-10-19).
+The earlier balance/live-selection and six music-control checks remain in
 [the music notes](ENGINE_NOTES.md#native-music-presentation-adapter-2026-10-13).
+The packaged launch also activates OpenAL headphone HRTF; physical mix/localization
+and long-session acceptance remain separate.
 
 Next: capture the four remaining songs in their natural contexts and natural fade
 updates, then extend listening/headroom and device/lifecycle checks. Keep the

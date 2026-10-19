@@ -1,7 +1,8 @@
 # SDL rumble and force feedback
 
 **Status: basic SDL rumble shipped in the macOS preview; advanced FFB planned.**
-Updated **2026-10-15** against [v0.1.0-preview.1](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.1).
+Updated **2026-10-19** against local source after
+[v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
 The shared adapter supports Windows, Linux and macOS through SDL 3.4.
 Capabilities and API results determine which outputs are available.
 
@@ -129,10 +130,10 @@ virtual callbacks prove calls, not physical feel. See
 
 ## Current validation checkpoint
 
-The macOS preview's fresh complete `required` and supplemental `full` gates
-passed. Feedback integration preserves 4,200 native RGB/PCM/time frames;
-independent MAME witnesses and all eleven feedback controls pass. Full release
-logs are in [ENGINE_NOTES](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
+The integrated macOS source passed complete `required` and supplemental `full`
+on 2026-10-19. Feedback integration preserves 4,200 native RGB/PCM/time frames;
+independent MAME witnesses and all eleven feedback controls pass. See the
+[gate record](ENGINE_NOTES.md#integrated-macos-acceptance-gate-2026-10-19).
 These automated results were obtained on macOS; the shared adapter and virtual
 callbacks do not establish Windows/Linux build or physical-output acceptance.
 

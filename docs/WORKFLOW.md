@@ -13,8 +13,8 @@ sed -n 'START,ENDp' path/to/relevant/file
 ```
 
 The context command extracts the rules, current checkpoint and next tasks
-from ROADMAP; historical checkpoints live in [CHECKPOINT_HISTORY](CHECKPOINT_HISTORY.md). Follow the roadmap's
-instruction-level translation, MAME comparison, mutation and coverage rules.
+from ROADMAP. Follow its instruction-level translation, MAME comparison,
+mutation and coverage rules.
 Read relevant engine notes before making a port. Search first and read bounded
 sections; generated `.inc` tables and entire historical documents are expensive
 to put into an assistant's context.
@@ -39,27 +39,14 @@ ran; absent later targets have not passed. Checks are not cached or skipped.
 The `full` profile supplements, rather than replaces, the required profile.
 Profiles do not automatically capture or regenerate missing fixtures.
 
-Use the [validation cadence in ROADMAP](ROADMAP.md#working-on-the-remaining-tasks-read-this-first)
-to choose the gate. Local commits use applicable focused checks; documentation
-edits need diff/command/link inspection. Gameplay/core merges and acceptance
-milestones require the complete `required` profile. Shared execution, timing,
-generator implementation, compiler or oracle changes require the full suite before accepting
-the change. After ten code merges without a full pass, run a full integration
-checkpoint. Milestones also require `full` and applicable natural recordings.
-
-New or changed ports and gates still need passing independent MAME fixtures
-and relevant rejected mutations before acceptance. Keep all existing fixtures
-and mutation definitions. Reuse a logged result only when its relevant sources
-and transitive dependencies, compiler/options, fixtures, probe and harness are
-unchanged; report reused evidence explicitly. The runner has no automatic
-result cache. `oracle-test` currently includes all retained mutations, so full
-regression gates still run them; `--only` is available for focused mutation work.
+Choose gates and evidence reuse by the
+[ROADMAP validation cadence](ROADMAP.md#working-on-the-remaining-tasks-read-this-first).
+The runner has no automatic result cache. `oracle-test` includes retained
+mutations; `--only` is available for focused mutation work.
 
 The default is `-j min(8, logical CPU count)`; override with `-j N` when
 sharing the machine. Do not change emulated clocks or weaken fixture/mutation
-coverage to reduce wall time. The latest complete oracle suite measured
-2653.29 seconds for the 2026-10-12 daily main checkpoint; runtime varies with
-coverage and load.
+coverage to reduce wall time.
 `benchmark-cpu-continuation` measures host synchronization overhead, not game FPS.
 
 `make test` and `make verify-stage1` now share incremental C++ objects under

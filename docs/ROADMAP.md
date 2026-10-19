@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated **2026-10-16**. [Preview v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
+Updated **2026-10-19**. [Preview v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
 is published for Apple Silicon / macOS 26+ and Windows 10/11 x64. Both packages
 include the native game, menus, GPU filters/translucency, replacement music, SDL
 rumble, experimental OpenAL Soft 1.25.2 cockpit audio and 16:9 presentation.
@@ -141,7 +141,7 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-16)
+## Current checkpoint (2026-10-19)
 
 Release source is tagged `v0.1.0-preview.2`; the package manifests identify the
 exact source commit. The SDL3 native game is
@@ -155,13 +155,13 @@ on `main`; the separate Three.js prototype remains on
 | Natural lifecycle | Four replays match ten MAME columns and native original-image reconstruction across 104,452 frames, zero skips; ending run visits all 23 stages | Name entry, NVRAM, alternate carrier/collision paths and whole-credit CPU/device/RGB/audio |
 | Menus and controls | Video/Controls/Audio/DIP submenus, live bound-input calibration display, scroll hints, persisted settings, keyboard/gamepad/raw-joystick remapping and hotplug | Service/coin options and broader physical device acceptance |
 | Display and ground | Five GPU filters plus Off, four opacity controls, full-throttle-only flame translucency and optional ground correction | Other backends, replacement art, continuous terrain projection and sustained performance |
-| Widescreen | 398×224 preview; detached scenery, native queue/depth-drop recovery, horizon/water extensions and roll/cloud fixes; 23 directed slots preserve 22,494 counted native RGB/PCM/time frames | Exhaustive controller/scene audit, other aspects/platforms and sustained load; gameplay object pools remain native |
+| Widescreen | Published 398×224 preview; local 358×224 option, detached scenery, queue/depth-drop recovery and horizon/water extensions; 23 directed slots per aspect preserve 22,540 counted native RGB/PCM/time frames | Broader controller/scene audit, ultrawide, other platforms and sustained load; gameplay object pools remain native |
 | Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes | Four songs' natural contexts and natural fades |
 | Spatial audio | Optional OpenAL Soft interpolation, headphone HRTF, 2.1/5.1 profiles and direct stereo music; `alSourceRewindv` state fix verified on Windows; 117,509 MAME ownership observations exact | Unclassified voices, physical localization/channels, cabinet audit and long-session latency |
 | Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
 | Distribution | ROM-free Apple Silicon ZIP and runtime-verified Windows x64 ZIP with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS is ad-hoc signed (ZIP predates latest Windows commit); Windows unsigned; Intel/older macOS and Linux packages remain open |
 
-Local source update **2026-10-17**: the viewport selector now offers Original,
+Local source update: the viewport selector now offers Original,
 16:9 (398×224) and 16:10 (358×224), with width-specific detached visibility and
 centered HUD/menu placement. `test`, `verify-stage1`, independent geometry,
 18 geometry mutation runs and Metal menu/wide GPU checks pass. Each aspect's
@@ -170,7 +170,10 @@ See [the local widescreen validation records](WIDESCREEN_PLAN.md#delivered-previ
 The complete `required` gate and supplemental `full` profile pass on the
 integrated 2026-10-19 macOS source; see the validation record below. Broader
 scene/platform and sustained-load work remains open.
-Published packages have not been refreshed.
+Published packages have not been refreshed. The local source also has a
+controller-only live Calibration screen and revised headphone HRTF gain. The
+user confirmed responsive controller values and improved front/rear placement
+with External Headphones. See [engine evidence](ENGINE_NOTES.md#input-calibration-and-macos-spatial-audio-recheck-2026-10-18).
 
 On Windows 11 x64, both ROM-free continuation tests (`windows-fiber` and
 `worker-thread`) pass, and native `afterburner2.exe` with Vulkan GPU sprite
@@ -179,36 +182,20 @@ fullscreen switching, 16:9 widescreen, Corrected ground, ScaleFX 3x, all four
 translucency toggles and Integer/Pixel-Art scaling sustains locked
 `simulation_fps=59.6374 display_fps=59.6374` across 420-frame Stage 1 and
 Stage 5 profiles (`board_ms=9.15–10.24 ms`, `wide_scene_ms=1.27–3.94 ms`,
-`filter_submit_ms=0.22–0.45 ms`). Because engine, video, audio and frontend
-headers were modified on Windows without running MAME oracle or full regression
-suites on the Windows host, the earlier macOS `required` pass at
-`build/workflow/20261015T202242.843626Z/` is no longer current for the modified
-headers. The integrated macOS source was rechecked on 2026-10-19; see below.
+`filter_submit_ms=0.22–0.45 ms`). The integrated source subsequently passed
+the macOS gate below.
 See [Preview 2 release notes](RELEASE_NOTES.md),
 [Windows runtime and pacing notes](ENGINE_NOTES.md#windows-runtime-openal-soft-and-widescreengpu-pacing-validation-2026-10-16),
-[checkpoint history](CHECKPOINT_HISTORY.md) and the focused plans for scope.
+and the focused plans for scope.
 
 ## Next acceptance tasks
 
-**macOS regression handoff completed 2026-10-19:** the Windows session modified
-`src/main/engine/*`, `src/main/hwmath/*`, `src/main/hwvideo/*`,
-`src/main/hwaudio/*`, `src/main/frontend/*` and `src/main/main.cpp` to resolve
-Windows Vulkan fullscreen stalls, fix the OpenAL 1.1 `AL_STOPPED` (`alSourceRewindv`)
-stream-restart bug, and optimize CPU/video/widescreen/horizon/GPU-filter frame
-times across platforms (see
-[ENGINE_NOTES](ENGINE_NOTES.md#windows-runtime-openal-soft-and-widescreengpu-pacing-validation-2026-10-16)).
-Oracle and regression suites were intentionally skipped on Windows per user
-instruction. The following macOS recheck is now complete:
-
-1. **macOS regression passed; package refresh remains optional:** complete
-   `required` (`test`, `verify-stage1`, `oracle-test`) passes at
-   `build/workflow/20261019T042949.062480Z/`; supplemental `full` passes at
-   `build/workflow/20261019T050739.004809Z/`. Focused Metal menu/wide GPU and
-   OpenAL Soft checks passed earlier on their unchanged relevant sources; see
-   the [widescreen plan](WIDESCREEN_PLAN.md) and
-   [spatial-audio plan](SPATIAL_AUDIO_PLAN.md). Optionally repackage
-   and upload `AfterBurner2-v0.1.0-preview.2-macOS-arm64.zip` so the macOS
-   download includes the OpenAL rewind fix and performance improvements.
+The integrated macOS source passed `required` at
+`build/workflow/20261019T042949.062480Z/` and supplemental `full` at
+`build/workflow/20261019T050739.004809Z/`. The published macOS package predates
+the OpenAL rewind, performance, 16:10, calibration and headphone-gain updates;
+a new versioned package is still open. See
+[the gate record](ENGINE_NOTES.md#integrated-macos-acceptance-gate-2026-10-19).
 
 On 2026-10-15, the user reported finishing the game from start to finish on
 macOS with the saved Normal / three-ship configuration and current enhancements.
@@ -216,35 +203,29 @@ See [the manual completion settings](ENGINE_NOTES.md#user-reported-macos-complet
 This supplies manual completion evidence; an input recording and independent
 whole-credit comparison remain outstanding.
 
-2. **Standard single-credit completion:** the uninterrupted Easy / 99-credit
+1. **Standard single-credit completion:** the uninterrupted Easy / 99-credit
    recording reaches the ending naturally and matches every named observation.
    Obtain a successful default three-life physical recording as well. Keep
    the declared settings; do not substitute `--stage` for progression.
-3. **Remaining transition paths:** the default failure, continue and scoring
+2. **Remaining transition paths:** the default failure, continue and scoring
    recordings pass. Extend collision-cause, high-score name entry, NVRAM
    persistence and alternate carrier/lifecycle coverage, reporting actual
    states/actions rather than assuming requested inputs succeeded.
-4. **Close newly exposed instruction paths:** translate from ROM, add
+3. **Close newly exposed instruction paths:** translate from ROM, add
    independent MAME fixtures and rejected mutations, preserve older coverage,
    then repeat the affected gameplay and required regression gates.
-5. **Whole-credit comparison:** extend the passive MAME oracle to the same
+4. **Whole-credit comparison:** extend the passive MAME oracle to the same
    sustained physical-input runs; compare CPU/bus, device, RGB and audio state
    without supplied execution or replacement state.
-6. **Configuration and lifecycle coverage:** test alternate DIP settings,
+5. **Configuration and lifecycle coverage:** test alternate DIP settings,
    additional operands/branch outcomes, and hardware reset/suspend paths.
-7. **Sustained performance:** measure representative and peak-load stages with
+6. **Sustained performance:** measure representative and peak-load stages with
    rendering, audio and presentation active. Optimization must preserve update
    order and observed behavior; finite benchmarks do not guarantee 60 fps.
 
 Enhancements can be developed alongside this work using the contracts in
 [ENHANCEMENT_ARCHITECTURE.md](ENHANCEMENT_ARCHITECTURE.md). Keep an original
 mode as the regression reference; new features do not close full-game coverage.
-
-## Natural full-game completion and transition coverage plan
-
-The recording foundation and Easy / 99-credit transition reference are already
-implemented. [The fidelity plan](FIDELITY_PLAN.md) separates that evidence from
-standard-credit recording, continuous comparison and remaining lifecycle work.
 
 ## Phase overview
 
@@ -256,16 +237,8 @@ standard-credit recording, continuous comparison and remaining lifecycle work.
 | 3e: stages and game flow | All 23 directed slots and a natural ending transition stream pass; broader lifecycle acceptance remains |
 | 3f: full-game equivalence | Continuous whole-credit CPU/device/RGB/audio comparison open |
 | 4: Audio | Original Z80/YM2151/SegaPCM and declared MAME audio corpora pass; full-credit contexts remain |
-| 5: Enhancements | Menus, filters/opacity, remapping, music, basic rumble, OpenAL and 16:9 preview implemented; broader acceptance/future features below |
+| 5: Enhancements | Menus, filters/opacity, remapping, music, basic rumble, OpenAL, 16:9 preview and local 16:10 implemented; broader acceptance remains |
 
-## Phase 5 — Enhancements Phase
-
-- [Enhancement backlog and dependencies](ENHANCEMENT_PLAN.md)
-- [Widescreen delivery and acceptance](WIDESCREEN_PLAN.md)
-- [SDL rumble and advanced force feedback](HAPTICS_PLAN.md)
-- [Replacement music](MUSIC_REPLACEMENT_PLAN.md) and [spatial audio](SPATIAL_AUDIO_PLAN.md)
-- [Implemented extension contracts](ENHANCEMENT_ARCHITECTURE.md)
-
-Plans distinguish shipped implementation, finite validation and unfinished work.
+Focused enhancement plans are linked from the [documentation guide](README.md).
 Detailed ROM discoveries and earlier checkpoints remain in ENGINE_NOTES and Git
 history; ROMs, recordings and captures must remain ignored.

@@ -14,12 +14,10 @@
 | Implement rumble or force feedback | [Haptics notes](HAPTICS_PLAN.md) — rumble implemented, advanced FFB planned |
 | Extend the visible scene without stretching | [True widescreen plan](WIDESCREEN_PLAN.md) — experimental 16:9 preview |
 | Find ROM addresses, MAME evidence or validation logs | [Engine notes](ENGINE_NOTES.md) |
-| Read earlier roadmap checkpoints | [Checkpoint history](CHECKPOINT_HISTORY.md) |
 | Understand X-Board hardware | [Hardware](HARDWARE.md) |
 | Inspect retained reconstruction tests | [Historical Stage 1 baseline](STAGE1_FIDELITY.md) |
 | Check dependencies and licenses | [Third-party notices](THIRD-PARTY-NOTICES.md) |
 
-Current status belongs in the roadmap; historical results retain the scope of
-that revision. Before code changes, run `python3 tools/workflow.py context`, then
-search the relevant source and engine-note section. Read the rules before
-porting, and keep ROM data/captures out of Git.
+Current status belongs in the roadmap; dated evidence remains in Engine Notes
+and Git history. Before code changes, run `python3 tools/workflow.py context`
+and read the relevant source and notes.

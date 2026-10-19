@@ -25,20 +25,15 @@ continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
 performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
 other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
-[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-16) for scope.
+[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-19) for scope.
 
-Preview 2 adds Windows cooperative CPU fibers, checked release LTO/optimization,
-precise frame-deadline waits, OpenAL Soft `alSourceRewindv` stream-restart fixes
-and cross-platform CPU/video/widescreen/GPU-filter optimizations. Both the Apple
-Silicon macOS and Windows x64 packages include SDL3 and OpenAL Soft 1.25.2
-spatial audio. Windows x64 runtime execution, Vulkan GPU sprite filters,
-fullscreen switching, OpenAL headphone HRTF and sustained `59.6374` FPS pacing
-(Stage 1 and Stage 5 with 16:9 widescreen, Corrected ground, ScaleFX 3x,
-translucency and Integer/Pixel-Art scaling) are now verified on Windows 11.
-The macOS arm64 package on the release predates the Windows runtime/performance
-commit; rebuilding and re-running the full macOS regression/oracle suite on the
-updated source tree is the next step on the macOS side. See
-[release notes](docs/RELEASE_NOTES.md).
+Preview 2 includes Apple Silicon macOS and Windows x64 packages with SDL3 and
+OpenAL Soft 1.25.2. Windows 11 runtime checks cover Vulkan filters, fullscreen,
+headphone HRTF and bounded Stage 1/5 pacing. Later local source adds 16:10,
+controller calibration and improved headphone effect placement; the complete
+macOS `required` and supplemental `full` gates passed on 2026-10-19. The
+published macOS package predates these changes. See the
+[roadmap](docs/ROADMAP.md#next-acceptance-tasks) and [release notes](docs/RELEASE_NOTES.md).
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
 queue and depth-bucket limits, retains scenery as it crosses the wider edges,

@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-16) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-19) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -10765,3 +10765,103 @@ harness are unchanged, and all seven hashes in
 and lifecycle replays. Subsequent release-note/README changes are documentation
 only. These gates establish the declared finite release coverage, not exhaustive
 widescreen, physical-platform or continuous whole-credit acceptance.
+
+## Input calibration and macOS spatial-audio recheck (2026-10-18)
+
+Options → Controls → Calibration is enabled only after selecting a gamepad or
+joystick. It displays bound stick X, stick Y and throttle values before and
+after dead zone/sensitivity. The live
+display uses the same bindings and precedence as gameplay, including full-axis
+throttle; disconnecting the selected device shows a notice and returns Controls
+to Keyboard. Rendering
+does not advance the paused board. Virtual-device regression checks exercise
+dead-zone rescaling, full-axis throttle and unplug fallback. Software and Metal
+menu checks pass on the final controller-only Calibration UI at
+`build/workflow/20261018T171320.949284Z/` and
+`build/workflow/20261018T171432.708761Z/` (4,128/4,128 GPU sprite-plane
+cases, zero skips). The optimized native release builds at
+`build/workflow/20261018T171320.949284Z/`.
+The user confirmed on the final rebuilt UI that Keyboard leaves Calibration
+closed with a Select Device hint, while selecting their controller opens the
+display and moving it changes the values. This is physical macOS controller
+acceptance for the displayed actions, not a full HOTAS or platform matrix.
+
+The current macOS OpenAL Soft loopback and four retained playback mutations
+pass at `build/workflow/20261018T165843.993427Z/`. The 1,800-frame game-level
+check renders 1,448,641 stereo output frames with no clipping and unchanged
+native PCM. Independent MAME ownership matches 117,509/117,509 observations,
+zero skips, with the retained detached-observer mutation rejected; logs are at
+`build/workflow/20261018T165921.689316Z/`. The user reported correct Speaker
+Test direction on headphones and the Mac's built-in stereo speakers. This
+confirms headphone listening and stereo left/right, not physical rear-channel
+output. Unclassified voices, cabinet wiring, 2.1/5.1 hardware, Windows/Linux
+acceptance and sustained real-device latency remain open.
+
+A 3,600-frame Stage 5 debug-skip performance window on the Mac uses Metal,
+ScaleFX, 16:10, CoreAudio/OpenAL headphone HRTF and VSync. All 25 reported
+intervals hold `simulation_fps=display_fps=59.6374`; the log contains no
+stream-underrun or playback-failure report. This is a bounded one-minute
+window, not a long-session, device-loss or physical 5.1 acceptance test.
+Record: `build/oracle/spatial-audio/stress-stage5.log`.
+
+The Sega After Burner Deluxe Type owner's manual 420-5812 (first printing)
+labels one `REAR SP` and `FRONT SP x2` on its wiring diagram (pp. 63–64). Its
+parts list includes a 10 cm, 8 Ω, 15 W cabinet-roof speaker, a lamp-box speaker
+of the same rating, and a front-cabinet phone-jack board. This supports a
+raised rear sound image, but the scan does not establish a reliable conductor
+trace from board pins to each speaker, exact listener angles, or After Burner II
+cabinet revision applicability. The headphone HRTF presentation now raises rear
+sources above ear level while 2.1/5.1 rear sources sit at ear level; four
+virtual directions remain a presentation choice, not a claim of four cabinet
+speakers. The sound CPU, chip output, native stereo reference and direct music
+path are unchanged. Spatial loopback, retained playback mutations, 1,800-frame
+game integration, independent MAME ownership (117,509/117,509, zero skips), and
+native release build pass at `build/workflow/20261018T220405.403751Z/`.
+At that checkpoint, physical listening of the revised height and exact cabinet
+electrical wiring remained open; the headphone check below followed.
+
+The user then reported that Headphones HRTF gunfire, missiles and explosions
+were quieter than Original SDL and lacked positional feel. The frontend had
+applied an extra equal-power factor of 0.707 to each classified native stereo
+channel before HRTF. For headphones only, those independent channels now enter
+OpenAL at full level; the 2.1/5.1 speaker profiles retain their earlier gain.
+In the 1,800-frame loopback test, headphone rendered squared-sample energy rose
+from 3,428.69 to 3,895.41 versus 4,933.92 in the native stereo reference,
+with no clipping. The comparison is not a perceptual loudness or physical
+localization measurement. `test`, `verify-spatial-game`, `oracle-spatial-routing`
+and `native-release` pass at `build/workflow/20261019T035751.967100Z/`.
+With Headphones HRTF and External Headphones selected, the user confirmed in
+the revised build that gunfire and missiles were louder and more clearly in
+front, and explosions/crashes more clearly behind. This verifies the reported
+Mac headphone issue on that output; exact cabinet electrical mapping and other
+physical outputs remain open.
+
+The macOS full gate initially exposed a stale retained `extra-budget-clock`
+mutation anchor after the earlier bus-arbiter budget optimization. Only the
+mutation probe was retargeted to the current `span` expression; its added
+cycle still changes the CPU budget. The unchanged cold MAME baseline matches
+33,234 grant groups, 3,101,020 bus phases and 418,118 shared reads; all eight
+bus-boot mutations reject. Focused log:
+`build/workflow/20261018T172445.653914Z/`.
+
+## Integrated macOS acceptance gate (2026-10-19)
+
+The final 16:10 viewport, controller calibration and revised headphone HRTF
+source passes the complete `required` profile:
+`test` (5.13 s), `verify-stage1` (400.62 s), and `oracle-test` (3,406.69 s),
+including all retained mutations. Log directory:
+`build/workflow/20261019T042949.062480Z/`. The supplemental `full` profile
+passes both joint-main-progress and reset-window comparisons at
+`build/workflow/20261019T050739.004809Z/`. The former matches 20,532,168
+instruction/IRQ records, 53,449,620 ordered phases and 40,714,240 RGB pixels,
+with zero differences/skips; the reset window matches 1,449,740 instruction/IRQ
+records and 3,763,047 ordered phases, also with zero differences/skips.
+
+The complete gate includes the 16:9 and 16:10 directed stage sweeps, native
+RGB/PCM/time preservation, MAME sound routing and spatial playback mutations.
+The current mutation probes for the optimized bus budget, YMFM Timer B,
+translucent afterburner and wide visibility were retargeted to the present
+source while retaining their semantic rejection checks. No ROM data or captures
+are part of the source changes. This finite acceptance does not replace
+physical Windows/Linux device checks, sustained load or continuous whole-credit
+comparison.
