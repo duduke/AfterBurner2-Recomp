@@ -133,7 +133,7 @@ private:
                 const auto entry_pc=states[c].pc;
                 const bool match=c==0
                     ? ((w&&(pc==0x9ef6||pc==0x9ebc||pc==0x9c20||(a>=0x110000&&a<0x120000))) ||
-                       (fp&&(entry_pc==0xb628||entry_pc==0x8bb0||entry_pc==0x8bb8||entry_pc==0xb684||entry_pc==0x10fba||entry_pc==0xb7c2||entry_pc==0xb7d2||entry_pc==0x13ce8)))
+                       (fp&&(entry_pc==0xb628||entry_pc==0x8bb0||entry_pc==0x8bb8||entry_pc==0xb684||entry_pc==0x10fba||entry_pc==0xb7c2||entry_pc==0xb7d2||entry_pc==0x13ce8||entry_pc==0x138fe)))
                     : (fp&&(entry_pc==0x648||entry_pc==0x7b8));
                 if(!match)return;
             }

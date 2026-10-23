@@ -32,3 +32,33 @@ with (case/'run.log').open('w') as log:
 if result.returncode==0:raise RuntimeError('detached owner accepted')
 if 'front/rear chip-rate coverage missing' not in (case/'run.log').read_text():raise RuntimeError('detached owner failed for unrelated reason')
 print('Spatial ownership mutation rejected: detached passive observer')
+# The catalog oracle checks intentional presentation choices as well as exact
+# sound-CPU ownership. Private source variants retain the independent capture.
+routing_header=Path('src/main/hwaudio/cockpit_audio.hpp')
+routing_source=routing_header.read_text()
+for name,needle,replacement,wanted in [
+    ('passing-front','commands[0x6e]=rear;commands[0x6f]=rear;',
+     'commands[0x6e]=front;commands[0x6f]=front;','passing sound policy mismatch'),
+    ('enemy-launch-rear','commands[0xd8]=front;',
+     'commands[0xd8]=rear;','spatial PCM policy mismatch'),
+    ('neutral-directed','direct_group=get(direct,r.bc);',
+     'direct_group=front;','spatial PCM policy mismatch'),
+]:
+    if routing_source.count(needle)!=1:raise RuntimeError('ambiguous routing mutation '+name)
+    case=folder/name;(case/'hwaudio').mkdir(parents=True,exist_ok=True)
+    (case/'hwaudio/cockpit_audio.hpp').write_text(routing_source.replace(needle,replacement))
+    exe=case/'check'
+    with (case/'build.log').open('w') as log:
+        subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-O3','-flto','-I'+str(case),'-Isrc/main',*flags,'tests/oracle_spatial_routing.cpp',*objects,'-o',str(exe),*libs,'-pthread'],stdout=log,stderr=subprocess.STDOUT,check=True)
+    with (case/'run.log').open('w') as log:
+        result=subprocess.run([str(exe)],stdout=log,stderr=subprocess.STDOUT,timeout=180)
+    if result.returncode==0:raise RuntimeError('routing mutation accepted: '+name)
+    if wanted not in (case/'run.log').read_text():raise RuntimeError('routing mutation failed for unrelated reason: '+name)
+    print('Spatial ownership mutation rejected: '+name,flush=True)
+# Prove native identity remains an active comparison; the integration changes
+# only one reference sample without modifying either board's execution.
+with (folder/'bad-native-reference.log').open('w') as log:
+    result=subprocess.run(['./build/spatial_audio_game_integration','--bad-reference'],stdout=log,stderr=subprocess.STDOUT,timeout=180)
+if result.returncode==0:raise RuntimeError('altered native PCM reference accepted')
+if 'Spatial observer changed native PCM/time' not in (folder/'bad-native-reference.log').read_text():raise RuntimeError('native reference mutation failed for unrelated reason')
+print('Spatial ownership mutation rejected: altered native PCM reference',flush=True)

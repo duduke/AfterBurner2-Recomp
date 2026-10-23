@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-19) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-23) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -9991,7 +9991,8 @@ refueling/departure sequence command `$EF` remain unclassified. In the retained
 sample IDs `$06/$26/$28` also remain unclassified. Their audible identities and
 speaker assignments have not been established. Commands and sample IDs are
 different namespaces and may refer to related effects; this is not a complete
-sound catalog. See the [routing gap list](SPATIAL_AUDIO_PLAN.md#virtual-cockpit-routing).
+sound catalog. This historical gap list is superseded by the
+[2026-10-22 routing audit](#spatial-audio-routing-and-playback-acceptance-2026-10-22).
 
 Independent `capture-spatial-routing` records **117,509/117,509 exact sound
 transactions/IX/DE/BC, zero skips**, through 1,800 frames, with 13 descriptor
@@ -10819,6 +10820,8 @@ game integration, independent MAME ownership (117,509/117,509, zero skips), and
 native release build pass at `build/workflow/20261018T220405.403751Z/`.
 At that checkpoint, physical listening of the revised height and exact cabinet
 electrical wiring remained open; the headphone check below followed.
+The high-resolution schematic audit on 2026-10-22, recorded below, supersedes
+the earlier interpretation of a single rear speaker and unreadable wiring.
 
 The user then reported that Headphones HRTF gunfire, missiles and explosions
 were quieter than Original SDL and lacked positional feel. The frontend had
@@ -10865,3 +10868,1085 @@ source while retaining their semantic rejection checks. No ROM data or captures
 are part of the source changes. This finite acceptance does not replace
 physical Windows/Linux device checks, sustained load or continuous whole-credit
 comparison.
+
+## Spatial audio routing and playback acceptance (2026-10-22)
+
+The completed Z80 allocations now route passing commands `$6E/$6F` behind the
+listener. Main `$156F8..$1571C` waits until object depth crosses the player and
+selects the original stereo side from signed X. Enemy weapon allocation `$14D96`
+emits `$D8`, assigned to the front by explicit presentation policy. Credit
+`$7E` (`$C79C`), flag/countdown `$9A` (`$DC5E`), stage-entry `$A5→$06`
+(`$D804`), startup `$4C/$4E→$26/$28` (`$BF56/$BF60`) and carrier `$EF→$46`
+(`$104EE`) retain neutral stereo. Service sound-test tables identify `$7E` as
+INSERTED COIN, `$A5→$06` as READY, and `$4C/$4E→$26/$28` as FLIGHT 1 R2/L2.
+The timer/carrier audible identities and directional assignments remain open.
+Missing direct allocator handlers
+`$AA6/$AAE/$B02/$B22/$B44` now participate in metadata ownership.
+
+The retained independent 1,800-frame MAME fixture matches 117,509/117,509
+transactions/IX/DE/BC, zero skips, and 943,466 exact PCM voice sums. The new
+semantic audit checks nine descriptor roots, seven direct IDs, 2,889 PCM enables
+and 37,137 FM assignments, rejecting unreviewed allocations. Passing commands
+are absent from this natural fixture and have separate directed descriptor
+checks. Focused log: `build/workflow/20261022T153539.729550Z/`.
+
+Playback fixes cover queued paused-loopback deadlock, busy spinning at a full
+backend queue, stale OpenAL/HRTF failure status and uncounted source exhaustion.
+OpenAL playback failure or injected disconnect falls back to SDL while preserving
+the requested profile for retry. Diagnostic status and `--profile` report
+software queue times, stopped-source counts and recoveries. These timings
+exclude the device mix buffer, DAC and physical end-to-end latency.
+
+An actual CoreAudio run exposed repeated immediate restarts after producer
+starvation. An isolated 13-source producer reproduces it: one 100 ms stall
+caused 148 stopped-source instances over about six seconds. The fix re-primes
+all exhausted streams synchronously to 50 ms, retaining the original 25 ms
+startup and immediate single-source restart. A starvation cohort spans polls,
+so twelve sources finishing before the final source cannot evade recovery.
+The same injected stall then produces thirteen stopped sources, one re-prime
+and no later underruns. Steady software buffering is about 37–48 ms, peak
+65.55 ms. Evidence: `build/oracle/spatial-audio/realtime-before-reprime.log`
+and `realtime-after-reprime.log`. These were muted CoreAudio checks, not
+subjective listening or physical end-to-end latency measurements.
+
+The final 600 sample-second loopback run uses all 13 sources at
+48,000/62,500/31,250 Hz, renders 28,800,000 frames with no new underruns or
+clipping, and bounds steady block energy at 3.10887–3.10952. The offline
+two-block prefill peaks at 209.373 ms. Simultaneous and staggered starvation
+checks pass; all four retained and five new playback mutations reject. Missing
+direct-channel capability and injected disconnect recover truthfully to SDL.
+Log: `build/workflow/20261022T155153.353263Z/`.
+
+All four retained physical-input recordings pass the final HRTF lifecycle
+integration at `build/workflow/20261022T155553.106603Z/`:
+
+| Recording | Native RGB/PCM/time frames identical | Stereo output frames | Native fade updates |
+| --- | ---: | ---: | ---: |
+| Ending, all 23 stages | 74,452 | 59,923,201 | 525 |
+| Neutral/game-over | 12,000 | 9,657,601 | 36 |
+| Continue | 10,000 | 8,048,641 | 36 |
+| Weapons | 8,000 | 6,438,721 | 36 |
+
+Total: **104,452 exact native frames, 84,068,164 output frames, zero skips**,
+no clipped output samples, no steady-state underruns and no backend recovery.
+The ending visits all six music slots with starts `1,3,2,2,2,4`, fourteen stops
+and 525 fade updates. Peak offline software buffering is 79.5159 ms, pending
+20.032 ms. Each replay also passes pause/clear/restart. Every recorded ADC and
+button byte is round-tripped through `GameSession` input before execution.
+The reference is an untapped native board, not independent whole-credit MAME
+audio. Replacement-file natural fade/listening acceptance remains open.
+
+The final muted, actual CoreAudio Stage 5 run completes 18,000 frames (about
+five minutes) with HRTF active while the shared regression runs. One load stall
+exhausts thirteen sources; one synchronized re-prime recovers, with no later
+underruns or backend fallback. Software backend buffering peaks at 120 ms and
+pending native audio at 40 ms. Per-report simulation rate spans 55.082–60.3983
+fps. Log: `build/oracle/spatial-audio/coreaudio-20261022-final.log`. This uses
+the dummy video driver and muted gains: it establishes device streaming and
+bounded recovery under this concurrent load, not visible-renderer performance,
+subjective localization or physical output latency. The SDL-only compile/run
+also passes with no OpenAL linkage at
+`build/workflow/20261022T155833.973257Z/`.
+
+The final shared macOS tree passes the complete `required` gate and supplemental
+`full` profile. The unchanged-source `test` (48.90 s), `verify-stage1` (500.03 s),
+`native-release` and software/Metal menu results are reused from
+`build/workflow/20261022T160051.739352Z/`. The clean complete `oracle-test`
+passes in 3,737.13 s at `build/workflow/20261022T162126.082489Z/`, including
+all nine playback and six ownership/reference controls, both fallback checks,
+all retained fixtures and all 146 recovery plus nine baseline CPU controls.
+Existing legacy concurrent-input skips retain their stated reasons; the
+spatial ownership and native lifecycle comparisons skip nothing. Supplemental
+`full` passes at `build/workflow/20261022T161927.407826Z/` (36.44 / 7.80 s).
+Source/harness hashes remained unchanged during the final gate; the retained
+manifest is `build/oracle/spatial-audio/gate-source-snapshot-20261022.json`.
+
+The first oracle attempt found a stale widescreen mutation signature after the
+shared HUD change. Updating that probe preserves the same native-memory
+corruption and rejection witness; all eighteen width/control combinations pass
+at `build/workflow/20261022T161923.955307Z/` and in the clean complete rerun.
+No fixture or prior mutation was removed. This closes local software validation,
+not physical surround/localization, other-platform device acceptance or
+continuous whole-credit MAME audio equality. The user could not listen to the
+revised passing/recovery changes today.
+
+The high-resolution 420-5812 diagram, printed pp. 63–64, shows two rear and two
+front 8 Ω / 15 W speakers on duplicated stereo amplifier nets. The connector
+trace is in [the spatial plan](SPATIAL_AUDIO_PLAN.md#virtual-cockpit-routing).
+This corrects the earlier single-rear-speaker interpretation. It establishes
+the original Deluxe wiring, while unchanged applicability to an After Burner II
+cabinet revision and exact listener angles remain unverified. Independent
+front/rear sound categories are an enhancement rather than separate original
+electrical channels.
+
+The diagnostic version 2.00 in service manual 420-5842-01 pp. 1–4 matches the
+ABII main program at `$32D63..$32DA2`; the sound-test title starts at `$33106`.
+Shared lookup `$1BCD2..$1BCEE` bounds the selection below 17 and enqueues its
+table byte through `$B840`. Category dispatchers and matching display rows
+establish the neutral identities above: EFECT A table `$330C6`, indices 4/6,
+display rows `$33836/$3388A`; EFECT B table `$330D8`, index 6, row `$33A22`;
+VOICE table `$330EC`, index 5, row `$33B90`. `$9A/$D8/$EF/$F2/$F8` are absent
+from these named tables. Service labels for `$6E/$6F` are respectively ENM MIS1 R
+and L1 under ENM MIS0; they are different variants, while their live producer
+independently establishes the passing-depth rule. No matching-pair identity is
+assumed from those labels.
+
+## Offline sprite extraction and mapping (2026-10-22)
+
+`tools/assets/extract_sprites.py` reconstructs the Sub CPU and sprite regions
+with the same two-/four-way chip interleaving as `roms.cpp`. Its structural scan
+of aligned records in Sub `$10000..$1FFFF` finds 2,931 candidates in the user's
+ROM. Width, last-row, bank, word address, pitch and vertical-flip adjustment
+follow the frame format consumed by Sub `$7B8..$9C8`. Export uses forward,
+unscaled pens, eighth-pixel-inclusive end-word handling and 16-bit address wrap.
+No execution, bus, renderer or gameplay logic changes.
+
+`make extract-sprites` writes indexed PNGs and `build/sprites/mapping.json`,
+with stable Sub-address IDs, source hashes, dimensions, original addressing,
+pen hashes, editable label/replacement fields and the signed ROM LOD offsets
+from Sub `$9E4`. It refuses existing output directories and restricts CLI output
+to ignored `build/`. PNG palettes are grayscale previews; dynamic game palette
+assignments, object names, animation membership, runtime replacement loading
+and reachability/completeness of the candidate scan remain unverified/open.
+Arithmetic LOD links are explicitly candidates. See
+[format and usage](SPRITE_EXTRACTION.md).
+
+Focused validation (not whole-host acceptance):
+
+- `test` and `verify-sprite-extraction` pass on the final executable sources:
+  `build/workflow/20261022T154646.936627Z/`. Five ROM-free format/export checks
+  pass, including wrap, marker placement, PNG CRC/index/transparency roundtrip,
+  mapping serialization and overwrite refusal. All **2,931 of 2,931** candidate
+  pen images match the unchanged `HWSprites` reference, **0 skipped**; four
+  retained nibble-order/end-marker/pitch/bank mutations are rejected.
+- `oracle-video-rolls` passes against the retained independent MAME capture:
+  **160 of 160 RGB frames identical**, zero mismatched pixels and zero skips;
+  `build/workflow/20261022T154522.873050Z/`. This validates the reference renderer
+  in that captured scene scope, not independent MAME coverage of every exported
+  record. No new CPU port or oracle instrumentation was introduced.
+- Actual export passes in `build/workflow/20261022T154442.423434Z/`; outputs stay
+  under ignored `build/sprites/`. A cloud PNG was inspected visually; diff and
+  output-ignore checks pass. Original fixtures and mutation coverage are retained.
+
+## High-DPI HUD text presentation (2026-10-22)
+
+The local Video menu now offers Original (default), Sharp 3x and, when a valid
+atlas is loaded, Custom. `--hud-atlas path` selects a user indexed RGBA PNG;
+the atlas path/mode persist with the normal Video settings. The SDL window
+requests high pixel density. Glyphs draw directly at the output resolution,
+inside the centered native safe area for widths 320/358/398. Details and art
+format: [HUD presentation](HUD_PRESENTATION.md).
+
+This uses verified hardware text ownership rather than `OHud`/`HudState`, which
+belong to the historical reconstruction. The existing scene capture at native
+width 320 supplies immutable partial frontiers. `WideScene` can omit text from
+its detached underlay and publish `HudClip` entries/palette pens plus a native
+sprite occlusion mask. The frontend resolves pen indices from the live palette,
+including hardware effects colours, and respects clip boundaries through a
+glyph. Category-1 text remains above sprites; category-0 text is hidden or
+shadowed/highlighted by the native top priority-3 sprite. Display-disable clears
+replacement coverage. Existing Original raster rendering is the default path.
+No CPU routine, bus, timing or native hardware compositor changed.
+
+Sharp 3x uses the existing Scale3x algorithm on each ROM glyph's categorical
+pens, followed by linear output sampling. Custom accepts 16..128-pixel tiles;
+empty tiles fall back to nearest native art. Palette-keyed textures use
+premultiplied alpha and a 1,024-entry / 32-MiB bound. Malformed atlas reloads
+preserve the previous atlas. Native-width HUD presentation disables detached
+visibility extension and redundant native sprite-plane captures; wider modes
+retain the existing wider scenery. The menu skips unavailable Custom so both
+directions and mouse/Enter cycling can always return to Original.
+
+Initial focused evidence:
+
+- `verify-hud-presentation` passes at
+  `build/workflow/20261022T155412.685907Z/`: **789 of 789 native RGB/PCM/time
+  frames identical, 0 skipped** (781 physical-control frames and eight after
+  restart). Independent planar-ROM reconstruction restores exactly the native
+  text raster over the text-free underlay at all three widths, including
+  capture disable/re-enable while paused and restart readiness. Across three
+  aspects this observes 2,217 clips and 3,482,709 opaque glyph pixels. This
+  natural bridge contains category-1 text only; category-0 hidden/effects
+  branches are covered by explicit synthetic fixtures, not natural evidence.
+- `test-hud-scene` passes at `build/workflow/20261022T155540.086863Z/`.
+  Ten retained ownership/underlay negative controls reject category, priority,
+  shadow, column, effects-palette, frontier, baked-text, cache, detached-bank
+  and display-disable changes, **10 of 10 rejected, 0 skipped**. No fixture or
+  prior mutation was removed.
+- `test-native-hud` and actual Metal `verify-gpu-hud` pass at
+  `build/workflow/20261022T160011.584726Z/` and
+  `build/workflow/20261022T160026.421834Z/`: 3840×2160 letterbox and Integer
+  layouts at all three widths retain subnative custom-atlas detail. Indexed
+  BMP/PNG, alpha edges, palette/frontier changes, hidden/effects masks,
+  fallback, transactional reload, cache churn and caller renderer state pass.
+- `oracle-video-rolls` passes at `build/workflow/20261022T155737.749510Z/`:
+  **160 of 160 independent MAME RGB frames identical**, 0 skipped, no mismatched
+  pixels. It checks the unchanged native renderer in this capture scope.
+- The extended `test-hud-mutations` passes at
+  `build/workflow/20261022T160256.586038Z/`: all ten scene controls plus the
+  retained straight-alpha blending control reject, **11 of 11, 0 skipped**.
+  CMake configures/builds both ROM-free HUD tests and CTest passes **2 of 2** in
+  `build/hud-cmake/` with SDL3 and OpenAL disabled for that independent build.
+- Complete local `verify-stage1` passes at
+  `build/workflow/20261022T160051.739352Z/02-verify-stage1.log`, including the
+  new HUD integration and all retained directed stages at both wide aspects.
+- Final-tree `test` passes, including both retained HUD mutation scripts, at
+  `build/workflow/20261022T160903.410240Z/01-test.log`. Native release builds at
+  `build/workflow/20261022T160051.739352Z/03-native-release.log`.
+- Final software `verify-native-menu` and Metal `verify-gpu-native-menu` pass
+  in the same `20261022T160051.739352Z/` run (logs 04 and 05). They include HUD
+  navigation/wrap and unavailable-atlas cycling; GPU sprite comparison retains
+  **4,128 of 4,128 identical planes, 0 skipped**. The initial sandbox GPU attempt
+  exposed no displays; the successful rerun used normal macOS display access.
+- The shared complete oracle attempt at
+  `build/workflow/20261022T160345.216180Z/01-oracle-test.log` stopped on the old
+  `native-feedback` textual mutation anchor after `WideScene::draw` gained
+  `original_hud`. The anchor/replacement signature now includes that argument;
+  the deliberate native sprite-byte corruption and rejection witness are
+  unchanged. Focused `verify-wide-mutations` passes at
+  `build/workflow/20261022T161542.909355Z/01-verify-wide-mutations.log`:
+  both independent geometry baselines pass and **18 of 18 retained controls
+  reject, 0 skipped**. This repair does not turn the stopped complete oracle
+  attempt into a pass; its complete rerun remains a separate gate.
+- The subsequent clean complete `oracle-test` passes at
+  `build/workflow/20261022T162126.082489Z/01-oracle-test.log` (3,737.13 s).
+  Combined with final-tree `test` at `20261022T160903.410240Z/` and the retained
+  `verify-stage1` pass above, the integrated tree passes the complete required
+  gate. Supplemental `full` also passes at
+  `build/workflow/20261022T161927.407826Z/`. The 365-file gate source/harness
+  manifest at `build/oracle/spatial-audio/gate-source-snapshot-20261022.json`
+  was rechecked after completion: **365 of 365 SHA-256 hashes unchanged**,
+  including the HUD renderer, main integration, tests and both new mutation
+  scripts. Existing oracle concurrent-input skips retain their stated reasons;
+  the HUD's 789-frame comparison and retained negative controls skip nothing.
+- Actual O2 Metal gameplay smoke runs with Sharp HUD, ScaleFX, corrected ground
+  and all four opacity options pass at native width (180 frames) and 16:9
+  (420 frames), using isolated settings and dummy audio. Captures at
+  `build/oracle/hud-{sharp,wide}-smoke.png` were visually inspected; output is
+  1920×1344 and 2388×1344 respectively, confirming Retina density. Profile logs
+  are alongside them. These concurrent-load smoke runs report roughly
+  58.9–59.6 Hz at native width and 55.4–59.6 Hz wide; they are layout/functional
+  evidence, not sustained performance acceptance or a 4K gameplay benchmark.
+
+This is a local text-plane preview. Sprite-based instruments/target markers,
+semantic instrument replacements, new anchoring/layouts, production replacement
+art, exhaustive scenes, sustained 4K performance and other-platform high-DPI
+acceptance remain open. These focused passes do not declare whole-host or
+whole-credit acceptance or refresh a published package.
+
+## Optional CRT display presentation (2026-10-23)
+
+The native Video menu now offers CRT Mode Off / Subtle / Arcade and independent
+Scanlines / RGB Mask strengths. Off is the default. Subtle starts at 25/15%;
+Arcade starts at 50/35%. Presets restore both starting values, Off retains them,
+and strength edits clamp to 0–100% in 5% steps. Validated percentages and mode
+persist in `AB2SETTINGS1`; older files remain Off. See
+[CRT display](CRT_DISPLAY.md) for controls, rendering policy and limits.
+
+`frontend/native_crt.hpp` modulates the final SDL game/HUD image before menus
+and statistics. The scanline envelope follows 224 native rows; its phase uses
+integer output rows so exact 2× scaling produces separate beam/gap rows.
+Contrast fades below 2× to reduce aliasing. The RGB mask follows physical output
+columns. Neither effect reads/writes board state or changes the source image.
+The cached output-resolution MOD texture needs no framebuffer readback, game
+copy, new shaders or runtime dependencies. Geometry/strength changes replace
+one accepted texture transactionally; its logical pixel data is capped at
+64 MiB. Off/zero release it. Failed allocation/draw switches CRT Off for the
+session and reports the SDL error without saving that fallback over preferences.
+
+Validation and measured scope:
+
+- ROM-free software pixel/state checks pass at
+  `build/workflow/20261023T110145.851830Z/01-test-native-crt.log`.
+  Retained controls reject **6 of 6 mutations, 0 skipped**: bypassed pass,
+  missing scanlines, missing mask, wrong raster phase, lost viewport and
+  enabled-while-Off. Logs and independent baseline are under
+  `build/oracle/crt-mutations/20261023T110151.405878Z-67b12fe4/`.
+- Metal readbacks pass at
+  `build/workflow/20261023T110216.672106Z/01-verify-gpu-crt.log`: all three
+  viewport widths, letterbox/integer and fractional layouts through 4K,
+  explicit 2×/3× white-field contrast, exact Off/zero/invalid pixel identity,
+  renderer state/UI/target preservation, cache reuse and oversized rejection.
+  The real high-density resize reaches 1600×1200. The initial hidden-window
+  fullscreen API round trip did not assert the actual fullscreen flag and is
+  not evidence that the window manager applied the request.
+  Tests pump resize events and present once before readback so the swapchain
+  acquires the resized drawable.
+- CMake configure, CRT/settings targets and both CTest cases pass. Logs are
+  `build/crt-cmake/crt-validation-{1,2,3}.log`.
+- With 36 same-source samples per mode and vsync requested/reported Off,
+  Metal source+present wall time is 8.186 → 8.308 ms at 3840×2160 and
+  8.245 → 8.340 ms at 1920×1080 (Off → cached Arcade). GPU idle is awaited
+  at aggregate boundaries. The roughly 8.3 ms display/swapchain pacing remains,
+  so **0.122/0.095 ms incremental wall time is not an unpaced GPU-cost claim**.
+  First-pass/present times are 29.91/9.85 ms, including cache creation.
+  Software same-source samples measure 2.006 → 18.764 ms at 4K and
+  0.360 → 5.996 ms at 1080p: the software fallback has substantial cost,
+  especially before adding emulation work.
+
+Additional local integration and application evidence:
+
+- `test` (54.62 s), `verify-stage1` (448.36 s), `verify-native-menu` (29.88 s)
+  and `native-release` (42.31 s) pass at
+  `build/workflow/20261023T110249.624684Z/`. These are the targets evaluated
+  during that run. Concurrent Practice/aircraft edits appeared in the shared
+  checkout during validation; the logs are not a blanket final-tree gate for
+  those separate features. CRT and UI integration were checked again below.
+- Final software rendering, **6 of 6 rejected controls, 0 skipped**, and
+  visible-menu regression pass at `build/workflow/20261023T112840.465224Z/`.
+  CRT menu replay preserves **781 of 781 RGB/PCM/time frames, 0 skipped**.
+  Final Metal renderer checks pass at `20261023T113048.259801Z/`, including
+  **1 of 1 observed hidden-window fullscreen flag round trips, 0 skipped**.
+  This does not substitute for the visible-menu fullscreen gate below.
+  Final CMake rebuild and both CTest cases pass at
+  `build/crt-cmake/crt-final-{1,2}.log`.
+- An isolated CMake application build avoids concurrent native Make outputs.
+  Three 420-frame Metal gameplay runs use isolated settings with 16:9,
+  Sharp HUD, ScaleFX, corrected ground and all four opacity options. At
+  `build/oracle/crt-display-20261023T110339Z/`, each Subtle/Arcade capture
+  matches **3,209,472 of 3,209,472 independently predicted output pixels,
+  0 different, 0 skipped**, with zero channel error against the Off capture
+  and the specified modulation. The 2388×1344 PNGs were visually inspected.
+  Source/binary hashes, configs, profiles and comparison JSON remain local.
+  Each active mode builds exactly one 12,837,888-byte overlay across the run;
+  cached submission is roughly 0.004–0.005 ms. These locked-desktop/dummy-audio
+  smokes range roughly 55–59.6 Hz in all three modes and are not sustained-load
+  or 4K gameplay acceptance.
+  After the concurrent scenery changes, a fresh CMake build and all three
+  120-frame captures under the same folder's `current/` also pass. Subtle and
+  Arcade again match every one of 3,209,472 predicted pixels, zero channel error.
+  The current capture was visually inspected and has its own binary/source manifest.
+- The later real Metal menu gate fails at its existing fullscreen assertion,
+  before any CRT drawing: requested=true but observed fullscreen=false.
+  The harness now mirrors the game's resizable visible window, pumps/presents
+  before requesting fullscreen, waits up to three seconds and retains actual
+  fullscreen/windowed assertions and diagnostic state. It still fails while
+  the desktop is locked; it does not replace observation with requested state.
+  CoreGraphics `CGSessionCopyCurrentDictionary` independently reports
+  `CGSSessionScreenIsLocked=true`. The observed fullscreen check remains
+  pending an unlocked desktop. Failed logs are retained at
+  `20261023T111525.436567Z`, `20261023T111747.452842Z`,
+  `20261023T112032.602834Z` and `20261023T112225.314484Z` under `build/workflow/`.
+  The synthetic CRT test now reports unavailable fullscreen observations as
+  skipped instead of treating an accepted API request as a successful transition.
+
+This is optional display treatment. Glow, curvature, persistence, general
+pacing work, sustained-load acceptance and Windows/Linux runtime checks remain
+open. The 2026-10-22 complete hardware/oracle checkpoint retains its original
+source and scope; this frontend addition does not claim a new full required
+gate, whole-credit fidelity result or refreshed release package.
+
+## Stage Select / Practice first increment (2026-10-23)
+
+The native launcher and pause menu now expose [Practice](PRACTICE_MODE.md):
+select a runtime ROM stage, start a fresh session, retry that starting stage
+with F5, or return to a cold arcade board. The mode and retry target are
+ephemeral frontend state. Browsing and cancelling a different stage preserves
+the active target. Normal native lives, damage, score and later progression
+continue; no stage loop, invulnerability or Time Attack rules are added.
+`--practice-stage N` launches the same mode; natural recordings reject both
+selected-stage CLI paths and disable the Practice menu.
+
+`StageCatalog` names each one-based ordinal, ordered selector, descriptor and
+event-program address. It reads `$32480/$32482/$3249A` and descriptor byte
+offset 16 at runtime, following the already ported `$18918/$13CEE/$142D0`
+ownership. It contains no embedded ROM tables. `GameSession` exposes this
+catalog and the restricted `enter_practice_stage` operation; the existing
+`debug_skip_to_stage` delegates to the same operation. No translated gameplay,
+CPU, bus, scheduler or device implementation changes.
+
+`frontend/native_practice.hpp` cold-restarts with current DIP pins, supplies
+the established physical coin/start sequence and calls the existing directed
+ROM-event setup. The application clears pacing, input holds, haptics,
+presentation history and playback queues. Hidden startup updates replacement
+music state with playback detached, while draining PCM/music/feedback each
+frame. Menu entry/back and the persistent Practice retry label only draw on
+the frontend image, preserving the native frame/time and prior pause state.
+
+Independent metadata evidence: `capture_stage_catalog.lua` observes the copied
+selector list in original MAME after physical boot/start and records its
+descriptor/event fields. **23 of 23 entries identical, 0 skipped**. Four
+retained controls (ordinal, selector offset, descriptor pointer and event-field
+offset) are rejected by field comparisons against that capture. The final
+catalog and mutation checks pass under
+`build/workflow/20261023T111336.040619Z/`. Synthetic malformed ROM/count/pointer
+and ordinal bounds checks also pass. Capture generation joins `oracle-capture`;
+comparison and mutations join `oracle-test`.
+
+The unchanged selected-stage palette oracle passes **56/56 MAME words identical,
+0 skipped**, at entries 5, 8, 13 and 17 under
+`build/workflow/20261023T110636.269626Z/03-verify-native-stage-palette.log`.
+Its earlier command-18 bypass control remains retained. These metadata/palette
+observations do not establish complete directed-entry CPU/device/RGB/audio
+equivalence or the previous stages' accumulated state.
+
+The new `verify-practice-mode` (included in `verify-stage1`) passes 375 exact
+native RGB/PCM/time lifecycle comparisons at entries 1, 8 and 23 plus cold
+arcade return, with 2,280 supplied hidden-frame callbacks. Bounds rejection,
+DIPs, pause, default/supplied output drains, extension restart and retry pass.
+Its reference is the existing debug startup, not independent MAME. A deliberate
+changed reference pixel is rejected (`build/oracle/practice-mode-bad-reference.log`).
+SDL menu checks cover all stage selections, wrapping, keyboard/pointer actions,
+recording guards, candidate versus active retry target and frame/PCM/time/DIP
+isolation. The 320×224 menu readback was visually inspected; captures remain
+ignored under `build/oracle/`.
+
+Final `verify-native-menu` and release-backed `verify-native-practice` pass in
+`build/workflow/20261023T112514.014116Z/`. The CLI rejects zero/out-of-range
+stages, conflicting stage modes and natural recording before creating a
+recording; Stage 8 launches and presents eight counted frames with dummy SDL.
+The final gameplay readback places the Practice starting-stage label below
+the score strip, preserving the bottom HUD. The menu and final gameplay image
+were visually inspected. CMake configuration and `git diff --check` pass.
+
+`test` passes on the settled combined source in
+`build/workflow/20261023T112711.644483Z/01-test.log`. A later CRT regression-test
+edit is separately covered by clean `test-native-crt` / `test-crt-mutations`
+in `build/workflow/20261023T112949.720457Z/`; runtime sources stayed unchanged.
+
+The complete `verify-stage1` passes (423.86 s) in
+`build/workflow/20261023T112711.644483Z/02-verify-stage1.log`, including all
+23 directed stage slots at each aspect: 22,540 native RGB/PCM/time frames
+unchanged at 398×224 and another 22,540 at 358×224. The source/harness manifest
+at `build/workflow/practice-settled-source-manifest.json` confirms that runtime
+sources remained unchanged throughout this final run. Earlier concurrent
+aircraft build/text-ownership failures were repaired before this clean pass;
+their fixture coverage is retained.
+
+Complete entry-state fidelity, broader physical-controller/platform acceptance,
+Time Attack and natural whole-credit coverage remain open. Published packages
+are unchanged. This local feature is not a new full required acceptance gate.
+
+## HD player-aircraft presentation prototype (2026-10-23)
+
+`--player-aircraft image.png` enables the first transparent HD aircraft pose.
+Main `$99BE..$9A48` supplies the bank/pitch selection through `$28C94`; pitch-2,
+bank-0 selects Sub `$100A0`. `PlayerAircraftAssets` reads the actual frame and
+Sub `$9E4` LOD offsets from the user's ROM. Palette `$F2`, bank, pitch, exact
+forward/reverse source start and native draw directions identify this family;
+palette alone never establishes ownership. Offscreen-adjusted starts, duplicate
+matches and unmatched poses retain native art. All five neutral records have
+width equal to pitch times eight; other layouts are deliberately unsupported.
+
+The opt-in `WideScene` branch omits only the accepted descriptor from its passive
+underlay and publishes a rectangle plus native-coordinate per-clip visibility.
+Native tile/text priority and later raw sprite coverage clip the authored art.
+Later shadow or enabled translucent-effect overlap retains the native aircraft
+for that clip, since fullcolor art has no categorical effect palette and a
+post-composition HD draw cannot supply the underlay for earlier alpha blending.
+Detached HUD keeps priority-3 aircraft native as well: authored aircraft holes
+and glyph coverage can differ from the original HUD's native ownership mask,
+including a custom replacement of an originally blank glyph. The observed
+active-flight aircraft uses priority 1 and remains supported.
+The default branch, board buffers, sprite feedback, CPU code, bus and timing
+are unchanged. `NativePlayerAircraft` loads transactionally, trims transparent
+canvas padding, premultiplies alpha and draws HD samples before CRT presentation.
+No preferences/menu row or release package changes are required for this CLI
+prototype. The authored PNG, provenance and exact built-in ImageGen prompt live
+under `assets/player-aircraft/`; extracted references and screenshots stay ignored.
+
+Focused evidence:
+
+- `test` passes at `build/workflow/20261023T112502.766319Z/`, including **ten
+  identity/ownership** and **six frontend sampling** mutation rejections, zero
+  skips. Retained sources/logs are under the run's referenced
+  `build/oracle/player-aircraft-mutations/` and
+  `build/oracle/native-player-aircraft-mutations/` folders.
+- `preview-player-aircraft` passes at
+  `build/workflow/20261023T112502.766319Z/`: **1,804 of 1,804 native RGB/PCM/time
+  frames identical, zero skipped**, with independent hardware-renderer/native
+  sprite restoration at 320/358/398. The 1,800 physical-input frames exercise
+  198 accepted draws across three aspects, including 174 in mode `$10`; first
+  active-flight input frame 1098. Modes `$01` and `$10` reuse the same pose.
+  Only base `$100A0` is naturally observed here; four smaller LODs are generated
+  matcher fixtures. Eighty generated LOD/direction cases, fractional zoom,
+  source holes, later ownership/shadow/translucency, duplicate fallback,
+  native/custom HUD priority, two palette/row frontiers, toggles and reset pass.
+  The saved in-game HD preview was visually inspected.
+- `verify-gpu-player-aircraft` passes with actual Metal at
+  `build/workflow/20261023T111821.929802Z/`. The same assertions exercise native
+  and 3840×2160 outputs, all viewport origins, premultiplied blending, flips,
+  native/caller clips, malformed scene inputs and detail within a native pixel.
+  The first sandboxed attempt could not enumerate displays; rerunning with
+  desktop access passed without changing comparisons.
+- `oracle-video-rolls` in that same run preserves **160 of 160 independent MAME
+  RGB frames**, zero mismatched pixels and zero skips. This rechecks the original
+  renderer reference used by restoration, not production acceptance of new art.
+- The broader `verify-stage1` pass at
+  `build/workflow/20261023T111215.472189Z/` predates the last detached-HUD
+  priority-3 fallback and the extended replay fixture; it is not a final-tree
+  full-gate claim. After that presentation-only change, `native-release`,
+  `verify-hud-presentation`, `verify-wide-scene`, `verify-wide-geometry` and
+  `verify-native-menu` and all 18 retained widescreen geometry mutations pass
+  at `build/workflow/20261023T112416.461549Z/`.
+  The final `test` and 1,804-frame replay above include the new fallback and
+  rejected tenth ownership mutation. Core/CPU sources and oracle instrumentation
+  were not changed for this prototype.
+
+The art is a first neutral-pose prototype. Other pitch/bank/crash/carrier assets
+retain native artwork unless they reuse that exact neutral descriptor. Nozzle
+registration, consistent remaining animation art, a versioned registered asset
+pack, effect-palette materials, natural smaller-LOD coverage and sustained
+Windows/Linux/backend acceptance remain open. This is development validation;
+it does not close full-credit fidelity or replace the complete merge/release gate.
+See [usage and scope](SPRITE_REPLACEMENT.md).
+
+## Registered aircraft pack and gentle bank (2026-10-23)
+
+The follow-up accepts `--player-aircraft pack.aircraft` and supplies
+`assets/player-aircraft/neutral-gentle-v1.aircraft`. It includes the accepted
+neutral image plus `gentle-bank-hd-v2.png`, generated with built-in ImageGen
+against the neutral design and a local native pose. Art/provenance remain in
+`assets/`; no extracted ROM pixels or captures are distributed there.
+
+`AircraftPack` defines versioned, bounded artist source rectangles, reference
+dimensions, corresponding art/native pivots, scales, nozzle review points and
+optional LOD registration. It validates finite scales in 1/4096..4096, duplicate
+identities, bounds and confined image paths. `NativePlayerAircraft` stages all
+images, registrations and admitted roots transactionally. A bad reload retains
+the previous complete pack. A LOD override incompatible with actual ROM source
+dimensions uses the valid base registration. The legacy PNG/BMP path remains
+neutral-only and retains its previous alpha-bound fit.
+
+The matcher still reads runtime ROMs. Pitch-2's main table at `$28E58` points to
+neutral Sub `$100A0` and uses `$10230` for both signed banks -1/+1. Main
+`$99BE..$99E4` supplies request bit 13 and signed quotient; Sub `$8FE..$904`
+chooses the reversed source. Base bank +1 has its left wing high/right wing low;
+bank -1 reflects it through the original hardware flags. Each family contributes
+five runtime LOD records. Only loaded, verified root families may be detached;
+unknown roots, source aliases and unsupported descriptors retain Original.
+All 55 normal-flight table selections reuse 22 base records; this increment
+authors two of those records. Three additional sources complete this pitch row.
+
+Nozzle annotations are visual guide points, not new flame-position rules.
+Connected F2 glow pens 1/2/4 identify native image-space centers at neutral
+(43,32)/(78,32) and gentle (45,31)/(78,36), counting pixel centers at n+0.5.
+The main aircraft table's four words after its frame pointer are collision
+bounds used at `$1513A..$15170`, not nozzle attachment offsets. The actual
+flame-table ownership remains `$AF88..$AFB0` / `$B018..$B040`; no CPU code,
+collision bounds, flame placement, bus or timing was modified.
+
+The longer physical replay exposed a real widescreen bug: suppressing the
+whole player descriptor removed its overhanging native pixels, while the HD
+mask covers only 320 columns. A safe-area fallback now preserves Original
+whenever the full candidate rectangle crosses either native horizontal edge.
+Generated tests cover both families/edges at 320/358/398; the failing physical
+sequence is retained. Existing shadow, enabled-translucency, detached priority-3
+HUD, duplicate and adjusted-source fallbacks remain intact.
+
+Visual review also exposed SDL software reflection reducing high-frequency
+authored detail to native-cell averages. A controlled 240-stripe/120-cell probe
+measured flipped contrast collapsing to zero at 3x and 4K width. The software
+path now caches H/V/HV premultiplied textures at load time and samples them
+through ordinary texture draws; GPU rendering retains its existing path.
+There are no per-frame allocations or pixel copies. Pack texture budgets count
+all cached orientations (32 Mi texels total); the existing 4096-square legacy
+image allowance implies at most 64 Mi cached texels on software.
+
+A retained fractional-size test then exposed an older software-only seam:
+SDL truncated each one-native-row destination independently at noninteger
+output scales, leaving blank physical rows. Software draws now quantize shared
+destination endpoints by physical pixel-center ownership. SDL's software queue
+casts source crop coordinates to integers, so the authored source intervals
+remain unchanged to retain their existing sample phase. The transform accounts
+for logical presentation, user scale and the actual viewport offset without
+modifying renderer state. Adjacent rows meet exactly; transparent art is blended
+once, and unowned cells stay untouched. GPU geometry is unchanged.
+
+Validation records:
+
+- Final `test` at `build/workflow/20261023T155902.949407Z/` passes, including
+  **21/21 frontend and 14/14 matcher/scene negative controls**, zero skips.
+  Existing strict 4K sample checks are retained. Added cases cover all four
+  reflection combinations at exact 3x and 3840x2160 for legacy images and
+  registered packs at 320/358/398. Fractional 960x672 windows at 358/398 scan
+  owned pixel centers, uniform half-alpha seams, a deliberate mask hole and all
+  half-open outside edges. Actual Metal passes `verify-gpu-player-aircraft` at
+  `build/workflow/20261023T155949.048164Z/`.
+- Final `preview-player-aircraft` and `native-release` pass in that final
+  `20261023T155902.949407Z` run. The replay retains the original 1,800-input
+  prefix and extends it to **3,000 physical inputs plus four restart frames**,
+  exact native RGB/PCM/time and zero skips. Across all three viewports it
+  observes 1,260 replacement draws, including 1,206 in active flight: 978
+  neutral, 42 gentle unflipped and 186 gentle mirrored. Independent original
+  sprite restoration checks 7,649,706 visible ownership pixels, 6,151,425 source
+  holes and 1,495,263 restored pixels. Another 7,740 views retain Original.
+  The production pack generates visually reviewed gameplay previews at input
+  frames 1098/1928/2552 under ignored `build/oracle/`; no board state or aircraft
+  descriptors are seeded. Smaller LODs use generated coverage, not a claim of
+  natural-flight observation.
+  A bounded dummy-video/audio release smoke exits successfully with the real
+  `.aircraft` CLI option and reports two loaded pose families; its complete log
+  is `build/oracle/player-aircraft-pack/final-release-smoke.log`.
+- `oracle-video-rolls` at `build/workflow/20261023T153556.902170Z/` preserves
+  **160/160 independent MAME RGB frames**, zero mismatched pixels and zero
+  skips. This checks the unchanged original renderer used for reconstruction;
+  the capture does not naturally exercise the two new aircraft identities.
+- The broader `verify-stage1` at
+  `build/workflow/20261023T154445.417557Z/` passes, including both retained
+  23-stage sweeps (22,540 native RGB/PCM/time frames per viewport), the aircraft
+  replay and other presentation/lifecycle checks. The same run passes
+  `native-release` and all 18 widescreen geometry mutations. It predates the
+  final fractional software endpoint fix. A source hash audit also records
+  concurrent unrelated GameSession/XBoard/frontend/build edits, so this is
+  evidence for that recorded checkpoint, not a final-tree whole-host gate.
+
+This is a two-pose development increment. Complete pitch/bank animation,
+production nozzle/silhouette registration, dedicated smaller-LOD art, palette
+animation/effect materials, broader natural/platform coverage and an Original/HD
+menu setting remain open. It does not close whole-credit fidelity acceptance.
+
+## RetroArch Slang presentation (2026-10-23)
+
+The optional `NativeSlang` frontend loads user `.slangp` presets through
+librashader 0.12.0 (C API 5, ABI 2). Its pinned Apple Silicon runtime is fetched
+and verified under ignored `build/deps/`; no runtime or shader pack is committed.
+The upstream MIT C header and MPL license/provenance are retained under
+`src/third_party/librashader/`. See [setup and scope](CRT_DISPLAY.md).
+
+SDL's GPU renderer exposes no public native Metal handles suitable for this
+runtime. Shader mode therefore uses SDL's native Metal renderer and existing
+CPU sprite filters; Off/Subtle/Arcade retain the normal GPU path. A native
+320/358/398×224 source and physical-output texture share IOSurface storage
+between SDL and Metal. An explicit fence, command submission and completion
+waits order their use without CPU image readback. Game/HUD are rasterized to
+224 rows, including HD replacements; frontend UI draws after the shader.
+Switching backends recreates renderer resources, retains the GameSession/menu
+and decoded HUD, and reloads selected aircraft art. The main-thread settings
+transaction accepts/persists a preset only after successful loading; failed
+loads restore the previous renderer/settings. File-dialog callbacks queue
+owned strings through a mutex and never touch renderer/menu state.
+
+Paused output is cached by source frame and presentation geometry; visual
+changes, menu close, restart and frame rollback invalidate it. NativeSlang
+restores target/logical/scale/viewport/clip and draws the captured original on a
+runtime failure. The pinned Metal runtime emits an invalid render pass when
+clearing an empty history list. History resets recreate a chain and reapply
+parameters, covering history and feedback without that broken API path. The
+C header's milliseconds comment is also incorrect: tagged runtime binding
+forwards `frametime_delta` unchanged to Slang `FrameTimeDelta`, whose unit is
+microseconds. The host passes microseconds and tests this independently.
+
+Validation and retained local evidence:
+
+- `test` / complete `verify-stage1` pass in
+  `build/workflow/20261023T154054.724187Z/` (87.94 s / 468.09 s). These cover the
+  applicable engine/presentation integration, with the menu/settings headers
+  frozen before the run; the real-main shader path is covered separately below.
+- Final settings/menu checks include persisted shader paths, rejection of
+  injected line/NUL values, picker activation, disabled built-in strengths,
+  mode wrapping, renderer detach/rebind and pixel-identical font layout.
+  Logs: `build/workflow/20261023T153731.406930Z/` and
+  `build/workflow/20261023T153805.994146Z/`.
+- Both normal Make and native release builds pass; final focused settings and
+  fetcher checks also pass in `build/workflow/20261023T155847.178387Z/`. Independent
+  CMake Release builds and actual shader/main integration targets pass, with
+  `STAGE1_ROM_TESTS=ON`, logged in `build/slang-cmake-verify.log` (OpenAL disabled
+  in this separate CMake check; the Make native build retains OpenAL).
+- `verify-native-shader-main` passes in
+  `build/workflow/20261023T155425.134099Z/`: the real main loop accepts a
+  worker-thread chooser result, switches GPU→Metal→GPU, attempts an invalid
+  preset and restores GPU plus accepted settings. Paused native RGB/PCM/time
+  remain identical, zero skips; no new PCM buffers/samples are consumed.
+- The same run's `verify-native-slang` passes every authored reference pixel,
+  actual renderer state, raw microseconds, resize through 4K, exact original
+  output on forced reset failure, recovery, live previous-frame history and
+  history reset. The temporal reference observes red `(128,0,0)`, then blue
+  with previous red `(128,0,128)`, cached identity, then reset `(0,0,128)`,
+  within one RGB level.
+- `verify-native-slang-mutations` passes in
+  `build/workflow/20261023T155635.512469Z/`: both millisecond conversion and
+  omitted temporal reset are rejected at their intended assertions, **2/2,
+  zero skipped**. Staged sources, fixtures, binaries and complete logs remain
+  under `build/oracle/slang-mutations/20261023T155636.694251Z-526430ce/`.
+- The ten offline fetcher tests pass, including pinned checksum/integrity,
+  extraction path/link/size checks, installation reuse, failure cleanup and
+  preservation of an existing invalid installation. The real installation
+  also validates against its pinned manifest. Logs:
+  `build/workflow/20261023T154532.107963Z/`.
+- Real installed CRT Easymode, CRT Geom and 12-pass CRT Royale presets render
+  successfully. Three 180-frame Stage 1 game smokes at 2388×1344 with 16:9 and
+  Sharp HUD retain images/logs under `build/oracle/retroarch-game-20261023/`.
+  Profiles observe `shader=active` and 17/20/46 parameters. Completed shader
+  submission/waits cost approximately 2.7–3.1 / 4.4–4.7 / 5.1–5.4 ms respectively;
+  finite displayed-rate samples are 55.3–59.6374 Hz with dummy audio and
+  concurrent validation. These are smoke measurements, not sustained load
+  acceptance. Main startup also succeeds with dummy video and a requested
+  shader by falling back to the normal renderer, recorded in
+  `build/oracle/slang-startup-fallback.log`.
+- Built-in CRT GPU and visible native-menu checks pass in
+  `build/workflow/20261023T155425.134099Z/`. Actual fullscreen/windowed transitions
+  now pass, resolving the earlier locked-console observation. Native replay
+  preserves **781/781 RGB/PCM/time frames**, zero skipped, and GPU sprite planes
+  preserve **4,128/4,128** pixels, zero skipped. All six built-in CRT negative
+  controls remain retained and pass their rejection gate.
+
+The original/native board remains the comparison reference. This frontend
+increment does not extend the earlier complete hardware gate to every later
+concurrent enhancement or replace a required merge/release gate. macOS Metal
+SDR is the implemented shader backend; Windows/Linux, legacy GLSL/Cg, HDR,
+first-input mipmaps, parameter UI, universal preset compatibility and sustained
+scene/preset performance remain open. Published packages are unchanged.
+
+## Shuffle mode (2026-10-23)
+
+The root and pause menus now offer [Shuffle](SHUFFLE_MODE.md) alongside
+Practice. A fresh Shuffle permutes gameplay stages 1–22 exactly once, keeping
+the native stage-23 finale last as requested by the user.
+F5 restarts the same seed/order; New Shuffle draws another seed, while Return
+to Arcade and Practice restore canonical ROM storage. `--shuffle` and
+`--shuffle-seed N` use the same startup. Natural recording rejects these
+options before creating files, and disables the enhanced menu entries.
+
+`Shuffle::RomView` deep-copies all ROM regions and binds them for the entire
+host lifetime. It remaps the setup/road words at `$32196/$32324/$32452/$30D54`,
+four `$40`-stride DIP banks at `$32352/$32224`, music `$2B604`, text `$2B6AC`,
+inline palette `$2EA16`, the five pointer tables `$140DA..$1424E`, and the
+ordered selector/descriptor/event graph. Copied palettes and event programs
+occupy the already mapped upper main-ROM data area. Startup sources
+`$2BC60/$2CFF4/$2DBF4/$2BF60` are replaced only after indexed palette payloads
+are cloned, preserving the original first stage's colors wherever it appears.
+Instruction bytes and canonical ROM regions remain unchanged.
+
+The literal CPUs retain native progress, lives, score and update timing. The
+hardcoded position-based collision branches at `$E6C4/$E6D0`, animation threshold
+at `$11844`, and carrier variant at `$12540/$13090` retain their original run
+positions. This is explicit enhanced policy, not a claim that every behavior
+travels with a source stage. Stage 23's scripted aircraft owns an early-ending
+flag as well as the native final-position check; keeping this finale last
+preserves the original ending sequence.
+Stage transitions do not use Practice skips, board resets or hidden frames.
+
+Original event command 18 prepares the original adjacent destination and is
+omitted from copied event programs. The typed policy instead installs the
+selected destination's settled alternate palette at the original `$138FE`
+first/new-credit or `$13CE8` later-stage initialization completion. Which source
+stages require preparation is discovered from the original predecessor events.
+This replaces the original 128-update preblend; other source palette animation
+remains native. The helper writes exactly 25 words: one at `$122F00`, two at
+`$122E60`, eight at `$122E10`, and fourteen at `$122F02`. It preserves the
+fourteen-word sky tail `$122E64..$122E7F`. Synthetic policy writes do not enter
+CPU transaction observations; palette generation is explicitly invalidated.
+The host's existing filtered presentation observer adds only `$138FE`.
+
+Independent original-MAME palette fixtures at entries 5, 8, 13 and 17 compare
+**156/156 observed words identical, 0 skipped**, including all 100 written
+words and preserved sky tails. Four retained mutations reject gradient,
+auxiliary-source, missing-write and sky-tail corruption. An initial incorrect
+repeated sky upload failed this independent comparison and was corrected;
+failed logs remain in `build/oracle/shuffle_palette_initial_failures/`.
+The real-ROM remapping check and seven semantic controls cover all setup/DIP/
+selector/event/palette mappings, canonical immutability, startup aliases,
+permutation validity and instruction preservation. These pass in
+`build/workflow/20261023T155851.333164Z/` and
+`build/oracle/shuffle-rom-mutations/`. The final fixed-finale policy and seven
+controls pass in `build/workflow/20261023T162455.546971Z/`; existing valid
+arranged images remain byte-identical. The original selected-stage palette
+reference remains **56/56 words identical**.
+
+The arranged-run oracle exports only a declared private ROM view, seed/order
+and physical requests. Original MAME independently executes that data view,
+with its own settled-palette hook; native expected states, CPU registers and
+RAM are never supplied. Its actual port observations are replayed, preserving
+the established digital-port update latency; every request-to-observed relation
+and DIP byte is checked. The clean run compares **12,000/12,000 frame rows
+identically, 0 skipped**, with mode, run position, lives, raw score and exact
+nanosecond time. It reaches five flight positions, seven modes and source
+8 → 5 → 17 at the first three positions. Log:
+`build/workflow/20261023T160914.464696Z/01-verify-shuffle-run.log`.
+The earlier requested-versus-cached-port comparison failures and both capture
+attempts remain retained; their observation CSVs were identical. Full CPU,
+device, RGB and PCM equivalence is not inferred from these named observations.
+
+The session lifecycle gate preserves 660 native RGB/PCM/time frames with
+presentation/music/cockpit/feedback captures enabled versus disabled, plus
+16 original-board restoration frames. It checks DIP state, pause, output
+queues, extension resets, invalid plan rejection, deterministic retries,
+canonical restoration and a continuous 8 → 5 → 17 prefix. That prefix starts
+with 297 ships from 99 stocked credits under the declared Easy/three-ship DIP
+profile; this is not a standard single-credit completion claim. Its clean log
+is `build/workflow/20261023T160325.580086Z/01-verify-shuffle-session.log`.
+
+SDL menu checks and release-backed CLI launches pass under
+`build/workflow/20261023T155851.333164Z/` and
+`build/workflow/20261023T160431.628552Z/`. Seven CLI guards reject recording,
+conflicting modes and invalid seeds. Seed zero reproduces its complete order
+and presented image; seed one differs. Practice's four guards and directed
+launch also pass. Root/Shuffle menus and the gameplay label were visually
+inspected from ignored readbacks. CMake configures with oracle tests enabled
+and Stage 1 integration disabled, and retains separate ROM-free/ROM/oracle
+registrations.
+
+An exploratory first-source-23 test exposed the scripted finale dependency:
+`$11D4A` sets `$89E2.bit0`, and `$DD10/$DD16` consumes that flag and branches
+to `$E04E` without the ordinary stage-count check. The aircraft callback also
+updates `$910C`. At the first run position, `$E04E` decrements the ordinal to
+`$FFFF` and requests mode 17. Independent MAME and native both observed flight
+at frame 3,495 and ending at frame 4,039, followed by ranking and attract.
+Those failed endpoint captures are retained as
+`build/oracle/shuffle_complete_early_end.*`; the interrupted native and required
+runs remain logged. The user then specified keeping stage 23 as the ending,
+since it has no real gameplay. `validate` now rejects a moved finale, and seeded
+Fisher–Yates shuffles only the first 22 entries. No terminal flag, aircraft
+callback, CPU state or instruction bytes are changed to bypass the finale.
+
+The longer shuffled run also exposed the original paired-selector cleanup
+continuation `$67B0..$6836`. Twenty absent sites are now literal generated
+translations: selector upper-bound addition/comparison, inclusive BLE,
+paired object depth/mask cleanup, two queue-byte increments/indexed writes,
+owner callback restoration and flag update. Independent original MAME supplies
+**180/180 instruction fixtures identical, 0 different, 0 skipped**, with 564
+bus phases, all 32 incoming branch CCRs, both BLE outcomes (8/24), ADD/CMP
+boundaries, nonzero masks, queue-byte wrap and neighboring sentinels, and
+zero/max indexed writes. All **20/20** site-specific controls reject by state
+or bus comparison. Independent review checked instruction order, flags,
+operands and operand coverage. Logs:
+`build/workflow/20261023T161243.614662Z/` and
+`build/oracle/shuffle_paired_release_mutations.log`.
+
+The unchanged earlier recovery corpus is retained, including a backup before
+merging the new independent fixtures. The complete replay passes
+**14,014/14,014 baseline + 64,120/64,120 complete = 78,134/78,134 identical,
+0 skipped**, with 12,425 manifest PCs and all 1,256 conditional branches
+observed both ways. Log:
+`build/workflow/20261023T161753.054763Z/01-oracle-recovery.log`.
+Forced queue wrapping is pinned instruction by instruction; the continuous
+recording does not claim a naturally forced wrap of that paired release.
+
+The complete recovery capture timeout is now 96 emulated seconds. With 64,656
+cases after the later continuations at sixteen per frame after forty boot
+frames, regeneration needs about 68 seconds; the previous 64-second default
+was too short even for the previous
+63,940-case plan. This changes capture capacity only, preserving all fixtures
+and comparison rules. The focused increment still uses its 32-second limit.
+
+Final fixed-finale lifecycle checks pass under
+`build/workflow/20261023T162519.473313Z/`. The three-position window repeats
+all 660 capture-neutral comparisons, sixteen original-host restoration frames
+and 7,118 continuous physical frames, including misplaced-finale rejection
+and direct Practice entry rejection while Shuffle owns the ROM view. The
+explicit complete run visits all 23 initialized positions and observes modes
+17–22, ranking 25/26 and return to attract across **61,478 physical frames**,
+with no directed skips, extra restarts or frame/time resets. It begins with
+297 ships from 99 stocked credits and records 5,664 cannon, 300 missile and
+47 impact allocations. These are native lifecycle observations under declared
+physical requests, not a standard-credit completion or MAME field comparison.
+
+The independent fixed-finale MAME capture completes **100,000 physical frames**,
+including all 22 gameplay positions, stage-23 finale, ordered ending 17–22,
+ranking 25/26 and attract return. Its input echo, exact frame/time continuity
+and path-coverage baseline pass; removing finale coverage is rejected by the
+same gate. Capture log:
+`build/workflow/20261023T162515.497880Z/01-capture-shuffle-ending.log`.
+The full native comparison uses MAME's actual port observations, rather than
+the requested controls used by the native-only 61,478-frame run.
+
+The complete `required` profile passes in
+`build/workflow/20261023T162746.531591Z/`: ROM-free `test` (84.39 s), complete
+`verify-stage1` (477.41 s), and `oracle-test` (3,285.22 s), including every
+retained mutation. Both widescreen stage sweeps preserve 22,540 native
+RGB/PCM/time frames each at 398×224 and 358×224. The complete recovery gate
+passes all 78,134 fixtures, 12,425 PCs, 1,256 branches both ways and all 166
+recovery controls. New palette, seven ROM-policy, changed-reference and
+missing-finale controls all reject. Existing race-qualified skips in older
+fixture families retain their documented reasons; the new Shuffle checks
+skip zero records.
+
+The final native menu and release-backed Shuffle CLI pass in
+`build/workflow/20261023T163056.588440Z/`, including the readable
+"22 STAGES THEN FINALE" summary, recording guards, stable seed-zero output and
+fixed stage 23. Practice's unchanged CLI check also passes in
+`build/workflow/20261023T162601.196957Z/`. Runtime and harness hashes are retained
+in `build/workflow/shuffle-settled-source-manifest.json`. Relative to the earlier
+required-profile snapshot, only the UI wording, capture timeout and ending
+control's diagnostic matcher changed: ROM-free test inputs remained unchanged,
+and the final oracle pass includes the updated control. The final UI is
+separately exercised above; a fresh complete Stage 1 gate covers its final build.
+
+The extended actual-pin replay subsequently reached an additional unported
+instruction at observation **63,533**, after the ending and return to attract.
+The failure is `$D27E` in shared credit/continue-prompt blinking. Previous state
+was mode 1/position 11/lives 249/score 0; the partial failed frame had already
+reached the independently expected mode 1/position 12/lives 249/score 0. The
+retained diagnostic is
+`build/workflow/20261023T175135.837058Z/01-verify-shuffle-ending.log`.
+The comparator now includes passive frame/state context around an advance
+failure; comparison semantics and the full 100,000-row window remain intact.
+
+Fourteen new generated bodies at `$D27E..$D2B0` close that blink continuation,
+joining the already verified `$D2D2` path. They handle the byte counter and
+bit-3 transition, preserving register neighbors and X/NZ flags, and select
+original show/blank strings through `$137E2`. Independent MAME checks pass
+**186/186 fixtures identical, 0 different, 0 skipped, 354 bus phases**. The two
+conditional branches each exercise sixteen taken and sixteen untaken cases.
+Operand cases cover byte/word preservation, borrow/overflow, counter neighbors,
+X preservation and both text-call return addresses. All **14/14** new controls
+reject; independent review found no instruction or coverage defect. Logs:
+`build/workflow/20261023T175419.805306Z/` and
+`build/oracle/shuffle_credit_blink_mutations.log`.
+
+The atomic merged corpus preserves the original baseline and immutable prior
+64,120-case complete capture. Its new replay passes **14,014 + 64,306 =
+78,320/78,320 identical fixtures**, zero differences/skips, comparing
+32,726 + 149,934 bus phases. The manifest covers **12,439 PCs** and all
+**1,258 conditional branches both ways**. Log:
+`build/workflow/20261023T175702.174990Z/01-oracle-recovery.log`.
+The earlier full `required` pass predates these fourteen bodies. This later
+increment changes generated instruction bodies and their focused fixtures/
+controls; it does not change the generator, shared CPU/flags, bus, scheduler,
+compiler options or capture instrumentation. It follows the literal-port
+validation cadence with the complete retained corpus and affected continuous
+recording, rather than claiming the prior complete gate covers new bodies.
+
+The repaired replay then passed observation 63,533 and exposed the sibling
+credit-clear path at **63,973**, `$D2B4`. The diagnostic is retained in
+`build/workflow/20261023T175931.302695Z/01-verify-shuffle-ending.log`.
+The final static audit covers the entire `$D216..$D2EC` routine: 52 instruction
+entries, with `$D2EC` returning rather than falling into the separate `$D2EE`
+function. Both direct helpers are complete: `$E35E..$E3C8` (27 entries) and
+`$137D2..$1381A` (30). Five missing sibling entries at
+`$D2B4/$D2BC/$D2C0/$D2C8/$D2CE` handle the request bit, conditional flag clear and original blank
+string call. All reachable local alternatives are now translated; the audit
+is retained in `build/oracle/shuffle_credit_graph_audit.txt`.
+
+Independent original MAME verifies the five additional sites with **64/64
+fixtures identical, 0 different, 0 skipped, 232 bus phases**, including both
+BNE outcomes (16/16), even/odd byte lanes, bit-0 values, neighbor and flag
+preservation and the formatter return address. Capture/build log:
+`build/workflow/20261023T181000.546319Z/`. The atomic retained union passes
+**14,014 + 64,370 = 78,384/78,384 identical fixtures**, zero differences/skips,
+32,726 + 150,166 bus phases, **12,444 PCs** and all **1,259 branches both ways**.
+Log: `build/workflow/20261023T181224.614091Z/01-oracle-recovery.log`.
+The original baseline and all earlier complete corpora remain preserved.
+An optimized-recovery run during the fixture update correctly rejected the
+then-incomplete coverage union for these five newly declared PCs; its failed
+log is retained under `build/workflow/20261023T175929.906747Z/`. No comparison
+or coverage condition was relaxed.
+
+The five-site tree then passed `test` (95.39 s), complete `verify-stage1`
+(481.13 s) and optimized-release recovery replay (32.73 s) in
+`build/workflow/20261023T181305.314474Z/`. Both recovery corpora match all
+78,384 fixtures, zero skipped. The unchanged full arranged comparison passed
+the credit-prompt paths and matched through 78,000 frames before reaching an
+additional untranslated attract-mode helper at observation **78,031**,
+`$15774`. Its retained failure is
+`build/workflow/20261023T181306.257682Z/01-verify-shuffle-ending.log`.
+
+The attract failure came from the original missile-controller helper's
+nonlocal stack exit. The expanded static audit follows all six controller
+entries, direct callees and deferred child callbacks: **686 reachable
+instruction entries**, no missing translations or unresolved control-flow
+sites after the increment. Its reproducible census is retained as
+`build/oracle/shuffle_missile_cfg_audit.py` and `.json`. This is a conservative
+static closure, not an execution-coverage claim.
+
+Twenty-two new generated bodies close the helper and release tail at
+`$1576E..$15788/$15292..$152A6`, the RNG zero-seed fallback at `$C5B0`, and
+the bit-6 target-offset branch at `$14DD4..$14DE2`. In particular, the
+`ADDQ.W #4,A7` exits update the full address register and preserve all CCR
+bits before jumping to the existing continuation. Original MAME independently
+verifies **194/194 helper/tail fixtures** and **92/92 callee fixtures**,
+**286/286 identical, 0 different, 0 skipped**, comparing 626 bus phases.
+Capture/build logs are retained in
+`build/workflow/20261023T182620.323005Z/` and
+`build/workflow/20261023T182836.774414Z/`.
+The three new conditional branches each cover both outcomes (16/16).
+Operands cover byte lanes, modulo-eight bit clearing, signed address addition,
+ordinary full-width stack pointers, signed targeting, arithmetic flags and
+the RNG fallback. Independent review found no translation or fixture defect.
+Forced stack low-word overflow remains outside these fixtures.
+
+The retained union passes **14,014 + 64,656 = 78,670/78,670 identical
+fixtures**, zero differences/skips, comparing 32,726 + 150,792 bus phases.
+It covers **12,466 PCs** and all **1,262 branches both ways**. Log:
+`build/workflow/20261023T183137.636676Z/01-oracle-recovery.log`.
+All **22/22** relevant new mutation controls reject, bringing the retained
+recovery controls to **207**. Log:
+`build/oracle/shuffle_attract_exit_mutations.log`. The source remains limited
+to generated bodies and their manifest/fixture/control declarations; shared
+CPU, bus, scheduler and generator implementations are unchanged.
+
+The complete actual-pin replay now passes **100,000/100,000 independent
+arranged-MAME observations identical, 0 skipped** in
+`build/workflow/20261023T183024.653870Z/01-verify-shuffle-ending.log`
+(560.75 s, including the optimized rebuild). All 22 gameplay positions and
+the native finale appear, followed by the ordered ending, ranking and attract sequence;
+the longer post-ending attract window also completes. Physical pin and DIP
+echoes match exactly. The compared fields are frame number, nanosecond time,
+mode, position, lives and raw score. This does not extend those observations
+to full CPU/device/RGB/audio equivalence or every stage order and DIP profile.
+The frozen source/harness snapshot is retained in
+`build/workflow/shuffle-final-source-manifest.json` (410 files).
+
+Final checks on that frozen tree pass in
+`build/workflow/20261023T183906.434922Z/`:
+
+- `test`: **82.40 s**; complete `verify-stage1`: **469.50 s**.
+- `verify-native-release-recovery`: **32.29 s**, all 78,670 retained fixtures
+  identical in the optimized build, zero differences/skips.
+- `verify-shuffle-run-mutation`: **57.91 s**, all 12,000 independent frame
+  observations identical and the changed timestamp rejected.
+- `verify-shuffle-ending-mutation`: **0.96 s**, complete coverage baseline
+  passes and missing finale is rejected.
+- `verify-native-shuffle`: **43.68 s**, all seven guards, stable seed-zero
+  order/image, different seed-one order and stage 23 fixed last.
+- `verify-native-practice`: **6.33 s**, all four guards and the directed SDL
+  launch pass.
+
+The separate final `verify-native-menu` passes in **68.82 s** at
+`build/workflow/20261023T183946.284122Z/`, including Shuffle/Practice actions,
+keyboard/pointer navigation, recording guards and native RGB/PCM/time/DIP
+preservation. Source/harness hashes remain unchanged across the complete
+100,000-frame comparison and these checks. These focused results cover the
+literal continuations added after the earlier complete `required` snapshot;
+they do not relabel that earlier snapshot as a fresh whole-host gate.
+
+## Preview 3 release (2026-10-23)
+
+The requested `v0.1.0-preview.3` refresh targets Apple Silicon / macOS 26+.
+It includes the integrated Practice/Shuffle, 16:10, calibration, spatial-audio,
+HUD/CRT and registered aircraft changes. Windows remains on the existing
+Preview 2 download; its old executable is not relabeled as a new build.
+README, release notes, roadmap, enhancement status, documentation index and
+third-party notices describe this platform split and the new mode controls.
+
+The macOS packager adds four explicit aircraft files under
+`assets/player-aircraft/`, requiring committed regular files. It includes the
+complete MIT C-header notice and MPL/redistribution notes for librashader.
+Its runtime dependencies remain SDL3 3.4.16 and OpenAL Soft 1.25.2; optional
+librashader runtime binaries and user shader packs remain external. Setup
+instructions cover Practice, fixed-finale Shuffle, widescreen and CRT choices.
+ROMs, captures, preferences and soundtracks remain excluded.
+
+The complete release `required` run is retained at
+`build/workflow/20261023T185259.944984Z/`. The separate `native-release` build
+passes in `build/workflow/20261023T185938.980796Z/`. The earlier 100,000-frame
+Shuffle comparison and final focused menu/CLI results above retain their
+unchanged application sources; only documentation and package content change
+for this release step. The package manifest and GitHub release notes record
+the exact committed source and independent extracted-package verification.
+
+The package-only policy test retains its script and passing output at
+`build/releases/check_macos_package_policy.py` and
+`build/releases/macos-package-policy.log`: **15/15 checks pass**. It covers
+the exact four assets and three notices, image/manifest closure, regular
+committed files, rejected missing/uncommitted/symlink/directory sources,
+dirty-tree rejection before writes, and preserved ROM/build/soundtrack
+source-archive exclusions.
+
+Release staging contains 109 source/documentation/asset paths, with no ROM,
+capture, dependency-runtime or personal-setting payloads. Project-owned changes
+pass the staged whitespace check. The retained MPL license text keeps its
+Markdown hard breaks and final blank line; the otherwise clean check excludes
+only `src/third_party/librashader/LICENSE.MPL-2.0` for that formatting.
+
+The final-source release `required` profile **passes completely** at
+`build/workflow/20261023T185259.944984Z/`: `test` **77.92 s**,
+`verify-stage1` **402.07 s**, and `oracle-test` **3,938.59 s**. All **207/207**
+retained recovery controls reject; all 78,670 recovery fixtures and 1,262
+branches retain their passing baseline. Existing race-qualified skips in
+older fixture families keep their recorded reasons; new recovery and Shuffle
+comparisons skip zero records. The 410-file release execution/harness snapshot
+is retained at `build/workflow/preview3-source-manifest.json` and remains
+unchanged through the completed gate. This is a fresh complete release gate,
+separate from the earlier focused Shuffle checks and historical `full` runs.

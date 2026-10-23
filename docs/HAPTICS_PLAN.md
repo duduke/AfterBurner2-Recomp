@@ -1,8 +1,8 @@
 # SDL rumble and force feedback
 
 **Status: basic SDL rumble shipped in the macOS preview; advanced FFB planned.**
-Updated **2026-10-19** against local source after
-[v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
+Updated **2026-10-23** for
+[macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
 The shared adapter supports Windows, Linux and macOS through SDL 3.4.
 Capabilities and API results determine which outputs are available.
 

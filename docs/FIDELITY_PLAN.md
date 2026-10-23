@@ -1,15 +1,15 @@
 # Full-game fidelity and transition acceptance
 
 **Status: recording/transition foundation implemented; whole-credit fidelity open.**
-Updated 2026-10-19 against the local source after
-[preview v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
+Updated 2026-10-23 for
+[macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
 
 | Acceptance area | Current evidence | Remaining gate |
 | --- | --- | --- |
 | Physical input and passive observations | Versioned cold-boot recordings and ten-column MAME transition comparisons implemented | Preserve settings, ROM identifiers, initial persistent state and observed input latency for new runs |
 | Natural progression | Easy / 99-credit recording reaches all 23 stages, refuels, ending, ranking and attract over 74,452 frames | Record a successful standard single-credit run; the user's Normal/three-ship completion is manual evidence |
 | Failure and lifecycle | Ending, neutral, continue and weapons replays pass 104,452 frames; altered-reference control rejects | Extend collision causes, name entry, NVRAM and alternate carrier/reset paths |
-| Instruction recovery | 12,405 PCs, 77,954 fixtures and 146 rejected recovery mutations; reported `$15C10` stop fixed | Recover newly exposed paths from ROM with independent fixtures and controls |
+| Instruction recovery | 12,466 PCs, 78,670 fixtures and 207 retained recovery mutations; reported `$15C10` stop and later shuffled-run paths fixed | Recover newly exposed paths from ROM with independent fixtures and controls |
 | Continuous fidelity | Finite whole-host CPU/bus/device/RGB/audio corpora pass, including expanded 781-frame coverage | Compare the entire successful credit across all streams without supplied execution/state |
 | Configuration and performance | Directed stage/DIP/lifecycle checks and bounded macOS smokes | Broader DIP/operand/reset coverage and sustained peak-load measurements |
 

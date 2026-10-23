@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -22,9 +23,15 @@ struct Performance {
 // board's RAM, palette, frame pixels, registers or device clocks.
 class NativeMenu {
 public:
-    enum class Action { none, close, start, restart, quit };
+    enum class Action { none, close, start, restart, practice, shuffle, arcade, quit };
     NativeMenu(SDL_Renderer* renderer, const Roms& rom, Settings settings, bool pixel_art)
-        : settings(settings), renderer(renderer), scale_count(pixel_art?4:3) {
+        : settings(settings), renderer(nullptr), scale_count(pixel_art?4:3), practice_stages(StageCatalog::count(rom)) {
+        rebind(renderer,rom);
+    }
+    // Release renderer-owned resources before a backend switch. Menu/session
+    // state remains intact while the frontend recreates its presentation path.
+    void rebind(SDL_Renderer* next_renderer,const Roms& rom) {
+        if(!next_renderer){SDL_DestroyTexture(atlas);atlas=nullptr;renderer=nullptr;return;}
         auto* surface=SDL_CreateSurface(128,256,SDL_PIXELFORMAT_ARGB8888);
         if (!surface) throw std::runtime_error(SDL_GetError());
         const auto third=rom.tiles.length/3;
@@ -38,24 +45,35 @@ public:
             const bool ink=value!=0 && value!=7;
             row[tile%16*8+x]=ink?0xffffffffu:0;
         }
-        atlas=SDL_CreateTextureFromSurface(renderer,surface); SDL_DestroySurface(surface);
-        if (!atlas) throw std::runtime_error(SDL_GetError());
-        SDL_SetTextureScaleMode(atlas,SDL_SCALEMODE_NEAREST);
-        SDL_SetTextureBlendMode(atlas,SDL_BLENDMODE_BLEND);
+        auto* replacement=SDL_CreateTextureFromSurface(next_renderer,surface); SDL_DestroySurface(surface);
+        if (!replacement) throw std::runtime_error(SDL_GetError());
+        if(!SDL_SetTextureScaleMode(replacement,SDL_SCALEMODE_NEAREST) || !SDL_SetTextureBlendMode(replacement,SDL_BLENDMODE_BLEND)) {
+            SDL_DestroyTexture(replacement);throw std::runtime_error(SDL_GetError());
+        }
+        SDL_DestroyTexture(atlas);atlas=replacement;renderer=next_renderer;
     }
     ~NativeMenu() { SDL_DestroyTexture(atlas); }
     NativeMenu(const NativeMenu&)=delete;
     Settings settings;
     std::string notice;
+    // The frontend owns file dialogs and asynchronous callback lifetime. This
+    // callback is invoked only by an explicit selection on the menu thread.
+    std::function<void()> choose_shader;
+    std::string shader_status;
     NativeInput* input{};
     NativeMusic* music{};AudioOutput* audio{};
     NativeHaptics* feedback{};
+    bool custom_hud_available{};
+    // A menu edit is only a candidate; F5 keeps the last launched stage.
+    unsigned practice_stage{1},active_practice_stage{};
+    bool practice_allowed{true};
+    bool shuffle_active{},shuffle_allowed{true};
     std::function<bool(const Settings&)> apply;
     void open(GameSession& game) {
         if (opened) return;
         if(feedback)feedback->stop();
         was_paused=game.paused(); initial=game.info().number==0;
-        game.set_paused(true); opened=true; options=false; video=false; dips=false; controls=false;calibration_page=false;feedback_page=false;audio_page=0; selected=0;
+        game.set_paused(true); opened=true; options=false; video=false; dips=false; controls=false;practice_page=false;shuffle_page=false;calibration_page=false;feedback_page=false;audio_page=0; selected=0;
     }
     void close(GameSession& game) {
         if (!opened) return;
@@ -68,6 +86,8 @@ public:
     bool in_controls() const {return controls;}
     bool in_calibration() const {return calibration_page;}
     bool in_options() const { return options; }
+    bool in_practice() const {return practice_page;}
+    bool in_shuffle() const {return shuffle_page;}
     int selection() const { return selected; }
     bool fullscreen_toggle() {
         auto changed=settings;changed.fullscreen=!changed.fullscreen;
@@ -78,6 +98,35 @@ public:
         return change(changed);
     }
     Action key(SDL_Keycode key) {
+        if(shuffle_page) {
+            const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
+            if(key==SDLK_ESCAPE || key==SDLK_F1 || (enter && selected==2)) {
+                shuffle_page=false;selected=3;return Action::none;
+            }
+            if(key==SDLK_UP)selected=(selected+2)%3;
+            if(key==SDLK_DOWN)selected=(selected+1)%3;
+            if(enter) {
+                if(!shuffle_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
+                if(selected==0)return Action::shuffle;
+                if(selected==1 && shuffle_active)return Action::arcade;
+            }
+            return Action::none;
+        }
+        if(practice_page) {
+            const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
+            if(key==SDLK_ESCAPE || key==SDLK_F1 || (enter && selected==3)) {
+                practice_page=false;selected=2;return Action::none;
+            }
+            if(key==SDLK_UP)selected=(selected+3)%4;
+            if(key==SDLK_DOWN)selected=(selected+1)%4;
+            if(key==SDLK_LEFT || key==SDLK_RIGHT || enter) {
+                if(!practice_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
+                if(selected==0)practice_stage=(practice_stage-1+practice_stages+(key==SDLK_LEFT?-1:1))%practice_stages+1;
+                if(enter && selected==1)return Action::practice;
+                if(enter && selected==2 && (active_practice_stage || shuffle_active))return Action::arcade;
+            }
+            return Action::none;
+        }
         if(calibration_page && input) {
             if(key==SDLK_ESCAPE || key==SDLK_F1 || key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER) {
                 calibration_page=false;selected=16;
@@ -169,14 +218,16 @@ public:
             if (options) { options=false;selected=1;return Action::none; }
             return Action::close;
         }
-        const int rows=options?visible_rows():3;
+        const int rows=options?visible_rows():5;
         if (key==SDLK_UP) selected=(selected+rows-1)%rows;
         if (key==SDLK_DOWN) selected=(selected+1)%rows;
         if (video && (key==SDLK_LEFT || key==SDLK_RIGHT)) adjust(key==SDLK_LEFT?-1:1);
         if (key!=SDLK_RETURN && key!=SDLK_SPACE && key!=SDLK_KP_ENTER) return Action::none;
         if (options) {
             if(video) {
-                if(selected==10){video=false;selected=0;option_scroll=0;}else adjust(1);
+                if(selected==15){video=false;selected=0;option_scroll=0;}
+                else if(selected==14){if(choose_shader)choose_shader();else notice="SHADER PICKER UNAVAILABLE";}
+                else adjust(1);
             } else if(selected==option_rows()-1) {options=false;selected=1;}
             else if(selected==0) {video=true;selected=0;option_scroll=0;}
             else if(selected==dip_row()) {dips=true;selected=0;}
@@ -186,9 +237,29 @@ public:
         }
         if (selected==0) return initial?Action::start:Action::close;
         if (selected==1) {options=true;selected=0;return Action::none;}
+        if (selected==2) {
+            if(!practice_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
+            practice_page=true;selected=0;return Action::none;
+        }
+        if (selected==3) {
+            if(!shuffle_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
+            shuffle_page=true;selected=0;return Action::none;
+        }
         return Action::quit;
     }
     Action pointer(float x,float y,bool click) {
+        if(shuffle_page) {
+            for(int i=0;i<3;++i)if(x>=24 && x<=304 && y>=86+i*26 && y<110+i*26) {
+                selected=i;return click?key(SDLK_RETURN):Action::none;
+            }
+            return Action::none;
+        }
+        if(practice_page) {
+            for(int i=0;i<4;++i)if(x>=24 && x<=304 && y>=74+i*26 && y<98+i*26) {
+                selected=i;return click?key(SDLK_RETURN):Action::none;
+            }
+            return Action::none;
+        }
         if(calibration_page && input){if(click){calibration_page=false;selected=16;}return Action::none;}
         if(feedback_page && feedback){const int first=selected/8*8;
             for(int i=first;i<std::min(first+8,16);++i)if(x>=24&&x<=304&&y>=58+(i-first)*17&&y<75+(i-first)*17){if(selected!=i)feedback->stop();selected=i;return click?key(SDLK_RETURN):Action::none;}return Action::none;}
@@ -209,17 +280,48 @@ public:
             }
             return Action::none;
         }
-        const int rows=options?visible_rows():3;
+        const int rows=options?visible_rows():5;
         const int first=options?option_first():0;
         for (int i=first;i<std::min(rows,first+8);++i) {
-            const float top=options?option_top(i):116.f+i*20.f;
-            if(x>=32 && x<=296 && y>=top && y<top+(options?option_spacing():18)) {
+            const float top=options?option_top(i):100.f+i*17.f;
+            if(x>=32 && x<=296 && y>=top && y<top+(options?option_spacing():17)) {
                 selected=i;return click?key(SDLK_RETURN):Action::none;
             }
         }
         return Action::none;
     }
     void draw() {
+        if(shuffle_page) {
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
+            centered("SHUFFLE MODE",16,{255,255,255,255});
+            centered("CONTINUOUS RUN",36,{125,153,180,255});
+            centered(std::to_string(practice_stages-1)+" STAGES THEN FINALE",50,{125,153,180,255});
+            centered("NATIVE LIVES / DAMAGE / SCORE",64,{125,153,180,255});
+            const char* labels[]{shuffle_active?"NEW SHUFFLE":"START SHUFFLE","RETURN TO ARCADE","BACK"};
+            for(int i=0;i<3;++i) {
+                const bool enabled=i==2 || (shuffle_allowed && (i!=1 || shuffle_active));
+                const auto color=!enabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
+                text(labels[i],40,92+i*26,color);if(i==selected)cursor(16,92+i*26);
+            }
+            centered("F5 RESTARTS THE SAME ORDER",176,{125,153,180,255});
+            centered("NEW SHUFFLE STARTS A FRESH RUN",190,{125,153,180,255});
+            centered(shuffle_allowed?"ENTER SELECT   ESC RETURN":"UNAVAILABLE WHILE RECORDING",208,{125,153,180,255});return;
+        }
+        if(practice_page) {
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
+            centered("STAGE SELECT / PRACTICE",16,{255,255,255,255});
+            centered("STARTS A FRESH SESSION",36,{125,153,180,255});
+            centered("NORMAL LIVES / DAMAGE",50,{125,153,180,255});
+            const std::string labels[]{"STAGE "+std::to_string(practice_stage)+" / "+std::to_string(practice_stages),"START PRACTICE","RETURN TO ARCADE","BACK"};
+            for(int i=0;i<4;++i) {
+                const bool enabled=i==3 || (practice_allowed && (i!=2 || active_practice_stage || shuffle_active));
+                const auto color=!enabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
+                text(labels[i],40,80+i*26,color);if(i==selected)cursor(16,80+i*26);
+            }
+            centered(practice_allowed?"LEFT/RIGHT STAGE - ENTER SELECT":"UNAVAILABLE WHILE RECORDING",183,{125,153,180,255});
+            centered("F5 RETRY ACTIVE PRACTICE STAGE",197,{125,153,180,255});
+            centered("ESC RETURN - NO SESSION CHANGE",211,{125,153,180,255});return;
+        }
         if(calibration_page && input){
             SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
             centered("INPUT CALIBRATION",16,{255,255,255,255});
@@ -334,18 +436,25 @@ public:
             centered("VIDEO",16,{255,255,255,255});
             if(selected==9)centered("EXPERIMENTAL WIDE VIEW",36,{125,153,180,255});
             if(selected==5)centered("FLAME: FULL THROTTLE ONLY",36,{125,153,180,255});
-            const char* labels[]{"UPSCALING","SPRITES","CLOUDS","TRAILS","EXPLOSIONS","AFTERBURNER","SCREEN","STATS","GROUND","VIEWPORT","BACK"};
+            if(selected==10)centered("TEXT PLANE - NATIVE PLACEMENT",36,{125,153,180,255});
+            const bool retroarch=settings.crt==Crt::retroarch;
+            if(selected>=11 && selected<=14)centered((retroarch || selected==14)?
+                (shader_status.empty()?(selected==14?"ENTER CHOOSE .SLANGP PRESET":"SELECT SHADER PRESET BELOW"):shader_status.substr(0,38)):"PRESETS RESET BOTH STRENGTHS",36,{125,153,180,255});
+            const char* labels[]{"UPSCALING","SPRITES","CLOUDS","TRAILS","EXPLOSIONS","AFTERBURNER","SCREEN","STATS","GROUND","VIEWPORT","HUD","CRT MODE","SCANLINES","RGB MASK","SHADER PRESET","BACK"};
             const char* scales[]{"NEAREST","SMOOTH","INTEGER","PIXEL ART"};
             const char* stats[]{"OFF","FPS","DETAILED"};
-            const char* values[]{scales[static_cast<int>(settings.scaling)],sprite_filter_labels[static_cast<int>(settings.sprites)],settings.clouds?"TRANSLUCENT":"OPAQUE",settings.trails?"TRANSLUCENT":"OPAQUE",settings.explosions?"TRANSLUCENT":"OPAQUE",settings.afterburner?"TRANSLUCENT":"OPAQUE",settings.fullscreen?"FULLSCREEN":"WINDOWED",stats[static_cast<int>(settings.stats)],settings.ground?"CORRECTED":"ORIGINAL",viewport_labels[static_cast<unsigned>(settings.viewport)],""};
+            auto preset=settings.shader_preset.empty()?std::string("CHOOSE..."):std::filesystem::path(settings.shader_preset).filename().string();
+            std::transform(preset.begin(),preset.end(),preset.begin(),[](unsigned char ch){return std::toupper(ch);});
+            const std::string values[]{scales[static_cast<int>(settings.scaling)],sprite_filter_labels[static_cast<int>(settings.sprites)],settings.clouds?"TRANSLUCENT":"OPAQUE",settings.trails?"TRANSLUCENT":"OPAQUE",settings.explosions?"TRANSLUCENT":"OPAQUE",settings.afterburner?"TRANSLUCENT":"OPAQUE",settings.fullscreen?"FULLSCREEN":"WINDOWED",stats[static_cast<int>(settings.stats)],settings.ground?"CORRECTED":"ORIGINAL",viewport_labels[static_cast<unsigned>(settings.viewport)],hud_labels[static_cast<unsigned>(settings.hud)],crt_labels[static_cast<unsigned>(settings.crt)],retroarch?"IN PRESET":std::to_string(settings.crt_scanlines)+"%",retroarch?"IN PRESET":std::to_string(settings.crt_mask)+"%",preset.substr(0,13),""};
             for(int i=option_first();i<std::min(visible_rows(),option_first()+8);++i) {
-                const SDL_Color color=i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
+                const bool disabled=retroarch && (i==12 || i==13);
+                const SDL_Color color=disabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
                 text(labels[i],32,option_top(i),color);
-                text(values[i],184,option_top(i),i==selected?SDL_Color{54,184,255,255}:color);
+                text(values[i],184,option_top(i),i==selected&&!disabled?SDL_Color{54,184,255,255}:color);
                 if(i==selected)cursor(8,option_top(i));
             }
             scrollbar(option_first(),visible_rows(),8,64,128);
-            centered("UP/DOWN SCROLL  LEFT/RIGHT CHANGE",195,{125,153,180,255});
+            centered(selected==14?"ENTER CHOOSE PRESET  ESC RETURN":"UP/DOWN SCROLL  LEFT/RIGHT CHANGE",195,{125,153,180,255});
         } else {
             title("AFTER",16,SDL_Color{240,244,255,255});
             title("BURNER II",51,SDL_Color{240,244,255,255});
@@ -359,17 +468,30 @@ public:
                 }
                 centered("ENTER SELECT   ESC RETURN",199,{125,153,180,255});
             } else {
-                const char* labels[]{initial?"ENTER ARCADE":"RESUME GAME","OPTIONS","QUIT"};
-                for(int i=0;i<3;++i) {
+                const char* labels[]{initial?"ENTER ARCADE":"RESUME GAME","OPTIONS","PRACTICE","SHUFFLE","QUIT"};
+                for(int i=0;i<5;++i) {
                     const auto x=160-static_cast<int>(std::char_traits<char>::length(labels[i]))*4;
-                    text(labels[i],x,122+i*20,i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255});
-                    if(i==selected) cursor(x-32,122+i*20);
+                    const bool enabled=(i!=2 || practice_allowed) && (i!=3 || shuffle_allowed);
+                    const auto color=!enabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
+                    text(labels[i],x,106+i*17,color);
+                    if(i==selected) cursor(x-32,106+i*17);
                 }
                 centered(initial?"INSERT COIN / START IN ARCADE":"ENTER SELECT   ESC RETURN",193,{125,153,180,255});
             }
         }
         SDL_SetRenderDrawColor(renderer,41,125,190,255); SDL_RenderLine(renderer,24,210,296,210);
         centered(notice.empty()?"AFTER BURNER II / NATIVE EDITION":notice,215,{73,152,210,255});
+    }
+    void draw_practice_status() {
+        if(!active_practice_stage && !shuffle_active)return;
+        const std::string label=shuffle_active?"SHUFFLE":"PRACTICE FROM "+std::to_string(active_practice_stage);
+        // Stay below the score strip and above the native bottom instruments.
+        const float top=settings.stats==Stats::detailed?74.f:settings.stats==Stats::fps?36.f:28.f;
+        SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer,0,0,0,160);
+        SDL_FRect panel{4,top,float(label.size()*8+8),12};SDL_RenderFillRect(renderer,&panel);
+        SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
+        text(label,8,top+2,{195,219,237,255});
     }
     void draw_stats(const Performance& p,bool paused) {
         if(settings.stats==Stats::off) return;
@@ -404,13 +526,14 @@ private:
     SDL_Renderer* renderer;
     SDL_Texture* atlas{};
     int scale_count,selected{};
-    bool opened{},options{},video{},dips{},controls{},was_paused{},initial{};
+    const unsigned practice_stages;
+    bool opened{},options{},video{},dips{},controls{},practice_page{},shuffle_page{},was_paused{},initial{};
     int audio_page{},audio_page_previous=2;
     mutable int option_scroll{};
     int audio_row()const{return 1+(input?1:0);}
     int dip_row()const{return 1+(input?1:0)+(music?1:0);}
     int option_rows()const{return 3+(input?1:0)+(music?1:0);}
-    int visible_rows()const{return video?11:option_rows();}
+    int visible_rows()const{return video?16:option_rows();}
     int option_first()const {
         option_scroll=std::clamp(option_scroll,0,std::max(0,visible_rows()-8));
         if(selected<option_scroll)option_scroll=selected;
@@ -435,7 +558,19 @@ private:
         if(selected==7) changed.stats=static_cast<Stats>((static_cast<int>(settings.stats)+3+direction)%3);
         if(selected==8) changed.ground=!settings.ground;
         if(selected==9)changed.viewport=static_cast<Viewport>((static_cast<int>(settings.viewport)+viewport_count+direction)%viewport_count);
-        if(selected<10) change(changed);
+        if(selected==10){const unsigned count=custom_hud_available?hud_count:2;
+            changed.hud=static_cast<Hud>((static_cast<unsigned>(settings.hud)+count+direction)%count);}
+        if(selected==11){
+            changed.crt=static_cast<Crt>((static_cast<int>(settings.crt)+int(crt_count)+direction)%int(crt_count));
+            if(changed.crt==Crt::subtle || changed.crt==Crt::arcade){changed.crt_scanlines=changed.crt==Crt::arcade?50:25;changed.crt_mask=changed.crt==Crt::arcade?35:15;}
+        }
+        if(selected==12 || selected==13){
+            if(changed.crt==Crt::retroarch)return;
+            auto& strength=selected==12?changed.crt_scanlines:changed.crt_mask;
+            strength=unsigned(std::clamp(int(strength)+direction*5,0,100));
+            if(changed.crt==Crt::off)changed.crt=Crt::subtle;
+        }
+        if(selected<14) change(changed);
     }
     void tile(unsigned code,float x,float y,SDL_Color color,float scale=1) {
         SDL_SetTextureColorMod(atlas,color.r,color.g,color.b);

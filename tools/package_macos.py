@@ -12,6 +12,17 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+AIRCRAFT_ASSETS = (
+    "assets/player-aircraft/level-flight-hd-v1.png",
+    "assets/player-aircraft/gentle-bank-hd-v2.png",
+    "assets/player-aircraft/neutral-gentle-v1.aircraft",
+    "assets/player-aircraft/README.md",
+)
+LIBRASHADER_NOTICES = (
+    "src/third_party/librashader/librashader.h",
+    "src/third_party/librashader/NOTICE.md",
+    "src/third_party/librashader/LICENSE.MPL-2.0",
+)
 
 
 def run(*args):
@@ -24,6 +35,17 @@ def checked_source(path, expected):
     return path
 
 
+def committed_source(relative):
+    source = ROOT / relative
+    if source.is_symlink() or not source.is_file():
+        raise SystemExit(f"Package source must be a regular file: {relative}")
+    try:
+        run("git", "cat-file", "-e", f"HEAD:{relative}")
+    except subprocess.CalledProcessError:
+        raise SystemExit(f"Package source is not committed: {relative}") from None
+    return source
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", help="Release tag, e.g. v0.1.0-preview.1")
@@ -32,6 +54,8 @@ def main():
         parser.error("Use a version beginning with v and a digit")
     if run("git", "status", "--porcelain", "--untracked-files=normal"):
         raise SystemExit("Commit the intended source tree before packaging")
+    aircraft_assets = [(relative, committed_source(relative)) for relative in AIRCRAFT_ASSETS]
+    shader_notices = [committed_source(relative) for relative in LIBRASHADER_NOTICES]
 
     binary = ROOT / "build/afterburner2-release"
     if "arm64" not in run("file", str(binary)):
@@ -81,6 +105,14 @@ def main():
         shutil.copy2(ROOT / relative, package / relative)
     shutil.copytree(ROOT / "LICENSES", package / "Notices/project")
     shutil.copytree(ROOT / "docs", package / "docs")
+    for relative, source in aircraft_assets:
+        target = package / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    shader_notice_dir = package / "Notices/librashader"
+    shader_notice_dir.mkdir()
+    for source in shader_notices:
+        shutil.copy2(source, shader_notice_dir / source.name)
     for source, dest in [
         (sdl.parent.parent / "LICENSE.txt", "SDL3.txt"),
         (ROOT / "src/main/frontend/scalers/SNES9X-LICENSE.txt", "Snes9x.txt"),
@@ -112,8 +144,18 @@ def main():
         "MAME aburner2 ROM files in roms/ (see roms/README.md).\n"
         "Double-click Launch.command, or run it from Terminal. Keep lib/ alongside it.\n"
         "Enter Arcade starts attract mode; 5 inserts a coin, Enter starts.\n"
-        "Escape opens settings. Choose Video > Viewport > 16:9 Preview for widescreen\n"
-        "and Ground > Corrected for the enhanced horizon correction.\n"
+        "Practice selects a stage for a fresh run; F5 retries that Practice stage.\n"
+        "Shuffle arranges gameplay stages 1-22 once each and keeps stage 23 last.\n"
+        "F5 restarts the same Shuffle order; New Shuffle creates another order.\n"
+        "Return to Arcade starts a fresh original board. See docs/PRACTICE_MODE.md\n"
+        "and docs/SHUFFLE_MODE.md for details.\n"
+        "Escape opens settings. Video > Viewport offers 16:10 and 16:9 previews;\n"
+        "Ground > Corrected enables the enhanced horizon correction.\n"
+        "Video > CRT Mode includes the built-in Off / Subtle / Arcade modes.\n"
+        "RetroArch Slang presets need a separately installed optional runtime\n"
+        "and shader pack; neither is bundled. See docs/CRT_DISPLAY.md for setup.\n"
+        "The optional two-pose aircraft prototype is in assets/player-aircraft/;\n"
+        "see docs/SPRITE_REPLACEMENT.md for its command-line option and limits.\n"
         "Custom WAV/FLAC music belongs in soundtrack/. Preferences use SDL's\n"
         "Application Support directory and are not included in this download.\n\n"
         "The executable/libraries are ad-hoc signed, not Developer ID signed or\n"

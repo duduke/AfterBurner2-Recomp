@@ -11,6 +11,12 @@
 #include <string_view>
 #include <string>
 #include <vector>
+#include <random>
+#include <filesystem>
+#include <mutex>
+#include <optional>
+#include <utility>
+#include <cstdlib>
 #include "roms.hpp"
 #include "hwvideo/hwpalette.hpp"
 #include "hwvideo/hwroad.hpp"
@@ -20,8 +26,13 @@
 #include "engine/game_session.hpp"
 #include "engine/physical_recording.hpp"
 #include "frontend/native_menu.hpp"
+#include "frontend/native_practice.hpp"
 #include "hwvideo/wide_scene.hpp"
 #include "frontend/gpu_sprite_filter.hpp"
+#include "frontend/native_hud.hpp"
+#include "frontend/native_crt.hpp"
+#include "frontend/native_slang.hpp"
+#include "frontend/native_player_aircraft.hpp"
 #include "frontend/controller_database.hpp"
 
 namespace
@@ -29,36 +40,76 @@ namespace
     constexpr int SCREEN_WIDTH = GameSession::width;
     constexpr int SCREEN_HEIGHT = GameSession::height;
 
+    struct ShaderDialogReply {std::string path,error;bool cancelled{};};
+    struct ShaderDialogState {
+        std::mutex mutex;
+        bool active{};
+        std::optional<ShaderDialogReply> reply;
+    };
+    struct ShaderDialogRequest {
+        std::weak_ptr<ShaderDialogState> state;
+        std::string initial_path;
+    };
+    void SDLCALL shader_dialog_result(void* userdata,const char* const* files,int) {
+        std::unique_ptr<ShaderDialogRequest> request(static_cast<ShaderDialogRequest*>(userdata));
+        auto state=request->state.lock();if(!state)return;
+        ShaderDialogReply reply;
+        if(!files){reply.error=SDL_GetError();if(reply.error.empty())reply.error="File dialog unavailable";}
+        else if(!files[0])reply.cancelled=true;
+        else reply.path=files[0];
+        std::lock_guard lock(state->mutex);
+        state->active=false;state->reply=std::move(reply);
+    }
+
 }
 
 int main(int argc, char** argv)try
 {
     unsigned frame_limit = 0;
     unsigned start_stage = 0;
+    unsigned practice_start_stage = 0;
+    bool shuffle_start = false;
+    std::optional<uint32_t> shuffle_seed;
     bool boot_to_flight = false, profile = false;
     std::string recording_path;
-    std::string settings_path, menu_preview, frame_preview;
+    std::string settings_path, menu_preview, frame_preview, hud_atlas, player_aircraft,shader_preset,shader_runtime;
     for (int i=1;i<argc;++i)
     {
         const std::string_view option(argv[i]);
         if (option == "--boot-to-flight") { boot_to_flight=true; continue; }
         if (option == "--profile") { profile=true; continue; }
+        if (option == "--shuffle") { shuffle_start=true; continue; }
+        if (option == "--shuffle-seed" && i+1<argc) {
+            const std::string_view value(argv[++i]);uint32_t seed;
+            const auto result=std::from_chars(value.data(),value.data()+value.size(),seed);
+            if(result.ec!=std::errc{} || result.ptr!=value.data()+value.size())
+                throw std::runtime_error("Shuffle seed must be an unsigned 32-bit integer");
+            shuffle_seed=seed;shuffle_start=true;continue;
+        }
         if (option == "--record" && i+1<argc) { recording_path=argv[++i]; continue; }
         if (option == "--settings-file" && i+1<argc) { settings_path=argv[++i]; continue; }
         if (option == "--frame-preview" && i+1<argc) { frame_preview=argv[++i]; continue; }
+        if (option == "--hud-atlas" && i+1<argc) { hud_atlas=argv[++i]; continue; }
+        if (option == "--player-aircraft" && i+1<argc) { player_aircraft=argv[++i]; continue; }
+        if (option == "--shader-preset" && i+1<argc) { shader_preset=argv[++i]; continue; }
+        if (option == "--shader-runtime" && i+1<argc) { shader_runtime=argv[++i]; continue; }
         if (option == "--menu-preview" && i+1<argc) { menu_preview=argv[++i]; continue; }
-        if ((option != "--frames" && option != "--stage") || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number] [--boot-to-flight] [--record path] [--profile] [--settings-file path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
+        if ((option != "--frames" && option != "--stage" && option != "--practice-stage") || i+1>=argc)
+        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number]] [--boot-to-flight] [--record path] [--profile] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime librashader.dylib] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
         const std::string_view value(argv[++i]);
-        auto& count = option == "--stage" ? start_stage : frame_limit;
+        auto& count = option == "--stage" ? start_stage : option == "--practice-stage" ? practice_start_stage : frame_limit;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
         if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || !count)
-        { std::cerr << (option == "--stage" ? "Stage" : "Frame count") << " must be a positive integer.\n"; return 1; }
+        { std::cerr << (option == "--frames" ? "Frame count" : "Stage") << " must be a positive integer.\n"; return 1; }
     }
     if(!frame_preview.empty() && !frame_limit) throw std::runtime_error("Frame preview requires --frames");
     unsigned simulated_frames = 0;
-    if (!recording_path.empty() && start_stage)
-        throw std::runtime_error("Natural recording requires normal cold boot without --stage");
+    if (start_stage && practice_start_stage)
+        throw std::runtime_error("Choose either --stage or --practice-stage");
+    if(shuffle_start && (start_stage || practice_start_stage))
+        throw std::runtime_error("Shuffle cannot be combined with selected-stage startup");
+    if (!recording_path.empty() && (start_stage || practice_start_stage || shuffle_start))
+        throw std::runtime_error("Natural recording requires normal cold boot without selected-stage startup");
     if (!roms.load_aburner2())
     {
         std::cerr << "Failed to load one or more ROM files from roms/ "
@@ -68,6 +119,7 @@ int main(int argc, char** argv)try
     std::cout << "ROM set loaded OK." << std::endl;
     if (start_stage && start_stage > NativeStageSkip::stage_count(roms))
         throw std::runtime_error("Stage number out of range (1.." + std::to_string(NativeStageSkip::stage_count(roms)) + ")");
+    if (practice_start_stage) StageCatalog::get(roms, practice_start_stage);
 
     GameSession game(roms);game.capture_music(true);
     std::unique_ptr<Frontend::NativeMusic> music_player;
@@ -111,12 +163,16 @@ int main(int argc, char** argv)try
         }
     }
     auto settings=Frontend::load_settings(settings_path,Frontend::pixel_art_available());
+    const auto stored_shader_preset=settings.shader_preset,stored_shader_runtime=settings.shader_runtime;
+    if(!hud_atlas.empty()){settings.hud_atlas=hud_atlas;settings.hud=Frontend::Hud::custom;}
+    if(!shader_runtime.empty())settings.shader_runtime=shader_runtime;
+    if(!shader_preset.empty()){settings.shader_preset=shader_preset;settings.crt=Frontend::Crt::retroarch;}
 
     constexpr int SCALE = 3;
     SDL_Window* window = SDL_CreateWindow(
         "AfterBurner2-Recomp",
         Frontend::viewport_width(settings) * SCALE, SCREEN_HEIGHT * SCALE,
-        SDL_WINDOW_RESIZABLE);
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window)
     {
         std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
@@ -124,41 +180,71 @@ int main(int argc, char** argv)try
         return 1;
     }
 
-    SDL_GPUDevice* gpu_device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,false,nullptr);
-    SDL_Renderer* renderer=gpu_device?SDL_CreateGPURenderer(gpu_device,window):nullptr;
-    if (renderer && gpu_device) SDL_SetGPUAllowedFramesInFlight(gpu_device, 3);
-    if(!renderer) {
-        std::cerr<<"SDL GPU compute unavailable; trying SDL renderer with CPU filters: "<<SDL_GetError()<<'\n';
-        if(gpu_device)SDL_DestroyGPUDevice(gpu_device);
-        gpu_device=nullptr;
-        renderer=SDL_CreateRenderer(window,nullptr);
-    }
-    if (!renderer)
-    {
-        std::cerr << "SDL_CreateRenderer failed: " << SDL_GetError() << std::endl;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-    // SDL3 selects the available backend; software/dummy renderers may not
-    // support vsync. Physical board pacing remains independent of this setting.
-    // On Windows Vulkan (e.g. amdvlk64), VK_PRESENT_MODE_FIFO_KHR stalls for two
-    // VBlanks (~30 ms / ~32 FPS) per SDL_RenderPresent even with 0 ms of CPU work,
-    // whereas main loop SDL_DelayPrecise already paces frames at 59.826 Hz.
-#ifdef _WIN32
-    const bool win_vulkan_gpu = gpu_device && SDL_GetGPUDeviceDriver(gpu_device) &&
-        std::string_view(SDL_GetGPUDeviceDriver(gpu_device)) == "vulkan";
-    SDL_SetRenderVSync(renderer, win_vulkan_gpu ? 0 : 1);
+    SDL_GPUDevice* gpu_device=nullptr;
+    SDL_Renderer* renderer=nullptr;
+    bool metal_backend=false;
+    const auto create_renderer=[&](bool native_metal) {
+        metal_backend=false;
+#ifdef __APPLE__
+        if(native_metal) {
+            renderer=SDL_CreateRenderer(window,"metal");
+            metal_backend=renderer!=nullptr;
+        } else
 #else
-    SDL_SetRenderVSync(renderer, 1);
+        (void)native_metal;
 #endif
-    if(profile) {
-        int vsync=0; SDL_GetRenderVSync(renderer, &vsync);
-        std::cout<<"Native renderer: "<<SDL_GetRendererName(renderer)
-                 <<" backend="<<(gpu_device?SDL_GetGPUDeviceDriver(gpu_device):SDL_GetRendererName(renderer))
-                 <<" continuation="<<XBoardCpuContinuation::backend_name()
-                 <<" filters="<<(gpu_device?"gpu":"cpu")
-                 <<" SDL="<<SDL_GetVersion()<<" vsync="<<vsync<<'\n';
+        {
+            gpu_device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,false,nullptr);
+            renderer=gpu_device?SDL_CreateGPURenderer(gpu_device,window):nullptr;
+            if(renderer)SDL_SetGPUAllowedFramesInFlight(gpu_device,3);
+            else {
+                if(gpu_device)SDL_DestroyGPUDevice(gpu_device);gpu_device=nullptr;
+                renderer=SDL_CreateRenderer(window,nullptr);
+            }
+        }
+        if(!renderer)return false;
+#ifdef _WIN32
+        const bool win_vulkan_gpu=gpu_device && SDL_GetGPUDeviceDriver(gpu_device) &&
+            std::string_view(SDL_GetGPUDeviceDriver(gpu_device))=="vulkan";
+        SDL_SetRenderVSync(renderer,win_vulkan_gpu?0:1);
+#else
+        SDL_SetRenderVSync(renderer,1);
+#endif
+        if(profile) {
+            int vsync=0;SDL_GetRenderVSync(renderer,&vsync);
+            std::cout<<"Native renderer: "<<SDL_GetRendererName(renderer)
+                <<" backend="<<(gpu_device?SDL_GetGPUDeviceDriver(gpu_device):SDL_GetRendererName(renderer))
+                <<" continuation="<<XBoardCpuContinuation::backend_name()
+                <<" filters="<<(gpu_device?"gpu":"cpu")<<" SDL="<<SDL_GetVersion()<<" vsync="<<vsync<<'\n';
+        }
+        return true;
+    };
+    std::string shader_status;
+    std::unique_ptr<Frontend::NativeSlang> slang_renderer;
+    const bool requested_shader=settings.crt==Frontend::Crt::retroarch;
+    const bool requested_shader_backend=requested_shader && !settings.shader_preset.empty();
+    if(!create_renderer(requested_shader_backend)) {
+        if(!requested_shader_backend)throw std::runtime_error(std::string("SDL renderer unavailable: ")+SDL_GetError());
+        shader_status="Shader display backend unavailable: "+std::string(SDL_GetError());
+        std::cerr<<shader_status<<"; trying the normal game display.\n";
+        settings.crt=Frontend::Crt::off;
+        if(!shader_preset.empty())settings.shader_preset=stored_shader_preset;
+        if(!shader_runtime.empty())settings.shader_runtime=stored_shader_runtime;
+        if(!create_renderer(false))throw std::runtime_error(std::string("SDL renderer unavailable: ")+SDL_GetError());
+    }
+    if(settings.crt==Frontend::Crt::retroarch) {
+        slang_renderer=std::make_unique<Frontend::NativeSlang>(renderer,window);
+        if(settings.shader_preset.empty() || !slang_renderer->load(settings.shader_preset,settings.shader_runtime)) {
+            shader_status=settings.shader_preset.empty()?"CHOOSE A .SLANGP PRESET":slang_renderer->error();
+            std::cerr<<"RetroArch shader unavailable: "<<shader_status<<"; using Off.\n";
+            settings.crt=Frontend::Crt::off;slang_renderer.reset();
+            if(!shader_preset.empty())settings.shader_preset=stored_shader_preset;
+            if(!shader_runtime.empty())settings.shader_runtime=stored_shader_runtime;
+            if(metal_backend) {
+                SDL_DestroyRenderer(renderer);renderer=nullptr;
+                if(!create_renderer(false))throw std::runtime_error(SDL_GetError());
+            }
+        } else shader_status="ACTIVE: "+std::filesystem::path(settings.shader_preset).filename().string();
     }
 
     if (!SDL_SetRenderLogicalPresentation(renderer, SCREEN_WIDTH, SCREEN_HEIGHT,
@@ -195,6 +281,19 @@ int main(int argc, char** argv)try
         if(!Frontend::apply_settings(window,renderer,texture,settings)) throw std::runtime_error(SDL_GetError());
     }
     Frontend::SpriteScaler sprite_scaler;
+    auto hud_renderer=std::make_unique<Frontend::NativeHud>(renderer,roms);
+    auto crt_renderer=std::make_unique<Frontend::NativeCrt>(renderer);
+    auto aircraft_renderer=std::make_unique<Frontend::NativePlayerAircraft>(renderer);
+    if(!player_aircraft.empty()) {
+        if(!aircraft_renderer->load(player_aircraft))
+            std::cerr<<"Player-aircraft prototype unavailable: "<<aircraft_renderer->load_error()<<"; using Original.\n";
+        else std::cout<<"Player-aircraft HD prototype: "<<aircraft_renderer->supported_roots().size()<<" pose families; other poses use Original.\n";
+    }
+    const auto atlas_path=settings.hud_atlas.empty()?settings_path+".hud.png":settings.hud_atlas;
+    if(!hud_renderer->load_custom(atlas_path) && settings.hud==Frontend::Hud::custom) {
+        std::cerr<<"Custom HUD atlas unavailable: "<<atlas_path<<" ("<<hud_renderer->custom_error()<<"); using Sharp 3x.\n";
+        settings.hud=Frontend::Hud::sharp;
+    }
     std::vector<uint32_t> effect_pixels,effect_background;
     std::unique_ptr<Frontend::GPUSpriteScaler> gpu_scaler;
     if(gpu_device)gpu_scaler=std::make_unique<Frontend::GPUSpriteScaler>(renderer);
@@ -203,12 +302,20 @@ int main(int argc, char** argv)try
     unsigned sprite_texture_factor=0;
     uint64_t last_sprite_frame=UINT64_MAX;
     const auto configure_sprite_texture=[&](const Frontend::Settings& value) {
-        if(Frontend::is_wide(value) && (!wide_renderer || wide_renderer->view().width!=Frontend::viewport_width(value)))
+        const bool detached=Frontend::is_wide(value)||value.hud!=Frontend::Hud::original||aircraft_renderer->available();
+        if(detached && (!wide_renderer || wide_renderer->view().width!=Frontend::viewport_width(value)))
             wide_renderer=std::make_unique<Presentation::WideScene>(roms,Frontend::viewport_width(value));
-        if(!Frontend::is_wide(value))wide_renderer.reset();game.capture_wide_scene(Frontend::is_wide(value),Frontend::viewport_width(value));
+        if(!detached)wide_renderer.reset();game.capture_wide_scene(detached,Frontend::viewport_width(value));
+        if(wide_renderer){
+            const unsigned translucent=(value.clouds?(1u<<unsigned(Presentation::Effect::cloud)):0)|
+                (value.trails?(1u<<unsigned(Presentation::Effect::missile_trail)):0)|
+                (value.explosions?(1u<<unsigned(Presentation::Effect::explosion)):0)|
+                (value.afterburner?(1u<<unsigned(Presentation::Effect::afterburner)):0);
+            wide_renderer->player_aircraft(aircraft_renderer->available(),translucent,aircraft_renderer->supported_roots());
+        }
 
         if(gpu_scaler) {last_sprite_frame=UINT64_MAX;return true;}
-        if(value.sprites==Frontend::SpriteFilter::none && !value.clouds && !value.trails && !value.explosions && !value.afterburner && !value.ground && !Frontend::is_wide(value)) return true;
+        if(value.sprites==Frontend::SpriteFilter::none && !value.clouds && !value.trails && !value.explosions && !value.afterburner && !value.ground && !detached) return true;
         const auto factor=Frontend::sprite_factor(value.sprites);
         auto* next=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,
             SDL_TEXTUREACCESS_STREAMING,Frontend::viewport_width(value)*factor,SCREEN_HEIGHT*factor);
@@ -220,13 +327,75 @@ int main(int argc, char** argv)try
         std::cerr<<"Saved sprite filter unavailable: "<<SDL_GetError()<<'\n';
         settings.sprites=Frontend::SpriteFilter::none;
     }
-    game.capture_ground_horizon(settings.ground&&!Frontend::is_wide(settings));
-    game.capture_sprite_scene(!Frontend::is_wide(settings) && (settings.clouds || settings.trails || settings.explosions || settings.afterburner));
-    game.capture_sprite_presentation(!Frontend::is_wide(settings) && (gpu_scaler || settings.sprites!=Frontend::SpriteFilter::none || settings.clouds || settings.trails || settings.explosions || settings.afterburner || settings.ground));
+    const bool native_planes=!Frontend::is_wide(settings)&&settings.hud==Frontend::Hud::original&&!aircraft_renderer->available();
+    game.capture_ground_horizon(settings.ground&&native_planes);
+    game.capture_sprite_scene(native_planes && (settings.clouds || settings.trails || settings.explosions || settings.afterburner));
+    game.capture_sprite_presentation(native_planes && (gpu_scaler || settings.sprites!=Frontend::SpriteFilter::none || settings.clouds || settings.trails || settings.explosions || settings.afterburner || settings.ground));
     auto menu=std::make_unique<Frontend::NativeMenu>(renderer,roms,settings,Frontend::pixel_art_available());
+    Frontend::NativePractice practice;
+    menu->practice_allowed=recording_path.empty();
+    menu->shuffle_allowed=recording_path.empty();
+    menu->custom_hud_available=hud_renderer->custom_available();
     menu->feedback=feedback.get();menu->input=input_manager.get();menu->music=music_player.get();
+    menu->shader_status=shader_status;
+    auto accepted_settings=settings;
+    std::optional<Frontend::Settings> pending_shader_settings;
+    bool applying_shader_settings=false;
+    auto shader_dialog=std::make_shared<ShaderDialogState>();
+    menu->choose_shader=[&] {
+        {
+            std::lock_guard lock(shader_dialog->mutex);
+            if(shader_dialog->active || shader_dialog->reply)return;
+            shader_dialog->active=true;
+        }
+        static const SDL_DialogFileFilter filter{"RetroArch Slang preset","slangp"};
+        auto request=std::make_unique<ShaderDialogRequest>();
+        request->state=shader_dialog;request->initial_path=menu->settings.shader_preset;
+#ifdef __APPLE__
+        if(request->initial_path.empty())if(const char* user_home=std::getenv("HOME")) {
+            const auto installed=std::filesystem::path(user_home)/"Library/Application Support/RetroArch/shaders/shaders_slang/crt";
+            std::error_code error;
+            if(std::filesystem::is_directory(installed,error))request->initial_path=installed.string();
+        }
+#endif
+        auto* raw=request.release();
+        SDL_ShowOpenFileDialog(shader_dialog_result,raw,window,&filter,1,
+            raw->initial_path.empty()?nullptr:raw->initial_path.c_str(),false);
+    };
+    // Renderer-owned objects release their textures before the backend dies.
+    // Board, audio, input, menus and the current frame remain live throughout.
+    const auto rebuild_renderer=[&](bool native_metal,const Frontend::Settings& value) {
+        slang_renderer.reset();menu->rebind(nullptr,roms);hud_renderer->rebind(nullptr);
+        aircraft_renderer.reset();crt_renderer.reset();
+        if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);
+        gpu_scaler.reset();sprite_texture=nullptr;sprite_texture_factor=0;
+        SDL_DestroyTexture(texture);texture=nullptr;
+        SDL_DestroyRenderer(renderer);renderer=nullptr;
+        if(gpu_device)SDL_DestroyGPUDevice(gpu_device);gpu_device=nullptr;
+        if(!create_renderer(native_metal))throw std::runtime_error(std::string("Display backend unavailable: ")+SDL_GetError());
+        texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,SCREEN_WIDTH,SCREEN_HEIGHT);
+        if(!texture || !Frontend::apply_settings(window,renderer,texture,value))throw std::runtime_error(SDL_GetError());
+        hud_renderer->rebind(renderer);crt_renderer=std::make_unique<Frontend::NativeCrt>(renderer);
+        aircraft_renderer=std::make_unique<Frontend::NativePlayerAircraft>(renderer);
+        if(!player_aircraft.empty() && !aircraft_renderer->load(player_aircraft))
+            std::cerr<<"Player-aircraft art reload unavailable: "<<aircraft_renderer->load_error()<<'\n';
+        if(gpu_device)gpu_scaler=std::make_unique<Frontend::GPUSpriteScaler>(renderer);
+        menu->rebind(renderer,roms);
+        if(!configure_sprite_texture(value))throw std::runtime_error(SDL_GetError());
+        last_sprite_frame=UINT64_MAX;
+    };
     menu->apply=[&](const Frontend::Settings& changed) {
-        const auto previous=menu->settings;
+        const auto previous=accepted_settings;
+        const bool shader_change=changed.crt!=previous.crt &&
+            (changed.crt==Frontend::Crt::retroarch || previous.crt==Frontend::Crt::retroarch);
+        if(!applying_shader_settings && (pending_shader_settings || shader_change ||
+                changed.shader_preset!=previous.shader_preset || changed.shader_runtime!=previous.shader_runtime)) {
+            if(changed.crt==Frontend::Crt::retroarch && changed.shader_preset.empty()) {
+                menu->shader_status="CHOOSE A .SLANGP PRESET";menu->choose_shader();return false;
+            }
+            pending_shader_settings=changed;return true;
+        }
+        if(changed.hud==Frontend::Hud::custom && !hud_renderer->custom_available())return false;
         if(!Frontend::apply_settings(window,renderer,texture,changed)) {
             std::cerr << "Presentation setting unavailable: " << SDL_GetError() << '\n';
             Frontend::apply_settings(window,renderer,texture,previous); return false;
@@ -235,9 +404,10 @@ int main(int argc, char** argv)try
             configure_sprite_texture(previous);Frontend::apply_settings(window,renderer,texture,previous);
             return false;
         }
-        game.capture_ground_horizon(changed.ground&&!Frontend::is_wide(changed));
-        game.capture_sprite_scene(!Frontend::is_wide(changed) && (changed.clouds || changed.trails || changed.explosions || changed.afterburner));
-        game.capture_sprite_presentation(!Frontend::is_wide(changed) && (gpu_scaler || changed.sprites!=Frontend::SpriteFilter::none || changed.clouds || changed.trails || changed.explosions || changed.afterburner || changed.ground));
+        const bool native_planes=!Frontend::is_wide(changed)&&changed.hud==Frontend::Hud::original&&!aircraft_renderer->available();
+        game.capture_ground_horizon(changed.ground&&native_planes);
+        game.capture_sprite_scene(native_planes && (changed.clouds || changed.trails || changed.explosions || changed.afterburner));
+        game.capture_sprite_presentation(native_planes && (gpu_scaler || changed.sprites!=Frontend::SpriteFilter::none || changed.clouds || changed.trails || changed.explosions || changed.afterburner || changed.ground));
         if(changed.viewport!=previous.viewport&&!changed.fullscreen){
             int ww,wh;SDL_GetWindowSize(window,&ww,&wh);
             SDL_SetWindowSize(window,int(std::lround(wh*Frontend::viewport_width(changed)/224.0)),wh);
@@ -247,6 +417,8 @@ int main(int argc, char** argv)try
         }
         SDL_Rect safe_area{int((Frontend::viewport_width(changed)-SCREEN_WIDTH)/2),0,SCREEN_WIDTH,SCREEN_HEIGHT};SDL_SetRenderViewport(renderer,&safe_area);
         menu->notice.clear();
+        accepted_settings=changed;
+        if(slang_renderer)slang_renderer->invalidate();
         if(!Frontend::save_settings(settings_path,changed)) {
             menu->notice="SETTINGS NOT SAVED";
             std::cerr << "Cannot save frontend settings to " << settings_path << '\n';
@@ -259,16 +431,16 @@ int main(int argc, char** argv)try
         SDL_SetRenderViewport(renderer,nullptr);
         SDL_Surface* preview=SDL_RenderReadPixels(renderer,nullptr);
         if(!preview || !SDL_SaveBMP(preview,menu_preview.c_str())) throw std::runtime_error(SDL_GetError());
-        SDL_DestroySurface(preview);menu.reset();feedback.reset();input_manager.reset();music_player.reset();if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);gpu_scaler.reset();SDL_DestroyTexture(texture);
+        SDL_DestroySurface(preview);shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);gpu_scaler.reset();SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);if(gpu_device)SDL_DestroyGPUDevice(gpu_device);SDL_DestroyWindow(window);SDL_Quit();return 0;
     }
-    if(!frame_limit && !boot_to_flight && !start_stage) menu->open(game);
+    if(!frame_limit && !boot_to_flight && !start_stage && !practice_start_stage && !shuffle_start) menu->open(game);
 
     auto audio_output=std::make_unique<Frontend::AudioOutput>(settings_path.empty()?"":settings_path+".output");
     menu->audio=audio_output.get();
     bool cockpit_enabled=audio_output->settings.profile!=Frontend::AudioProfile::original;
     game.capture_cockpit(cockpit_enabled);
-    if (boot_to_flight || start_stage) startup();
+    if (!shuffle_start && !practice_start_stage && (boot_to_flight || start_stage)) startup();
     music_player->output=audio_output.get();
 
     const double tick_seconds = GameSession::frame_seconds;
@@ -276,7 +448,7 @@ int main(int argc, char** argv)try
     uint64_t previous_counter = SDL_GetPerformanceCounter();
     uint64_t profile_start = previous_counter;
     unsigned profile_frames=0, profile_displays=0;
-    double profile_core=0, profile_present=0, profile_filter=0, profile_scene=0;
+    double profile_core=0, profile_present=0, profile_filter=0, profile_scene=0, profile_crt=0;
     unsigned filter_frames=0;
     Frontend::Performance performance;
     double accumulated_seconds = 0.0;
@@ -284,30 +456,123 @@ int main(int argc, char** argv)try
     auto reset_pacing=[&] {
         accumulated_seconds=0; previous_counter=SDL_GetPerformanceCounter();
         profile_start=previous_counter;profile_frames=profile_displays=0;profile_core=profile_present=0;
-        performance={};last_sprite_frame=UINT64_MAX;profile_filter=0;profile_scene=0;filter_frames=0;
+        performance={};last_sprite_frame=UINT64_MAX;profile_filter=0;profile_scene=0;profile_crt=0;filter_frames=0;
     };
     auto sync_audio=[&] {audio_output->pause(game.paused());};
     sync_audio();
-    auto restart_board=[&] {
-        if(wide_renderer)wide_renderer->reset();feedback->restart();input_manager->block();music_player->restarted();game.restart();
-        game.set_dip_switches(Frontend::dip_switches(menu->settings));
-        if(recording)recording=std::make_unique<PhysicalRecording>(recording_path+".restart"+std::to_string(++recording_session),roms,game.dip_switches());
-        if(start_stage)startup();
+    uint64_t last_shader_frame=UINT64_MAX;
+    auto apply_pending_shader=[&] {
+        if(!pending_shader_settings)return;
+        const auto requested=*pending_shader_settings;pending_shader_settings.reset();
+        const auto previous=accepted_settings;const bool previous_metal=metal_backend;
+#ifdef __APPLE__
+        const bool wants_metal=requested.crt==Frontend::Crt::retroarch;
+#else
+        const bool wants_metal=false;
+#endif
+        bool rebuilt=false,loaded=false;
+        audio_output->pause(true);audio_output->clear();
+        try {
+            if(wants_metal!=metal_backend) {rebuilt=true;rebuild_renderer(wants_metal,requested);}
+            if(requested.crt==Frontend::Crt::retroarch) {
+                if(!slang_renderer)slang_renderer=std::make_unique<Frontend::NativeSlang>(renderer,window);
+                if(!slang_renderer->load(requested.shader_preset,requested.shader_runtime))
+                    throw std::runtime_error(slang_renderer->error());
+                loaded=true;
+            } else slang_renderer.reset();
+            applying_shader_settings=true;
+            const bool applied=menu->apply(requested);applying_shader_settings=false;
+            if(!applied)throw std::runtime_error(std::string("Shader presentation settings unavailable: ")+SDL_GetError());
+            menu->settings=requested;
+            menu->shader_status=requested.crt==Frontend::Crt::retroarch?
+                "ACTIVE: "+std::filesystem::path(requested.shader_preset).filename().string():"";
+            last_shader_frame=UINT64_MAX;
+        } catch(const std::exception& error) {
+            applying_shader_settings=false;
+            const std::string failure=error.what();
+            auto restored=previous;
+            // A failed preset reload keeps its accepted chain. A backend
+            // replacement needs fresh renderer textures and a restored chain.
+            if(rebuilt)rebuild_renderer(previous_metal,restored);
+            if(restored.crt==Frontend::Crt::retroarch && (rebuilt || loaded)) {
+                if(!slang_renderer)slang_renderer=std::make_unique<Frontend::NativeSlang>(renderer,window);
+                if(!slang_renderer->load(restored.shader_preset,restored.shader_runtime)) {
+                    restored.crt=Frontend::Crt::off;rebuild_renderer(false,restored);
+                }
+            }
+            applying_shader_settings=true;
+            if(!menu->apply(restored))throw std::runtime_error(std::string("Display rollback failed: ")+SDL_GetError());
+            applying_shader_settings=false;menu->settings=restored;
+            menu->shader_status=failure;menu->notice="SHADER UNAVAILABLE";
+            std::cerr<<"RetroArch shader unavailable: "<<failure<<"; previous game display restored.\n";
+        }
+        audio_output->clear();reset_pacing();sync_audio();
+    };
+    auto update_title=[&] {
+        const auto title=game.shuffled()?"AfterBurner2-Recomp — Shuffle (F5 retries this order)":practice.stage()?"AfterBurner2-Recomp — Practice from Stage "+std::to_string(practice.stage())+" (F5 to retry)":std::string("AfterBurner2-Recomp");
+        SDL_SetWindowTitle(window,(title+(game.paused()?" — Paused (P to resume)":"")).c_str());
+    };
+    auto restart_board=[&](unsigned selected_practice=0,bool return_arcade=false,const Shuffle::Plan* new_shuffle=nullptr) {
+        const bool retry_shuffle=game.shuffled() && !selected_practice && !return_arcade && !new_shuffle;
+        const auto target=return_arcade?0:selected_practice?selected_practice:practice.stage();
+        if((target || new_shuffle || retry_shuffle) && recording)throw std::runtime_error("Enhanced gameplay unavailable while recording");
+        if(wide_renderer)wide_renderer->reset();feedback->restart();input_manager->block();music_player->restarted();
+        if(slang_renderer)slang_renderer->invalidate();last_shader_frame=UINT64_MAX;
+        audio_output->pause(true);audio_output->clear();
+        const auto switches=Frontend::dip_switches(menu->settings);
+        // Follow hidden boot music events without queueing hidden playback.
+        auto* playback=music_player->output;music_player->output=nullptr;
+        try {
+            if(new_shuffle || retry_shuffle) {
+                if(new_shuffle)game.start_shuffle(*new_shuffle);else game.retry_shuffle();
+                game.set_dip_switches(switches);practice={};start_stage=0;
+                const auto* plan=game.shuffle_plan();
+                std::cout<<"Shuffle seed "<<plan->seed<<": ";
+                for(unsigned i=0;i<plan->stages.size();++i)std::cout<<(i?",":"")<<plan->stages[i];
+                std::cout<<std::endl;
+                startup();
+            }
+            else if(target)practice.start(game,target,switches,[&]{SDL_PumpEvents();take_audio();game.take_feedback();});
+            else {
+                practice.arcade(game,switches);
+                if(return_arcade)start_stage=0;
+                if(recording)recording=std::make_unique<PhysicalRecording>(recording_path+".restart"+std::to_string(++recording_session),roms,game.dip_switches());
+                if(start_stage)startup();
+            }
+        } catch(...) {music_player->output=playback;throw;}
+        music_player->output=playback;
+        menu->active_practice_stage=practice.stage();
+        menu->shuffle_active=game.shuffled();
         audio_output->clear();
         reset_pacing();sync_audio();
-        SDL_SetWindowTitle(window,"AfterBurner2-Recomp");
+        update_title();
     };
     auto menu_action=[&](Frontend::NativeMenu::Action action) {
+        if(action==Frontend::NativeMenu::Action::shuffle) {
+            if(recording){menu->notice="UNAVAILABLE WHILE RECORDING";return;}
+            const auto plan=Shuffle::generate(game.stage_count(),std::random_device{}());
+            menu->close(game);restart_board(0,false,&plan);return;
+        }
+        if(action==Frontend::NativeMenu::Action::practice || action==Frontend::NativeMenu::Action::arcade) {
+            if(recording){menu->notice="UNAVAILABLE WHILE RECORDING";return;}
+            menu->close(game);
+            restart_board(menu->practice_stage,action==Frontend::NativeMenu::Action::arcade);return;
+        }
         if(action==Frontend::NativeMenu::Action::restart) {menu->close(game);restart_board();return;}
         if(action==Frontend::NativeMenu::Action::quit) {running=false;return;}
         if(action==Frontend::NativeMenu::Action::close || action==Frontend::NativeMenu::Action::start) {
             menu->close(game);
+            // A settings edit can capture the plain menu background at this
+            // same paused frame. Recompose the enhanced scene when it closes.
+            if(slang_renderer)slang_renderer->invalidate();
             // Enter the arcade at its current cold-board frame. Only explicit
             // --boot-to-flight/--stage requests supply automatic coin/start.
             input_manager->block();reset_pacing();sync_audio();
-            SDL_SetWindowTitle(window,game.paused()?"AfterBurner2-Recomp — Paused (P to resume)":"AfterBurner2-Recomp");
+            update_title();
         }
     };
+    if(practice_start_stage){menu->practice_stage=practice_start_stage;restart_board(practice_start_stage);}
+    if(shuffle_start){const auto plan=Shuffle::generate(game.stage_count(),shuffle_seed?*shuffle_seed:std::random_device{}());restart_board(0,false,&plan);}
     while (running)
     {
         music_player->poll();music_player->update_preview();
@@ -350,11 +615,24 @@ int main(int argc, char** argv)try
                 feedback->stop();input_manager->block();game.set_paused(!game.paused());
                 sync_audio();
                 reset_pacing();
-                SDL_SetWindowTitle(window, game.paused() ? "AfterBurner2-Recomp — Paused (P to resume)" : "AfterBurner2-Recomp");
+                update_title();
             }
         }
 
         if (!running) break;
+        std::optional<ShaderDialogReply> shader_reply;
+        {
+            std::lock_guard lock(shader_dialog->mutex);
+            shader_reply=std::move(shader_dialog->reply);shader_dialog->reply.reset();
+        }
+        if(shader_reply) {
+            if(!shader_reply->error.empty())menu->shader_status="FILE DIALOG: "+shader_reply->error;
+            else if(!shader_reply->cancelled) {
+                auto candidate=menu->settings;candidate.shader_preset=shader_reply->path;candidate.crt=Frontend::Crt::retroarch;
+                pending_shader_settings=std::move(candidate);
+            }
+        }
+        apply_pending_shader();
         if(input_manager->menu_pressed()) {
             if(menu->is_open())menu_action(menu->key(SDLK_ESCAPE));
             else {menu->open(game);reset_pacing();sync_audio();}
@@ -386,7 +664,7 @@ int main(int argc, char** argv)try
 
         auto planes=game.sprite_presentation();auto scene=game.sprite_scene();
         unsigned render_width=SCREEN_WIDTH;bool wide_ready=false;
-        if(wide_renderer){const auto scene_start=SDL_GetPerformanceCounter();auto captured=game.wide_scene();if(captured.ready)wide_renderer->render(captured.clips,captured.info.number,menu->settings.ground);
+        if(wide_renderer){const auto scene_start=SDL_GetPerformanceCounter();auto captured=game.wide_scene();if(captured.ready)wide_renderer->render(captured.clips,captured.info.number,menu->settings.ground,Frontend::is_wide(menu->settings),menu->settings.hud==Frontend::Hud::original);
             auto wide=wide_renderer->view();wide_ready=wide.ready;
             if(wide_ready){render_width=wide.width;planes={wide.background,wide.sprites,wide.protection,true};scene={wide.heads,wide.fragments,true};}
             else planes.ready=false;
@@ -401,34 +679,71 @@ int main(int argc, char** argv)try
         }
         SDL_SetRenderViewport(renderer,nullptr);
         SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
-        if(composed) {
-            const auto factor=Frontend::sprite_factor(menu->settings.sprites);
-            if(!gpu_scaler && (!sprite_texture || sprite_texture_factor!=factor))
-                throw std::runtime_error("Sprite texture configuration lost");
-            if(last_sprite_frame!=game.info().number) {
-                const auto filter_start=SDL_GetPerformanceCounter();
+        const uint64_t shader_frame=game.info().number;
+        const bool reset_shader_history=last_shader_frame!=UINT64_MAX && shader_frame<last_shader_frame;
+        if(reset_shader_history && slang_renderer)slang_renderer->invalidate();
+        const bool shader_active=menu->settings.crt==Frontend::Crt::retroarch && slang_renderer && slang_renderer->available();
+        const bool shader_cached=shader_active && !slang_renderer->needs_frame(shader_frame);
+        bool shader_capture=false;
+        if(shader_active && !shader_cached) {
+            const auto started=SDL_GetPerformanceCounter();
+            shader_capture=slang_renderer->begin(Frontend::viewport_width(menu->settings),shader_frame);
+            profile_crt+=(SDL_GetPerformanceCounter()-started)*1000.0/counter_frequency;
+            if(!shader_capture)menu->shader_status=slang_renderer->error();
+            else {SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);}
+        }
+        if(!shader_cached) {
+            if(composed) {
+                const auto factor=Frontend::sprite_factor(menu->settings.sprites);
+                if(!gpu_scaler && (!sprite_texture || sprite_texture_factor!=factor))
+                    throw std::runtime_error("Sprite texture configuration lost");
+                if(last_sprite_frame!=game.info().number) {
+                    const auto filter_start=SDL_GetPerformanceCounter();
 
-                const unsigned cloud_alpha=menu->settings.clouds?160:255,trail_alpha=menu->settings.trails?112:255,explosion_alpha=menu->settings.explosions?Presentation::explosion_opacity:255,afterburner_alpha=menu->settings.afterburner?Presentation::afterburner_opacity:255;
-                if(gpu_scaler) {
-                    sprite_texture=gpu_scaler->compose(planes.background,planes.sprites,render_width,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha);
-                    if(!Frontend::apply_texture_settings(sprite_texture,menu->settings))throw std::runtime_error(SDL_GetError());
-                } else {
-                    auto foreground=planes.sprites,background=planes.background;
-                    if(scene.ready){effect_background.assign(planes.background.begin(),planes.background.end());effect_pixels.resize(planes.sprites.size());for(size_t i=0;i<effect_pixels.size();++i)effect_pixels[i]=Presentation::foreground(scene.fragments,scene.heads[i],cloud_alpha,trail_alpha,&effect_background[i],explosion_alpha,afterburner_alpha);foreground=effect_pixels;background=effect_background;}
-                    const auto pixels=sprite_scaler.compose(background,foreground,render_width,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels);
-                    if(!SDL_UpdateTexture(sprite_texture,nullptr,pixels.data(),render_width*factor*4))throw std::runtime_error(SDL_GetError());
+                    const unsigned cloud_alpha=menu->settings.clouds?160:255,trail_alpha=menu->settings.trails?112:255,explosion_alpha=menu->settings.explosions?Presentation::explosion_opacity:255,afterburner_alpha=menu->settings.afterburner?Presentation::afterburner_opacity:255;
+                    if(gpu_scaler) {
+                        sprite_texture=gpu_scaler->compose(planes.background,planes.sprites,render_width,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha);
+                        if(!Frontend::apply_texture_settings(sprite_texture,menu->settings))throw std::runtime_error(SDL_GetError());
+                    } else {
+                        auto foreground=planes.sprites,background=planes.background;
+                        if(scene.ready){effect_background.assign(planes.background.begin(),planes.background.end());effect_pixels.resize(planes.sprites.size());for(size_t i=0;i<effect_pixels.size();++i)effect_pixels[i]=Presentation::foreground(scene.fragments,scene.heads[i],cloud_alpha,trail_alpha,&effect_background[i],explosion_alpha,afterburner_alpha);foreground=effect_pixels;background=effect_background;}
+                        const auto pixels=sprite_scaler.compose(background,foreground,render_width,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels);
+                        if(!SDL_UpdateTexture(sprite_texture,nullptr,pixels.data(),render_width*factor*4))throw std::runtime_error(SDL_GetError());
+                    }
+                    profile_filter+=(SDL_GetPerformanceCounter()-filter_start)*1000.0/counter_frequency;
+                    ++filter_frames;
+                    last_sprite_frame=game.info().number;
                 }
-                profile_filter+=(SDL_GetPerformanceCounter()-filter_start)*1000.0/counter_frequency;
-                ++filter_frames;
-                last_sprite_frame=game.info().number;
+                SDL_RenderTexture(renderer,sprite_texture,nullptr,nullptr);
+            } else {SDL_FRect center{float((Frontend::viewport_width(menu->settings)-SCREEN_WIDTH)/2),0,float(SCREEN_WIDTH),float(SCREEN_HEIGHT)};SDL_RenderTexture(renderer, texture, nullptr, &center);}
+            if(composed && wide_ready)aircraft_renderer->draw(wide_renderer->view().player,Frontend::viewport_width(menu->settings));
+            if(composed && wide_ready && menu->settings.hud!=Frontend::Hud::original)
+                hud_renderer->draw(wide_renderer->view().hud,menu->settings.hud,Frontend::viewport_width(menu->settings));
+            if(shader_capture) {
+                const auto started=SDL_GetPerformanceCounter();
+                if(!slang_renderer->end(shader_frame,1.0/GameSession::frame_seconds,
+                        GameSession::frame_seconds*1000000.0,reset_shader_history))
+                    menu->shader_status=slang_renderer->error();
+                profile_crt+=(SDL_GetPerformanceCounter()-started)*1000.0/counter_frequency;
+                last_shader_frame=shader_frame;
             }
-            SDL_RenderTexture(renderer,sprite_texture,nullptr,nullptr);
-        } else {SDL_FRect center{float((Frontend::viewport_width(menu->settings)-SCREEN_WIDTH)/2),0,float(SCREEN_WIDTH),float(SCREEN_HEIGHT)};SDL_RenderTexture(renderer, texture, nullptr, &center);}
+        } else {
+            const auto started=SDL_GetPerformanceCounter();slang_renderer->draw_cached();
+            profile_crt+=(SDL_GetPerformanceCounter()-started)*1000.0/counter_frequency;
+            if(!slang_renderer->error().empty())menu->shader_status=slang_renderer->error();
+        }
+        const auto crt_start=SDL_GetPerformanceCounter();
+        if(menu->settings.crt!=Frontend::Crt::retroarch && !crt_renderer->draw(menu->settings)) {
+            std::cerr<<"CRT display unavailable; switching Off: "<<SDL_GetError()<<'\n';
+            menu->settings.crt=Frontend::Crt::off;crt_renderer->clear();menu->notice="CRT DISPLAY UNAVAILABLE";
+            accepted_settings.crt=Frontend::Crt::off;
+        }
+        profile_crt+=(SDL_GetPerformanceCounter()-crt_start)*1000.0/counter_frequency;
         SDL_Rect safe_area{int((Frontend::viewport_width(menu->settings)-SCREEN_WIDTH)/2),0,SCREEN_WIDTH,SCREEN_HEIGHT};
         SDL_SetRenderViewport(renderer,&safe_area);
 
         if(menu->is_open())menu->draw();
-        else menu->draw_stats(performance,game.paused());
+        else {menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
         if(!frame_preview.empty() && frame_limit && simulated_frames>=frame_limit) {
             SDL_SetRenderViewport(renderer,nullptr);
             auto* preview=SDL_RenderReadPixels(renderer,nullptr);
@@ -478,6 +793,7 @@ int main(int argc, char** argv)try
                     profile_frames?profile_core/profile_frames:0,profile_present/profile_displays,
                     filter_frames?profile_filter/filter_frames:0};
                 if(profile && !game.paused()) {
+                    const auto audio=audio_output->status();
                     const auto title=std::string("AfterBurner2-Recomp — simulation ")+std::to_string(profile_frames/seconds)+" FPS";
                     SDL_SetWindowTitle(window,title.c_str());
                     std::cout<<"Application performance: simulation_fps="<<profile_frames/seconds
@@ -485,15 +801,27 @@ int main(int argc, char** argv)try
                              <<" filter_submit_ms="<<(filter_frames?profile_filter/filter_frames:0)
                              <<" board_ms="<<(profile_frames?profile_core/profile_frames:0)
                              <<" wide_scene_ms="<<profile_scene/profile_displays
-                             <<" present_wait_ms="<<profile_present/profile_displays<<'\n';
+                             <<" crt_submit_ms="<<profile_crt/profile_displays
+                             <<" crt_cache_bytes="<<crt_renderer->cached_bytes()
+                             <<" crt_rebuilds="<<crt_renderer->rebuilds()
+                             <<" shader="<<(shader_active?(shader_cached?"cached":"active"):"off")
+                             <<" shader_parameters="<<(slang_renderer?slang_renderer->parameters().size():0)
+                             <<" present_wait_ms="<<profile_present/profile_displays
+                             <<" audio_buffer_ms="<<audio.buffered*1000
+                             <<" audio_pending_ms="<<audio.pending*1000
+                             <<" audio_peak_buffer_ms="<<audio.peak_buffered*1000
+                             <<" audio_peak_pending_ms="<<audio.peak_pending*1000
+                             <<" audio_underruns="<<audio.underruns
+                             <<" audio_reprimes="<<audio.reprimes
+                             <<" audio_recoveries="<<audio.recoveries<<'\n';
                 }
-                profile_start=now; profile_frames=profile_displays=0; profile_core=profile_present=0; profile_filter=0;profile_scene=0;filter_frames=0;
+                profile_start=now; profile_frames=profile_displays=0; profile_core=profile_present=0; profile_filter=0;profile_scene=0;profile_crt=0;filter_frames=0;
             }
         }
     }
 
     music_player->output=nullptr;menu->audio=nullptr;audio_output.reset();
-    menu.reset();feedback.reset();input_manager.reset();music_player.reset();
+    shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();
     if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);
     gpu_scaler.reset();
     SDL_DestroyTexture(texture);

@@ -1,8 +1,9 @@
 # Enhancement backlog
 
-Difficulty ratings assessed **2026-10-17**; feature status updated **2026-10-19**.
+Difficulty ratings assessed **2026-10-17**; feature status updated **2026-10-23**.
 The published release is
-[v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2);
+[macOS v0.1.0-preview.3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3)
+with the [Windows Preview 2 download](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2) retained;
 see the roadmap for platform results and outstanding validation.
 Use the [summarized roadmap](ROADMAP.md#summarized-roadmap) for priorities and
 [architecture guide](ENHANCEMENT_ARCHITECTURE.md) for implemented contracts.
@@ -32,19 +33,23 @@ ratings apply to future work, not delivered foundations.
 
 | Area | Current implementation | Remaining acceptance / extension |
 | --- | --- | --- |
-| Menus | Arcade-font initial/pause menus; Video, Controls, Audio, DIP Switches; live bound-input calibration display, scroll hints, mouse/controller navigation, persisted preferences | Service/sound test, coin ratios, high-score persistence and mode selection |
+| Menus | Arcade-font initial/pause menus; Stage Select / Practice, Shuffle, Video, Controls, Audio, DIP Switches; live bound-input calibration display, scroll hints, mouse/controller navigation, persisted preferences | Service/sound test, coin ratios, high-score persistence and additional modes |
 | Input | Keyboard/gamepad/raw-joystick remapping, axes/buttons/hats, deadzone/sensitivity/polarity, full-axis throttle, hotplug and community mappings | Named HOTAS/retro-controller presets, response curves and physical calibration across platforms |
 | Feedback | SDL body/trigger rumble, motor tests, device selection, gains, four verified cues and lifecycle stops | See [haptics plan](HAPTICS_PLAN.md): Windows/Linux/fallback hardware, warning cues, stick forces and motion telemetry |
-| Presentation | Off/EPX/Scale3x/2xSaI/Super2xSaI/ScaleFX; GPU composition with CPU fallback; independent original-art opacity | Other backends, sustained performance, new assets and richer effects |
+| Presentation | Off/EPX/Scale3x/2xSaI/Super2xSaI/ScaleFX; GPU composition with CPU fallback; independent original-art opacity; Off/Subtle/Arcade CRT and optional macOS Metal RetroArch `.slangp` presets with an external runtime | Other shader backends, HDR, sustained performance and new assets |
 | Ground/horizon | Targeted roll-wedge correction; wide-plane corner/clipped-horizon fill, both actual roll directions and terrain protection checked | Broader scene audit and optional continuous ground projection |
-| Widescreen | 16:9 preview and local 16:10 source addition with wider road/tiles/sprites, detached scenery, horizon/water extension, native request/depth-drop recovery and dynamic presentation storage | Broader scene/performance/platform acceptance for both widths, ultrawide and optional HUD anchoring; [plan](WIDESCREEN_PLAN.md) |
-| Music | Six WAV/FLAC replacements, preview/fallback, separate gains and live active-song changes; user-provided CD soundtrack files supported | Four remaining natural song contexts, natural fades and broader listening checks; [plan](MUSIC_REPLACEMENT_PLAN.md) |
-| Spatial output | OpenAL Soft chip-rate interpolation, headphone HRTF, 2.1/5.1 modes and direct stereo music | Voice/cabinet audit, physical channel/localization tests and long-session latency; [plan](SPATIAL_AUDIO_PLAN.md) |
-| Distribution | ROM-free Apple Silicon/macOS 26+ and Windows x64 ZIPs, bundled libraries/sources/notices and checksums | macOS package refresh, broader OS/architecture packages and signing/notarization |
+| Widescreen | 16:9 and 16:10 previews with wider road/tiles/sprites, detached scenery, horizon/water extension, native request/depth-drop recovery and dynamic presentation storage | Broader scene/performance/platform acceptance for both widths, ultrawide and optional HUD anchoring; [plan](WIDESCREEN_PLAN.md) |
+| Music | Six WAV/FLAC replacements, preview/fallback, separate gains and live active-song changes; all six native song contexts/fades observed | Replacement-file natural fade and listening checks; [plan](MUSIC_REPLACEMENT_PLAN.md) |
+| Spatial output | OpenAL Soft chip-rate interpolation, headphone HRTF, 2.1/5.1 modes, direct stereo music, reviewed routing, stall recovery and original Deluxe stereo wiring audit | Revised-cue listening, physical surround/unplug, other platforms and end-to-end latency; ABII cabinet-revision evidence; [plan](SPATIAL_AUDIO_PLAN.md) |
+| Distribution | ROM-free Apple Silicon/macOS 26+ Preview 3 and Windows x64 Preview 2 ZIPs, bundled libraries/sources/notices and checksums | Windows feature refresh, broader OS/architecture packages and signing/notarization |
 
-The integrated macOS source passed the complete `required` and supplemental
-`full` gates on 2026-10-19 after the cross-platform optimizations and local
-16:10/calibration additions; see the [current roadmap](ROADMAP.md#next-acceptance-tasks).
+The 2026-10-22 macOS checkpoint passed the complete `required` and supplemental
+`full` gates, including the local spatial-audio and HUD changes. The later CRT
+addition has separate local validation; see the
+[current roadmap](ROADMAP.md#next-acceptance-tasks).
+The integrated Preview 3 source subsequently passed a fresh complete
+`required` release gate on 2026-10-23; see
+[the release record](ENGINE_NOTES.md#preview-3-release-2026-10-23).
 Implementation and finite validation do not imply exhaustive visual, hardware
 or whole-credit fidelity acceptance. Original gameplay and native object pools
 remain unchanged.
@@ -65,15 +70,15 @@ remain unchanged.
 
 | Proposed increment | Assessed difficulty | Dependency / boundary |
 | --- | --- | --- |
-| CRT shaders and pacing improvements | 2–3/5 | Basic postprocessing uses the presentation backend; scanlines/mask/glow/curvature options and measured frame pacing need backend/load acceptance |
-| Sprite extraction CLI | 2/5 | Existing read-only decoding is a foundation; add reproducible ROM frame/asset identities and PNG export; no extraction option is implemented yet |
-| Replacement sprites, larger textures and RGB/RGBA assets | 4/5 | Runtime mapping from original descriptors/LODs to user-provided assets; preserve pivots, priority, shadows and Original fallback; includes asset interfaces, not production of a complete art set |
+| CRT display and pacing improvements | 2–3/5 remaining | Local [CRT display](CRT_DISPLAY.md) includes built-in scanlines/RGB mask and optional macOS Metal RetroArch `.slangp` presets for richer effects; broader shader backend/load acceptance, HDR, parameter UI and general pacing improvements remain |
+| Sprite extraction CLI | Implemented offline | [Indexed PNG export and JSON mapping](SPRITE_EXTRACTION.md): 2,931 structural record candidates, stable Sub ROM identities and renderer differential/mutations; semantic labels, palette assignment and general runtime catalog mapping remain open |
+| Replacement sprites, larger textures and RGB/RGBA assets | 4/5 remaining | Local [registered HD player-aircraft pack](SPRITE_REPLACEMENT.md) maps neutral/gentle-bank poses and ROM LODs to transparent output-resolution art with explicit bounds/pivots and native ownership; full animation sets, production registration/LOD art and effect-palette support remain |
 | Soft clouds, fading trails and additional visual particles | 3/5 | Existing ordered fragment interface plus RGBA assets and lifetime events; validate ordering and dense-scene cost; implemented original-art translucency is already separate |
-| High-resolution HUD / 4K presentation | 3–4/5 | Semantic text/instrument ownership, user-provided art and high-DPI/layout tests; current window/integer scaling is already available |
+| High-resolution HUD / 4K presentation | 3–4/5 | Local text-plane preview: Original / Sharp 3x / user indexed atlas, native palette/priority/frontiers and high-DPI output; semantic sprite instruments, production art and sustained/platform acceptance remain open; [scope and usage](HUD_PRESENTATION.md) |
 | Smoother sprite rotation | 3/5 | Stable pivots, interpolation or additional art/banks without changing native roll logic; preserve alignment and priority across rotation |
 | Additional scalers | 2–3/5 | CPU integration can reuse existing filter interfaces; GPU versions and border/readback comparisons add work; license compatibility required; xBRZ/ScaleHQ remain proposals |
 | 120/144 Hz presentation interpolation | 4/5 | Scene/state history, object correspondence across spawn/despawn and pacing independent of the original simulation; evaluate before changing gameplay cadence |
-| Additional aspect acceptance, ultrawide and optional pixel-aspect correction | 2–3/5 | 16:10 is now in local source and needs broader acceptance; ultrawide increases controller/culling and load coverage; explicit width/aspect policy and independent scene, UI, GPU and performance acceptance |
+| Additional aspect acceptance, ultrawide and optional pixel-aspect correction | 2–3/5 | 16:10 ships in macOS Preview 3 and needs broader acceptance; ultrawide increases controller/culling and load coverage; explicit width/aspect policy and independent scene, UI, GPU and performance acceptance |
 | Continuous ground/horizon projection | 4/5 | ROM-derived bank/pitch/altitude and layer audit across rolls/inversion; preserve the completed targeted correction and Original terrain behavior |
 
 Dynamic presentation storage already addresses native request/depth bottlenecks.
@@ -90,9 +95,9 @@ backlog sections; new encounter systems also require content and balance work.
 
 | Proposal | Assessed difficulty | Prerequisites / retained ideas |
 | --- | --- | --- |
-| Mission/stage selection and Time Attack | 3/5 | Verified stage initialization, lifecycle and timing; current debug stage entry is not a player-facing mission mode |
+| Mission/stage selection and Time Attack | 3/5 remaining | Local [Stage Select / Practice](PRACTICE_MODE.md) adds a fresh directed session, retry and arcade return; full entry-state fidelity, stage looping and Time Attack remain |
 | Missile near-miss scoring and sound cues | 3–4/5 | Verified trajectories/collision events, explicit bonus/combo policy and spatial whoosh cues |
-| Expanded gameplay object counts and basic arranged mode | 4/5 | Allocation/ownership, spawn sequencing, modifiers and balance; seeded/shuffled runs, daily seeds and palette/environment choices |
+| Expanded gameplay object counts and further arranged rules | 4/5 remaining | Local [Shuffle](SHUFFLE_MODE.md) provides continuous seeded stage permutations; expanded allocation/ownership, spawn sequencing, modifiers, balance, daily seeds and palette/environment choices remain |
 | Optional 60 Hz gameplay updates | 4/5 | Adapt movement, acceleration, timers, firing, spawning, rounding and collision order; preserve original logic/display cadence as default |
 | Procedural environments and formations | 4/5 | Mission/art/behavior interfaces: night/searchlight/flak, sea-skimming naval assault, urban trenches, severe weather, varied entry angles/hazards and optional run mutators |
 | Special stages | 4/5 | New content and encounter systems: airborne fortress, ICBM interception, fleet flagship, megacity dash and typhoon interception |

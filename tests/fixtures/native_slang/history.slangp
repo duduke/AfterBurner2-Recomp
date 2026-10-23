@@ -1,0 +1,5 @@
+# Self-authored fixture: previous original frame and explicit history reset.
+shaders = "1"
+shader0 = "history.slang"
+filter_linear0 = "false"
+wrap_mode0 = "clamp_to_edge"

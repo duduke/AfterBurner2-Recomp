@@ -1,8 +1,8 @@
 # Per-track music replacement
 
-**Status: shipped in the native frontend; natural-context acceptance remains open.**
-Updated **2026-10-19** against local source after
-[v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
+**Status: shipped; replacement-file listening acceptance remains open.**
+Updated **2026-10-23** for
+[macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
 Six mappings, -12 dB balance and live active-song changes are implemented.
 Original is the default for every track.
 
@@ -145,11 +145,14 @@ wrong song mapping, lost sequencer starts, FM effects classified as music,
 lost PCM percussion, bypassed replacement attenuation and deferred live selection. Original speaker/joint-audio and whole-host gates remain
 required, alongside the complete regression/mutation profile for shared changes.
 
-Natural recordings exercise Maximum Power and Final Take Off, shooting and
-music/effects overlap. The other four song descriptor layouts are ROM-checked,
-but their natural stage/ending/game-over/ranking contexts remain unverified.
-Replacement fade is unit-tested; these natural captures contain no fade updates.
-This feature does not establish full-game audio or progression acceptance.
+All six native music slots now occur in retained physical-input replays. The
+ending run records starts `1,3,2,2,2,4` in the command-table order above and 525
+fade updates; the neutral, continue and weapons runs each record 36 fades.
+Across all four runs, presentation capture preserves **104,452 native RGB/PCM/time
+frames exactly, zero skips**, against an untapped native session. Log:
+`build/workflow/20261022T155553.106603Z/01-verify-spatial-lifecycle.log`.
+This covers original music contexts and observed native fades. Replacement-file
+natural fade listening and continuous whole-credit MAME equality remain open.
 
 ## Current checkpoint and next work
 
@@ -160,7 +163,7 @@ The earlier balance/live-selection and six music-control checks remain in
 The packaged launch also activates OpenAL headphone HRTF; physical mix/localization
 and long-session acceptance remain separate.
 
-Next: capture the four remaining songs in their natural contexts and natural fade
-updates, then extend listening/headroom and device/lifecycle checks. Keep the
-existing two-song recordings and every retained control; descriptor-layout and
-unit fade checks do not substitute for those missing natural contexts.
+Next: check replacement files in all six natural contexts, including fade
+listening and mix/headroom, then extend physical device/lifecycle checks. Retain
+all natural recordings and negative controls; native context coverage and unit
+fade checks do not establish replacement-file listening acceptance.

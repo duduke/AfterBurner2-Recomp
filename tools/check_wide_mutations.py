@@ -25,8 +25,8 @@ MUTATIONS = [
     ('clip-palette', 'wide_scene.hpp', 'for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){\n            background[i]',
      'for(unsigned i=0;i<(c.bottom+1)*w;++i){\n            background[i]',
      'wide renderer lost partial-frontier palette/row ownership', 1),
-    ('native-feedback', 'wide_scene.hpp', 'void draw(const SceneClip& c,bool corrected,bool extend_visibility,const SceneClip* prev=nullptr){',
-     'void draw(const SceneClip& c,bool corrected,bool extend_visibility,const SceneClip* prev=nullptr){const_cast<SceneClip&>(c).sprites[15]^=1;',
+    ('native-feedback', 'wide_scene.hpp', 'void draw(const SceneClip& c,bool corrected,bool extend_visibility,bool original_hud,const SceneClip* prev=nullptr){',
+     'void draw(const SceneClip& c,bool corrected,bool extend_visibility,bool original_hud,const SceneClip* prev=nullptr){const_cast<SceneClip&>(c).sprites[15]^=1;',
      'wide renderer wrote native sprite feedback', 1),
 ]
 

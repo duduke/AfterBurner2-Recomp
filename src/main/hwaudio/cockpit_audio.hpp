@@ -8,7 +8,7 @@
 // owners stay on a nonpositional stereo bus. Cabinet geometry is user-selected.
 class CockpitRouting {
 public:
-    enum Group : unsigned { unknown, front, rear };
+    enum Group : unsigned { neutral, front, rear, unknown=neutral };
     struct Block {unsigned chip{};uint64_t first{};std::array<std::vector<XBoardPcm::Sample>,3> groups;std::vector<XBoardPcm::Sample> music;};
     std::array<Group,8> fm{};std::array<Group,16> pcm{};
     explicit CockpitRouting(std::span<const uint8_t> sound,std::span<const uint8_t> main):rom(sound){
@@ -17,13 +17,27 @@ public:
         std::array<Group,256> commands{};
         commands[0x90]=front;commands[0x9b]=front;
         commands[0x85]=rear;commands[0xda]=rear;commands[0xf6]=rear;
+        // $156F8-$1571C emits a left/right passing sound only after the
+        // object's depth crosses the player. Keep its original stereo side.
+        commands[0x6e]=rear;commands[0x6f]=rear;
+        // $14D96: enemy weapon allocation. Front is the enhanced cockpit
+        // presentation choice, not an assertion about cabinet wiring.
+        commands[0xd8]=front;
+        // Reviewed neutral cues: coin/credit $C79C ($7E), timed flag $DC5E
+        // ($9A), stage entry $D804 ($A5 -> direct sample $06), startup
+        // $BF56/$BF60 ($4C/$4E -> $26/$28), carrier sequence $104EE
+        // ($EF -> $46). Service labels identify INSERTED COIN, READY and
+        // FLIGHT 1 R2/L2; timer/carrier names and directions remain unverified.
+        // These cues intentionally retain original stereo.
         auto table=[&](unsigned address,unsigned n,unsigned stride,Group group){if(address+n*stride>main.size())throw std::runtime_error("cockpit sound table outside ROM");for(unsigned i=0;i<n;++i)commands[main[address+i*stride]]=group;};
         table(0xa716,16,1,front);table(0x91b8,8,1,rear);table(0xf757,8,2,rear);
         // $0A65 initializes FB A7 for the four propulsion variants. These
         // descriptors retain the engine sequencer; no throttle-driven replay.
         for(unsigned c=0x40;c<=0x43;++c)commands[c]=rear;
         for(unsigned c=0x40;c<256;++c){const auto root=word(0x735+2*(c-0x40)),handler=word(0x8b3+2*(c-0x40));
-            if(handler==0xac9||handler==0xad5||handler==0xad2||handler==0xa99||handler==0xa6b){merge(direct,root,commands[c]);}
+            // All these handlers enter the same $17A2 direct allocator.
+            // $AA6 sets flags before $AAE; $B02/$B22/$B44 jump directly.
+            if(handler==0xac9||handler==0xad5||handler==0xad2||handler==0xa99||handler==0xa6b||handler==0xaa6||handler==0xaae||handler==0xb02||handler==0xb22||handler==0xb44){merge(direct,root,commands[c]);}
             else if(commands[c]!=unknown){merge(descriptors,root,commands[c]);}
         }
     }

@@ -8,6 +8,8 @@
 #include "hwvideo/scene_snapshot.hpp"
 #include "hwvideo/wide_visibility.hpp"
 #include "engine/native_stage_skip.hpp"
+#include "engine/stage_catalog.hpp"
+#include "engine/shuffle_rom.hpp"
 #include <functional>
 #include <span>
 
@@ -48,12 +50,23 @@ public:
     explicit GameSession(Roms& rom, Extensions extensions = {})
         : game(rom), rom(rom), extensions(std::move(extensions)) {}
 
-    // Opt-in debug startup, after the normal physical coin/start boot.
-    void debug_skip_to_stage(unsigned stage) {
+    unsigned stage_count() const { return StageCatalog::count(rom); }
+    StageCatalog::Stage stage(unsigned number) const { return StageCatalog::get(rom, number); }
+
+    // Explicit directed Practice entry, after fresh physical coin/start boot.
+    // This retains first-stage accumulated state, not natural progression.
+    // The optional callback drains hidden startup output and pumps the frontend;
+    // it must not advance, pause or restart the session.
+    void enter_practice_stage(unsigned stage, const std::function<void()>& after_frame = {}) {
+        if (shuffled()) throw std::runtime_error("Practice entry requires a canonical board restart");
+        StageCatalog::get(rom, stage); // Reject invalid choices before execution.
         NativeStageSkip::enter(game.board(), rom, stage, [&] {
-            advance({}); take_audio();
+            advance({});
+            if (after_frame) after_frame(); else take_audio();
         });
     }
+    // Compatibility for existing directed sweeps and the --stage debug option.
+    void debug_skip_to_stage(unsigned stage) { enter_practice_stage(stage); }
 
     // One physical frame per advance, independent of display refresh. Pausing
     // admits no inputs and advances no CPU, audio device or gameplay timer.
@@ -77,16 +90,42 @@ public:
 
     void set_paused(bool paused) { paused_ = paused; }
     bool paused() const { return paused_; }
+    // Ordinary restart restores the canonical ROM data and original cold
+    // board defaults. Practice uses this boundary before directed startup.
     void restart() {
-        game.restart();
-        if(visibility)visibility->reset();
-        feedback.clear();feedback_frame={};if(capture_feedback_)bind_feedback_capture();
-        presentation_ready = false;
-        wide_clip_count=0;wide_clip_open=false;if(capture_wide){bind_wide_capture();bind_feedback_capture();}
-        if (capture_sprites) bind_sprite_capture();
-        audio.clear();
-        paused_ = false;
-        if (extensions.restarted) extensions.restarted();
+        const bool changed_rom = shuffled();
+        game.restart(rom); // Drop the bound host before releasing its ROM view.
+        shuffle_view.reset();
+        shuffle_plan_.reset();
+        restarted(changed_rom);
+    }
+    void start_shuffle(const Shuffle::Plan& plan) {
+        // Validate and allocate the complete next run before mutating the
+        // current board, pause state, outputs or successful Shuffle plan.
+        auto next_plan = std::make_unique<Shuffle::Plan>(plan);
+        auto next_view = std::make_unique<Shuffle::RomView>(rom, *next_plan);
+        const auto switches = dip_switches();
+        game.restart(next_view->rom());
+        shuffle_view = std::move(next_view);
+        shuffle_plan_ = std::move(next_plan);
+        game.board().switches = switches;
+        restarted(true);
+    }
+    bool shuffled() const { return bool(shuffle_view); }
+    const Shuffle::Plan* shuffle_plan() const { return shuffle_plan_.get(); }
+    unsigned shuffle_position() const {
+        if(!shuffle_plan_ || prepared_shuffle_position==UINT32_MAX)return 0;
+        const unsigned position=feedback_word(0x29c060);
+        return position<shuffle_plan_->stages.size()?position+1:0;
+    }
+    unsigned shuffled_stage() const {
+        const unsigned position=shuffle_position();
+        return position?shuffle_plan_->stages[position-1]:0;
+    }
+    void retry_shuffle() {
+        if (!shuffle_plan_) throw std::runtime_error("Shuffle retry requires an active run");
+        // start_shuffle copies this plan before replacing the active owner.
+        start_shuffle(*shuffle_plan_);
     }
     // Physical DIP pins may be configured only before cold-board execution.
     void set_dip_switches(std::array<uint8_t,3> switches) {
@@ -94,6 +133,13 @@ public:
         game.board().switches = switches;
     }
     std::array<uint8_t,3> dip_switches() const { return game.board().switches; }
+    struct RunStatus { uint16_t mode{}, lives{}; uint32_t score{}; };
+    RunStatus run_status() const {
+        // Passive observations already used by the natural-credit harness:
+        // $CF46 mode/lives, and $17610's ranking score source.
+        return {feedback_word(0x29c09c), feedback_word(0xffff88e0),
+                (uint32_t(feedback_word(0xffff8884)) << 16) | feedback_word(0xffff8886)};
+    }
     FrameInfo info() const {
         const auto& board = game.board();
         return {board.frames, board.time()};
@@ -115,8 +161,8 @@ public:
     void capture_ground_horizon(bool enabled) {
         if(capture_ground==enabled)return;
         capture_ground=enabled;
-        if(enabled){ground=std::make_unique<Presentation::GroundHorizon>(std::span(rom.maincpu.rom,rom.maincpu.length),std::span(rom.subcpu.rom,rom.subcpu.length));
-            if(!assets)assets=std::make_unique<Presentation::EffectAssets>(std::span(rom.maincpu.rom,rom.maincpu.length),std::span(rom.subcpu.rom,rom.subcpu.length));}
+        if(enabled){auto& source=active_rom();ground=std::make_unique<Presentation::GroundHorizon>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));
+            if(!assets)assets=std::make_unique<Presentation::EffectAssets>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));}
         else ground.reset();
         if(enabled && !capture_sprites)capture_sprite_presentation(true);
         else if(capture_sprites){presentation_ready=false;bind_sprite_capture();}
@@ -124,7 +170,7 @@ public:
     void capture_sprite_scene(bool enabled) {
         if(enabled==capture_scene)return;
         capture_scene=enabled;scene_ready=false;
-        if(enabled){for(auto& row:scene_rows)row.clear();for(auto& heads:row_heads)heads.fill(UINT32_MAX);presentation_ready=false;assets=std::make_unique<Presentation::EffectAssets>(std::span(rom.maincpu.rom,rom.maincpu.length),std::span(rom.subcpu.rom,rom.subcpu.length));capture_sprite_presentation(true);}
+        if(enabled){for(auto& row:scene_rows)row.clear();for(auto& heads:row_heads)heads.fill(UINT32_MAX);presentation_ready=false;auto& source=active_rom();assets=std::make_unique<Presentation::EffectAssets>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));capture_sprite_presentation(true);}
     }
     SpriteScene sprite_scene() {
         if(!capture_scene || !presentation_ready)return {};
@@ -140,7 +186,7 @@ public:
     void capture_wide_scene(bool enabled,unsigned logical_width=398){
         if(logical_width<320||logical_width>640||logical_width%2)throw std::invalid_argument("Unsupported wide capture width");
         if(enabled==capture_wide&&(!enabled||logical_width==wide_width))return;
-        if(enabled&&(!visibility||logical_width!=wide_width))visibility=std::make_unique<Presentation::WideVisibility>(rom,(logical_width-320)/2);
+        if(enabled&&(!visibility||logical_width!=wide_width))visibility=std::make_unique<Presentation::WideVisibility>(active_rom(),(logical_width-320)/2);
         if(enabled)wide_width=logical_width;
         capture_wide=enabled;wide_clip_count=0;wide_clip_open=false;
         if(enabled){bind_wide_capture();}else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};if(visibility)visibility->reset();}
@@ -163,7 +209,12 @@ public:
     }
 
 private:
+    // Destruction is reverse declaration order: the bound host and all
+    // presentation helpers are gone before their owned runtime ROM storage.
+    std::unique_ptr<Shuffle::RomView> shuffle_view;
+    std::unique_ptr<Shuffle::Plan> shuffle_plan_;
     std::unique_ptr<Presentation::WideVisibility> visibility;
+    unsigned prepared_shuffle_position{UINT32_MAX};
     bool capture_wide{}, wide_clip_open{};
     unsigned wide_width{398};
     size_t wide_clip_count{};
@@ -199,7 +250,55 @@ private:
     }
     Feedback::Capture feedback;Feedback::Frame feedback_frame;bool capture_feedback_{};
     uint16_t feedback_word(uint32_t a) const {const auto o=MainBus::memory_offset(a);const auto& m=game.board().memory.bytes;return uint16_t(m[o]<<8|m[o+1]);}
-    void bind_feedback_capture(){if(!capture_feedback_&&!capture_wide){game.board().phase={};game.board().presentation_phase=false;return;}game.board().presentation_phase=true;game.board().phase=[this](const auto& p){if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
+    Roms& active_rom() { return shuffle_view ? shuffle_view->rom() : rom; }
+    void restarted(bool changed_rom) {
+        prepared_shuffle_position = UINT32_MAX;
+        if (changed_rom) {
+            auto& source = active_rom();
+            if(visibility)visibility=std::make_unique<Presentation::WideVisibility>(source,(wide_width-320)/2);
+            if(ground)ground=std::make_unique<Presentation::GroundHorizon>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));
+            if(assets)assets=std::make_unique<Presentation::EffectAssets>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));
+        } else if(visibility)visibility->reset();
+        feedback.clear();feedback_frame={};
+        presentation_ready = scene_ready = false;
+        wide_clip_count=0;wide_clip_open=false;
+        if(capture_wide)bind_wide_capture();
+        bind_feedback_capture();
+        if(capture_sprites)bind_sprite_capture();
+        audio.clear();
+        paused_=false;
+        if(extensions.restarted)extensions.restarted();
+    }
+    void prepare_shuffle_palette(const XBoardGame::Host::Phase& phase) {
+        if(!shuffle_view || phase.cpu || !phase.entry)return;
+        const auto pc=phase.entry->state.pc;
+        if(pc!=0x13ce8 && pc!=0x138fe)return;
+        // $138FE completes cold/new-credit initialization separately from
+        // normal stage advancement. The ROM has reloaded these palette banks
+        // even when another credit starts at a previously observed ordinal.
+        if(pc==0x138fe)prepared_shuffle_position=UINT32_MAX;
+        const unsigned position=feedback_word(0x29c060);
+        if(position>=shuffle_plan_->stages.size() || position==prepared_shuffle_position)return;
+        if(!shuffle_view->needs_alternate_palette(position)){
+            prepared_shuffle_position=position;
+            return;
+        }
+        // Both audited completion boundaries follow selection of the stage's
+        // descriptor, event program and ordinary palette. The typed arranged
+        // preparation must add no CPU-owned transactions.
+        auto& host=game.board();
+        {
+            struct RestoreTrace {
+                MainBus& bus; MainBus::Trace* previous;
+                ~RestoreTrace(){bus.trace=previous;}
+            } restore{host.bus,host.bus.trace};
+            host.bus.trace=nullptr;
+            Shuffle::prepare_alternate_palette(host.bus,shuffle_view->rom(),position);
+        }
+        ++host.palette_gen;
+        prepared_shuffle_position=position;
+    }
+    void bind_feedback_capture(){if(!capture_feedback_&&!capture_wide&&!shuffle_view){game.board().phase={};game.board().presentation_phase=false;return;}game.board().presentation_phase=true;game.board().phase=[this](const auto& p){prepare_shuffle_palette(p);if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
     XBoardGame game;
     Roms& rom;
     Extensions extensions;

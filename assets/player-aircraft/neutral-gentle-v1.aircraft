@@ -1,0 +1,9 @@
+aircraft-pack 1
+# Fixed source bounds preserve the accepted neutral preview; pack loads never trim alpha.
+# pose ROOT IMAGE SX SY SW SH BASE_W BASE_H ART_PIVOT_X ART_PIVOT_Y NATIVE_PIVOT_X NATIVE_PIVOT_Y SCALE_X SCALE_Y
+pose 0x100a0 "level-flight-hd-v1.png" 0 19 1981 766 120 47 990.5 402 60 23.5 16.5083333333 16.2978723404
+nozzle 0x100a0 "left" 754 540 43 32
+nozzle 0x100a0 "right" 1242 540 78 32
+pose 0x10230 "gentle-bank-hd-v2.png" 0 0 1983 793 120 47 1000.2875 396.5 61.5 25 16.525 16.8723404255
+nozzle 0x10230 "left" 747 499 45 31
+nozzle 0x10230 "right" 1244 577 78 36

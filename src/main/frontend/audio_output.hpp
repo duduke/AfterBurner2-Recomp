@@ -78,16 +78,24 @@ inline WavPcm load_openal_wav(const std::string& path,bool music,int rate=0){
 
 class AudioOutput {
 public:
-    struct Status {bool openal{},ready{},hrtf{};uint64_t packets{};double buffered{};int hrtf_status{},mode{};std::string text;std::vector<std::string> devices,resamplers;};
+    // Queue times cover software PCM only, excluding the output device's own
+    // mix buffer and hardware latency. Counters survive live reconfiguration.
+    struct Status {
+        bool openal{},ready{},hrtf{};
+        uint64_t packets{},underruns{},reprimes{},recoveries{},configuration{};
+        double buffered{},peak_buffered{},pending{},peak_pending{};
+        size_t queued_packets{},peak_queued_packets{};
+        int hrtf_status{},mode{};std::string text;std::vector<std::string> devices,resamplers;
+    };
     explicit AudioOutput(const std::string& path,bool loopback=false):settings(load_output_settings(path)),path(path),loopback(loopback){audio_initialized=SDL_InitSubSystem(SDL_INIT_AUDIO);worker=std::thread([this]{run();});configure(settings);}
     ~AudioOutput(){ {std::lock_guard lock(mutex);stopping=true;}wake.notify_all();worker.join();if(audio_initialized)SDL_QuitSubSystem(SDL_INIT_AUDIO);}
     AudioOutput(const AudioOutput&)=delete;
     OutputSettings settings;
-    Status status()const{std::lock_guard lock(mutex);return report;}
+    Status status()const{std::lock_guard lock(mutex);auto state=report;state.queued_packets=packets.size();for(const auto& packet:packets)state.pending+=packet_seconds(packet);return state;}
     bool drained()const{std::lock_guard lock(mutex);return packets.empty()&&report.buffered<.0001;}
     void configure(OutputSettings s){
         settings=std::move(s);save_output_settings(path,settings);
-        {std::lock_guard lock(mutex);desired=settings;reconfigure=true;previewing=false;packets.clear();clear_requested=true;}wake.notify_all();
+        {std::lock_guard lock(mutex);desired=settings;reconfigure=true;previewing=false;packets.clear();clear_requested=true;test_requested=false;}wake.notify_all();
     }
     void cycle_profile(int delta){auto s=settings;s.profile=AudioProfile((int(s.profile)+4+delta)%4);configure(s);}
     void cycle_device(int delta){auto list=status().devices;cycle(settings.device,list,delta);configure(settings);}
@@ -100,7 +108,9 @@ public:
         std::unique_lock lock(mutex);
         wake.wait(lock,[&]{return stopping||!report.ready||packets.size()<6;});
         if(stopping||!report.ready)return;
-        packets.emplace_back(std::move(packet));previewing=preview;wake.notify_all();
+        packets.emplace_back(std::move(packet));previewing=preview;
+        double pending=0;for(const auto& queued:packets)pending+=packet_seconds(queued);
+        report.peak_pending=std::max(report.peak_pending,pending);report.peak_queued_packets=std::max(report.peak_queued_packets,packets.size());wake.notify_all();
     }
 public:
     // Standard Soft loopback extension: deterministic offline render diagnostic.
@@ -114,14 +124,51 @@ private:
     OutputSettings desired;Status report;std::deque<AudioPacket> packets;
     bool stopping{},reconfigure{},clear_requested{},paused{},previewing{},test_requested{};
     SDL_AudioStream* sdl{};
+    static double packet_seconds(const AudioPacket& packet){
+        double seconds=packet.original.size()/96000.0;
+        for(const auto& stream:packet.streams)if(stream.rate>0&&stream.channels>0)seconds=std::max(seconds,double(stream.pcm.size())/stream.channels/stream.rate);
+        return seconds;
+    }
+    void publish_open(Status info){
+        std::lock_guard lock(mutex);
+        info.packets=report.packets;info.underruns=report.underruns;info.reprimes=report.reprimes;info.recoveries=report.recoveries;info.configuration=report.configuration+1;
+        info.peak_buffered=report.peak_buffered;info.peak_pending=report.peak_pending;info.peak_queued_packets=report.peak_queued_packets;
+        report=std::move(info);
+    }
+    void record_buffered(double seconds){std::lock_guard lock(mutex);report.buffered=seconds;report.peak_buffered=std::max(report.peak_buffered,seconds);}
 #ifdef AB2_OPENAL
     ALCdevice* device{};ALCcontext* context{};std::array<ALuint,13> sources{};
     struct Queued {ALuint buffer;double seconds;};std::array<std::deque<Queued>,13> queued;
-    bool started{},al_paused{};int direct{};bool connected_extension{};
+    bool started{},al_paused{},repriming{};unsigned starved_sources{};int direct{};bool connected_extension{};
     void check(){const auto err=alGetError();if(err!=AL_NO_ERROR)throw std::runtime_error("OpenAL error "+std::to_string(err));}
-    void reap(){if(!started)return;for(unsigned i=0;i<sources.size();++i){ALint done=0;alGetSourcei(sources[i],AL_BUFFERS_PROCESSED,&done);while(done--){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}if(queued[i].empty()){ALint state=0;alGetSourcei(sources[i],AL_SOURCE_STATE,&state);if(state==AL_STOPPED)alSourceRewind(sources[i]);}}check();}
+    void reap(){
+        if(!started)return;
+        unsigned underruns=0;
+        for(unsigned i=0;i<sources.size();++i){
+            ALint done=0;alGetSourcei(sources[i],AL_BUFFERS_PROCESSED,&done);
+            while(done--){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}
+            if(queued[i].empty()){
+                ALint state=0;alGetSourcei(sources[i],AL_SOURCE_STATE,&state);
+                if(state==AL_STOPPED){++underruns;alSourceRewind(sources[i]);}
+            }
+        }
+        check();
+        // A stalled producer can drain every synchronized stream. Restarting
+        // each next 10/20 ms packet immediately repeats the underrun; collect
+        // 50 ms together before resuming. A sparse source finishing while
+        // other sources still run, or a single one-shot, restarts immediately.
+        // Native chip and 48 kHz streams can stop in neighboring mixer quanta.
+        // Retain the cohort across reap polls until new producer PCM arrives.
+        starved_sources+=underruns;
+        const bool exhausted=starved_sources>1&&std::all_of(queued.begin(),queued.end(),[](const auto& q){return q.empty();});
+        if(exhausted){started=false;al_paused=false;repriming=true;}
+        if(underruns){
+            SDL_Log("OpenAL stream underrun: %u sources; %s",underruns,exhausted?"re-priming synchronized output":"restarting on next packet");
+            std::lock_guard lock(mutex);report.underruns+=underruns;if(exhausted)++report.reprimes;
+        }
+    }
     double latency(){reap();double n=0;for(unsigned i=0;i<sources.size();++i){double sum=0;for(auto q:queued[i])sum+=q.seconds;ALfloat offset=0;alGetSourcef(sources[i],AL_SEC_OFFSET,&offset);n=std::max(n,sum-offset);}return n;}
-    void clear_al(){if(!context)return;alSourceStopv(int(sources.size()),sources.data());for(unsigned i=0;i<sources.size();++i){while(!queued[i].empty()){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}}alSourceRewindv(int(sources.size()),sources.data());started=al_paused=false;check();}
+    void clear_al(){if(!context)return;alSourceStopv(int(sources.size()),sources.data());for(unsigned i=0;i<sources.size();++i){while(!queued[i].empty()){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}}alSourceRewindv(int(sources.size()),sources.data());started=al_paused=repriming=false;starved_sources=0;check();}
     void open_al(const OutputSettings& s,Status& info){
         const bool enumerate=alcIsExtensionPresent(nullptr,"ALC_ENUMERATE_ALL_EXT");
         if(const auto* p=alcGetString(nullptr,enumerate?ALC_ALL_DEVICES_SPECIFIER:ALC_DEVICE_SPECIFIER))while(*p){info.devices.emplace_back(p);p+=std::strlen(p)+1;}
@@ -172,10 +219,10 @@ private:
             alSourceQueueBuffers(sources[i],1,&b);queued[i].push_back({b,double(stream.pcm.size())/stream.channels/stream.rate});
         }check();
         if(!started){
-            if(loopback || latency()>=0.025){
+            if((loopback&&!repriming) || latency()>=(repriming?0.050:0.025)){
                 std::array<ALuint,13> active{};unsigned n=0;
                 for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty())active[n++]=sources[i];
-                if(n){alSourcePlayv(int(n),active.data());started=true;}
+                if(n){alSourcePlayv(int(n),active.data());started=true;repriming=false;}
             }
         } else {
             std::array<ALuint,13> restart{};unsigned n=0,underruns=0;
@@ -183,9 +230,9 @@ private:
                 ALint state=0;alGetSourcei(sources[i],AL_SOURCE_STATE,&state);
                 if(state!=AL_PLAYING && state!=AL_PAUSED){restart[n++]=sources[i];if(state==AL_STOPPED)++underruns;}
             }
-            if(underruns)SDL_Log("OpenAL stream underrun: restarting %u sources",underruns);
+            if(underruns){SDL_Log("OpenAL stream underrun: restarting %u sources",underruns);std::lock_guard lock(mutex);report.underruns+=underruns;}
             if(n)alSourcePlayv(int(n),restart.data());
-        }check();
+        }check();starved_sources=0;
     }
 #endif
     bool audio_initialized{};uint64_t test_until{};
@@ -199,12 +246,16 @@ private:
     }
     void open(const OutputSettings& s){close();Status info;
 #ifdef AB2_OPENAL
-        if(s.profile!=AudioProfile::original){try{open_al(s,info);std::lock_guard lock(mutex);report=info;return;}catch(const std::exception& e){SDL_Log("OpenAL unavailable: %s; using SDL",e.what());auto devs=std::move(info.devices);info=Status{};info.devices=std::move(devs);info.text=std::string("SDL FALLBACK: ")+e.what();close();}}
+        if(s.profile!=AudioProfile::original){try{open_al(s,info);publish_open(std::move(info));return;}catch(const std::exception& e){SDL_Log("OpenAL unavailable: %s; using SDL",e.what());auto devs=std::move(info.devices);info=Status{};info.devices=std::move(devs);info.text=std::string("SDL FALLBACK: ")+e.what();close();}}
 #endif
         if(!audio_initialized){info.text="AUDIO UNAVAILABLE";}else{
             SDL_AudioSpec spec{SDL_AUDIO_S16,2,48000};SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES,"1024");sdl=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,nullptr,nullptr);
             info.ready=sdl&&SDL_ResumeAudioStreamDevice(sdl);if(!info.ready){if(sdl)SDL_DestroyAudioStream(sdl);sdl=nullptr;info.text="SDL AUDIO UNAVAILABLE";}else if(info.text.empty())info.text=s.profile==AudioProfile::original?"ORIGINAL SDL STEREO":"OPENAL NOT BUILT - SDL FALLBACK";
-        }std::lock_guard lock(mutex);report=std::move(info);
+        }publish_open(std::move(info));
+    }
+    void recover_to_sdl(const std::string& reason){
+        OutputSettings fallback;fallback.profile=AudioProfile::original;open(fallback);
+        {std::lock_guard lock(mutex);++report.recoveries;report.text=(report.ready?"SDL FALLBACK: ":"AUDIO UNAVAILABLE: ")+reason;render_result.clear();render_pending=false;}wake.notify_all();
     }
     void test(){
         AudioPacket p;const size_t frames=48000*3;
@@ -220,10 +271,11 @@ private:
         SDL_Log("Speaker test: front left, front right, rear left, rear right");
     }
     void run(){
+        bool backpressured=false;
         for(;;){try{OutputSettings s;AudioPacket packet;bool reset=false,clear_now=false,test_now=false,is_paused=false,is_preview=false,have=false;
             {std::unique_lock lock(mutex);
                 wake.wait_for(lock,std::chrono::milliseconds(5),[&]{
-                    return stopping||reconfigure||clear_requested||test_requested||render_pending||(!packets.empty()&&(!paused||previewing));
+                    return stopping||reconfigure||clear_requested||test_requested||render_pending||(!backpressured&&!packets.empty()&&(!paused||previewing));
                 });
                 if(stopping)break;
                 reset=std::exchange(reconfigure,false);if(reset)s=desired;clear_now=std::exchange(clear_requested,false);test_now=std::exchange(test_requested,false);is_paused=paused;is_preview=previewing;
@@ -238,7 +290,7 @@ private:
             const bool testing=SDL_GetTicks()<test_until;
             bool full=false;
 #ifdef AB2_OPENAL
-            if(context){if(connected_extension){ALCint connected=1;alcGetIntegerv(device,ALC_CONNECTED,1,&connected);if(!connected){SDL_Log("OpenAL device disconnected; reverting to default SDL");auto fallback=s;fallback.profile=AudioProfile::original;open(fallback);}}
+            if(context){if(connected_extension){ALCint connected=1;alcGetIntegerv(device,ALC_CONNECTED,1,&connected);if(!connected){SDL_Log("OpenAL device disconnected; reverting to default SDL");recover_to_sdl("OpenAL device disconnected");}}
                 if(context){full=!loopback&&latency()>.10;const bool stop=is_paused&&!is_preview&&!testing;
                     if(stop!=al_paused&&started){
                         if(stop)alSourcePausev(int(sources.size()),sources.data());
@@ -254,12 +306,12 @@ private:
             if(context)buffered=latency();
 #endif
             if(sdl)buffered=std::max(0,SDL_GetAudioStreamQueued(sdl))/192000.0;
-            {std::lock_guard lock(mutex);report.buffered=buffered;}
+            record_buffered(buffered);backpressured=full;
             if(!full&&(!is_paused||is_preview)){
                 {std::lock_guard lock(mutex);if(!packets.empty()){packet=std::move(packets.front());packets.pop_front();report.buffered=std::max(report.buffered,.001);have=true;}}wake.notify_all();
                 if(have){
 #ifdef AB2_OPENAL
-                    if(context){queue_al(packet);{std::lock_guard lock(mutex);++report.packets;}}
+                    if(context)queue_al(packet);
 #endif
                     if(sdl&&!packet.original.empty()&&!SDL_PutAudioStreamData(sdl,packet.original.data(),int(packet.original.size()*2)))throw std::runtime_error(SDL_GetError());
                     double fresh=0;
@@ -267,15 +319,24 @@ private:
                     if(context)fresh=latency();
 #endif
                     if(sdl)fresh=std::max(0,SDL_GetAudioStreamQueued(sdl))/192000.0;
-                    {std::lock_guard lock(mutex);report.buffered=fresh;}
+                    record_buffered(fresh);{std::lock_guard lock(mutex);++report.packets;}
                 }
             }
 #ifdef AB2_OPENAL
-            if(loopback&&context){unsigned frames=0,channels=2;{std::lock_guard lock(mutex);if(render_pending&&packets.empty()){frames=render_frames;channels=report.mode==ALC_SURROUND_5_1_SOFT?6:2;}}
+            if(loopback&&context){unsigned frames=0,channels=2;{std::lock_guard lock(mutex);if(render_pending&&(packets.empty()||(is_paused&&!is_preview))){frames=render_frames;channels=report.mode==ALC_SURROUND_5_1_SOFT?6:2;}}
                 if(frames){auto render=reinterpret_cast<LPALCRENDERSAMPLESSOFT>(alcGetProcAddress(device,"alcRenderSamplesSOFT"));if(!render)throw std::runtime_error("loopback render unavailable");std::vector<float> values(size_t(frames)*channels);render(device,values.data(),frames);{std::lock_guard lock(mutex);render_result=std::move(values);render_pending=false;}wake.notify_all();}
             }
 #endif
-        }catch(const std::exception& e){SDL_Log("Audio playback failed: %s",e.what());close();{std::lock_guard lock(mutex);report.ready=false;report.text="AUDIO PLAYBACK FAILED";packets.clear();render_pending=false;}wake.notify_all();}}close();
+        }catch(const std::exception& e){SDL_Log("Audio playback failed: %s",e.what());
+#ifdef AB2_OPENAL
+            const bool was_openal=context!=nullptr;
+#else
+            const bool was_openal=false;
+#endif
+            close();
+            if(was_openal)recover_to_sdl(e.what());
+            else {std::lock_guard lock(mutex);report.ready=report.openal=report.hrtf=false;report.mode=report.hrtf_status=0;report.buffered=0;report.text="AUDIO PLAYBACK FAILED";}
+            {std::lock_guard lock(mutex);packets.clear();render_result.clear();render_pending=false;}wake.notify_all();}}close();
     }
 };
 }

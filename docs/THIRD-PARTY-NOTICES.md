@@ -79,6 +79,23 @@ as development tools; no compiler libraries are linked into the application.
 The Three.js dependency and its notices are retained on the dedicated
 `codex/threejs-game-engine` branch; main no longer includes that prototype.
 
+## Optional RetroArch shader host
+
+`src/third_party/librashader/librashader.h` is the unmodified MIT-licensed C
+header from librashader 0.12.0; its complete copyright and permission notice
+remain in the header. The optional macOS Metal host loads a separately
+installed runtime. The preview ZIP does not bundle that runtime or shader
+packs. Its `Notices/` directory includes the header notice and the upstream
+MPL text; the complete header is also in the project source archive.
+
+The optional runtime is available under `MPL-2.0 OR GPL-3.0-only`. Redistribution
+under the MPL option requires its applicable notices and covered source.
+The pinned source and redistribution notes are in
+`src/third_party/librashader/NOTICE.md` in the repository/source archive and
+`Notices/librashader/NOTICE.md` in the preview package. See
+[shader setup](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal).
+User-selected shader packs retain their own licenses.
+
 ## SDL_GameControllerDB
 
 The offline controller database comes from

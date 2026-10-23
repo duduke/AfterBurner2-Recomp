@@ -237,5 +237,150 @@ for _,pc in ipairs(pcs)do
    for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0,d1=0,memory_word_address=0x3ffc2e,memory_word_value=value}end
   end
  end
+ -- $67B0..$6836: paired-selector release reached by shuffled Stage 7.
+ -- ADD.W's ROM count is observed independently; probe signed overflow,
+ -- unsigned carry, zero and preservation of D1's upper word and input CCR.
+ if pc==0x67b0 then
+  for _,value in ipairs({0,0x7ff7,0x7ff8,0xfff7,0xfff8,0xffff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,counter_reg=1,counter_value=0x12340000|value}end
+  end
+ end
+ if pc==0x67b6 then
+  for _,pair in ipairs({{0x79,0x7a},{0x7a,0x7a},{0x82,0x82},{0x83,0x82},{0x8000,0x7fff},{0x7fff,0x8000}})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|pair[1],d1=0x56780000|pair[2]}end
+  end
+ end
+ -- Both paired objects retain only mask $7C00. Keep nonzero source bits so
+ -- a different mask cannot pass merely because the generic RAM is zero.
+ if pc==0x67fa or pc==0x6802 then
+  for _,value in ipairs({0,0x400,0x7c00,0x8000,0xffff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=pc==0x67fa and 0x3ffc00 or 0x3ffc40,memory_word_value=value}end
+  end
+ end
+ -- The queue count increments twice in the real sequence. Each ADDQ and
+ -- reload must retain the adjacent sentinel, including byte wrap at $FF.
+ if pc==0x680c or pc==0x6818 or pc==0x6810 or pc==0x681c or pc==0x6832 then
+  for _,value in ipairs({0,0x7f,0x80,0xfe,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=0x3ffc00,memory_word_value=(value<<8)|0xa5}end
+  end
+ end
+ -- Bounded zero-extended selector indices write real mapped work RAM. An
+ -- index of zero deliberately aliases the queue count, as byte wrap can.
+ if pc==0x6812 or pc==0x681e then
+  for _,index in ipairs({0,1,0x7f,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|index,d1=17,
+    memory_word_address=pc==0x6812 and 0x3ffc14 or 0x3ffc54,memory_word_value=0x42a5}end
+  end
+ end
+ -- $D27E..$D2B0: shared credit-prompt blink reached after Shuffle's ending.
+ -- Sample the byte tick's bit-three edges and retain its word neighbour.
+ if pc==0xd27e then
+  for _,value in ipairs({0,1,7,8,0xf,0x10,0x7f,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=0x3f8b5a,memory_word_value=0x5a00|value}end
+  end
+ end
+ -- MOVE.W preserves D1's upper word; SUBQ.B preserves its upper 24 bits.
+ if pc==0xd282 then
+  for _,value in ipairs({0,0x7f,0x80,0x7fff,0x8000,0xff80,0xffff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|value,d1=0xbeefa55a}end
+  end
+ end
+ if pc==0xd284 then
+  for _,value in ipairs({0,1,7,8,0xf,0x10,0x7f,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,counter_reg=1,counter_value=0x1234ab00|value}end
+  end
+ end
+ -- EOR.W must derive word NZ, clear VC and retain X from the byte SUBQ.
+ if pc==0xd286 then
+  for _,pair in ipairs({{0,0},{8,0},{0,0x8000},{0xffff,0xffff},{0x8000,0x7fff},{0xff,0x100}})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|pair[1],d1=0x56780000|pair[2]}end
+  end
+ end
+ -- Each BTST changes only Z and must select bit three of the right register.
+ if pc==0xd288 or pc==0xd290 then
+  for _,value in ipairs({0,1,7,8,0xf,0x10,0x7f,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,
+    counter_reg=pc==0xd288 and 1 or 0,counter_value=0x12340000|value}end
+  end
+ end
+ -- $D2B4..$D2CE is the sibling credit-state transition before the common
+ -- formatter. The even test byte and odd cleared byte must retain their
+ -- neighbours, unrelated bits and every input CCR bit except Z.
+ if pc==0xd2b4 or pc==0xd2c0 then
+  for _,value in ipairs({0,1,2,3,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=pc==0xd2b4 and 0x29c202 or 0x29c200,
+    memory_word_value=pc==0xd2b4 and ((value<<8)|0xa5) or (0xa500|value)}end
+  end
+ end
+ -- $15750's early exits discard one caller return and select either the
+ -- existing request emitter or $1528A's occupancy/paired-object release.
+ -- These are isolated instruction fixtures, not a synthetic helper call.
+ if pc==0x1577e then
+  for _,value in ipairs({0,7,8,0xf,0x10,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=0x3ffc2c,memory_word_value=0xa500|value}end
+  end
+ end
+ if pc==0x15294 or pc==0x1529e then
+  for _,value in ipairs({0,1,0x7f,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=pc==0x15294 and 0x3ffc26 or 0x3ffc30,
+    memory_word_value=pc==0x15294 and (0xa500|value) or ((value<<8)|0xa5)}end
+  end
+ end
+ -- ADDA.W sign-extends the source but changes neither CCR nor the high
+ -- bits of its address result through an accidental 16-bit truncation.
+ if pc==0x1529c then
+  for _,value in ipairs({0,1,0x7fff,0x8000,0xfffe,0xffff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|value,d1=17}end
+  end
+ end
+ -- Register-specified memory bit numbers wrap modulo eight, and only
+ -- that byte is written. Keep both set/clear bit states and a neighbour.
+ if pc==0x152a2 then
+  for _,index in ipairs({0,1,7,8,31,32,0xff})do
+   for _,value in ipairs({0,0x55,0xff})do
+    for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|index,d1=17,
+     memory_word_address=0x3ffc00,memory_word_value=(value<<8)|0xa5}end
+   end
+  end
+ end
+ if pc==0x152a4 then
+  for _,value in ipairs({0,1,0x7f,0x80,0xff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=0x3ffc00,memory_word_value=(value<<8)|0xa5}end
+  end
+ end
+ -- Transitive missile-controller closure also reaches the bit-six target
+ -- offset in $14DC4 and the RNG's zero-seed fallback at $C5B0.
+ if pc==0x14dd4 then
+  for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=0xbeef1234}end
+ end
+ if pc==0x14dd8 then
+  for _,value in ipairs({0,1,0x7fff,0x8000,0xffff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=17,
+    memory_word_address=0x3ffc18,memory_word_value=value}end
+  end
+ end
+ if pc==0x14dde then
+  for _,value in ipairs({0,1,0x7fff,0x8000,0xffff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,d1=0x12340000|value}end
+  end
+ end
+ if pc==0x14de0 then
+  for _,pair in ipairs({{0,0},{1,0x7fff},{0x8000,0x8000},{1,0xffff},{0xffff,0x8000},{0x8000,0x7fff}})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12345678,
+    d1=0x12340000|pair[1],d2=0xbeef0000|pair[2]}end
+  end
+ end
+ if pc==0x14de2 then
+  for _,value in ipairs({0,0x27,0x28,0x29,0x7fff,0x8000,0xffff})do
+   for _,ccr in ipairs({0,31})do cases[#cases+1]={cpu=1,pc=pc,sr=0x2700|ccr,d0=0x12340000|value,d1=17}end
+  end
+ end
 end
 return cases

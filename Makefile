@@ -54,7 +54,19 @@ SRCS += src/main/engine/omainhost.cpp src/main/engine/omainirqservice.cpp src/ma
 
 SRCS += src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
 
-OBJS = $(SRCS:.cpp=.o) src/main/frontend/music_decoder.o
+# Optional RetroArch Slang host. Only the macOS frontend uses Objective-C++;
+# engine/oracle objects retain their existing compiler and link configuration.
+ifeq ($(shell uname -s),Darwin)
+SLANG_SOURCE = src/main/frontend/native_slang.mm
+SLANG_FLAGS = -fobjc-arc
+SLANG_LIBS = -framework Foundation -framework Metal -framework QuartzCore -framework CoreVideo
+else
+SLANG_SOURCE = src/main/frontend/native_slang_stub.cpp
+SLANG_FLAGS =
+SLANG_LIBS =
+endif
+SLANG_OBJECT = src/main/frontend/native_slang.o
+OBJS = $(SRCS:.cpp=.o) src/main/frontend/music_decoder.o $(SLANG_OBJECT)
 DEPS = $(OBJS:.o=.d)
 -include $(DEPS)
 TARGET = afterburner2
@@ -62,7 +74,10 @@ TARGET = afterburner2
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) -pthread -o $(TARGET) $(LIBS)
+	$(CXX) $(CXXFLAGS) $(OBJS) -pthread -o $(TARGET) $(LIBS) $(SLANG_LIBS)
+
+$(SLANG_OBJECT): $(SLANG_SOURCE)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SLANG_FLAGS) -MMD -MP -c $< -o $@
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
@@ -1324,6 +1339,88 @@ test: test-game-controls
 verify-stage1: verify-game-session
 .PHONY: test-game-controls verify-game-session
 
+# Explicit Practice lifecycle and read-only runtime ROM stage catalog.
+build/practice_mode_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/practice_mode_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
+verify-practice-mode: build/practice_mode_integration
+	./build/practice_mode_integration
+verify-native-practice: native-release
+	python3 tests/test_native_practice_cli.py
+-include build/native_obj/tests/practice_mode_integration.d
+verify-stage1: verify-practice-mode
+build/oracle_stage_catalog: tests/oracle_stage_catalog.cpp src/main/engine/stage_catalog.hpp src/main/roms.cpp src/main/romloader.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_stage_catalog.cpp src/main/roms.cpp src/main/romloader.cpp -o $@
+capture-stage-catalog:
+	@mkdir -p build/oracle
+	tools/oracle/capture.sh tools/oracle/capture_stage_catalog.lua build/oracle/stage_catalog.bin 1 40
+verify-stage-catalog: build/oracle_stage_catalog
+	./build/oracle_stage_catalog build/oracle/stage_catalog.bin
+check-stage-catalog-mutations: verify-stage-catalog
+	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" python3 tools/check_stage_catalog_mutations.py
+oracle-capture: capture-stage-catalog
+oracle-test: verify-stage-catalog check-stage-catalog-mutations
+.PHONY: verify-practice-mode verify-native-practice capture-stage-catalog verify-stage-catalog check-stage-catalog-mutations
+
+# Per-run Shuffle data is isolated from the canonical arcade ROM set.
+build/shuffle_rom_regression: tests/shuffle_rom_regression.cpp src/main/engine/shuffle_rom.hpp src/main/engine/stage_catalog.hpp src/main/roms.cpp src/main/romloader.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/shuffle_rom_regression.cpp src/main/roms.cpp src/main/romloader.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o $@
+test-shuffle-rom: build/shuffle_rom_regression
+	./build/shuffle_rom_regression
+verify-shuffle-rom: build/shuffle_rom_regression
+	./build/shuffle_rom_regression --roms
+test: test-shuffle-rom
+verify-stage1: verify-shuffle-rom
+build/oracle_shuffle_palette: tests/oracle_shuffle_palette.cpp src/main/engine/shuffle_rom.hpp src/main/engine/stage_catalog.hpp src/main/roms.cpp src/main/romloader.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_shuffle_palette.cpp src/main/roms.cpp src/main/romloader.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o $@
+capture-shuffle-palette:
+	@mkdir -p build/oracle
+	@for stage in 5 8 13 17; do AB2_ORACLE_STAGE=$$stage tools/oracle/capture.sh tools/oracle/capture_shuffle_palette.lua build/oracle/shuffle_palette_stage$${stage}.bin 1 40 || exit $$?; done
+verify-shuffle-palette: build/oracle_shuffle_palette
+	@for stage in 5 8 13 17; do ./build/oracle_shuffle_palette build/oracle/shuffle_palette_stage$${stage}.bin || exit $$?; done
+verify-shuffle-palette-mutations: verify-shuffle-palette
+	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" python3 tools/check_shuffle_palette_mutations.py
+oracle-capture: capture-shuffle-palette
+oracle-test: verify-shuffle-palette verify-shuffle-palette-mutations
+.PHONY: test-shuffle-rom verify-shuffle-rom capture-shuffle-palette verify-shuffle-palette verify-shuffle-palette-mutations
+verify-native-shuffle: native-release
+	python3 tests/test_native_shuffle_cli.py
+.PHONY: verify-native-shuffle
+verify-shuffle-rom-mutations: verify-shuffle-rom
+	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" python3 tools/check_shuffle_rom_mutations.py
+oracle-test: verify-shuffle-rom-mutations
+build/shuffle_session_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/shuffle_session_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
+verify-shuffle-session: build/shuffle_session_integration
+	./build/shuffle_session_integration
+verify-shuffle-complete: build/shuffle_session_integration
+	./build/shuffle_session_integration --complete
+-include build/native_obj/tests/shuffle_session_integration.d
+verify-stage1: verify-shuffle-session
+build/oracle_shuffle_run: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_shuffle_run.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
+export-shuffle-run: build/oracle_shuffle_run
+	./build/oracle_shuffle_run --export build/oracle/shuffle_run --frames 12000
+capture-shuffle-run: export-shuffle-run
+	AB2_SHUFFLE_PREFIX="$(CURDIR)/build/oracle/shuffle_run" tools/oracle/capture.sh tools/oracle/capture_shuffle_run.lua build/oracle/shuffle_run.csv 1 240
+verify-shuffle-run: build/oracle_shuffle_run
+	./build/oracle_shuffle_run build/oracle/shuffle_run build/oracle/shuffle_run.csv
+verify-shuffle-run-mutation: verify-shuffle-run
+	python3 tools/check_shuffle_run_mutation.py
+export-shuffle-ending: build/oracle_shuffle_run
+	./build/oracle_shuffle_run --export build/oracle/shuffle_complete --complete --frames 100000
+capture-shuffle-ending: export-shuffle-ending
+	AB2_SHUFFLE_PREFIX="$(CURDIR)/build/oracle/shuffle_complete" AB2_SHUFFLE_COMPLETE=1 tools/oracle/capture.sh tools/oracle/capture_shuffle_run.lua build/oracle/shuffle_complete.csv 1 1700
+verify-shuffle-ending: build/oracle_shuffle_run
+	./build/oracle_shuffle_run build/oracle/shuffle_complete build/oracle/shuffle_complete.csv --complete
+verify-shuffle-ending-mutation: build/oracle_shuffle_run
+	python3 tools/check_shuffle_ending_mutation.py
+-include build/native_obj/tests/oracle_shuffle_run.d
+oracle-capture: capture-shuffle-run capture-shuffle-ending
+oracle-test: verify-shuffle-run verify-shuffle-run-mutation verify-shuffle-ending-mutation
+.PHONY: verify-shuffle-rom-mutations verify-shuffle-session verify-shuffle-complete export-shuffle-run capture-shuffle-run verify-shuffle-run verify-shuffle-run-mutation export-shuffle-ending capture-shuffle-ending verify-shuffle-ending verify-shuffle-ending-mutation
+
 # Native release objects remain separate from acceptance builds; no fast-math.
 NATIVE_CXXFLAGS ?= $(CXXFLAGS) -O3 -flto
 NATIVE_OBJS = $(addprefix build/native_obj/,$(SRCS:.cpp=.o))
@@ -1341,7 +1438,7 @@ build/native_obj/%.o: %.cpp build/native_obj/config $(NATIVE_CONFIG_CHANGED)
 # Reported live gameplay frontiers; retain the older whole-host corpora.
 RECOVERY_CAPTURE ?= build/oracle/cpu_recovery_complete.bin
 RECOVERY_BASELINE_CAPTURE ?= build/oracle/cpu_recovery.bin
-RECOVERY_CAPTURE_SECONDS ?= 64
+RECOVERY_CAPTURE_SECONDS ?= 96
 oracle-recovery-generated-check:
 	python3 tools/build_rom_image.py maincpu build/oracle/main_recovery_image.bin
 	python3 tools/generate_input_schedule.py build/oracle/main_recovery_image.bin --graph recovery --check
@@ -1431,8 +1528,12 @@ NATURAL_SECONDS ?= 210
 -include build/native_obj/tools/benchmark_native_game.d build/native_obj/src/main/main.d
 
 # Native desktop play retains the verified release compiler options.
-build/afterburner2-release: $(addprefix build/native_obj/,$(SRCS:.cpp=.o)) build/native_obj/src/main/frontend/music_decoder.o
-	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+build/native_obj/src/main/frontend/native_slang.o: $(SLANG_SOURCE) build/native_obj/config $(NATIVE_CONFIG_CHANGED)
+	@mkdir -p $(dir $@)
+	$(CXX) $(NATIVE_CXXFLAGS) $(INCLUDES) $(SLANG_FLAGS) -MMD -MP -c $< -o $@
+-include build/native_obj/src/main/frontend/native_slang.d
+build/afterburner2-release: $(addprefix build/native_obj/,$(SRCS:.cpp=.o)) build/native_obj/src/main/frontend/music_decoder.o build/native_obj/src/main/frontend/native_slang.o
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS) $(SLANG_LIBS)
 native-release: build/afterburner2-release
 play-native: native-release
 	./build/afterburner2-release --profile $(if $(STAGE),--stage $(STAGE))
@@ -1450,6 +1551,97 @@ verify-native-menu: build/native_menu_integration audio-test-fixtures
 	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/native_menu_integration
 -include build/native_obj/tests/native_menu_integration.d
 .PHONY: test-native-settings verify-native-menu
+
+# Optional HUD presentation retains the original board/text raster as reference.
+HUD_SCENE_SRCS = tests/hud_scene_regression.cpp src/main/romloader.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwpalette.cpp
+CHECK_SRCS += tests/hud_scene_regression.cpp tests/native_hud_regression.cpp tests/hud_presentation_integration.cpp
+build/hud_scene_regression: $(call check_objs,$(HUD_SCENE_SRCS))
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+test-hud-scene: build/hud_scene_regression
+	./build/hud_scene_regression
+test-hud-mutations: test-hud-scene test-native-hud
+	python3 tools/video/check_hud_mutations.py
+	python3 tools/video/check_native_hud_mutations.py
+build/native_hud_regression: $(call check_objs,tests/native_hud_regression.cpp src/main/romloader.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+test-native-hud: build/native_hud_regression
+	SDL_VIDEODRIVER=dummy ./build/native_hud_regression
+verify-gpu-hud: build/native_hud_regression
+	./build/native_hud_regression --gpu
+build/hud_presentation_integration: $(call check_objs,tests/hud_presentation_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
+verify-hud-presentation: build/hud_presentation_integration
+	./build/hud_presentation_integration
+-include build/check_obj/tests/hud_scene_regression.d build/check_obj/tests/native_hud_regression.d build/check_obj/tests/hud_presentation_integration.d
+test: test-hud-mutations test-native-hud
+verify-stage1: verify-hud-presentation
+.PHONY: test-hud-scene test-hud-mutations test-native-hud verify-gpu-hud verify-hud-presentation
+
+# Opt-in registered player-aircraft art; all board output stays native.
+CHECK_SRCS += tests/native_player_aircraft_regression.cpp tests/player_aircraft_presentation.cpp
+build/native_player_aircraft_regression: $(call check_objs,tests/native_player_aircraft_regression.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+test-native-player-aircraft: build/native_player_aircraft_regression
+	SDL_VIDEODRIVER=dummy ./build/native_player_aircraft_regression
+verify-gpu-player-aircraft: build/native_player_aircraft_regression
+	./build/native_player_aircraft_regression --gpu
+test-native-player-aircraft-mutations: test-native-player-aircraft
+	python3 tools/video/check_native_player_aircraft_mutations.py
+test-player-aircraft-mutations:
+	python3 tools/video/check_player_aircraft_mutations.py
+build/player_aircraft_presentation: $(call check_objs,tests/player_aircraft_presentation.cpp $(filter-out src/main/main.cpp,$(SRCS)))
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-player-aircraft: build/player_aircraft_presentation
+	./build/player_aircraft_presentation
+preview-player-aircraft: build/player_aircraft_presentation
+	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/player_aircraft_presentation --preview build/oracle/player-aircraft-active-flight.bmp
+-include build/check_obj/tests/native_player_aircraft_regression.d build/check_obj/tests/player_aircraft_presentation.d
+test: test-native-player-aircraft-mutations test-player-aircraft-mutations
+verify-stage1: verify-player-aircraft
+.PHONY: test-native-player-aircraft test-native-player-aircraft-mutations test-player-aircraft-mutations verify-player-aircraft preview-player-aircraft verify-gpu-player-aircraft
+
+# Optional CRT modulation acts only on the final SDL game image.
+CHECK_SRCS += tests/native_crt_regression.cpp
+build/native_crt_regression: $(call check_objs,tests/native_crt_regression.cpp)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+test-native-crt: build/native_crt_regression
+	SDL_VIDEODRIVER=dummy ./build/native_crt_regression
+verify-gpu-crt: build/native_crt_regression
+	./build/native_crt_regression --gpu
+test-crt-mutations: test-native-crt
+	python3 tools/video/check_native_crt_mutations.py
+-include build/check_obj/tests/native_crt_regression.d
+test: test-crt-mutations
+.PHONY: test-native-crt verify-gpu-crt test-crt-mutations
+
+# Explicit Metal check: ordinary headless checks need no optional runtime.
+fetch-librashader:
+	python3 tools/deps/fetch_librashader.py
+test-librashader-fetch:
+	python3 tests/test_fetch_librashader.py
+test: test-librashader-fetch
+ifeq ($(shell uname -s),Darwin)
+build/check_obj/tests/native_slang_integration.o: tests/native_slang_integration.mm build/check_obj/config $(CHECK_CONFIG_CHANGED)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
+build/native_slang_integration: build/check_obj/tests/native_slang_integration.o $(SLANG_OBJECT)
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@ $(LIBS) $(SLANG_LIBS)
+verify-native-slang: build/native_slang_integration
+	./build/native_slang_integration
+verify-native-slang-mutations: verify-native-slang
+	python3 tools/video/check_native_slang_mutations.py
+build/native_shader_main_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/native_shader_main_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))) build/native_obj/src/main/frontend/music_decoder.o build/native_obj/src/main/frontend/native_slang.o
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS) $(SLANG_LIBS)
+verify-native-shader-main: build/native_shader_main_integration
+	SDL_AUDIODRIVER=dummy ./build/native_shader_main_integration tests/fixtures/native_slang/reference.slangp
+-include build/native_obj/tests/native_shader_main_integration.d
+-include build/check_obj/tests/native_slang_integration.d
+else
+verify-native-slang verify-native-slang-mutations verify-native-shader-main:
+	@echo "RetroArch shader GPU checks require the macOS Metal backend; no checks were run." >&2
+	@exit 1
+endif
+.PHONY: fetch-librashader test-librashader-fetch verify-native-slang verify-native-slang-mutations verify-native-shader-main
 
 build/oracle_native_release_recovery: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_cpu_coverage.cpp $(filter-out src/main/main.cpp,$(SRCS))))
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
@@ -1650,6 +1842,12 @@ test-spatial-audio: build/spatial_audio_regression audio-test-fixtures
 	./build/spatial_audio_regression
 .PHONY: test-spatial-audio
 test: test-spatial-audio
+build/spatial_audio_sdl_regression: tests/spatial_audio_regression.cpp src/main/frontend/audio_output.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -UAB2_OPENAL -pthread $< -o $@ $(shell pkg-config --libs sdl3 2>/dev/null || echo -L/opt/homebrew/lib -lSDL3)
+test-spatial-sdl-only: build/spatial_audio_sdl_regression
+	./build/spatial_audio_sdl_regression
+test: test-spatial-sdl-only
+.PHONY: test-spatial-sdl-only
 
 build/oracle_spatial_routing: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_spatial_routing.cpp $(filter-out src/main/main.cpp,$(SRCS))))
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
@@ -1666,7 +1864,7 @@ verify-spatial-mutations: test-spatial-audio
 	python3 -u tools/audio/check_spatial_mutations.py
 oracle-test: verify-spatial-mutations
 .PHONY: verify-spatial-mutations
-verify-spatial-ownership-mutations: oracle-spatial-routing verify-music-presentation
+verify-spatial-ownership-mutations: oracle-spatial-routing verify-music-presentation build/spatial_audio_game_integration
 	python3 -u tools/audio/check_spatial_ownership_mutations.py
 oracle-test: verify-spatial-ownership-mutations
 .PHONY: verify-spatial-ownership-mutations
@@ -1674,7 +1872,12 @@ build/spatial_audio_game_integration: $(addprefix build/native_obj/,$(patsubst %
 	$(CXX) $(NATIVE_CXXFLAGS) $(INCLUDES) $(OPENAL_FLAGS) -pthread tests/spatial_audio_game_integration.cpp $(filter %.o,$^) -o $@ $(LIBS)
 verify-spatial-game: build/spatial_audio_game_integration
 	./build/spatial_audio_game_integration
-.PHONY: verify-spatial-game
+verify-spatial-lifecycle: build/spatial_audio_game_integration
+	./build/spatial_audio_game_integration --recording build/oracle/natural_ending_sequences.inputs
+	./build/spatial_audio_game_integration --recording build/oracle/natural_neutral_sequences.mame.csv.inputs
+	./build/spatial_audio_game_integration --recording build/oracle/natural_continue_sequences.mame.csv.inputs
+	./build/spatial_audio_game_integration --recording build/oracle/natural_weapons_sequences.mame.csv.inputs
+.PHONY: verify-spatial-game verify-spatial-lifecycle
 
 # Detached wide projection must match retained original-ROM descriptors at
 # native bounds before its separate visibility policy is accepted.
@@ -1722,3 +1925,20 @@ oracle-wide-requests:
 verify-wide-lifecycle-mutations: verify-wide-lifecycle
 	python3 tools/check_wide_lifecycle_mutations.py
 .PHONY: verify-wide-lifecycle-mutations
+
+# Offline ROM-derived art stays under ignored build/; no runtime changes.
+extract-sprites:
+	python3 tools/assets/extract_sprites.py
+
+test-sprite-extraction:
+	python3 tests/test_sprite_extraction.py
+
+build/sprite_extraction_reference: tests/sprite_extraction_reference.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwsprites.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/sprite_extraction_reference.cpp src/main/hwvideo/hwsprites.cpp -o $@
+
+verify-sprite-extraction: build/sprite_extraction_reference
+	python3 tests/test_sprite_extraction.py --reference build/sprite_extraction_reference
+
+test: test-sprite-extraction
+.PHONY: extract-sprites test-sprite-extraction verify-sprite-extraction

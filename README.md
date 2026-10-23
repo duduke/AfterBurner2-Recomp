@@ -25,14 +25,14 @@ continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
 performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
 other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
-[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-19) for scope.
+[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-23) for scope.
 
-Preview 2 includes Apple Silicon macOS and Windows x64 packages with SDL3 and
-OpenAL Soft 1.25.2. Windows 11 runtime checks cover Vulkan filters, fullscreen,
-headphone HRTF and bounded Stage 1/5 pacing. Later local source adds 16:10,
-controller calibration and improved headphone effect placement; the complete
-macOS `required` and supplemental `full` gates passed on 2026-10-19. The
-published macOS package predates these changes. See the
+Preview 3 refreshes the Apple Silicon macOS download with Practice and Shuffle,
+16:10, controller calibration, revised spatial audio, high-DPI HUD text, built-in
+CRT effects and an optional HD aircraft prototype. Shuffle keeps stage 23 as
+the finale after stages 1–22. The Windows x64 download remains Preview 2;
+its Windows 11 checks cover Vulkan filters, fullscreen, headphone HRTF and
+bounded Stage 1/5 pacing. See the
 [roadmap](docs/ROADMAP.md#next-acceptance-tasks) and [release notes](docs/RELEASE_NOTES.md).
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
@@ -46,10 +46,14 @@ the wider presentation still needs exhaustive scene and platform validation.
 
 | Area | Implemented features |
 | --- | --- |
-| Menus | Arcade-font Enter Arcade/Options/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation; slim scrollbars show hidden items and position |
-| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. The 16:10 option is a local source addition after preview 2 |
-| Display | Nearest, Linear, Integer and supported Pixel Art window scaling; fullscreen; FPS and frame/core/filter/presentation timing |
+| Menus | Arcade-font Enter Arcade/Options/Practice/Shuffle/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation; slim scrollbars show hidden items and position |
+| Stage Select / Practice | [Practice mode](docs/PRACTICE_MODE.md): fresh directed entry to 23 ROM stages, normal lives/damage, F5 retry and return to arcade; separate from natural recordings |
+| Shuffle | [Shuffle mode](docs/SHUFFLE_MODE.md): stages 1–22 in random order with stage 23 as the finale, continuous score/lives, same-order F5 retry and fresh New Shuffle |
+| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths are included in macOS Preview 3 |
+| Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
+| CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal with a separately installed runtime and shader pack; readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
+| Player aircraft prototype | Optional [registered neutral/gentle-bank HD pack](docs/SPRITE_REPLACEMENT.md), included in macOS Preview 3; unsupported poses retain the original art |
 | Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains the default |
 | Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |
 | Controls | Keyboard, gamepad and raw joystick remapping; axes/buttons/hats; live calibration display, deadzone, sensitivity, polarity and full-axis throttle; hotplug and persisted device profiles |
@@ -62,7 +66,7 @@ the wider presentation still needs exhaustive scene and platform validation.
 Presentation enhancements preserve the native board output as the regression
 reference. Effects default to Opaque, music to Original and feedback to Off.
 Force-feedback stick effects, incoming-warning cues, complete widescreen visibility,
-replacement sprite assets, CRT shaders, save states and new gameplay modes
+complete replacement animation, broader shader backends, save states and additional gameplay modes
 remain **planned**. The [haptics notes](docs/HAPTICS_PLAN.md) cover current SDL
 output and remaining platform hardware checks.
 Choose **Options → Video → Viewport → 16:9 Preview** to try the wider view.
@@ -72,13 +76,14 @@ The wider renderer now recovers requests discarded by the original 192-request
 queue and full depth buckets, and renders a dynamic descriptor list. Native
 object allocation and gameplay limits stay unchanged. All 23 stage slots and
 recorded lifecycle paths have dedicated checks; exhaustive scene/platform
-validation, 16:10 and ultrawide remain open. See the
+validation for both widths and ultrawide remain open. See the
 [true widescreen plan](docs/WIDESCREEN_PLAN.md) for progress and remaining gates.
 
 ## Build and play
 
-Download [v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
-and extract the complete ZIP for your platform. Put your own extracted ROM
+Download [macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3)
+or [Windows Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
+and extract the complete ZIP. Put your own extracted ROM
 files in its `roms/` directory. Sources, notices and SHA-256 files accompany
 the packages; ROMs, captures and personal settings are excluded.
 
@@ -109,6 +114,14 @@ and attract sequence, then insert a coin and press Start (keyboard **5**, then
 **Enter**). `make play-native` uses the same startup with performance reporting.
 For the explicit automatic coin/start shortcut, use
 `./build/afterburner2-release --boot-to-flight`.
+
+Choose **Practice** in the main or pause menu to select a starting stage, or
+**Shuffle → Start Shuffle** for a continuous run through stages 1–22 in random
+order and stage 23 last. **F5** retries the selected Practice stage or the same
+Shuffle order; **New Shuffle** generates another order. Both modes offer
+**Return to Arcade**. Direct launches support `--practice-stage 8`, `--shuffle`
+and reproducible `--shuffle-seed 12345`. See [Practice](docs/PRACTICE_MODE.md)
+and [Shuffle](docs/SHUFFLE_MODE.md) for behavior and recording restrictions.
 
 CMake alternative:
 
@@ -216,6 +229,23 @@ On macOS the default is
 `--settings-file` does not relocate `soundtrack/`. Useful launch options: `--frames 180`,
 `--profile` and `--record path`. `make play-native STAGE=7` is a directed debug
 entry, not natural stage progression.
+
+## Sprite extraction
+
+Run `python3 tools/workflow.py run extract-sprites` to export indexed PNGs and
+`build/sprites/mapping.json` from your own ROMs. The mapping preserves frame
+addresses, bank/offset/stride, dimensions and candidate LOD links, with editable
+label/replacement fields. PNGs use grayscale pen previews; runtime palettes and
+object names are not inferred. See [sprite extraction](docs/SPRITE_EXTRACTION.md)
+for the format, limits and validation commands.
+
+An opt-in [HD player-aircraft pack](docs/SPRITE_REPLACEMENT.md) replaces neutral
+flight and the first gentle bank in both directions, with fixed image bounds
+and registration. Other poses retain Original artwork:
+
+```sh
+./build/afterburner2-release --player-aircraft assets/player-aircraft/neutral-gentle-v1.aircraft
+```
 
 ## Development and documentation
 

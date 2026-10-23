@@ -27,6 +27,7 @@ whole-credit fidelity acceptance remain open; this API does not close them.
 | `GameControls` | Normalized X/Y/throttle in -1..1, cannon/missile/coin/start buttons; positive Y means up | Keyboard/controller/HOTAS mapping, calibration, deadzones and response curves |
 | `GameSession::advance` | Advances one physical board frame; returns false while paused | Frontend pacing, bounded runs and replay drivers |
 | `set_paused`, `restart` | Pause freezes all board owners; restart creates a cold board, discards session audio and unpauses | Pause/settings UI and restart commands |
+| `stage_count`, `stage`, `enter_practice_stage` | Runtime ROM stage catalog and explicit directed entry after fresh coin/start boot; keeps first-stage accumulated state | Local [Practice](PRACTICE_MODE.md) startup/retry; mode policy and recording exclusion stay in the frontend |
 | `frame()` | Read-only completed native 320×224 RGB plus frame number and board time | GPU presentation, scaling, shaders, screenshots and overlays |
 | `capture_sprite_scene`, `sprite_scene()` | Opt-in read-only per-pixel ordered fragment chains from published ROM sprite descriptors; clip-frontier palette and priority retained, reset on restart | Independent cloud/trail/explosion/flame opacity and future per-sprite materials |
 | `capture_sprite_presentation`, `sprite_presentation()` | Opt-in read-only native-sized ARGB background/sprite copies and tile/shadow protection; valid after the next completed frame, invalidated on disable/restart | Sprite-only frontend filtering, with original native raster retained |
@@ -75,7 +76,7 @@ feature can be implemented as a postprocessing effect.
 | Additional feedback, motion telemetry, near-miss bonuses | Extend the implemented typed feedback events/state with independently verified producers and explicit ordering; basic rumble is already implemented |
 | Additional music/effect policies | Use the implemented verified stem/event interface; final mixed PCM alone cannot separate original music |
 | Additional widescreen controllers/aspects and replacement sprites | Reuse immutable scene clips and detached visibility; add verified controller coverage and descriptor-to-asset mapping. Basic 16:9 rendering/capacity recovery is already implemented |
-| Stage selection, shuffled missions and new formations | A verified stage/mission descriptor interface, followed by an explicit enhanced mode and original-mode regression tests |
+| Stage selection, shuffled missions and new formations | Local [Practice mode](PRACTICE_MODE.md) uses a typed ROM catalog and fresh directed startup; [Shuffle](SHUFFLE_MODE.md) owns a remapped ROM data view for continuous seeded runs. Full Practice entry-state fidelity and new formations require further verified interfaces |
 | New flight/combat rules or wingman play | Readable subsystem adapters extracted from verified player/object/collision routines; maintain native arithmetic and update order in original mode |
 | Save states | Complete versioned serialization of board/device and pending CPU continuation state, plus extension state; a RAM dump is insufficient |
 
@@ -113,6 +114,26 @@ debt. Menu keys are withheld from game controls until released.
 navigation, rejected changes and preservation of board frames/time and pause state.
 See [WORKFLOW](WORKFLOW.md#native-settings-menu) for controls and configuration.
 
+`frontend/native_crt.hpp` owns the optional final CRT display pass. It modulates
+the completed SDL game/HUD image with a cached output-resolution texture before
+frontend UI, preserving logical presentation/viewport/clip/scale state and
+letterbox pixels. It consumes no board state and requires no framebuffer readback
+or offscreen game copy. Cache replacement is transactional, capped at 64 MiB;
+Off releases it. See [CRT display](CRT_DISPLAY.md) for presets, pixel phase,
+small-window contrast reduction, settings and validation.
+
+`frontend/native_slang.hpp` provides a separate optional RetroArch `.slangp`
+host. On macOS it dynamically loads librashader and uses public SDL native Metal
+and IOSurface APIs. It captures a native-width ×224 game/HUD image, runs the
+preset to the physical game rectangle and draws frontend UI afterward. This
+reduces HD replacement art/HUD detail to the native raster. The main frontend
+recreates renderer resources when switching GPU/Metal while preserving the
+GameSession, input, menu and decoded custom HUD. Shader mode uses CPU sprite
+filters. Preset loading is transactional; paused output is cached, history is
+reset for discontinuities, and errors retain a visible game image. Other
+platforms report unsupported and retain the built-in modes. Runtime/shader
+binaries remain external; see [setup and limits](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal).
+
 ## Sprite-only presentation
 
 GameSession copies indexed background colors at the existing partial-render
@@ -143,7 +164,39 @@ transparency, priority protection and input immutability. The supplemental macOS
 on an offscreen OpenGL context. Source/license notices live in
 `frontend/scalers/README.md`. xBRZ remains pending licensing compatibility.
 
+## Optional output-resolution text plane
+
+`WideScene::render(..., original_hud=false)` retains the native scene clips and
+exposes a `HudScene` with visible text entries, normal/effects palette pens and
+native sprite occlusion. The separate underlay omits text. `NativeHud` draws
+ROM-derived Sharp 3x glyphs or user indexed RGBA tiles directly through SDL's
+logical-to-output transform, respecting partial glyph clips and native priority.
+Native-width presentation reuses the existing scene capture at width 320 with
+extended visibility disabled. The hardware renderer and original frame remain
+unchanged. Sprite instruments have no new semantic adapter.
+See [HUD presentation](HUD_PRESENTATION.md) for usage, limits and checks.
+
 ## Individual sprite composition and optional transparency
+
+The opt-in [HD player-aircraft pack](SPRITE_REPLACEMENT.md) uses the same
+immutable scene clips. `PlayerAircraftAssets` derives neutral/gentle-bank
+frame/LOD identities from runtime ROM tables; `WideScene::player_aircraft`
+admits only loaded pose roots, suppresses an unambiguous matching descriptor
+and publishes native-coordinate rectangles and per-clip ownership masks.
+`NativePlayerAircraft` transactionally loads registered per-pose textures from
+a versioned `.aircraft` manifest, preserving source bounds/pivots/scales and
+optional LOD registration. It samples art at output resolution before CRT.
+Legacy PNG/BMP remains neutral-only. Later shadow or enabled translucent
+effect overlap keeps the original aircraft for that clip. This is a single-pose
+prototype, with no board mutation or change to native RGB/PCM/time. Detached HUD
+also keeps priority-3 aircraft native because the authored alpha ownership is
+not available to the separate glyph compositor; observed flight priority 1 is
+supported.
+
+Aircraft extending beyond the native 320-column safe area retain Original.
+The present HD ownership mask cannot represent the widescreen overhang; whole
+descriptor suppression would otherwise remove those margin pixels. Nozzle
+annotations aid asset review and never rewrite native flame placement or timing.
 
 `hwvideo/sprite_scene.hpp` passively decodes the published hardware list at the
 existing layer observer. It follows native row stepping, nibble order, wrapping,

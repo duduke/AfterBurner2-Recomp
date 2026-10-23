@@ -74,7 +74,7 @@ The optional OpenAL builder provides its library, source archive and notices.
 After committing the intended tree:
 
 ```sh
-python3 tools/package_macos.py v0.1.0-preview.2
+python3 tools/package_macos.py v0.1.0-preview.3
 ```
 
 Use a fresh version for later releases. The packager requires a clean working
@@ -84,6 +84,10 @@ existing package. It creates an allowlisted folder and ZIP under ignored
 ad-hoc signs the binaries and records source commit/file hashes. Project and
 dependency sources are included. ROMs, captures, soundtracks and preferences
 are excluded. Keep the shared libraries replaceable for local compatible builds.
+Preview 3 also copies the four allowlisted player-aircraft pack files into
+`assets/player-aircraft/` and includes the librashader header notices. The
+optional shader runtime and user shader packs remain external; see
+[shader setup](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal).
 
 Before uploading, extract the ZIP into a separate folder. Verify its SHA-256,
 executable permissions, signatures and dependency paths, then launch from a
@@ -235,6 +239,35 @@ unimplemented or approximate mode. The SaI pair uses standard names rather than
 the unrelated CrispSal/SmoothSal names. ScaleFX uses GPU compute on the native GPU path, with a CPU/software fallback.
 Use the detailed Filter timing to compare modes; backend and load affect performance.
 
+Video → HUD offers Original (default), Sharp 3x ROM-tile smoothing and Custom
+indexed PNG artwork. The replacement text plane uses output-resolution drawing
+and native palette/priority, centered at all three viewport widths. The window
+requests high pixel density; fullscreen uses the desktop resolution. See
+[HUD presentation](HUD_PRESENTATION.md) for atlas format, `--hud-atlas`, fallback
+and validation scope. Sprite-based instruments retain their native artwork.
+
+Video → CRT Mode offers Off (default), Subtle, Arcade and optional RetroArch. Scanlines and RGB Mask
+adjust independently in 5% steps. Presets reset both strengths; Off retains them.
+The cached effect covers the final game/HUD image and leaves frontend menus/stats
+readable. See [CRT display](CRT_DISPLAY.md) for pixel alignment, small-window
+behaviour, persistence and resource limits. Run
+`python3 tools/workflow.py run test-native-crt test-crt-mutations verify-gpu-crt`
+for synthetic software/real-GPU pixel and state checks. GPU checks need a desktop
+display; the normal `test` includes the software baseline and retained mutations.
+
+On macOS Metal, **Shader Preset** selects a RetroArch `.slangp` from a complete
+user shader pack and activates it after successful loading. Install the optional
+pinned runtime with `python3 tools/deps/fetch_librashader.py`; normal builds and
+built-in modes need no runtime. `--shader-preset path.slangp` selects it at launch;
+`--shader-runtime path.dylib` overrides runtime discovery. Shader mode uses native
+224-row input (including reduced-resolution HD art/HUD), CPU sprite filters and
+SDR output. See [setup and limits](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal).
+The explicit `verify-native-slang-mutations` and `verify-native-shader-main` gates
+require that runtime and a usable Metal display; the latter needs ROMs. They
+exercise deterministic authored shader references, timing/history controls,
+GPU/Metal switching, preset rollback and unchanged paused board output.
+`test-librashader-fetch` runs offline and is included in normal `test`.
+
 Settings save immediately to `settings.cfg` in SDL's per-user preference directory
 for organization `AfterBurner2-Recomp`, application `AfterBurner2`.
 `--settings-file path` overrides that location. Unsupported or invalid settings
@@ -242,7 +275,20 @@ fall back to defaults; failed changes leave the previous selection and show a
 notice. ROM fonts are decoded at runtime for the menu and overlay, independently
 of the board's text RAM and palette. No extracted assets are checked in.
 
-`--boot-to-flight`, `--stage` and bounded `--frames` runs bypass the initial menu.
+The root **Practice** menu selects any runtime ROM stage, starts a fresh session
+with normal lives/damage, and offers Return to Arcade. F5 retries the active
+Practice starting stage; cancelling stage browsing preserves that target.
+`--practice-stage 8` launches the same mode directly. Practice is unavailable
+while recording. See [Practice mode](PRACTICE_MODE.md) for directed-startup scope
+and validation.
+
+The separate **Shuffle** menu starts a continuous run through stages 1–22 once
+in random order, followed by the native stage-23 finale. F5 retries the same order, New Shuffle draws a new seed, and
+Return to Arcade restores the canonical board. `--shuffle` launches directly;
+`--shuffle-seed 12345` reproduces an order. See [Shuffle mode](SHUFFLE_MODE.md)
+for its explicit run-position and palette policy, commands and evidence.
+
+`--boot-to-flight`, `--stage`, `--practice-stage`, `--shuffle` and bounded `--frames` runs bypass the initial menu.
 `--menu-preview image.bmp` renders Options and exits for visual inspection.
 `--frame-preview image.bmp --frames count` saves the last presented bounded frame;
 use an ignored path under `build/oracle/` for any ROM-derived image.
@@ -360,7 +406,7 @@ Record manual play from cold boot with
 Coin/Start and every control are recorded against physical board-frame
 numbers, including automatic `--boot-to-flight` inputs when requested.
 Pausing adds no frames; F5 starts a separate `.restartN` recording.
-`--stage` is rejected when recording. A stopped recording retains the
+`--stage`, `--practice-stage`, `--shuffle` and the Practice/Shuffle menus are rejected when recording. A stopped recording retains the
 attempted failing frame. Its JSON sidecar identifies the loaded ROM regions
 by length/FNV-1a digest and declares fresh persistent state and switch bytes.
 
@@ -476,11 +522,16 @@ names; full recovery mutation acceptance runs all retained mutations. Concurrent
 mutations use separate source overlays and binaries, with passing baselines
 checked first. No mutation is accepted merely because its baseline fails.
 
+The full recovery capture defaults to `RECOVERY_CAPTURE_SECONDS=96`. Its
+64,656 cases run sixteen per video frame after forty boot frames, requiring
+about 68 emulated seconds. The earlier 64-second limit was insufficient for
+regenerating the complete plan; focused increments keep their 32-second limit.
+
 After the new instructions and mutations pass, run the directed stage sweep,
 refresh the complete recovery capture with `oracle-capture-recovery`, and run
 the checks required by the validation cadence above. Full merge and milestone
 gates still include `test`, `verify-stage1` and the complete `oracle-test`. The
-full capture now allows 64 emulated seconds for the expanded fixture roster;
+full capture allows 96 emulated seconds for the expanded fixture roster;
 focused captures keep their bounded window. Keep older captures and coverage.
 
 
@@ -561,9 +612,9 @@ Captures stay under `build/oracle/widescreen/`; never commit runtime ROM data.
 `--profile` reports the added CPU scene cost as `wide_scene_ms`; compare Original
 and Wide with the same audio/device setup before attributing pacing changes.
 
-### Local 16:10 viewport
+### 16:10 viewport
 
-Source after preview 2 also offers Video → Viewport → 16:10 Preview (358×224,
+macOS Preview 3 offers Video → Viewport → 16:10 Preview (358×224,
 19 additional columns on each side). The selector cycles Original → 16:9 →
 16:10 in either direction. Legacy `widescreen=1` preferences still select 16:9;
 new files additionally persist `viewport=original|16:9|16:10`.
@@ -577,7 +628,7 @@ The first command generates retained Stage 1/5 fixtures under
 `build/oracle/widescreen/`; the second requires a real GPU/display and reads
 those fixtures without repeating the stage sweep. The 16:10 sweep is also part
 of `verify-stage1`. Geometry mutation checks exercise both widths independently.
-This local implementation is newer than the published packages; broader 16:10
+The Windows Preview 2 download retains 16:9; broader 16:10
 controller/scene, physical-platform and sustained-load acceptance remains open.
 
 ### SDL GPU sprite filtering
@@ -694,8 +745,12 @@ simple-haptic fallback hardware remain open.
 
 ```sh
 python3 tools/workflow.py run test-spatial-audio verify-spatial-mutations -j4
+python3 tools/workflow.py run test-spatial-sdl-only -j4
 python3 tools/workflow.py run verify-spatial-game -j4
 python3 tools/workflow.py run oracle-spatial-routing verify-spatial-ownership-mutations -j4
+# Extended milestone checks, reusing the retained physical recordings:
+python3 tools/workflow.py run verify-spatial-lifecycle -j4
+AB2_SPATIAL_SUSTAIN_SECONDS=600 python3 tools/workflow.py run test-spatial-audio -j4
 ```
 
 Soft loopback needs the optional OpenAL Soft dependency, without physical audio
@@ -703,3 +758,9 @@ hardware. `capture-spatial-routing` regenerates the independent 1,800-frame MAME
 fixture under `build/oracle/spatial-audio/`. Unit/playback checks are part of
 `test`; ownership and retained mutation checks are part of `oracle-test`.
 Physical headphone/2.1/5.1 acceptance is separate from offline loopback.
+The lifecycle target replays ending, game-over, continue and weapons inputs
+through HRTF while comparing native RGB/PCM/time with an untapped board.
+`--profile` reports software audio queues, stopped-source counts, synchronized
+re-primes and backend recoveries; these exclude hardware latency. The SDL-only
+target deliberately omits OpenAL headers/linking and checks truthful fallback,
+pause/resume, native PCM and profile switching.

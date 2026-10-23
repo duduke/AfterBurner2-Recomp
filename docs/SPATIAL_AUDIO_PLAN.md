@@ -1,8 +1,8 @@
 # OpenAL Soft cockpit audio
 
 **Status: experimental implementation shipped in the macOS preview.**
-Updated **2026-10-19** against the local source after
-[v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
+Updated **2026-10-23** for
+[macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
 Original SDL remains the
 default native PCM reference. The enhanced path changes playback, never the
 Z80 program, chip clocks, game logic or exported native audio.
@@ -39,7 +39,7 @@ uses `AL_SOURCE_RELATIVE = AL_TRUE`. Distance attenuation and Doppler are off.
 | --- | --- | --- |
 | Front-left | `(-0.5, 0, -0.866)` | Classified tactical/cannon/missile voices, native left gain |
 | Front-right | `(0.5, 0, -0.866)` | Same class, native right gain |
-| Rear-left | `(-0.5, 0.5, 0.866)` with headphones; ear height with speakers | Classified propulsion/crash/explosion voices, native left gain |
+| Rear-left | `(-0.5, 0.5, 0.866)` with headphones; ear height with speakers | Classified propulsion/crash/explosion/passing voices, native left gain |
 | Rear-right | `(0.5, 0.5, 0.866)` with headphones; ear height with speakers | Same class, native right gain |
 
 Categories follow completed native sound-sequencer initialization and physical
@@ -52,31 +52,38 @@ retain each native left/right effect channel's full level before HRTF filtering,
 avoiding the extra 3 dB reduction that made classified effects quieter than the
 direct stereo reference.
 
-The remaining confirmed routing gaps are:
+Reviewed sound policies:
 
-| Sound or identifier | Current status |
+| Sound or identifier | Routing and evidence |
 | --- | --- |
-| Left/right passing sounds (`0x6E`, `0x6F`) | Direct stereo; verified passing-sound producer, cockpit assignment pending |
-| Refueling/departure cue (`0xEF`) | Direct stereo; sequence producer verified, audible identity pending |
-| Commands `0x7E`, `0x9A`, `0xD8` | Observed in the 1,800-frame sound capture; names and routing pending |
-| PCM sample IDs `0x06`, `0x26`, `0x28` | Observed direct allocations without a classified owner; origin and routing pending |
+| Left/right passing sounds (`0x6E`, `0x6F`) | Rear; `$156F8..$1571C` emits after object depth crosses the player, preserving native stereo side |
+| Enemy weapon launch (`0xD8`) | Front; `$14D96` follows enemy weapon/shadow allocation |
+| Coin (`0x7E`), timer/flag cue (`0x9A`) | Intentional direct stereo; service label INSERTED COIN and producers `$C79C`/`$DC5E` |
+| Carrier cue (`0xEF`, direct sample `0x46`) | Intentional direct stereo; sequence producer `$104EE`, audible identity pending |
+| Direct sample `0x06` (`0xA5`) | READY voice, intentional direct stereo; stage-entry `$D804`, service VOICE table |
+| Direct samples `0x26`/`0x28` (`0x4C`/`0x4E`) | FLIGHT 1 variants R2/L2, intentional direct stereo; startup `$BF56/$BF60`, service EFECT A table |
 
-This is the confirmed gap list, not a complete sound catalog. Command IDs and
-PCM sample IDs use different namespaces; they are not necessarily distinct
-audible effects. Unclassified sounds remain audible. Music's direct stereo path
-is intentional and is excluded from this list.
+Command IDs and PCM sample IDs use different namespaces. Audible names for the
+neutral carrier and timer/flag cues remain unverified. Other unreviewed sounds retain
+native stereo; music always uses the direct stereo path.
 
 These are **requested virtual positions**, not measured cabinet geometry. The
-1987 After Burner Deluxe Type manual (420-5812), wiring diagram pp. 63–64,
-labels **REAR SP** and **FRONT SP ×2**. Its parts list names a 10 cm, 8 Ω,
-15 W speaker in the cabinet roof and another in the lamp box, plus a phone-jack
-board in the front cabinet. This supports a raised rear image for headphone
-presentation, but does not establish exact listener angles, independent board
-channels or the wiring of an After Burner II revision. The HRTF profile retains
-left/right rear separation as an optional presentation choice; it does not claim
-that the Deluxe cabinet had two rear speakers. The native board reference remains
-stereo. The scanned diagram's conductor labels are too unclear to verify its
-exact pin-to-speaker routing, so that electrical mapping remains open.
+1987 After Burner Deluxe Type manual (420-5812), printed pp. 63–64 (PDF pages
+66–67), shows **two rear and two front speakers**, each 8 Ω / 15 W. Rendering
+the scan at higher resolution resolves the earlier ambiguous rear label.
+
+| Connector | Left + | Left − | Right + | Right − |
+| --- | --- | --- | --- | --- |
+| Amplifier `839-0035-01`, Molex 8P | 1 (`A2`) | 2 (`92`) | 3 (`A5`) | 4 (`95`) |
+| Rear `SGB-3824-36`, CP 4P | 1 | 2 | 3 | 4 |
+| Front `SGB-3824-17`, CP 4P | 1 | 2 | 3 | 4 |
+
+Both pairs share the same stereo amplifier nets; the front branch passes
+mini-jack board `839-0018`. There is no independent electrical front/rear feed.
+Roof/lamp-box mounting supports a raised rear image, while exact HRTF angles
+and semantic effect placement remain presentation choices. The native reference
+stays stereo. This verifies the documented 420-5812 wiring; unchanged wiring
+in an After Burner II cabinet revision still needs primary evidence.
 
 ## Interpolation and music
 
@@ -119,27 +126,31 @@ One playback thread owns SDL streams and the OpenAL context/sources/buffers.
 SDL subsystem initialization/teardown stays on the main thread. Bounded queues
 apply backpressure outside board execution. Pause, restart, device/profile
 changes and shutdown stop/clear the appropriate playback state. Unsupported
-output leaves the game running. Source underruns are logged and restarted;
-sustained latency/performance acceptance remains open.
+output leaves the game running. Global starvation re-primes streams together;
+isolated source restarts remain immediate. The initial startup threshold stays
+25 ms; synchronized recovery uses 50 ms.
 
-## Current release checkpoint
+## Preview 1 release checkpoint (2026-10-15)
 
-The macOS ZIP bundles OpenAL Soft 1.25.2 with embedded HRTF data, SDL3 3.4.16,
-complete sources and notices. The final extracted-package 240-frame smoke
+The Preview 1 macOS ZIP bundled OpenAL Soft 1.25.2 with embedded HRTF data,
+SDL3 3.4.16, complete sources and notices. Its extracted-package 240-frame smoke
 reported Metal/VSync and active headphone HRTF through CoreAudio. This proves
 initialization/playback, not measured front/rear localization or physical 5.1.
 The complete `required` and supplemental `full` gates pass; see
 [release evidence](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
 No new classification or cabinet-wiring acceptance is implied by that release.
+The later integrated source and package checks are recorded in
+[the Preview 3 release record](ENGINE_NOTES.md#preview-3-release-2026-10-23).
 
 ## Validation and remaining acceptance
 
 Passed checks include mono/stereo WAV conversion, actual headphone HRTF,
 left/right/front/rear loopback output, direct stereo music, chip-rate resampling,
-live 2.1/5.1 switching, pause/clear and persisted/menu controls. Four retained
-playback mutations reject swapped sides, disabled HRTF, stereo positional
-buffers and spatialized music. Two ownership controls reject corrupted MAME
-metadata and a detached native observer.
+live 2.1/5.1 switching, pause/clear and persisted/menu controls. Nine playback
+mutations cover spatial placement, dry music, queue bounds, pause/recovery and
+simultaneous/staggered starvation. Six ownership/reference controls cover
+corrupted MAME metadata, observer detachment, routing policy and native PCM
+identity. SDL-only playback is compiled and exercised separately.
 
 The independent MAME oracle matches **117,509/117,509 transactions/IX/DE/BC,
 zero skips**, across 1,800 frames, with 15 observed owners and **943,466 exact PCM
@@ -149,55 +160,45 @@ renders 1,448,641 stereo output frames without clipping while preserving unity
 native PCM. Full-suite, Make/CMake and finite launch results are
 recorded in [ENGINE_NOTES](ENGINE_NOTES.md). ROMs/captures remain ignored.
 
-Remaining work:
+The 2026-10-22 playback checks add queued pause/resume, bounded producer
+backpressure, SDL failure recovery/retry, injected disconnect, and synchronized
+re-priming after a producer stall. `--profile` reports software queue times,
+stopped-source counts and recoveries; device mix buffers and physical output
+latency are excluded. The extended `verify-spatial-lifecycle` target passed all
+four retained natural recordings: **104,452 native RGB/PCM/time frames identical**,
+with no clipping or steady underruns. It observes all six native song contexts
+and 633 fade updates. The reference is an untapped native board; this is not an
+independent continuous whole-credit MAME comparison or replacement-file
+listening check. A 600 sample-second, 13-source loopback also passes without
+new underruns or clipping. A muted five-minute CoreAudio run recovered once
+from a load stall without repeated restarts; software buffering peaked at
+120 ms under concurrent tests.
+Detailed results and source-specific logs belong in
+[Engine Notes](ENGINE_NOTES.md#spatial-audio-routing-and-playback-acceptance-2026-10-22).
+The complete local `required` gate and supplemental `full` profile pass on the
+final 2026-10-22 shared source. Local software validation is complete within
+this recorded scope; the external checks below remain open.
 
-- Physical headphone localization/balance and 2.1/5.1 channel tests on Windows,
-  Linux and macOS; avoid stacking OS spatial processing during calibration.
-- Complete native voice classification, all six music contexts and exact Deluxe
-  cabinet pin-to-speaker and After Burner II revision audit.
-- Sustained/peak-load latency, underrun recovery, device-loss and long-session
-  performance coverage.
-- Optional discrete LFE crossover/routing, replacement-effect selection and
-  preservation of external tracks' original rates through OpenAL.
+The user confirmed corrected headphone loudness and front/rear placement with
+External Headphones on 2026-10-19, plus earlier Speaker Test directions on
+headphones and the Mac's built-in stereo speakers. Those checks establish
+headphone listening and stereo left/right. The user could not retest the new
+passing/recovery changes on 2026-10-22.
 
-On 2026-10-18, the macOS software recheck passed Soft loopback, four retained
-playback mutations, 1,800-frame game playback, independent MAME routing
-(117,509/117,509 observations, zero skips), and ownership mutations. The user
-reported that the Speaker Test sequence sounded correctly directed through
-headphones and the Mac's built-in stereo speakers. In a stage with Headphones
-HRTF, the user also reported that cannon/missile sounds felt in front and
-engine/crash sounds behind, without an obvious imbalance or delay. This is
-headphone listening and stereo left/right evidence; no physical 2.1/5.1 rear-channel or
-Windows/Linux speaker test was performed. Logs:
-`build/workflow/20261018T165843.993427Z/` and
-`build/workflow/20261018T165921.689316Z/`.
-A 3,600-frame Stage 5 Metal/16:10/HRTF window holds 59.6374 simulation and
-display FPS across 25 reported intervals, with no logged stream underrun;
-`build/oracle/spatial-audio/stress-stage5.log` retains the run. This bounded
-window does not close long-session or device-loss acceptance.
+Remaining external acceptance:
 
-On 2026-10-19, the headphone HRTF rear image was raised from below ear level to
-above and behind, following the manual's rear/roof speaker evidence. 2.1 and
-5.1 rear sources use ear height. The four-cue Speaker Test and the earlier user
-listening result preceded this position change; physical listening of the
-revised build is still required. The spatial loopback, four retained playback
-mutations, 1,800-frame game playback, 117,509/117,509 MAME ownership oracle,
-and native release build pass at
-`build/workflow/20261018T220405.403751Z/`. The log directory uses UTC and
-therefore carries a 2026-10-18 timestamp for this 2026-10-19 local update.
+- Listening to the revised passing/enemy cues; physical 2.1/5.1 channel tests;
+  Windows/Linux output and real unplug/reconnect checks. Avoid stacking OS
+  spatial processing during calibration.
+- Physical end-to-end latency and sustained peak-load checks across named
+  devices. Offline sample-time tests do not establish hardware timing.
+- Primary evidence for unchanged wiring in an After Burner II cabinet revision;
+  audible identities of the intentional neutral cues and additional unobserved
+  sound contexts.
 
-After the user reported quiet gunfire, missiles and explosions with weak
-placement, the headphone-only positional pair normalization was removed on
-2026-10-19. In the same 1,800-frame loopback scenario, rendered squared-sample
-energy rose from 3,428.69 to 3,895.41 (native reference 4,933.92), with zero
-clipped samples. This is a signal-level check, not a perceptual loudness measure.
-The general test suite, game playback, independent MAME routing oracle and
-native release build pass at `build/workflow/20261019T035751.967100Z/`.
-The user selected Headphones HRTF with External Headphones and confirmed that
-gunfire/missiles were louder and more clearly in front, and explosions/crashes
-were more clearly behind in the revised build. This closes the reported Mac
-headphone level/localization issue for that device, not the electrical cabinet
-pinout, independent 2.1/5.1 hardware or other-platform listening checks.
+Optional extensions: discrete LFE crossover, replacement-effect selection and
+preserving external tracks' original rates through OpenAL. They are separate
+features rather than gates for the current cockpit output.
 
 ## API references
 
@@ -209,3 +210,6 @@ pinout, independent 2.1/5.1 hardware or other-platform listening checks.
   [resamplers](https://openal-soft.org/openal-extensions/SOFT_source_resampler.txt).
 - [Sega Deluxe manual 420-5812, first printing](https://arcarc.xmission.com/PDF_Arcade_Manuals_and_Schematics/After%20Burner%20Deluxe%20Type%20%28420-5812%201st%20Printing%29.pdf):
   retained audit source; After Burner II revision applicability is unverified.
+- [Sega service manual 420-5842-01](https://arcarc.xmission.com/PDF_Arcade_Manuals_and_Schematics/After%20Burner%20Service%20Manual%20%28420-5842-01%201st%20Printing%29.pdf),
+  pp. 1–4: diagnostic version 2.00 and sound-test categories, corroborated by
+  the ABII ROM's version text and command/display tables.

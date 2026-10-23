@@ -1,9 +1,11 @@
 # Roadmap
 
-Updated **2026-10-19**. [Preview v0.1.0-preview.2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
-is published for Apple Silicon / macOS 26+ and Windows 10/11 x64. Both packages
-include the native game, menus, GPU filters/translucency, replacement music, SDL
-rumble, experimental OpenAL Soft 1.25.2 cockpit audio and 16:9 presentation.
+Updated **2026-10-23**. [Preview v0.1.0-preview.3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3)
+refreshes Apple Silicon / macOS 26+ with Practice, Shuffle, 16:10, HUD/CRT and
+aircraft presentation, calibration and revised spatial audio. The
+[Windows 10/11 x64 download remains Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
+Both include the native game, menus, GPU filters/translucency, replacement music,
+SDL rumble, experimental OpenAL Soft 1.25.2 cockpit audio and 16:9 presentation.
 Original remains the regression reference.
 
 ## Summarized roadmap
@@ -11,11 +13,11 @@ Original remains the regression reference.
 | Priority | Workstream | Next outcome |
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
-| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Finish controller/scene audits and sustained 16:9/16:10 validation; 16:10 is a local source addition after preview 2; ultrawide remains future work |
+| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Finish controller/scene audits and sustained 16:9/16:10 validation; both widths ship in macOS Preview 3; ultrawide remains future work |
 | 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification |
 | 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility |
-| 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | CRT/pacing work, sprite extraction, replacement assets, richer effects and optional HUD improvements |
-| 6 | [Gameplay extensions](ENHANCEMENT_PLAN.md#gameplay-and-content) | Verified mission/object interfaces before arranged modes, new stages, save states or multiplayer |
+| 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
+| 6 | [Gameplay extensions](ENHANCEMENT_PLAN.md#gameplay-and-content) | Extend the Practice/Shuffle interfaces for additional arranged rules; verify object/state contracts before new stages, save states or multiplayer |
 
 This is a work order, not a schedule. Enhancements can proceed alongside fidelity
 work; a feature release does not close whole-game or platform acceptance.
@@ -141,25 +143,25 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-19)
+## Current checkpoint (2026-10-23)
 
-Release source is tagged `v0.1.0-preview.2`; the package manifests identify the
+macOS release source is tagged `v0.1.0-preview.3`; the package manifests identify the
 exact source commit. The SDL3 native game is
 on `main`; the separate Three.js prototype remains on
 [`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).
 
 | Area | Implemented / validated | Still open |
 | --- | --- | --- |
-| Native game | Cold boot, attract, coin/start, flight, weapons, HUD, original audio and transitions; 12,405 recovery PCs / 77,954 identical fixtures / 146 rejected controls | New execution paths, standard-credit recording and continuous whole-credit fidelity |
+| Native game | Cold boot, attract, coin/start, flight, weapons, HUD, original audio and transitions; 12,466 recovery PCs / 78,670 identical fixtures / 207 retained controls | New execution paths, standard-credit recording and continuous whole-credit fidelity |
 | Whole host | Expanded 781-frame independent MAME corpus: CPU/bus/device/RGB/audio comparisons pass with zero supplied execution/state/read seeds | Finite input/operand coverage; broader DIP/reset/persistent-state paths |
 | Natural lifecycle | Four replays match ten MAME columns and native original-image reconstruction across 104,452 frames, zero skips; ending run visits all 23 stages | Name entry, NVRAM, alternate carrier/collision paths and whole-credit CPU/device/RGB/audio |
-| Menus and controls | Video/Controls/Audio/DIP submenus, live bound-input calibration display, scroll hints, persisted settings, keyboard/gamepad/raw-joystick remapping and hotplug | Service/coin options and broader physical device acceptance |
-| Display and ground | Five GPU filters plus Off, four opacity controls, full-throttle-only flame translucency and optional ground correction | Other backends, replacement art, continuous terrain projection and sustained performance |
-| Widescreen | Published 398×224 preview; local 358×224 option, detached scenery, queue/depth-drop recovery and horizon/water extensions; 23 directed slots per aspect preserve 22,540 counted native RGB/PCM/time frames | Broader controller/scene audit, ultrawide, other platforms and sustained load; gameplay object pools remain native |
-| Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes | Four songs' natural contexts and natural fades |
-| Spatial audio | Optional OpenAL Soft interpolation, headphone HRTF, 2.1/5.1 profiles and direct stereo music; `alSourceRewindv` state fix verified on Windows; 117,509 MAME ownership observations exact | Unclassified voices, physical localization/channels, cabinet audit and long-session latency |
+| Menus and controls | Video/Controls/Audio/DIP submenus, [Stage Select / Practice](PRACTICE_MODE.md) and [Shuffle](SHUFFLE_MODE.md), live bound-input calibration display, scroll hints, persisted settings, keyboard/gamepad/raw-joystick remapping and hotplug | Service/coin options, full Practice entry-state fidelity and broader physical device acceptance |
+| Display and ground | Five GPU filters plus Off, four opacity controls, full-throttle-only flame translucency, optional ground correction, [high-DPI HUD preview](HUD_PRESENTATION.md) with Sharp 3x/custom indexed text tiles and [CRT display presets](CRT_DISPLAY.md) | Semantic sprite instruments, production replacement art, other backends, continuous terrain projection and sustained performance |
+| Widescreen | 398×224 and 358×224 previews in macOS Preview 3, detached scenery, queue/depth-drop recovery and horizon/water extensions; 23 directed slots per aspect preserve 22,540 counted native RGB/PCM/time frames | Broader controller/scene audit, ultrawide, other platforms and sustained load; gameplay object pools remain native |
+| Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes; all six native song contexts and natural fades observed | Replacement-file natural fade/listening acceptance |
+| Spatial audio | Chip-rate OpenAL Soft, headphone HRTF, 2.1/5.1 profiles, dry stereo music, reviewed routing and stall recovery; 117,509 exact MAME ownership observations and 104,452 unchanged native lifecycle frames; original Deluxe stereo wiring traced | Revised-cue listening, physical surround/unplug and Windows/Linux checks, end-to-end latency, ABII cabinet-revision evidence |
 | Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
-| Distribution | ROM-free Apple Silicon ZIP and runtime-verified Windows x64 ZIP with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS is ad-hoc signed (ZIP predates latest Windows commit); Windows unsigned; Intel/older macOS and Linux packages remain open |
+| Distribution | ROM-free macOS Preview 3 and runtime-verified Windows Preview 2 ZIPs with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS ad-hoc signed; Windows unsigned and awaiting the new features; Intel/older macOS and Linux packages remain open |
 
 Local source update: the viewport selector now offers Original,
 16:9 (398×224) and 16:10 (358×224), with width-specific detached visibility and
@@ -170,10 +172,52 @@ See [the local widescreen validation records](WIDESCREEN_PLAN.md#delivered-previ
 The complete `required` gate and supplemental `full` profile pass on the
 integrated 2026-10-19 macOS source; see the validation record below. Broader
 scene/platform and sustained-load work remains open.
-Published packages have not been refreshed. The local source also has a
+macOS Preview 3 includes this work. The source also has a
 controller-only live Calibration screen and revised headphone HRTF gain. The
 user confirmed responsive controller values and improved front/rear placement
 with External Headphones. See [engine evidence](ENGINE_NOTES.md#input-calibration-and-macos-spatial-audio-recheck-2026-10-18).
+
+Local source addition (2026-10-22): the [HUD presentation preview](HUD_PRESENTATION.md)
+adds Original / Sharp 3x / user indexed text art and high-DPI output. Native
+RGB/PCM/time, text priority/palette/frontiers, 4K software/Metal layouts and the
+complete local `test` / `verify-stage1` checks pass; see
+[the HUD evidence](ENGINE_NOTES.md#high-dpi-hud-text-presentation-2026-10-22).
+Sprite-based instruments, production replacement art and sustained/platform
+acceptance remain open. This does not replace the complete merge/release gate.
+
+Local source addition (2026-10-23): the opt-in
+[HD player-aircraft prototype](SPRITE_REPLACEMENT.md) now loads a versioned,
+registered pack containing neutral flight and gentle banking in both directions,
+including their runtime ROM LOD families. Native RGB/PCM/time is unchanged across
+3,004 comparison frames; 1,206 active-flight draws cover both families across
+three viewport widths. Software/Metal rendering at 3x and 4K, 35 retained negative
+controls and the 160-frame MAME video reference pass. Fixed bounds, pivots,
+scales and nozzle review points travel with the art. Other poses and unsupported
+overlaps retain Original; complete animation, production registration and
+sustained/platform acceptance remain open. See
+[the registered-pack evidence](ENGINE_NOTES.md#registered-aircraft-pack-and-gentle-bank-2026-10-23).
+
+Local source addition (2026-10-23): [CRT display](CRT_DISPLAY.md) adds Off /
+Subtle / Arcade presets with independent scanline and RGB-mask strengths on the
+completed game/HUD image, followed by readable frontend UI. Software/Metal
+pixel, renderer-state, 4K, high-DPI resize and six retained negative controls
+pass. Native replay preserves 781 RGB/PCM/time frames, zero skips. The later
+unlocked-desktop recheck passed actual fullscreen/windowed transitions; an
+accepted API request alone is not fullscreen acceptance.
+See [CRT evidence and measured limits](ENGINE_NOTES.md#optional-crt-display-presentation-2026-10-23).
+These local presentation checks do not extend the previous complete hardware
+gate to the changed frontend tree; sustained load and other platform acceptance
+remain open. Optional richer effects are covered by the Slang follow-up below.
+
+Local follow-up (2026-10-23): [RetroArch Slang presets](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal)
+add an optional macOS Metal `.slangp` host through pinned librashader, native
+224-row input, live preset selection and renderer switching. CRT Easymode,
+CRT Geom and CRT Royale have been exercised locally. The host retains the
+original board framebuffer and audio, and frontend UI draws after the shader.
+Windows/Linux shader backends, HDR, parameter UI, first-input mipmaps and sustained
+preset performance remain open. Shader packs and runtime binaries are not
+committed or added to published packages. See the separate
+[shader validation record](ENGINE_NOTES.md#retroarch-slang-presentation-2026-10-23).
 
 On Windows 11 x64, both ROM-free continuation tests (`windows-fiber` and
 `worker-thread`) pass, and native `afterburner2.exe` with Vulkan GPU sprite
@@ -190,12 +234,23 @@ and the focused plans for scope.
 
 ## Next acceptance tasks
 
-The integrated macOS source passed `required` at
-`build/workflow/20261019T042949.062480Z/` and supplemental `full` at
-`build/workflow/20261019T050739.004809Z/`. The published macOS package predates
-the OpenAL rewind, performance, 16:10, calibration and headphone-gain updates;
-a new versioned package is still open. See
-[the gate record](ENGINE_NOTES.md#integrated-macos-acceptance-gate-2026-10-19).
+The integrated macOS Preview 3 source passed the complete final-source
+`required` release gate on 2026-10-23 at
+`build/workflow/20261023T185259.944984Z/`: `test`, `verify-stage1` and the
+complete `oracle-test`, including all 207 recovery controls. Its complete
+Shuffle comparison matches 100,000 independent frame observations. See
+[the release record](ENGINE_NOTES.md#preview-3-release-2026-10-23).
+
+The 2026-10-22 macOS checkpoint passed the complete `required` gate: unchanged-source
+`test` / `verify-stage1` at `build/workflow/20261022T160051.739352Z/`, clean
+`oracle-test` at `build/workflow/20261022T162126.082489Z/`, and supplemental
+`full` at `build/workflow/20261022T161927.407826Z/`. The spatial HRTF lifecycle
+replays also preserve 104,452 native RGB/PCM/time frames. See
+[the scope and gate record](ENGINE_NOTES.md#spatial-audio-routing-and-playback-acceptance-2026-10-22).
+macOS Preview 3 refreshes performance, 16:10, calibration, spatial audio,
+HUD/CRT, aircraft presentation and Practice/Shuffle. Refreshing the Windows
+package and extending platform acceptance remain open. See the
+[Preview 3 release record](ENGINE_NOTES.md#preview-3-release-2026-10-23).
 
 On 2026-10-15, the user reported finishing the game from start to finish on
 macOS with the saved Normal / three-ship configuration and current enhancements.
@@ -227,6 +282,31 @@ Enhancements can be developed alongside this work using the contracts in
 [ENHANCEMENT_ARCHITECTURE.md](ENHANCEMENT_ARCHITECTURE.md). Keep an original
 mode as the regression reference; new features do not close full-game coverage.
 
+Local enhancement increment (2026-10-23): [Stage Select / Practice](PRACTICE_MODE.md)
+adds an explicit fresh directed startup, F5 retry and cold arcade return.
+The runtime ROM catalog matches 23/23 independent MAME entries, zero skipped,
+with four rejected catalog mutations. The existing palette check remains
+56/56 words identical. Local `test`, complete `verify-stage1` and final SDL
+menu/Practice launch checks pass. Complete stage-entry state, Time Attack and natural
+whole-credit acceptance remain open; see the
+[Practice evidence](ENGINE_NOTES.md#stage-select--practice-first-increment-2026-10-23).
+
+Local enhancement increment (2026-10-23): [Shuffle](SHUFFLE_MODE.md) randomizes
+gameplay stages 1–22 once each, keeping stage 23 as the native finale. It runs
+continuously with normal score/lives, same-order F5 retry, New Shuffle and
+canonical Arcade/Practice return. The fixed-finale native run visits all 23
+positions and completes ending, ranking and attract across 61,478 physical
+frames. The earlier Shuffle checkpoint passed the complete `required` profile,
+including all retained mutation checks. Paired-selector cleanup adds 180 MAME
+fixtures and 20 rejected controls; a later post-ending credit-prompt continuation
+adds 250 fixtures and 19 controls across the complete prompt routine. An attract
+controller/callee closure adds 286 independently verified fixtures and 22
+rejected controls. The complete retained instruction corpus passes
+78,670/78,670 comparisons, zero skipped.
+The final arranged-MAME comparison matches all 100,000 frame observations,
+including every stage, ending, ranking and the later attract sequence. See
+[Shuffle evidence and finite coverage](ENGINE_NOTES.md#shuffle-mode-2026-10-23).
+
 ## Phase overview
 
 | Phase | Status |
@@ -237,7 +317,7 @@ mode as the regression reference; new features do not close full-game coverage.
 | 3e: stages and game flow | All 23 directed slots and a natural ending transition stream pass; broader lifecycle acceptance remains |
 | 3f: full-game equivalence | Continuous whole-credit CPU/device/RGB/audio comparison open |
 | 4: Audio | Original Z80/YM2151/SegaPCM and declared MAME audio corpora pass; full-credit contexts remain |
-| 5: Enhancements | Menus, filters/opacity, remapping, music, basic rumble, OpenAL, 16:9 preview and local 16:10 implemented; broader acceptance remains |
+| 5: Enhancements | Practice/Shuffle, filters/opacity, HUD/CRT, remapping, music, basic rumble, OpenAL and 16:9/16:10 previews implemented; broader acceptance remains |
 
 Focused enhancement plans are linked from the [documentation guide](README.md).
 Detailed ROM discoveries and earlier checkpoints remain in ENGINE_NOTES and Git

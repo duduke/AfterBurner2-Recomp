@@ -1,11 +1,75 @@
-# v0.1.0-preview.2 — Windows performance portability
+# Release notes
+
+## v0.1.0-preview.3 — Practice, Shuffle and display enhancements
+
+This release refreshes the **Apple Silicon / macOS 26+** download. Get it from
+[GitHub Releases](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
+The tag and package manifest identify the exact source commit; the GitHub
+release records the commit, validation logs and independent package checks.
+The existing Windows download remains on Preview 2, described below.
+
+### Changes
+
+- **Stage Select / Practice** in the main and pause menus: select one of 23
+  ROM stages, start a fresh directed session, retry with F5, or return to Arcade.
+- **Shuffle** alongside Practice: stages 1–22 appear once in random order,
+  followed by stage 23 as the native finale. Score, lives and weapons continue
+  between stages. F5 retries the same order; New Shuffle generates another.
+  Reproducible launches use `--shuffle-seed N`.
+- **Presentation:** 16:10 alongside 16:9, high-DPI Sharp 3x/custom HUD text,
+  built-in Subtle/Arcade CRT scanlines and RGB masks, plus an opt-in registered
+  HD neutral/gentle-bank aircraft pack. The pack is included under
+  `assets/player-aircraft/`; unsupported poses retain the original art.
+- **Optional RetroArch Slang host** on macOS Metal. Its runtime and shader
+  packs are installed separately; see [shader setup](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal).
+- **Controls and audio:** live controller calibration, revised headphone
+  effect placement, reviewed cockpit cues and spatial-output stall recovery.
+- Verified literal instruction continuations cover the additional cleanup,
+  credit-prompt and attract-controller paths exposed by the shuffled run.
+
+### Package
+
+**macOS arm64:** Apple Silicon, macOS 26+. SDL3 3.4.16 and OpenAL Soft 1.25.2
+are bundled with their sources and notices. The executable and shared
+libraries are **ad-hoc signed, not notarized or Developer ID signed**.
+Extract the complete ZIP, supply your own extracted ROMs in `roms/`, and open
+`Launch.command`. Keep `lib/` beside the executable.
+
+The ZIP includes project/dependency sources, notices, payload hashes and a
+separate SHA-256 file. ROMs, original Sega graphics/audio, MAME captures,
+personal preferences, soundtracks, the optional librashader runtime and shader
+packs are excluded. The two prototype aircraft images are generated artwork.
+
+### Validation and limits
+
+The release gate is the complete final-source `required` profile (`test`,
+`verify-stage1`, `oracle-test`, including retained mutations), followed by an
+independent extracted-package check. The dated results are recorded in
+[Engine Notes](ENGINE_NOTES.md#preview-3-release-2026-10-23).
+
+The complete Shuffle comparison matches **100,000/100,000 independently
+executed arranged-MAME frame observations, zero skipped**, including all
+gameplay stages, the finale, ending, ranking and later attract sequence.
+Those fields cover frame/time, mode, position, lives and raw score; they do
+not establish continuous CPU/device/RGB/audio equivalence. The retained
+instruction corpus matches **78,670/78,670 fixtures**, with 12,466 recovery PCs
+and all 1,262 measured conditional branches exercised both ways.
+
+Practice uses a directed startup and does not establish complete stage-entry
+state fidelity. Enhanced modes reject natural input recording. Full HD
+aircraft animation, additional shader backends, older/Intel macOS packages,
+broader hardware checks and sustained peak-load performance remain open.
+Standard single-credit recording and full-game acceptance remain in the
+[roadmap](ROADMAP.md).
+
+## v0.1.0-preview.2 — Windows performance portability
 
 This preview adds an experimental Windows x64 download alongside the updated
 Apple Silicon macOS package. Download from
 [GitHub Releases](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
 Package manifests identify the exact source commit and all payload hashes.
 
-## Changes
+### Changes
 
 - Windows CPU continuations use cooperative OS fibers instead of frequent
   worker-thread handoffs. The worker backend remains available for comparison.
@@ -38,7 +102,7 @@ Existing widescreen, ground correction, sprite filters/translucency, remapping,
 replacement music and controller feedback are retained. Native gameplay and
 object allocation limits are unchanged.
 
-## Packages
+### Packages
 
 **macOS arm64:** Apple Silicon, macOS 26+. SDL3 3.4.16 and OpenAL Soft 1.25.2
 included. Ad-hoc signed; not notarized or Developer ID signed. Extract, add your
@@ -58,7 +122,7 @@ Both ZIPs include project/dependency sources, notices, a manifest and a separate
 SHA-256 checksum. Neither includes ROMs, original Sega graphics/audio, captures,
 personal settings or soundtracks.
 
-## Validation
+### Validation
 
 - **Windows x64 runtime and performance (verified on Windows 11):** both ROM-free
   continuation tests (`windows-fiber` and `worker-thread`) pass. Native `afterburner2.exe`

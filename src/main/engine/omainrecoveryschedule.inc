@@ -103327,3 +103327,517 @@ case 0x15c10: {
     next=0x15c14;
     break;
 }
+// $0067B0: ADD.W ($0001C5B6).L,D1
+case 0x67b0: {
+    read16(0x67b4);
+    read16(0x67b6);
+    const auto operand=read16(0x1c5b6);
+    const auto old=uint16_t(r.d[1]);
+    const auto value=addsub_word(old,operand,false,true);
+    word(r.d[1],value);
+    final(0x67b8);next=0x67b6;
+    break;
+}
+// $0067B6: CMP.W D1,D0
+case 0x67b6: {
+    const auto operand=uint16_t(r.d[1]);
+    const auto old=uint16_t(r.d[0]);
+    addsub_word(old,operand,true,false);
+    final(0x67ba);next=0x67b8;
+    break;
+}
+// $0067B8: BLE $0067F6
+case 0x67b8: {
+    branch((sr&4)||bool(sr&8)!=bool(sr&2),0x67f6,4);
+    break;
+}
+// $0067F6: CLR.W 36(A5)
+case 0x67f6: {
+    read16(0x67fa);
+    const auto old=read16(r.a[5]+(36));
+    (void)old;
+    const uint32_t value=0;
+    nz(value);
+    read16(0x67fc);
+    latch();
+    write16(r.a[5]+(36),value);
+    next=0x67fa;
+    break;
+}
+// $0067FA: ANDI.W #$7C00,(A5)
+case 0x67fa: {
+    read16(0x67fe);
+    const uint32_t operand=0x7c00;
+    const auto old=read16(r.a[5]);
+    const auto value=old&operand;
+    nz(value);
+    read16(0x6800);
+    latch();
+    write16(r.a[5],value);
+    next=0x67fe;
+    break;
+}
+// $0067FE: CLR.W 100(A5)
+case 0x67fe: {
+    read16(0x6802);
+    const auto old=read16(r.a[5]+(100));
+    (void)old;
+    const uint32_t value=0;
+    nz(value);
+    read16(0x6804);
+    latch();
+    write16(r.a[5]+(100),value);
+    next=0x6802;
+    break;
+}
+// $006802: ANDI.W #$7C00,64(A5)
+case 0x6802: {
+    read16(0x6806);
+    const uint32_t operand=0x7c00;
+    read16(0x6808);
+    const auto old=read16(r.a[5]+(64));
+    const auto value=old&operand;
+    nz(value);
+    read16(0x680a);
+    latch();
+    write16(r.a[5]+(64),value);
+    next=0x6808;
+    break;
+}
+// $006808: LEA ($8EF0).W,A0
+case 0x6808: {
+    r.a[0]=0xffff8ef0;
+    read16(0x680c);
+    final(0x680e);next=0x680c;
+    break;
+}
+// $00680C: ADDQ.B #1,(A0)
+case 0x680c: {
+    const uint32_t operand=1;
+    const auto old=read8(r.a[0]);
+    const auto value=addsub_byte(old,operand,false,true);
+    read16(0x6810);
+    latch();
+    write8(r.a[0],value);
+    next=0x680e;
+    break;
+}
+// $00680E: CLR.W D0
+case 0x680e: {
+    const uint32_t value=0;
+    nz(value);
+    word(r.d[0],value);
+    final(0x6812);next=0x6810;
+    break;
+}
+// $006810: MOVE.B (A0),D0
+case 0x6810: {
+    const auto value=read8(r.a[0]);
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    byte(r.d[0],value);
+    final(0x6814);next=0x6812;
+    break;
+}
+// $006812: MOVE.B 20(A5),0(A0,D0.W)
+case 0x6812: {
+    read16(0x6816);
+    const auto value=read8(r.a[5]+(20));
+    idle(2);
+    read16(0x6818);
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    write8(r.a[0]+(0)+int16_t(r.d[0]),value);
+    final(0x681a);next=0x6818;
+    break;
+}
+// $006818: ADDQ.B #1,(A0)
+case 0x6818: {
+    const uint32_t operand=1;
+    const auto old=read8(r.a[0]);
+    const auto value=addsub_byte(old,operand,false,true);
+    read16(0x681c);
+    latch();
+    write8(r.a[0],value);
+    next=0x681a;
+    break;
+}
+// $00681A: CLR.W D0
+case 0x681a: {
+    const uint32_t value=0;
+    nz(value);
+    word(r.d[0],value);
+    final(0x681e);next=0x681c;
+    break;
+}
+// $00681C: MOVE.B (A0),D0
+case 0x681c: {
+    const auto value=read8(r.a[0]);
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    byte(r.d[0],value);
+    final(0x6820);next=0x681e;
+    break;
+}
+// $00681E: MOVE.B 84(A5),0(A0,D0.W)
+case 0x681e: {
+    read16(0x6822);
+    const auto value=read8(r.a[5]+(84));
+    idle(2);
+    read16(0x6824);
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    write8(r.a[0]+(0)+int16_t(r.d[0]),value);
+    final(0x6826);next=0x6824;
+    break;
+}
+// $006824: MOVEA.L ($0001C5A0).L,A0
+case 0x6824: {
+    read16(0x6828);
+    read16(0x682a);
+    const auto value=read32(0x1c5a0);
+    r.a[0]=value;
+    final(0x682c);next=0x682a;
+    break;
+}
+// $00682A: MOVE.L #$425E,16(A0)
+case 0x682a: {
+    read16(0x682e);
+    read16(0x6830);
+    const uint32_t value=0x425e;
+    read16(0x6832);
+    sr=(sr&0xfff0)|(uint32_t(value)?0:4)|(value&0x80000000?8:0);
+    write16(r.a[0]+(16),value>>16);write16(r.a[0]+(16)+2,uint16_t(value));
+    final(0x6834);next=0x6832;
+    break;
+}
+// $006832: BSET #7,(A0)
+case 0x6832: {
+    read16(0x6836);
+    const auto old=read8(r.a[0]);
+    sr=(sr&~4)|(old&0x80?0:4);
+    const auto value=old|0x80;
+    read16(0x6838);
+    latch();
+    write8(r.a[0],value);
+    next=0x6836;
+    break;
+}
+// $006836: RTS
+case 0x6836: {
+    next=read32(sp);sp+=4;read16(next);final(next+2);
+    break;
+}
+// $00D27E: MOVE.B ($8B5B).W,D0
+case 0xd27e: {
+    read16(0xd282);
+    const auto value=read8(0xffff8b5b);
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    byte(r.d[0],value);
+    final(0xd284);next=0xd282;
+    break;
+}
+// $00D282: MOVE.W D0,D1
+case 0xd282: {
+    const auto value=uint16_t(r.d[0]);
+    nz(value);
+    word(r.d[1],value);
+    final(0xd286);next=0xd284;
+    break;
+}
+// $00D284: SUBQ.B #1,D1
+case 0xd284: {
+    const uint32_t operand=1;
+    const auto old=uint8_t(r.d[1]);
+    const auto value=addsub_byte(old,operand,true,true);
+    byte(r.d[1],value);
+    final(0xd288);next=0xd286;
+    break;
+}
+// $00D286: EOR.W D0,D1
+case 0xd286: {
+    const auto operand=uint16_t(r.d[0]);
+    const auto old=uint16_t(r.d[1]);
+    const auto value=old^operand;
+    nz(value);
+    word(r.d[1],value);
+    final(0xd28a);next=0xd288;
+    break;
+}
+// $00D288: BTST #3,D1
+case 0xd288: {
+    const auto bit=3;const auto old=r.d[1];
+    read16(0xd28c);
+    read16(0xd28e);
+    latch();
+    sr=(sr&~4)|(old&(1u<<bit)?0:4);
+    idle(2);next=0xd28c;
+    break;
+}
+// $00D28C: BEQ $00D2D2
+case 0xd28c: {
+    branch(sr&4,0xd2d2,4);
+    break;
+}
+// $00D290: BTST #3,D0
+case 0xd290: {
+    const auto bit=3;const auto old=r.d[0];
+    read16(0xd294);
+    read16(0xd296);
+    latch();
+    sr=(sr&~4)|(old&(1u<<bit)?0:4);
+    idle(2);next=0xd294;
+    break;
+}
+// $00D294: BNE $00D2A6
+case 0xd294: {
+    branch(!(sr&4),0xd2a6,4);
+    break;
+}
+// $00D298: LEA ($0003252C).L,A0
+case 0xd298: {
+    r.a[0]=0x3252c;
+    read16(0xd29c);
+    read16(0xd29e);
+    final(0xd2a0);next=0xd29e;
+    break;
+}
+// $00D29E: BSR $0137E2
+case 0xd29e: {
+    idle(2);sp-=4;write16(sp,0x0);write16(sp+2,0xd2a2);read16(0x137e2);final(0x137e4);next=0x137e2;
+    break;
+}
+// $00D2A2: BT $00D2D2
+case 0xd2a2: {
+    branch(true,0xd2d2,4);
+    break;
+}
+// $00D2A6: LEA ($0003253E).L,A0
+case 0xd2a6: {
+    r.a[0]=0x3253e;
+    read16(0xd2aa);
+    read16(0xd2ac);
+    final(0xd2ae);next=0xd2ac;
+    break;
+}
+// $00D2AC: BSR $0137E2
+case 0xd2ac: {
+    idle(2);sp-=4;write16(sp,0x0);write16(sp+2,0xd2b0);read16(0x137e2);final(0x137e4);next=0x137e2;
+    break;
+}
+// $00D2B0: BT $00D2D2
+case 0xd2b0: {
+    branch(true,0xd2d2,4);
+    break;
+}
+// $00D2B4: BTST #0,($0029C202).L
+case 0xd2b4: {
+    read16(0xd2b8);
+    read16(0xd2ba);
+    read16(0xd2bc);
+    const auto old=read8(0x29c202);
+    sr=(sr&~4)|(old&0x1?0:4);
+    final(0xd2be);next=0xd2bc;
+    break;
+}
+// $00D2BC: BNE $00D2C8
+case 0xd2bc: {
+    branch(!(sr&4),0xd2c8,4);
+    break;
+}
+// $00D2C0: BCLR #0,($0029C201).L
+case 0xd2c0: {
+    read16(0xd2c4);
+    read16(0xd2c6);
+    read16(0xd2c8);
+    const auto old=read8(0x29c201);
+    sr=(sr&~4)|(old&0x1?0:4);
+    const auto value=old&~0x1;
+    read16(0xd2ca);
+    latch();
+    write8(0x29c201,value);
+    next=0xd2c8;
+    break;
+}
+// $00D2C8: LEA ($0003253E).L,A0
+case 0xd2c8: {
+    r.a[0]=0x3253e;
+    read16(0xd2cc);
+    read16(0xd2ce);
+    final(0xd2d0);next=0xd2ce;
+    break;
+}
+// $00D2CE: BSR $0137E2
+case 0xd2ce: {
+    idle(2);sp-=4;write16(sp,0x0);write16(sp+2,0xd2d2);read16(0x137e2);final(0x137e4);next=0x137e2;
+    break;
+}
+// $015292: MOVEQ #0,D0
+case 0x15292: {
+    r.d[0]=0x0;
+    sr=(sr&0xfff0)|(uint32_t(r.d[0])?0:4)|(r.d[0]&0x80000000?8:0);
+    final(0x15296);next=0x15294;
+    break;
+}
+// $015294: MOVE.B 39(A5),D0
+case 0x15294: {
+    read16(0x15298);
+    const auto value=read8(r.a[5]+(39));
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    byte(r.d[0],value);
+    final(0x1529a);next=0x15298;
+    break;
+}
+// $015298: LEA ($9162).W,A0
+case 0x15298: {
+    r.a[0]=0xffff9162;
+    read16(0x1529c);
+    final(0x1529e);next=0x1529c;
+    break;
+}
+// $01529C: ADDA.W D0,A0
+case 0x1529c: {
+    const auto operand=uint16_t(r.d[0]);
+    r.a[0]+=int16_t(operand);
+    read16(0x152a0);
+    idle(2);latch();idle(2);
+    next=0x1529e;
+    break;
+}
+// $01529E: MOVE.B 48(A5),D0
+case 0x1529e: {
+    read16(0x152a2);
+    const auto value=read8(r.a[5]+(48));
+    sr=(sr&0xfff0)|(uint8_t(value)?0:4)|(value&0x80?8:0);
+    byte(r.d[0],value);
+    final(0x152a4);next=0x152a2;
+    break;
+}
+// $0152A2: BCLR D0,(A0)
+case 0x152a2: {
+    const auto bitmask=1u<<(r.d[0]&7);
+    const auto old=read8(r.a[0]);
+    sr=(sr&~4)|(old&bitmask?0:4);
+    const auto value=old&~bitmask;
+    read16(0x152a6);
+    latch();
+    write8(r.a[0],value);
+    next=0x152a4;
+    break;
+}
+// $0152A4: TST.B (A0)
+case 0x152a4: {
+    const auto old=read8(r.a[0]);
+    sr=(sr&0xfff0)|(uint8_t(old)?0:4)|(old&0x80?8:0);
+    final(0x152a8);next=0x152a6;
+    break;
+}
+// $0152A6: BNE $0152B0
+case 0x152a6: {
+    branch(!(sr&4),0x152b0,2);
+    break;
+}
+// $01576E: TAS 44(A5)
+case 0x1576e: {
+    read16(0x15772);
+    const auto old=read8(r.a[5]+(44));
+    idle(2);
+    sr=(sr&0xfff0)|(uint8_t(old)?0:4)|(old&0x80?8:0);
+    write8(r.a[5]+(44),old|0x80);
+    final(0x15774);next=0x15772;
+    break;
+}
+// $015774: ADDQ.W #4,A7
+case 0x15774: {
+    sp+=4;
+    read16(0x15778);
+    idle(2);latch();idle(2);next=0x15776;
+    break;
+}
+// $015776: JMP ($0000B628).L
+case 0x15776: {
+    read16(0x1577a);
+    next=0xb628;read16(next);final(next+2);
+    break;
+}
+// $01577C: ADDQ.W #4,A7
+case 0x1577c: {
+    sp+=4;
+    read16(0x15780);
+    idle(2);latch();idle(2);next=0x1577e;
+    break;
+}
+// $01577E: BTST #3,45(A5)
+case 0x1577e: {
+    read16(0x15782);
+    read16(0x15784);
+    const auto old=read8(r.a[5]+(45));
+    sr=(sr&~4)|(old&0x8?0:4);
+    final(0x15786);next=0x15784;
+    break;
+}
+// $015784: BEQ $0152A8
+case 0x15784: {
+    branch(sr&4,0x152a8,4);
+    break;
+}
+// $015788: BT $01528A
+case 0x15788: {
+    branch(true,0x1528a,4);
+    break;
+}
+// $00C5B0: MOVE.L #$2A6D365A,D1
+case 0xc5b0: {
+    read16(0xc5b4);
+    read16(0xc5b6);
+    const uint32_t value=0x2a6d365a;
+    sr=(sr&0xfff0)|(uint32_t(value)?0:4)|(value&0x80000000?8:0);
+    r.d[1]=value;
+    final(0xc5b8);next=0xc5b6;
+    break;
+}
+// $014DD4: MOVE.W #$60,D1
+case 0x14dd4: {
+    read16(0x14dd8);
+    const uint32_t value=0x60;
+    nz(value);
+    word(r.d[1],value);
+    final(0x14dda);next=0x14dd8;
+    break;
+}
+// $014DD8: TST.W 24(A5)
+case 0x14dd8: {
+    read16(0x14ddc);
+    const auto old=read16(r.a[5]+(24));
+    nz(old);
+    final(0x14dde);next=0x14ddc;
+    break;
+}
+// $014DDC: BPL $014DE0
+case 0x14ddc: {
+    branch(!(sr&8),0x14de0,2);
+    break;
+}
+// $014DDE: NEG.W D1
+case 0x14dde: {
+    const auto old=uint16_t(r.d[1]);
+    const auto value=addsub_word(0,old,true,true);
+    word(r.d[1],value);
+    final(0x14de2);next=0x14de0;
+    break;
+}
+// $014DE0: ADD.W D1,D2
+case 0x14de0: {
+    const auto operand=uint16_t(r.d[1]);
+    const auto old=uint16_t(r.d[2]);
+    const auto value=addsub_word(old,operand,false,true);
+    word(r.d[2],value);
+    final(0x14de4);next=0x14de2;
+    break;
+}
+// $014DE2: SUBI.W #$28,D0
+case 0x14de2: {
+    read16(0x14de6);
+    const uint32_t operand=0x28;
+    const auto old=uint16_t(r.d[0]);
+    const auto value=addsub_word(old,operand,true,true);
+    word(r.d[0],value);
+    final(0x14de8);next=0x14de6;
+    break;
+}
