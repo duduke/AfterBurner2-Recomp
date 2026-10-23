@@ -26,6 +26,8 @@ The existing Windows download remains on Preview 2, described below.
   effect placement, reviewed cockpit cues and spatial-output stall recovery.
 - Verified literal instruction continuations cover the additional cleanup,
   credit-prompt and attract-controller paths exposed by the shuffled run.
+- Package notices use SDL's license from its verified source archive, fixing
+  a shared-prefix path that could select the Homebrew notice instead.
 
 ### Package
 

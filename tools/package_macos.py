@@ -70,6 +70,13 @@ def main():
         checked_source(ROOT / "build/deps/openal-soft-1.25.2.tar.gz",
                        "fb27e5839aa11f0e5b9d33756965291fad5d6909ab928ea1f796f4a1a6877894"),
     ]
+    # pkg-config may return a shared prefix such as /opt/homebrew/lib. Its
+    # parent LICENSE.txt is Homebrew's notice, not SDL's. Use the pinned source.
+    with tarfile.open(archives[0]) as source:
+        member = source.getmember("SDL3-3.4.16/LICENSE.txt")
+        if not member.isfile():
+            raise SystemExit("SDL source license must be a regular file")
+        sdl_license = source.extractfile(member).read()
     output = ROOT / "build/releases"
     output.mkdir(parents=True, exist_ok=True)
     name = f"AfterBurner2-{args.version}-macOS-arm64"
@@ -113,8 +120,8 @@ def main():
     shader_notice_dir.mkdir()
     for source in shader_notices:
         shutil.copy2(source, shader_notice_dir / source.name)
+    (package / "Notices/SDL3.txt").write_bytes(sdl_license)
     for source, dest in [
-        (sdl.parent.parent / "LICENSE.txt", "SDL3.txt"),
         (ROOT / "src/main/frontend/scalers/SNES9X-LICENSE.txt", "Snes9x.txt"),
         (ROOT / "src/main/frontend/scalers/scalefx.hpp", "ScaleFX.hpp"),
         (ROOT / "src/third_party/z80.h", "z80.h"),

@@ -11950,3 +11950,14 @@ comparisons skip zero records. The 410-file release execution/harness snapshot
 is retained at `build/workflow/preview3-source-manifest.json` and remains
 unchanged through the completed gate. This is a fresh complete release gate,
 separate from the earlier focused Shuffle checks and historical `full` runs.
+
+Independent package QA caught an existing notice-path defect before upload:
+`pkg-config --variable=libdir sdl3` returned `/opt/homebrew/lib`, so deriving
+the license from its parent selected Homebrew's 1,334-byte BSD notice instead
+of SDL's 884-byte zlib notice. The packager now reads `LICENSE.txt` directly
+from the checksum-verified SDL source archive. The first failed artifact and
+audit remain under `build/releases/`; no ROM links or launches occurred in
+that attempt. Exact evidence is retained in
+`build/releases/preview3-sdl-license-mismatch.json`. This package-only repair
+changes no application, compiler, fixture or comparison dependencies of the
+completed release gate.
