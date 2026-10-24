@@ -1,8 +1,8 @@
 # True widescreen implementation plan
 
 **Status: experimental 16:9 and 16:10 previews released for macOS; exhaustive acceptance remains open.**
-Updated **2026-10-23** for
-[macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
+Updated **2026-10-24** for
+[macOS Preview 4](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.4).
 The existing Windows Preview 2 download includes 16:9.
 
 Render additional scene content left and
@@ -83,13 +83,18 @@ separate presentation policy. GPU readback checks all six filters and both
 opacity policies against the wide CPU reference. See ENGINE_NOTES for counts,
 logs and exclusions.
 
+The menu's **Preview** suffix describes remaining scene/platform acceptance.
+It does not select the snapshot renderer. macOS Preview 4 uses the integrated
+primary renderer for both wide ratios; `--scene-renderer snapshot` is the
+explicit reconstruction reference. The default viewport remains Original.
+
 ## Delivered preview and remaining gates
 
-macOS Preview 3 provides **Original, 16:9 and 16:10**, with 224 logical rows,
+macOS Preview 4 provides **Original, 16:9 and 16:10**, with 224 logical rows,
 current square-pixel proportions, native combat rules and a centered HUD.
 Windows Preview 2 provides Original and 16:9. These are experimental increments;
 exhaustive widescreen acceptance remains open. See the
-[Preview 3 release gate](ENGINE_NOTES.md#preview-3-release-2026-10-23).
+[Mac renderer acceptance](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
 
 | Milestone | Current state | Remaining acceptance |
 | --- | --- | --- |
@@ -138,7 +143,7 @@ profile passed at `build/workflow/20261019T050739.004809Z/`. Earlier
 release/lifecycle results above retain their historical scope. These checks do
 not declare a new release or exhaustive scene acceptance.
 
-Next: integrate the primary renderer in the work order below while retaining
+Source builds now use the integrated primary renderer described below. Retain
 controller/scene and sustained-load audits for both widths. Establish named
 Windows/Linux/GPU coverage before accepting ultrawide. Optional
 pixel-aspect correction, edge-anchored HUD and wider gameplay rules are separate
@@ -183,23 +188,24 @@ Target pipeline:
 
 `native partial-render frontier -> primary variable-width layers -> native center + enhanced presentation -> SDL`
 
-1. **Shared road/tile pass:** experimental `Screen::render_integrated_partial`
+1. **Shared road/tile pass:** `Screen::render_integrated_partial`
    accepts reusable `Screen::ViewportLayers`, renders the underlay once at the
    selected width and copies its center into normal native composition. Native
-   text, sprite raster dimensions and feedback stay unchanged. It is a testable
-   first slice; the snapshot frontend remains the default comparison reference.
-2. **Live frontier integration (experimental):** the host can now select the
+   text, sprite raster dimensions and feedback stay unchanged. The snapshot
+   frontend remains an explicit comparison reference.
+2. **Live frontier integration:** the host can now select the
    shared pass at its existing partial-render boundary. An optional synchronous
    consumer on `GameSession::capture_wide_scene` supplies pre-feedback metadata
    and borrowed primary layers to `WideScene::render_primary_clip`.
    `finish_primary_frame` publishes the enhanced output only after the native
    board tick. The optional completion callback also covers hidden startup frames.
    Native observers and `GameSession::frame()` remain intact. The frontend adapter
-   is selectable with `--scene-renderer integrated`; `snapshot` remains the default
-   until full acceptance. The setting is a launch-time experimental override.
+   uses the integrated path by default in source builds; `--scene-renderer snapshot`
+   selects the retained reconstruction reference. macOS Preview 4 ships this default;
+   the Windows package remains Preview 2.
    Retained snapshots support comparisons; compact capture reuses one metadata
    slot, omits the unused tile snapshot and makes `wide_scene()` unavailable.
-3. **Enhanced composition (experimental):** the live consumer uses the existing
+3. **Enhanced composition:** the live consumer uses the existing
    extended descriptors, ground correction, shadows, fragment chains, detached
    HUD and aircraft policy while bypassing duplicate road/tile rasterization and
    tile/road-device reloads. Paired-session and snapshot comparisons cover the
@@ -212,8 +218,14 @@ Target pipeline:
    Run complete required gates before promoting the path to the playable frontend.
    A synthetic pass is not MAME or whole-host acceptance.
    Windows independent RGB passes 3,500/3,500 comparisons; complete `test` and
-   `verify-stage1` pass. Instrumented CPU/device and supplemental full gates are explicitly
-   deferred to the user's Mac; this keeps default promotion open.
+   `verify-stage1` pass. Instrumented CPU/device and supplemental full gates
+   were deferred to the user's Mac. The follow-up adds explicit integrated-host
+   CPU/device/RGB/audio assertions, full natural-lifecycle comparisons at both
+   supported widths and a three-viewport live frontend/GPU matrix. The complete
+   required gates and supplemental full profile pass on the final Mac source;
+   the declared rollout gate is closed with the snapshot reference retained. See the
+   [Mac acceptance record](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24)
+   for final gate status and measured limits.
 5. **Additional ratios:** keep logical width independent of menu presets. The
    initial API follows the existing bound of even widths 320–640 and 224 rows;
    522 exercises nominal 21:9 geometry. Wider visibility, actual panel ratios,

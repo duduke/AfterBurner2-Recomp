@@ -29,6 +29,10 @@ python3 tools/workflow.py run required    # full gameplay/core merge or mileston
 python3 tools/workflow.py run oracle-subirq -j 4  # any focused make target
 ```
 
+Run separate workflow/Make invocations serially: their shared configuration
+stamps use fixed temporary paths. Parallelize targets within one invocation
+with `-j`; concurrent wrappers can race even when compiler flags are identical.
+
 The runner executes real make targets every time, stops on the first failure,
 preserves exit status, and writes full output plus timings/evidence in
 `build/workflow/<UTC-run-id>/`. Chat output contains at most eight matching
@@ -56,6 +60,29 @@ Repeated checks rerun executables without recompiling unchanged sources.
 `make clean-checks` removes only these check objects and executables when a
 fresh build is wanted. Existing game and oracle build rules remain separate.
 
+## Integrated renderer checks
+
+The default source frontend shares primary road/tile layers at native partial
+frontiers. Keep `--scene-renderer snapshot` for differential comparisons.
+The complete required profile includes the original whole-host oracle plus
+`oracle-integrated-host-mutations` at both supported widescreen widths, and
+independent integrated RGB comparisons across four corpora and five widths.
+
+```sh
+python3 tools/workflow.py run oracle-integrated-host-mutations -j 4
+python3 tools/workflow.py run verify-integrated-lifecycle -j 2
+python3 tools/workflow.py run verify-integrated-shader-main -j 4
+```
+
+The lifecycle target retains all four natural recordings at 358 and 398 pixels;
+its two width targets can execute concurrently. It compares live primary layers
+with snapshot reconstruction for every frame, with ground correction both off
+and on, while retaining the independent MAME observations and native image
+checks. The shader target requires a working desktop GPU and optional shader
+runtime; it exercises actual frontend renderer switching and rollback at all
+three menu viewports. These supplemental checks do not replace `required` or
+establish exhaustive platform/performance coverage.
+
 ## macOS preview release
 
 The current downloadable preview targets **Apple Silicon, macOS 26+**. This is
@@ -74,7 +101,7 @@ The optional OpenAL builder provides its library, source archive and notices.
 After committing the intended tree:
 
 ```sh
-python3 tools/package_macos.py v0.1.0-preview.3
+python3 tools/package_macos.py v0.1.0-preview.4
 ```
 
 Use a fresh version for later releases. The packager requires a clean working
@@ -84,7 +111,7 @@ existing package. It creates an allowlisted folder and ZIP under ignored
 ad-hoc signs the binaries and records source commit/file hashes. Project and
 dependency sources are included. ROMs, captures, soundtracks and preferences
 are excluded. Keep the shared libraries replaceable for local compatible builds.
-Preview 3 also copies the four allowlisted player-aircraft pack files into
+The package also copies the four allowlisted player-aircraft pack files into
 `assets/player-aircraft/` and includes the librashader header notices. The
 optional shader runtime and user shader packs remain external; see
 [shader setup](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal).

@@ -1,8 +1,9 @@
 # Roadmap
 
-Updated **2026-10-23**. [Preview v0.1.0-preview.3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3)
-refreshes Apple Silicon / macOS 26+ with Practice, Shuffle, 16:10, HUD/CRT and
-aircraft presentation, calibration and revised spatial audio. The
+Updated **2026-10-24**. [Preview v0.1.0-preview.4](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.4)
+adds the integrated primary renderer to Apple Silicon / macOS 26+, with the
+Practice, Shuffle, 16:10, HUD/CRT, aircraft, calibration and spatial-audio features
+from Preview 3. The
 [Windows 10/11 x64 download remains Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
 Both include the native game, menus, GPU filters/translucency, replacement music,
 SDL rumble, experimental OpenAL Soft 1.25.2 cockpit audio and 16:9 presentation.
@@ -13,7 +14,7 @@ Original remains the regression reference.
 | Priority | Workstream | Next outcome |
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
-| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Integrate variable-width rendering into the primary renderer to remove duplicate scene work; retain preview comparisons, controller audits and sustained 16:9/16:10 gates; ultrawide needs separate acceptance |
+| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Extend shared-renderer performance and controller/scene audits; retain snapshot comparisons and sustained 16:9/16:10 gates; ultrawide needs separate acceptance |
 | 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification |
 | 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
@@ -143,7 +144,7 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-23)
+## Current checkpoint (2026-10-24)
 
 Windows source update (2026-10-24): checked LLVM-MinGW ThinLTO builds and a
 native Vulkan RetroArch `.slangp` host are implemented. Practice/Shuffle,
@@ -159,43 +160,42 @@ Off-mode sprite scaling. A bounded Original viewport/HUD run holds 59.64 fps
 after startup; busy 16:10 scenes still fall below target. See
 [NTSC measurements](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
 
-Renderer direction (2026-10-24): the preview captures native partial-frame state
-and reconstructs road/tile/sprite layers on the CPU, in addition to the native
-render. Measured 16:10/sharp-HUD/ground scene reconstruction reaches 5.5 ms;
-these combined measurements do not isolate each option or establish 16:9 cost.
-The next increment is a primary renderer with a bounded variable logical width,
-224 rows and a centered native origin. Preserve CPU/device timing, partial-frame
-palette/priority rules and native sprite feedback. Retain the snapshot renderer
-as a comparison reference until the integrated path passes independent MAME,
-native-state, enhancement and sustained-load gates.
+Primary renderer integration (2026-10-24): source builds now use the shared
+primary road/tile pass for widescreen and detached HUD/aircraft presentation.
+It renders at a bounded even logical width, 224 rows and a centered native
+origin, retaining native partial-frame palette/priority rules, sprite feedback,
+CPU/device clocks and gameplay object pools. The live consumer uses compact
+metadata rather than copied tile snapshots. `--scene-renderer snapshot` retains
+the previous reconstruction reference. macOS Preview 4 includes this path; the
+Windows download remains Preview 2.
 
-The experimental path shares the primary road/tile pass with a native center
-crop and now supplies it at live partial-render frontiers to the enhanced
-visibility/effects/HUD/aircraft consumer. Retained snapshots remain the
-comparison reference; compact mode omits the tile snapshot and reuses one
-metadata slot. Frontend migration and matched timing are implemented; full
-acceptance remains open. The first slice's synthetic comparisons pass 80/80 cases
-and four deliberate faults are rejected; see
-[scope and validation limits](ENGINE_NOTES.md#integrated-primary-renderer-first-underlay-slice-2026-10-24).
-The live follow-up matches 2,643 paired frame observations across 358/398/522,
-passes 30 clip fixtures and rejects three additional consumer faults; see
-[live integration evidence](ENGINE_NOTES.md#live-primary-underlay-consumer-and-compact-capture-2026-10-24).
-The frontend adapter is now opt-in with `--scene-renderer integrated`. Matched NTSC
-runs reduce board-plus-scene CPU time by 4.7% (16:9) / 3.6% (16:10), with identical
-final images, but busy intervals still miss 59.6 fps. Independent stock-MAME RGB
-checks pass 3,500/3,500 comparisons and reject two renderer faults. Full acceptance
-remains open. Developer Mode resolved the retained symlink fixture; complete
-`test` and `verify-stage1` pass. Instrumented CPU/device oracle and supplemental full acceptance
-are deferred by user request until this feature is tested on the Mac; see
-[frontend timing and acceptance](ENGINE_NOTES.md#frontend-adapter-matched-ntsc-timing-and-independent-mame-rgb-2026-10-24).
-Width 522 is a nominal square-pixel 21:9 test case, rounded
-even for symmetric margins, not an enabled or accepted ultrawide mode. Custom
+The Windows checkpoint passes 3,500/3,500 independent stock-MAME RGB comparisons,
+complete `test` and `verify-stage1`; instrumented CPU/device and supplemental
+checks were deferred to this Mac. The Mac follow-up passes 3,010 counted
+CPU/bus/device/index/priority/RGB/audio frame comparisons at 358 and 398 pixels,
+zero supplied execution/state/read seeds or skips, with three rejected faults.
+All four retained natural recordings match the live and snapshot enhanced
+planes across **208,904/208,904 frames**, zero differences/skips. GPU/software
+frontend image pairs and live shader/viewport switching pass at all three menu
+viewports. Matched Stage 1/5 NTSC timings reduce board-plus-scene CPU time by
+3.70–4.51%, with identical final images; finite intervals still fall below target.
+The complete required gates and supplemental `full` profile pass on the final
+source. The clean complete oracle rerun retains all 207 recovery controls,
+18 geometry controls and the new integrated-host/RGB controls. Refreshed
+independent Shuffle recordings also match all 100,000 native replay observations.
+This closes the declared Mac/source renderer rollout gate. See the
+[Mac acceptance record](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24)
+for gate logs, overlap/coverage limits and timing scope.
+
+The bounded API accepts even widths 320–640; 522 is a nominal square-pixel 21:9
+test case rounded for symmetric margins, not an enabled or accepted ultrawide
+mode. Broader scene/platform and sustained-load acceptance remain open. Custom
 stages remain a separate opt-in stage/object-data interface: renderer integration
-is reusable infrastructure, not authorization to change arcade activation,
-targeting, collisions, stage scripts or spawn rules. See the
+does not authorize changes to arcade activation, targeting, collisions, stage
+scripts or spawn rules. See the
 [integration work order](WIDESCREEN_PLAN.md#primary-renderer-integration-work-order-2026-10-24).
 
-macOS release source is tagged `v0.1.0-preview.3`; the package manifests identify the
+macOS release source is tagged `v0.1.0-preview.4`; the package manifests identify the
 exact source commit. The SDL3 native game is
 on `main`; the separate Three.js prototype remains on
 [`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).
@@ -211,7 +211,7 @@ on `main`; the separate Three.js prototype remains on
 | Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes; all six native song contexts and natural fades observed | Replacement-file natural fade/listening acceptance |
 | Spatial audio | Chip-rate OpenAL Soft, headphone HRTF, 2.1/5.1 profiles, dry stereo music, reviewed routing and stall recovery; 117,509 exact MAME ownership observations and 104,452 unchanged native lifecycle frames; original Deluxe stereo wiring traced | Revised-cue listening, physical surround/unplug and Windows/Linux checks, end-to-end latency, ABII cabinet-revision evidence |
 | Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
-| Distribution | ROM-free macOS Preview 3 and runtime-verified Windows Preview 2 ZIPs with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS ad-hoc signed; Windows unsigned and awaiting the new features; Intel/older macOS and Linux packages remain open |
+| Distribution | ROM-free macOS Preview 4 and runtime-verified Windows Preview 2 ZIPs with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS ad-hoc signed; Windows unsigned and awaiting the new features; Intel/older macOS and Linux packages remain open |
 
 Local source update: the viewport selector now offers Original,
 16:9 (398×224) and 16:10 (358×224), with width-specific detached visibility and
@@ -283,6 +283,13 @@ See [Preview 2 release notes](RELEASE_NOTES.md),
 and the focused plans for scope.
 
 ## Next acceptance tasks
+
+macOS Preview 4 includes the default integrated renderer and the complete
+required/supplemental and natural-lifecycle results recorded in the
+[Mac renderer acceptance](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
+Its package manifest and GitHub release identify the exact source commit and
+independent extracted-package checks. This is a macOS refresh; Windows remains
+on Preview 2.
 
 The integrated macOS Preview 3 source passed the complete final-source
 `required` release gate on 2026-10-23 at

@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-23) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-24) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -12392,3 +12392,238 @@ From the repository root, the experimental frontend can be launched with
 existing 16:9 or 16:10 viewport in Options. The playable package has not been
 replaced. For shader testing with this build directory, pass an absolute
 `--shader-runtime` path to `build/playable/librashader.dll`.
+
+
+## Integrated primary renderer macOS acceptance (2026-10-24)
+
+The Windows source at `3587cdb` is integrated on macOS. Source builds now select
+the live primary road/tile path by default for widened or detached HUD/aircraft
+presentation; `--scene-renderer snapshot` retains the previous reconstruction
+reference. Native Original rendering, CPU/device clocks, gameplay object pools
+and sprite feedback retain their owners. No published package is replaced.
+
+Acceptance now exercises the actual primary host, rather than inferring its
+CPU/device identity from a passing snapshot-host oracle. `oracle_whole_host`
+accepts an optional validated logical width and otherwise retains every existing
+CPU state, bus, device, native index/priority/RGB and audio assertion. At 358 and
+398 pixels, each of the retained cold (121 frames), cold-full (603 frames) and
+expanded (781 frames) corpora passes: **3,010/3,010 frame comparisons identical,
+zero differences/skips**, zero supplied execution/state/read seeds. These are
+finite, overlapping capture windows, not 3,010 distinct physical frames.
+`build/workflow/20261024T091627.987335Z/` also records a passing independent
+baseline and **3/3 rejected** center-shift, missing-native-text and corrupted
+sprite-feedback controls. Sources, binaries and logs remain under ignored
+`build/oracle/integrated-host-mutations/20261024T091936.717437Z/`.
+The new host gate is retained in `oracle-test` and both Make/CMake inventories.
+
+Independent RGB coverage now includes attract, no-sprite, gameplay and roll
+captures at 320/358/398/522/640. This expands the retained gate rather than
+replacing any prior fixture. The live-scene fixture still compares every
+background, sprite, protection, ground, fragment-chain, HUD and aircraft plane;
+its exact comparison helper is shared with the full natural-lifecycle test.
+`verify-integrated-lifecycle` replays all four retained natural recordings at
+both supported wide widths, comparing the live primary path with snapshot
+reconstruction for ground correction Off and On at every completed frame.
+The original independent MAME ten-column, native-image, terrain, protection,
+visibility and lifecycle checks remain in place. Width-specific edge fixtures
+remain required at their original 398-pixel geometry.
+
+Frontend GPU evidence:
+
+- `build/workflow/20261024T091857.175775Z/`: Metal shader switching/failed-preset
+  rollback; both 358-pixel Stage 1/5 GPU fixtures (24/24 filter/opacity cases);
+  GPU HUD/custom art and registered aircraft through 4K; CRT pixels/state,
+  high-DPI resize and an observed fullscreen round trip; 4,128/4,128 menu GPU
+  sprite cases; 781/781 CRT native RGB/PCM/time frames; both retained Slang
+  mutations rejected. All pass with zero skips.
+- `build/workflow/20261024T092229.767142Z/`: real GPU -> Metal -> GPU switching,
+  failed-preset rollback, sharp HUD, corrected ground and enabled opacity options
+  at Original, 16:9 and 16:10. Paused native RGB/PCM/time remains identical in
+  all three runs. Missing-preset diagnostics are the expected negative case.
+- The supplemental `full` profile passes at
+  `build/workflow/20261024T091828.214166Z/`: 20,532,168/20,532,168 full-window
+  instruction/IRQ comparisons and 53,449,620/53,449,620 ordered phases match;
+  the retained reset-window checks also pass. This supplements the required
+  gate, not a replacement for it.
+
+The completed frontend follow-ups are retained separately:
+
+- `build/workflow/20261024T094533.053205Z/`: the three shader-main runs assert
+  that an ordinary launch installs the compact primary scene consumer, and cycle
+  all three viewport choices through the real menu/resource adapter after shader
+  rollback, with paused RGB/PCM/time unchanged. The preceding explicit-mode
+  runs also pass at `build/workflow/20261024T093127.673958Z/`. The test waits for the
+  persisted settings transaction after the intermediate swapchain-priming
+  present. The earlier observer failure is retained at
+  `build/workflow/20261024T092926.437642Z/`; it sampled that intermediate present.
+- `build/integrated-macos-frontend-final.log` and
+  `build/oracle/integrated-macos-frontend-final/results.json`: **12/12** real
+  Stage 5 frontend runs, 360 frames each, cover GPU and dummy/software at
+  Original/16:9/16:10 with ScaleFX, sharp HUD, corrected ground, all opacity
+  options and the registered aircraft pack loaded. All six snapshot/default
+  final BMP pairs are byte-identical. Logs assert the requested renderer/filter
+  path and the loaded two-family pack. The earlier temporary harness incorrectly
+  expected three root families; its output remains retained under
+  `build/oracle/integrated-macos-frontend/`.
+- `build/integrated-macos-shuffle-frontend.log` and
+  `build/oracle/integrated-macos-shuffle-frontend/results.json`: **4/4** real
+  Shuffle startup runs (seed 42, 360 visible frames each) cover GPU at 16:9 and
+  16:10 with the same enhancement/art settings. Both snapshot/default final BMP
+  pairs are byte-identical. Logs confirm Shuffle startup and active live primary
+  composition after the hidden startup; these contended smoke timings are not
+  used for the performance comparison below.
+
+Isolated Mac timings use the installed four-pass
+`ntsc/ntsc-320px-gauss-scanline.slangp` (a different preset from the Windows
+measurement), sprite filter Off, sharp HUD and corrected ground. At each of
+Practice stages 1 and 5, eight 1,200-frame windowed runs use the same executable,
+runtime, neutral controller policy and snapshot/integrated/integrated/snapshot
+ordering at each aspect. The first interval is excluded from summaries only;
+all intervals remain recorded. Existing validation groups were suspended at a
+point with no timed subprocess harness active and resumed automatically after
+446.10 s; `build/oracle/integrated-macos-timing/pause.json` records this. Their
+workflow elapsed times include the suspension. No emulated clocks or captures
+were changed.
+
+| Practice stage / viewport | Snapshot board + scene | Integrated board + scene | CPU reduction |
+| --- | --- | --- | --- |
+| 1 / 398×224 | 7.151 ms | 6.833 ms | 4.44% |
+| 1 / 358×224 | 6.969 ms | 6.654 ms | 4.51% |
+| 5 / 398×224 | 7.619 ms | 7.328 ms | 3.82% |
+| 5 / 358×224 | 7.421 ms | 7.147 ms | 3.70% |
+
+All **16/16** timing runs pass, and each stage/aspect's four final images are
+byte-identical. Every run's median is 59.637 fps; integrated minimum intervals
+range from 55.983 to 56.282 fps. This does not establish sustained 59.6 fps or
+attribute slower intervals to a particular subsystem. Drawables are
+2388×1344 (16:9) and 2148×1344 (16:10) on this high-DPI Mac. Commands, logs,
+all timing intervals, final BMPs and `results.json` remain under
+`build/oracle/integrated-macos-timing/stage-1/` and `stage-5/`.
+The measured executable is retained there as `../afterburner2-measured`, SHA-256
+`ed4bcb792eef2228419f4a46b12b79ca3a89fbda49c3b56fd571330ad2b6e4c2`;
+runtime SHA-256 is
+`1dbecea0c165fd0fddc2407ed4b8872f9f73f4fd2c3689a80ffc24c87e3fda2a`.
+
+Complete natural-lifecycle acceptance passes at
+`build/workflow/20261024T092208.080290Z/` (**2261.09 s**, including the timing
+suspension): **208,904/208,904** frame comparisons across four recordings and
+both supported wide widths, zero differences/skips. Each width retains all
+74,452 ending, 12,000 neutral/failure, 10,000 continue and 8,000 weapons frames.
+Both ending runs visit all 23 stages, 13 carrier states and eight refuel states.
+The live and snapshot enhanced planes match with ground correction Off and On;
+this retains the independent MAME observations and native image checks rather
+than claiming a new whole-credit CPU/device/RGB/audio capture.
+
+The first complete required attempt at
+`build/workflow/20261024T092256.239946Z/` passes `test` (94.34 s) and
+`verify-stage1` (484.32 s), but `oracle-test` exposes a stale retained
+`native-feedback` mutation anchor: `WideScene::draw` gained its primary-layer
+parameter. The control now targets that exact current signature and still
+injects the same illegal sprite-byte write, with the same required semantic
+rejection. All nine controls remain and run at both widths. The geometry
+mutator now validates every anchor up front and retains baseline/mutated
+sources, binaries, commands and logs in unique ignored run directories instead
+of deleting temporary variants. The focused repair passes two positive geometry
+baselines and **18/18** rejected faults, zero skipped, at
+`build/workflow/20261024T095913.204595Z/` and
+`build/oracle/widescreen/mutations/20261024T095913.943979Z/`.
+The failed run and its partial work remain retained. The clean rerun at
+`build/workflow/20261024T100051.688495Z/` passes `test` (79.45 s) and complete
+`verify-stage1` (424.60 s), then exposes an out-of-date local Shuffle declaration:
+the Windows source preserves inherited music across new stage adjacency, while
+the previous Mac fixtures declare the older arranged ROM. The exact-ROM guard
+correctly refuses those fixtures; it is unchanged.
+
+The prior short/complete ROM declarations, requested and echoed inputs, MAME
+observations and negative-control logs are preserved under
+`build/oracle/shuffle-pre-windows-music/20261024T102123.183764Z/`. Fresh-state
+independent MAME recordings use the current declared arrangement and unchanged
+physical-input/palette-policy script at
+`build/workflow/20261024T102123.311398Z/`: 12,000 short frames (49.84 s) and
+100,000 ending/ranking/attract frames (381.98 s) complete. No native expected
+state, CPU execution or gameplay RAM is exported. The local MAME version is
+`0.287 (mame0287-163-g6b511c0a858-dirty)`; binary/source/fixture hashes and the old
+fixture manifest are recorded in `build/oracle/shuffle-macos-refresh-20261024.json`.
+The fresh short native replay and changed-reference control pass at
+`build/workflow/20261024T102352.477623Z/`: **12,000/12,000** independent
+observations identical, zero skipped; the original timestamp mutation is rejected.
+
+The full fresh native Shuffle replay passes at
+`build/workflow/20261024T102947.314949Z/` (**474.37 s**): **100,000/100,000**
+independent MAME observations identical, zero skipped, exact physical input/DIP
+echoes, all 23 flight positions and ending/ranking/attract. CPU/device/RGB/audio
+equivalence is not inferred from these observation columns.
+
+The parallel oracle attempt at `build/workflow/20261024T102947.322986Z/` fails
+on `build/native_obj/config.tmp`: launching two separate Make wrappers together
+raced their fixed temporary configuration-stamp path. This is a host build
+invocation error, not a failed state comparison; flags and compiled sources did
+not change. Separate Make wrappers are now run serially (parallel targets within
+one Make remain supported). The failed log is retained.
+
+**The complete required gates now pass on the final renderer source:**
+
+| Gate | Result / record |
+| --- | --- |
+| `test` | PASS, 79.45 s; `build/workflow/20261024T100051.688495Z/01-test.log` |
+| `verify-stage1` | PASS, 424.60 s; `build/workflow/20261024T100051.688495Z/02-verify-stage1.log` |
+| Complete `oracle-test` | PASS, 3926.11 s; `build/workflow/20261024T103838.020631Z/01-oracle-test.log` |
+| Supplemental `full` | PASS; `build/workflow/20261024T091828.214166Z/` |
+
+The `test` and `verify-stage1` passes remain applicable: their sources,
+compiler/options, canonical ROMs and transitive fixtures are unchanged; they do
+not consume the refreshed Shuffle observation files. The clean complete oracle
+rerun uses the refreshed corpus and executes all retained controls, including
+**207/207** recovery faults, **18/18** geometry faults, **3/3** integrated-host
+faults and **2/2** independent integrated-RGB faults. None were removed or
+weakened. Its independent integrated RGB matrix matches **4,300/4,300** frames
+across four corpora and five widths, zero differences/skips. The six direct
+integrated-host runs again match all **3,010/3,010** counted frames with zero
+supplied execution/state/read seeds or differences/skips.
+
+Existing routine-level race skips remain explicitly reported in the full log:
+for example, the gameplay Sub sprite fixture is **1,198/1,200 identical, two
+skipped** for inputs changed mid-pass, and the later scenery fixture is
+**937/1,200 identical, 263 skipped** because the other CPU wrote an input.
+The zero-skip new renderer/whole-host/lifecycle scopes above do not erase these
+older finite-coverage limits.
+
+This closes the declared Mac/source primary-renderer rollout gate and promotes
+the integrated frontend default. The snapshot path and every prior fixture and
+control remain available. The optimized build still has the measured SHA-256
+listed above. Published preview packages have not been replaced.
+
+Additional ratios, all possible controller/scene combinations, custom stage
+semantics and exhaustive platform/sustained-preset performance remain separate.
+
+
+## Preview 4 release (2026-10-24)
+
+The macOS-only `v0.1.0-preview.4` refresh packages the default integrated primary
+renderer together with the inherited Windows/source updates and all Preview 3
+features. The existing Windows Preview 2 release remains unchanged. Viewport
+labels retain their Preview suffix for finite scene/platform acceptance; release
+notes, README, startup guidance and widescreen docs distinguish that label from
+the integrated renderer selection and the Original default viewport.
+
+Application sources, compiler/options and the validated executable remain
+unchanged from the [Mac renderer acceptance](#integrated-primary-renderer-macos-acceptance-2026-10-24).
+The complete required gates use the passing `test` / `verify-stage1` records at
+`build/workflow/20261024T100051.688495Z/` and the clean complete `oracle-test` at
+`build/workflow/20261024T103838.020631Z/`, including all 207 recovery controls.
+Supplemental full, independent integrated-host/RGB, 208,904 lifecycle comparisons,
+fresh 100,000-frame Shuffle replay, GPU/frontend and matched timing records keep
+their stated unchanged dependency scope. Only documentation and package startup
+text change for this release preparation; no fixture or comparison is weakened.
+
+The packager requires committed source, verifies dependency archives, copies
+allowlisted generated aircraft art and notices, removes development library
+paths, ad-hoc signs the executable/libraries and emits payload/source hashes.
+The package manifest and GitHub release identify the exact source commit.
+Independent verification checks a separately extracted copy, clean ROM/media/
+preferences exclusions, archive/source/notice closure, signatures, dependency
+paths and executable permissions. Bounded Metal/OpenAL launches from another
+working directory cover Arcade, Practice and Shuffle with the default integrated
+path; temporary user-ROM links are removed before publishing the original ZIP
+and checksum. Verification outputs remain under ignored `build/releases/` and
+the published release records their results.

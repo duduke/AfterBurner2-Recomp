@@ -25,15 +25,14 @@ continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
 performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
 other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
-[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-23) for scope.
+[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-24) for scope.
 
-Preview 3 refreshes the Apple Silicon macOS download with Practice and Shuffle,
-16:10, controller calibration, revised spatial audio, high-DPI HUD text, built-in
-CRT effects and an optional HD aircraft prototype. Shuffle keeps stage 23 as
-the finale after stages 1–22. The Windows x64 download remains Preview 2;
-its Windows 11 checks cover Vulkan filters, fullscreen, headphone HRTF and
-bounded Stage 1/5 pacing. See the
-[roadmap](docs/ROADMAP.md#next-acceptance-tasks) and [release notes](docs/RELEASE_NOTES.md).
+Preview 4 updates the Apple Silicon macOS download with the integrated primary
+renderer enabled by default for widescreen and detached HUD/aircraft presentation.
+It includes the Practice/Shuffle, 16:10, calibration, spatial-audio, HUD/CRT and
+HD aircraft features from Preview 3. The Windows x64 download remains Preview 2.
+See the [roadmap](docs/ROADMAP.md#next-acceptance-tasks) and
+[release notes](docs/RELEASE_NOTES.md).
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
 queue and depth-bucket limits, retains scenery as it crosses the wider edges,
@@ -49,7 +48,7 @@ the wider presentation still needs exhaustive scene and platform validation.
 | Menus | Arcade-font Enter Arcade/Options/Practice/Shuffle/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation; slim scrollbars show hidden items and position |
 | Stage Select / Practice | [Practice mode](docs/PRACTICE_MODE.md): fresh directed entry to 23 ROM stages, normal lives/damage, F5 retry and return to arcade; separate from natural recordings |
 | Shuffle | [Shuffle mode](docs/SHUFFLE_MODE.md): stages 1–22 in random order with stage 23 as the finale, continuous score/lives, same-order F5 retry and fresh New Shuffle |
-| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths are included in macOS Preview 3 |
+| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 4 |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
 | CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows Vulkan with a separately installed runtime and shader pack; readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
@@ -62,6 +61,14 @@ the wider presentation still needs exhaustive scene and platform validation.
 | Audio | Six WAV/FLAC track replacements, preview, live current-song switching, Original fallback; independent music/effects/per-track volume; replacement music balanced at -12 dB |
 | Spatial audio (experimental) | Optional OpenAL Soft: four virtual cockpit speakers with headphone HRTF, 2.1/5.1 profiles, chip-rate interpolation, output-device selection and speaker test; Original SDL remains default |
 | Preferences and diagnostics | Saved video/input/audio/feedback/DIP preferences, physical-input recording, bounded launch checks and performance reporting |
+
+Source builds and macOS Preview 4 use the integrated primary renderer for widescreen and detached
+HUD/aircraft presentation. It shares the native partial-frame road/tile pass;
+`--scene-renderer snapshot` selects the retained reconstruction reference.
+The `16:9 Preview` and `16:10 Preview` labels describe remaining widescreen
+scene/platform acceptance, not renderer selection. Original remains the default
+viewport; selecting a wide ratio uses the integrated renderer. See the
+[Mac acceptance record](docs/ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
 
 Presentation enhancements preserve the native board output as the regression
 reference. Effects default to Opaque, music to Original and feedback to Off.
@@ -81,7 +88,7 @@ validation for both widths and ultrawide remain open. See the
 
 ## Build and play
 
-Download [macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3)
+Download [macOS Preview 4](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.4)
 or [Windows Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
 and extract the complete ZIP. Put your own extracted ROM
 files in its `roms/` directory. Sources, notices and SHA-256 files accompany

@@ -37,7 +37,7 @@ python3 tools/workflow.py run native-release
 ./build/afterburner2-release
 ```
 
-The macOS Preview 3 ZIP includes this host, while the runtime and shader packs
+The macOS Preview 4 ZIP includes this host, while the runtime and shader packs
 remain separate downloads. Run the fetcher from the included project source
 archive or a checkout, optionally choosing `--destination /path/to/librashader`.
 Then launch the extracted package with explicit paths:
@@ -157,12 +157,14 @@ approximately 53–55 fps in later busy scenes, where CPU scene reconstruction
 reaches 5.5 ms. Sprite Filter Off alone does not guarantee the frame budget.
 See [measurements and checks](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
 
-The experimental primary-renderer frontend is selectable at launch with
-`--scene-renderer integrated`; `--scene-renderer snapshot` retains the default
-preview path for comparison. Matched NTSC runs reduce board-plus-scene CPU time
+Source builds and macOS Preview 4 use the integrated primary-renderer frontend by default;
+`--scene-renderer snapshot` selects the retained reconstruction reference.
+Matched NTSC runs reduce board-plus-scene CPU time
 by roughly 4–5%, with identical final images, but still have busy intervals below
-59.6 fps. This is an opt-in increment, not full performance/platform acceptance.
-See [matched measurements and current gates](ENGINE_NOTES.md#frontend-adapter-matched-ntsc-timing-and-independent-mame-rgb-2026-10-24).
+59.6 fps. The Mac follow-up adds direct integrated-host and full lifecycle checks;
+its finite timings do not establish exhaustive preset/platform performance.
+See the [Mac acceptance record](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24)
+and [Windows matched measurements](ENGINE_NOTES.md#frontend-adapter-matched-ntsc-timing-and-independent-mame-rgb-2026-10-24).
 
 ## Settings and rendering
 

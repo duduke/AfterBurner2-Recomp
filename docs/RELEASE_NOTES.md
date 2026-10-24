@@ -1,5 +1,62 @@
 # Release notes
 
+## v0.1.0-preview.4 — Integrated primary renderer
+
+This release updates the **Apple Silicon / macOS 26+** download at
+[GitHub Releases](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.4).
+Windows remains on its existing Preview 2 download. The tag and package manifest
+identify the exact committed source; the GitHub release records the ZIP checksum
+and independent extracted-package verification.
+
+### Changes
+
+- Widescreen and detached HUD/aircraft presentation use the **integrated primary
+  renderer by default**, sharing the native partial-frame road/tile pass and
+  avoiding redundant tile snapshots/reconstruction.
+- `--scene-renderer snapshot` retains the previous reconstruction reference.
+  **16:9 Preview / 16:10 Preview** are viewport labels for remaining scene/platform
+  acceptance; they do not indicate the renderer. Original remains the default
+  viewport, and selecting a wide ratio uses the integrated renderer.
+- Retains all Preview 3 features: Practice, fixed-finale Shuffle, 16:10, HUD/CRT,
+  optional registered aircraft art, calibration and revised spatial audio.
+- Shuffle preserves inherited original music across new stage adjacency,
+  including cold entry. Fresh independent MAME recordings cover this data view.
+
+### Validation and limits
+
+The required gates (`test`, `verify-stage1`, complete `oracle-test`) and
+supplemental `full` checks pass on the unchanged application sources. The complete
+oracle includes all **207 recovery controls** and all retained fixtures.
+Integrated-host CPU/bus/device/index/priority/RGB/audio checks match **3,010 counted
+frame comparisons**, with zero supplied execution/state/read seeds or skips.
+Independent native-center RGB matches **4,300/4,300 frames** across five widths;
+live/snapshot enhanced layers match **208,904/208,904 lifecycle frames** across
+both wide ratios, zero differences/skips. These capture windows are finite and
+include overlapping observations.
+
+The fresh full Shuffle replay matches **100,000/100,000 independent MAME frame
+observations**, zero skipped, through all 23 positions, ending, ranking and
+attract. Those observation columns do not establish whole-credit CPU/device/RGB/
+audio equivalence. Older routine-level input-race skips keep their documented
+reasons. See the [acceptance record](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
+
+Matched Stage 1/5 tests with a four-pass NTSC preset reduce board-plus-scene CPU
+time by **3.70–4.51%**, with identical final images. Median pacing is 59.637 fps,
+but some intervals remain below target. Sustained peak-load and broader
+scene/platform acceptance remain open; ultrawide is not enabled.
+
+### Package
+
+Apple Silicon, **macOS 26+**. SDL3 3.4.16 and OpenAL Soft 1.25.2 are bundled
+with sources/notices; binaries are **ad-hoc signed, not Developer ID signed or
+notarized**. Extract the whole ZIP, supply your own ROMs in `roms/`, and run
+`Launch.command`. The source archive, payload manifest and separate SHA-256 file
+identify the build. ROMs, original Sega media, captures, preferences, soundtracks,
+optional shader runtimes and shader packs are excluded. The registered generated
+aircraft prototype is included. External shader setup is described in
+[CRT display](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal).
+
+
 ## v0.1.0-preview.3 — Practice, Shuffle and display enhancements
 
 This release refreshes the **Apple Silicon / macOS 26+** download. Get it from

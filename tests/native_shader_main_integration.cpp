@@ -44,6 +44,12 @@ public:
     inline static ObservedGameSession* current{};
     std::vector<int16_t> last_nonempty_pcm;
     uint64_t pcm_frames{},pcm_samples{};
+    bool primary_scene{};
+    void capture_wide_scene(bool enabled,unsigned width=398,PrimarySceneConsumer consumer={},
+                            bool retain_snapshots=true,PrimaryFrameConsumer completed={}){
+        primary_scene=enabled && bool(consumer) && !retain_snapshots && bool(completed);
+        GameSession::capture_wide_scene(enabled,width,std::move(consumer),retain_snapshots,std::move(completed));
+    }
     explicit ObservedGameSession(Roms& rom):GameSession(rom){current=this;}
     ~ObservedGameSession(){current=nullptr;}
     std::vector<int16_t> take_audio(){
@@ -53,14 +59,15 @@ public:
     }
 };
 struct ShaderMainState {
-    enum class Step {initial,metal,gpu,rollback,finished};
+    enum class Step {initial,metal,gpu,rollback,viewport,finished};
     Step step{Step::initial};
     std::string valid,invalid,config,failure;
     GameSession::FrameInfo native_info;
     std::vector<RGB888> native_rgb;
     std::vector<int16_t> native_pcm;
     uint64_t native_pcm_frames{},native_pcm_samples{};
-    unsigned gpu_creations{},metal_creations{},dialogs{};
+    unsigned gpu_creations{},metal_creations{},dialogs{},viewport_changes{};
+    Frontend::Viewport initial_viewport{};
 } shader_test;
 
 void key(SDL_Keycode code) {
@@ -73,6 +80,7 @@ void quit_shader_test() {
 void same_native_output() {
     const auto* game=ObservedGameSession::current;require_shader(game,"Observed game is unavailable");
     const auto info=game->info();const auto rgb=game->frame().pixels;
+    require_shader(game->primary_scene,"Default frontend lost the compact primary scene consumer");
     require_shader(game->paused(),"Renderer switching resumed a paused board");
     require_shader(info.number==shader_test.native_info.number && info.time_ns==shader_test.native_info.time_ns,
         "Renderer switching advanced native board time");
@@ -113,6 +121,7 @@ bool observed_present(SDL_Renderer* renderer) {
         const bool metal=std::string_view(SDL_GetRendererName(renderer))==shader_renderer_name;
         using Step=ShaderMainState::Step;
         if(shader_test.step==Step::initial) {
+            require_shader(game->primary_scene,"Default frontend did not install the compact primary renderer");
             require_shader(shader_test.gpu_creations==1 && !metal && game->info().number>=600,
                 "Shader main did not start with the normal GPU frontend and physical boot");
             shader_test.native_info=game->info();const auto rgb=game->frame().pixels;
@@ -148,7 +157,23 @@ bool observed_present(SDL_Renderer* renderer) {
             const auto saved=Frontend::load_settings(shader_test.config,Frontend::pixel_art_available());
             require_shader(saved.crt==Frontend::Crt::arcade && saved.shader_preset==shader_test.valid,
                 "Invalid shader preset replaced accepted settings");
-            shader_test.step=Step::finished;quit_shader_test();
+            // Move from Shader Preset (14) to Viewport (9), then cycle all
+            // three choices through the real main-loop resource adapter.
+            for(unsigned i=0;i<5;++i)key(SDLK_UP);
+            key(SDLK_RIGHT);shader_test.step=Step::viewport;
+        } else if(shader_test.step==Step::viewport) {
+            same_native_output();
+            const auto saved=Frontend::load_settings(shader_test.config,Frontend::pixel_art_available());
+            const auto expected=(unsigned(shader_test.initial_viewport)+shader_test.viewport_changes+1)%Frontend::viewport_count;
+            // The resize adapter primes the swapchain with an intermediate
+            // present before its settings transaction has been persisted.
+            // Observe completion on the subsequent real menu presentation.
+            if(unsigned(saved.viewport)!=expected)return result;
+            ++shader_test.viewport_changes;
+            require_shader(!metal && shader_test.gpu_creations==3,
+                "Live integrated viewport switch failed or replaced the GPU renderer");
+            if(shader_test.viewport_changes==Frontend::viewport_count){shader_test.step=Step::finished;quit_shader_test();}
+            else key(SDLK_RIGHT);
         }
     } catch(const std::exception& error) {
         shader_test.failure=error.what();quit_shader_test();
@@ -173,7 +198,10 @@ bool observed_present(SDL_Renderer* renderer) {
 
 int main(int argc,char** argv)try {
     SDL_SetMainReady();
-    require_shader(argc==2 || argc==3,"Usage: native_shader_main_integration preset.slangp [librashader.dylib]");
+    require_shader(argc>=2 && argc<=4,"Usage: native_shader_main_integration preset.slangp [runtime-library [original|16:9|16:10]]");
+    const std::string viewport=argc==4?argv[3]:"16:10";
+    require_shader(viewport=="original"||viewport=="16:9"||viewport=="16:10","Invalid shader integration viewport");
+    shader_test.initial_viewport=viewport=="original"?Frontend::Viewport::original:viewport=="16:9"?Frontend::Viewport::wide16_9:Frontend::Viewport::wide16_10;
     shader_test.valid=std::filesystem::absolute(argv[1]).string();
     const auto directory=std::filesystem::path("build/oracle/shader-main")/
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -181,9 +209,9 @@ int main(int argc,char** argv)try {
     shader_test.config=(directory/"settings.cfg").string();
     shader_test.invalid=std::filesystem::absolute(directory/"invalid.slangp").string();
     {std::ofstream file(shader_test.invalid);file<<"shaders = 1\nshader0 = \"missing/shader.slang\"\n";}
-    {std::ofstream file(shader_test.config);file<<"AB2SETTINGS1\nviewport=16:10\nhud=sharp\nsprites=none\n";}
-    std::vector<std::string> arguments{"shader-main","--boot-to-flight","--scene-renderer","integrated","--settings-file",shader_test.config};
-    if(argc==3){arguments.push_back("--shader-runtime");arguments.emplace_back(argv[2]);}
+    {std::ofstream file(shader_test.config);file<<"AB2SETTINGS1\nviewport="<<viewport<<"\nhud=sharp\nsprites=none\nground=1\nclouds=1\ntrails=1\nexplosions=1\nafterburner=1\n";}
+    std::vector<std::string> arguments{"shader-main","--boot-to-flight","--settings-file",shader_test.config};
+    if(argc>=3){arguments.push_back("--shader-runtime");arguments.emplace_back(argv[2]);}
     std::vector<char*> pointers;for(auto& argument:arguments)pointers.push_back(argument.data());
     std::atomic_bool timeout{};
     std::jthread watchdog([&](std::stop_token stop){
@@ -195,6 +223,6 @@ int main(int argc,char** argv)try {
     require_shader(!timeout,"Shader main integration timed out");
     require_shader(shader_test.failure.empty(),shader_test.failure);
     require_shader(status==0 && shader_test.step==ShaderMainState::Step::finished,"Shader main integration did not finish every transition");
-    std::cout<<"Native shader main: real GPU -> "<<shader_renderer_name<<" -> GPU, queued chooser, failed-preset GPU rollback and accepted settings; paused native RGB/PCM/time identical, 0 skipped.\n";
+    std::cout<<"Native shader main viewport="<<viewport<<": real GPU -> "<<shader_renderer_name<<" -> GPU, queued chooser, failed-preset GPU rollback, accepted settings and all three live viewport switches; paused native RGB/PCM/time identical, 0 skipped.\n";
     return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}

@@ -1634,14 +1634,18 @@ build/native_shader_main_integration: $(addprefix build/native_obj/,$(patsubst %
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS) $(SLANG_LIBS)
 verify-native-shader-main: build/native_shader_main_integration
 	SDL_AUDIODRIVER=dummy ./build/native_shader_main_integration tests/fixtures/native_slang/reference.slangp
+verify-integrated-shader-main: build/native_shader_main_integration
+	@for viewport in original 16:9 16:10; do \
+	  SDL_AUDIODRIVER=dummy ./build/native_shader_main_integration tests/fixtures/native_slang/reference.slangp "" $$viewport || exit $$?; \
+	done
 -include build/native_obj/tests/native_shader_main_integration.d
 -include build/check_obj/tests/native_slang_integration.d
 else
-verify-native-slang verify-native-slang-mutations verify-native-shader-main:
+verify-native-slang verify-native-slang-mutations verify-native-shader-main verify-integrated-shader-main:
 	@echo "RetroArch shader GPU checks require the macOS Metal backend; no checks were run." >&2
 	@exit 1
 endif
-.PHONY: fetch-librashader test-librashader-fetch verify-native-slang verify-native-slang-mutations verify-native-shader-main
+.PHONY: fetch-librashader test-librashader-fetch verify-native-slang verify-native-slang-mutations verify-native-shader-main verify-integrated-shader-main
 
 build/oracle_native_release_recovery: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_cpu_coverage.cpp $(filter-out src/main/main.cpp,$(SRCS))))
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
@@ -1692,11 +1696,11 @@ build/oracle_integrated_video: tests/oracle_integrated_video.cpp tests/oracle_vi
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main $< $(VIDEO_SRCS) -o $@
 oracle-integrated-video: build/oracle_integrated_video
-	./build/oracle_integrated_video 320 build/oracle/frames.bin
-	./build/oracle_integrated_video 358 build/oracle/frames.bin
-	./build/oracle_integrated_video 398 build/oracle/frames.bin
-	./build/oracle_integrated_video 522 build/oracle/frames.bin
-	./build/oracle_integrated_video 640 build/oracle/frames.bin
+	@for width in 320 358 398 522 640; do \
+	  for corpus in frames frames_nosprites frames_gameplay frames_rolls; do \
+	    ./build/oracle_integrated_video $$width build/oracle/$$corpus.bin || exit $$?; \
+	  done; \
+	done
 oracle-integrated-video-mutations: oracle-integrated-video
 	python3 tools/video/check_integrated_mame_mutations.py --compiler "$(CXX)" build/oracle/frames.bin
 oracle-test: oracle-integrated-video-mutations
@@ -1983,3 +1987,23 @@ verify-sprite-extraction: build/sprite_extraction_reference
 
 test: test-sprite-extraction
 .PHONY: extract-sprites test-sprite-extraction verify-sprite-extraction
+
+# Exercise the shared primary path with passive CPU/device/RGB/audio assertions.
+oracle-integrated-host: build/oracle_whole_host
+	@for width in 358 398; do \
+	  ./build/oracle_whole_host build/oracle/joint_cold.bin build/oracle/joint_cold.txt $$width && \
+	  ./build/oracle_whole_host build/oracle/joint_cold_full.bin build/oracle/joint_cold_full.txt $$width && \
+	  ./build/oracle_whole_host build/oracle/whole_host_expanded.bin build/oracle/whole_host_expanded.txt $$width || exit $$?; \
+	done
+oracle-integrated-host-mutations: oracle-integrated-host
+	python3 tools/video/check_integrated_host_mutations.py
+oracle-test: oracle-integrated-host-mutations
+
+# Complete retained natural inputs, compared at every live partial frontier.
+verify-integrated-lifecycle: verify-integrated-lifecycle-358 verify-integrated-lifecycle-398
+verify-integrated-lifecycle-358 verify-integrated-lifecycle-398: build/wide_lifecycle_visibility
+	@for recording in ending neutral continue weapons; do \
+	  ./build/wide_lifecycle_visibility $$recording --integrated $(patsubst verify-integrated-lifecycle-%,%,$@) || exit $$?; \
+	done
+.PHONY: verify-integrated-lifecycle-358 verify-integrated-lifecycle-398
+.PHONY: oracle-integrated-host oracle-integrated-host-mutations verify-integrated-lifecycle

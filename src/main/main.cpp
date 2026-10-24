@@ -70,7 +70,7 @@ int main(int argc, char** argv)try
     unsigned practice_start_stage = 0;
     bool shuffle_start = false;
     std::optional<uint32_t> shuffle_seed;
-    bool boot_to_flight = false, profile = false,integrated_scene=false;
+    bool boot_to_flight = false, profile = false,integrated_scene=true;
     std::string recording_path;
     std::string settings_path, menu_preview, frame_preview, hud_atlas, player_aircraft,shader_preset,shader_runtime;
     for (int i=1;i<argc;++i)

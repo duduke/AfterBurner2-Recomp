@@ -7,6 +7,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <charconv>
 
 namespace {
 using Host=XBoardHost<XBoardSoundBoard>;using Time=Host::Time;
@@ -21,12 +22,16 @@ struct Group {uint64_t index{},quantum{};Time base{},deadline{},end{};bool outer
 void require(bool condition,const char* message){if(!condition)throw std::runtime_error(message);}
 }
 int main(int argc,char** argv)try{
- require(argc==3,"usage: oracle_whole_host capture.bin scheduler.txt");const std::string path=argv[1];
+ require(argc==3||argc==4,"usage: oracle_whole_host capture.bin scheduler.txt [integrated-width]");const std::string path=argv[1];
+ unsigned integrated_width=0;
+ if(argc==4){const std::string_view value(argv[3]);const auto parsed=std::from_chars(value.data(),value.data()+value.size(),integrated_width);
+  require(parsed.ec==std::errc{}&&parsed.ptr==value.data()+value.size()&&integrated_width>=320&&integrated_width<=640&&integrated_width%2==0,"invalid integrated width");}
  require(roms.load_aburner2(),"ROMs required");
  HWPalette palette(8192);HWRoad road(0x1700,0x1720,0x1780,-166);HWSprites sprites;HWTiles tiles;
  road.init(roms.road.rom,roms.road.length);sprites.init(roms.sprites.rom,roms.sprites.length);tiles.init_gfx(roms.tiles.rom,roms.tiles.length);
  XBoardSoundBoard sound({roms.soundcpu.rom,roms.soundcpu.length},{roms.pcm.rom,roms.pcm.length});
  Host host(roms,palette,road,sprites,tiles,sound);
+ if(integrated_width){host.integrated_viewport(integrated_width);std::cout<<"Integrated whole-host renderer width="<<integrated_width<<'\n';}
  std::ifstream bus(path,std::ios::binary);tag(bus,"AB2ARB10");MainBus::Memory initial;
  require(bool(bus.read(reinterpret_cast<char*>(initial.bytes.data()),initial.bytes.size()))&&initial.bytes==host.memory.bytes,"initial cold RAM differs");
  for(unsigned i=0;i<32;++i){const auto actual=i<8?host.bus.mul.read(i):i<16?host.bus.div.read(i-8):i<24?host.bus.sub.mul.read(i-16):host.bus.sub.div.read(i-24);require(number(bus,2)==actual,"initial math differs");}number(bus,1);

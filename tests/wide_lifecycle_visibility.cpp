@@ -10,12 +10,17 @@
 #include <set>
 #include <sstream>
 static void require(bool v,const std::string& message){if(!v)throw std::runtime_error(message);}
+#include "integrated_scene_reference.hpp"
 using Host=XBoardGame::Host;
 static uint16_t peek(const Host& h,uint32_t a){auto i=MainBus::memory_offset(a);require(i!=MainBus::UNMAPPED,"Unmapped observation");return uint16_t(h.memory.bytes.at(i)<<8|h.memory.bytes.at(i+1));}
 int main(int argc,char** argv)try{
-    require(argc==2||argc==3,"Usage: wide_lifecycle_visibility ending|neutral|continue|weapons [--bad-reference]");
+    require(argc>=2&&argc<=4,"Usage: wide_lifecycle_visibility ending|neutral|continue|weapons [--bad-reference | --integrated width]");
     const std::string name=argv[1];require(name=="ending"||name=="neutral"||name=="continue"||name=="weapons","Unknown lifecycle recording");
-    const bool bad=argc==3;require(!bad||std::string_view(argv[2])=="--bad-reference","Unknown negative control");
+    const bool integrated=argc==4&&std::string_view(argv[2])=="--integrated";
+    const bool bad=argc==3;require(argc==2||integrated||(bad&&std::string_view(argv[2])=="--bad-reference"),"Unknown lifecycle mode");
+    unsigned width=398;
+    if(integrated){const std::string_view value(argv[3]);require(value=="358"||value=="398","Unsupported lifecycle width");width=value=="358"?358:398;}
+
     const std::string base="build/oracle/natural_"+name;
     // Use MAME's observed pins, not the earlier requested controls: its input
     // update latency is retained in these independent capture companions.
@@ -24,17 +29,24 @@ int main(int argc,char** argv)try{
     std::string magic,line;unsigned frames,a,b,c;require(bool(input>>magic>>frames>>a>>b>>c)&&magic=="AB2PHYS1"&&a<256&&b<256&&c<256,"Invalid recording");
     std::getline(reference,line);if(!line.empty()&&line.back()=='\r')line.pop_back();require(line=="frame,time_ns,mode,stage_index,lives,death_state,score,credits_bcd,carrier_state,refuel_state","Invalid MAME reference columns");
     require(roms.load_aburner2(),"ROMs required");XBoardGame game(roms);auto& h=game.board();h.switches={uint8_t(a),uint8_t(b),uint8_t(c)};
-    Presentation::WideVisibility visibility(roms);
-    auto plain_owner=std::make_unique<Presentation::WideScene>(roms),corrected_owner=std::make_unique<Presentation::WideScene>(roms);
+    Presentation::WideVisibility visibility(roms,(width-320)/2);
+    if(integrated)h.integrated_viewport(width);
+    auto plain_owner=std::make_unique<Presentation::WideScene>(roms,width),corrected_owner=std::make_unique<Presentation::WideScene>(roms,width);
     auto& plain=*plain_owner;auto& corrected=*corrected_owner;
     WideNativeReference legacy(roms);
+    std::unique_ptr<Presentation::WideScene> live_plain,live_corrected;
+    if(integrated){live_plain=std::make_unique<Presentation::WideScene>(roms,width);live_corrected=std::make_unique<Presentation::WideScene>(roms,width);}
     std::vector<Presentation::SceneClip> clips;std::optional<Presentation::SceneClip> pending;
     h.phase=[&](const auto& p){visibility.observe(p,h);};
     h.rendering_started=[&]{pending.emplace();auto& q=*pending;const auto& m=h.memory;auto bytes=std::span(m.bytes);
         Presentation::SceneClip::words(q.tiles,bytes.subspan(MainBus::TILE,0x10000));Presentation::SceneClip::words(q.text,bytes.subspan(MainBus::TEXT,0x1000));Presentation::SceneClip::words(q.palette,bytes.subspan(MainBus::PALETTE,0x4000));
         q.road=m.road_buffer;q.sprites=m.sprite_buffer;q.road_control=m.road_control;q.registers=game.video_registers();q.extended_sprites=visibility.descriptors();
         q.mode=peek(h,0x29c09c);q.throttle=peek(h,0x29c0d2);q.roll=peek(h,0x29c09e);};
-    h.rendered=[&](uint64_t ns,unsigned top,unsigned bottom,bool display){require(bool(pending),"Missing lifecycle snapshot");pending->ns=ns;pending->top=top;pending->bottom=bottom;pending->display=display;clips.push_back(std::move(*pending));pending.reset();};
+    h.rendered=[&](uint64_t ns,unsigned top,unsigned bottom,bool display){require(bool(pending),"Missing lifecycle snapshot");pending->ns=ns;pending->top=top;pending->bottom=bottom;pending->display=display;
+        if(integrated){const auto* layers=h.integrated_layers();require(layers,"Missing lifecycle primary layers");
+            live_plain->render_primary_clip(*pending,h.frames+1,*layers,false);
+            live_corrected->render_primary_clip(*pending,h.frames+1,*layers,true);}
+        clips.push_back(std::move(*pending));pending.reset();};
     std::set<unsigned> modes,stages,carrier,refuel,death,horizon_modes;uint64_t corrections=0,overflow=0,max_descriptors=0;
     for(unsigned f=0;f<frames;++f){unsigned index,value;Host::Input pins;
         require(bool(input>>index>>value)&&index==f&&value<256,"Missing physical frame");pins.buttons=value;
@@ -49,11 +61,13 @@ int main(int argc,char** argv)try{
         legacy.check(clips,h.frames,game.pixels());
         modes.insert(observed[2]);death.insert(observed[5]);if(observed[2]==16){stages.insert(observed[3]);refuel.insert(observed[9]);}if(observed[2]>=15&&observed[2]<=18)carrier.insert(observed[8]);
         plain.render(clips,h.frames,false);corrected.render(clips,h.frames,true);auto p=plain.view(),q=corrected.view();
+        if(integrated){live_plain->finish_primary_frame(h.frames);live_corrected->finish_primary_frame(h.frames);
+            same_view(p,live_plain->view());same_view(q,live_corrected->view());}
         require(p.ready&&q.ready,"Wide lifecycle missing rendered rows");
-        if(name=="neutral"&&f==500){const auto i=180*398+10;
+        if(width==398&&name=="neutral"&&f==500){const auto i=180*398+10;
             require(q.ground_indices[i]>=0x1700&&q.ground_indices[i]<0x1708,"carrier sea side-band background still clipped");
             save_wide_ground_fixture(q,"build/oracle/widescreen/edge-carrier.bin");}
-        if(name=="neutral"&&f==960){require(q.ground_indices[20*398+380]>=0x1720&&q.ground_indices[20*398+380]<0x1730,"departure blue side column remains");
+        if(width==398&&name=="neutral"&&f==960){require(q.ground_indices[20*398+380]>=0x1720&&q.ground_indices[20*398+380]<0x1730,"departure blue side column remains");
             save_wide_ground_fixture(q,"build/oracle/widescreen/edge-departure.bin");}
         require(std::equal(p.sprites.begin(),p.sprites.end(),q.sprites.begin())&&std::equal(p.protection.begin(),p.protection.end(),q.protection.begin()),"Wide lifecycle ground correction changed protected layers");
         for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i]){require(valid_wide_ground_change(p,q,i),"Wide lifecycle correction overwrote terrain");++corrections;}
@@ -63,6 +77,6 @@ int main(int argc,char** argv)try{
     input>>std::ws;require(input.peek()==EOF,"Trailing physical input frames");require(!std::getline(reference,line),"Trailing MAME observation frames");
     require(horizon_modes.contains(1)&&horizon_modes.contains(15),"Attract/takeoff published horizon missing from wider edges");
     if(name=="ending"){for(unsigned s=0;s<23;++s)require(stages.contains(s),"Missing natural stage");for(unsigned s=0;s<13;++s)require(carrier.contains(s),"Missing natural carrier state");for(unsigned s=0;s<8;++s)require(refuel.contains(s),"Missing natural refuel state");for(unsigned m:{0u,1u,16u,17u,18u,19u,20u,21u,22u,25u,26u})require(modes.contains(m),"Missing ending/ranking/attract mode");}
-    std::cout<<"Wide lifecycle "<<name<<" PASS: "<<frames<<'/'<<frames<<" MAME ten-column observations, zero skips; full-width rows and terrain/protection preserved; modes=";
+    std::cout<<(integrated?"Integrated + snapshot lifecycle ":"Wide lifecycle ")<<name<<" width="<<width<<" PASS: "<<frames<<'/'<<frames<<" MAME ten-column observations, zero skips; full-width rows and terrain/protection preserved; modes=";
     for(auto m:modes)std::cout<<m<<',';std::cout<<" stages="<<stages.size()<<" carrier="<<carrier.size()<<" refuel="<<refuel.size()<<" death_states="<<death.size()<<" corrections="<<corrections<<" overflow observations="<<overflow<<" max descriptors="<<max_descriptors<<" horizon_modes=";for(auto m:horizon_modes)std::cout<<m<<',';std::cout<<std::endl;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
