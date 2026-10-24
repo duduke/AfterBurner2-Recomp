@@ -1,5 +1,6 @@
 // Exercise the real frontend loop and its renderer-switch lambda. SDL entry
 // points are observed only in this translation unit; production has no test hook.
+#define SDL_MAIN_HANDLED
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include "roms.hpp"
@@ -30,6 +31,11 @@
 #include <vector>
 
 namespace {
+#ifdef _WIN32
+constexpr const char* shader_renderer_name="vulkan";
+#else
+constexpr const char* shader_renderer_name="metal";
+#endif
 void require_shader(bool condition,const std::string& message) {
     if(!condition)throw std::runtime_error(message+": "+SDL_GetError());
 }
@@ -84,7 +90,7 @@ SDL_Renderer* observed_gpu_renderer(SDL_GPUDevice* device,SDL_Window* window) {
 }
 SDL_Renderer* observed_renderer(SDL_Window* window,const char* name) {
     auto* renderer=SDL_CreateRenderer(window,name);
-    if(renderer && std::string_view(SDL_GetRendererName(renderer))=="metal")++shader_test.metal_creations;
+    if(renderer && std::string_view(SDL_GetRendererName(renderer))==shader_renderer_name)++shader_test.metal_creations;
     return renderer;
 }
 void observed_file_dialog(SDL_DialogFileCallback callback,void* userdata,SDL_Window*,
@@ -104,7 +110,7 @@ bool observed_present(SDL_Renderer* renderer) {
     if(!result || !shader_test.failure.empty())return result;
     try {
         auto* game=ObservedGameSession::current;require_shader(game,"Observed game is unavailable");
-        const bool metal=std::string_view(SDL_GetRendererName(renderer))=="metal";
+        const bool metal=std::string_view(SDL_GetRendererName(renderer))==shader_renderer_name;
         using Step=ShaderMainState::Step;
         if(shader_test.step==Step::initial) {
             require_shader(shader_test.gpu_creations==1 && !metal && game->info().number>=600,
@@ -122,7 +128,7 @@ bool observed_present(SDL_Renderer* renderer) {
         } else if(shader_test.step==Step::metal) {
             same_native_output();
             require_shader(metal && shader_test.metal_creations==1 && shader_test.dialogs==1,
-                "Valid preset did not switch the live main renderer from GPU to Metal");
+                "Valid preset did not switch the live main renderer to the native shader backend");
             const auto saved=Frontend::load_settings(shader_test.config,Frontend::pixel_art_available());
             require_shader(saved.crt==Frontend::Crt::retroarch && saved.shader_preset==shader_test.valid,
                 "Accepted shader preset was not persisted");
@@ -166,6 +172,7 @@ bool observed_present(SDL_Renderer* renderer) {
 #undef GameSession
 
 int main(int argc,char** argv)try {
+    SDL_SetMainReady();
     require_shader(argc==2 || argc==3,"Usage: native_shader_main_integration preset.slangp [librashader.dylib]");
     shader_test.valid=std::filesystem::absolute(argv[1]).string();
     const auto directory=std::filesystem::path("build/oracle/shader-main")/
@@ -174,7 +181,8 @@ int main(int argc,char** argv)try {
     shader_test.config=(directory/"settings.cfg").string();
     shader_test.invalid=std::filesystem::absolute(directory/"invalid.slangp").string();
     {std::ofstream file(shader_test.invalid);file<<"shaders = 1\nshader0 = \"missing/shader.slang\"\n";}
-    std::vector<std::string> arguments{"shader-main","--boot-to-flight","--settings-file",shader_test.config};
+    {std::ofstream file(shader_test.config);file<<"AB2SETTINGS1\nviewport=16:10\nhud=sharp\nsprites=none\n";}
+    std::vector<std::string> arguments{"shader-main","--boot-to-flight","--scene-renderer","integrated","--settings-file",shader_test.config};
     if(argc==3){arguments.push_back("--shader-runtime");arguments.emplace_back(argv[2]);}
     std::vector<char*> pointers;for(auto& argument:arguments)pointers.push_back(argument.data());
     std::atomic_bool timeout{};
@@ -187,6 +195,6 @@ int main(int argc,char** argv)try {
     require_shader(!timeout,"Shader main integration timed out");
     require_shader(shader_test.failure.empty(),shader_test.failure);
     require_shader(status==0 && shader_test.step==ShaderMainState::Step::finished,"Shader main integration did not finish every transition");
-    std::cout<<"Native shader main: real GPU -> Metal -> GPU, queued chooser, failed-preset GPU rollback and accepted settings; paused native RGB/PCM/time identical, 0 skipped.\n";
+    std::cout<<"Native shader main: real GPU -> "<<shader_renderer_name<<" -> GPU, queued chooser, failed-preset GPU rollback and accepted settings; paused native RGB/PCM/time identical, 0 skipped.\n";
     return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}

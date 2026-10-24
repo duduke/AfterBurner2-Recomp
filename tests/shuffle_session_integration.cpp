@@ -309,11 +309,40 @@ static void natural_run(const Shuffle::Plan& plan, const CanonicalSnapshot& cano
               << (complete ? "; ending17..22, ranking25/26 and attract return observed" : "") << std::endl;
 }
 
+static void inherited_music(const CanonicalSnapshot& canonical) {
+    GameSession session(roms); session.capture_music(true);
+    session.start_shuffle(Shuffle::generate(session.stage_count(), 12345));
+    uint64_t flight_energy = 0;
+    unsigned flight_starts = 0;
+    for (unsigned frame = 0; frame < 780; ++frame) {
+        require(session.advance(boot_input(frame)), "Inherited-music Shuffle paused");
+        session.take_audio();
+        for (const auto& chunk : session.take_music()) {
+            for (const auto& event : chunk.events)
+                if (event.kind == MusicRouting::Kind::start && event.track == 1) ++flight_starts;
+            if (frame >= 600)
+                for (const auto& sample : chunk.music)
+                    for (const auto channel : sample) flight_energy += uint64_t(std::abs(channel) * 32768);
+        }
+    }
+    // Stage 12 inherits Final Take Off from stage 11 in the original order.
+    // A nonempty export alone also passes for silent stems, so require both
+    // actual sequencer initialization and nonzero music after hidden startup.
+    require(session.shuffled_stage() == 12 && flight_starts && flight_energy > 1000000,
+            "Shuffle opening on an inherited-music stage lost its original song");
+    canonical.check(roms);
+    std::cout << "Shuffle inherited music: stage 12, Final Take Off starts=" << flight_starts
+              << ", flight music energy=" << flight_energy << " over 180 audible frames\n";
+}
+
 int main(int argc, char** argv) try {
     const bool complete = argc == 2 && std::string_view(argv[1]) == "--complete";
-    require(argc == 1 || complete, "Usage: shuffle_session_integration [--complete]");
+    const bool music_only = argc == 2 && std::string_view(argv[1]) == "--music";
+    require(argc == 1 || complete || music_only, "Usage: shuffle_session_integration [--complete | --music]");
     require(roms.load_aburner2(), "ROMs required");
     const CanonicalSnapshot canonical(roms);
+    inherited_music(canonical);
+    if (music_only) return 0;
     const auto plan = test_plan(StageCatalog::count(roms));
     lifecycle(plan, canonical);
     natural_run(plan, canonical, complete);

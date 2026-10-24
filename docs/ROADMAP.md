@@ -13,7 +13,7 @@ Original remains the regression reference.
 | Priority | Workstream | Next outcome |
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
-| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Finish controller/scene audits and sustained 16:9/16:10 validation; both widths ship in macOS Preview 3; ultrawide remains future work |
+| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Integrate variable-width rendering into the primary renderer to remove duplicate scene work; retain preview comparisons, controller audits and sustained 16:9/16:10 gates; ultrawide needs separate acceptance |
 | 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification |
 | 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
@@ -144,6 +144,56 @@ the decoder needs extending; in a data table it's expected.
   in-between frames. Don't port anything at 60 Hz.
 
 ## Current checkpoint (2026-10-23)
+
+Windows source update (2026-10-24): checked LLVM-MinGW ThinLTO builds and a
+native Vulkan RetroArch `.slangp` host are implemented. Practice/Shuffle,
+16:10, HUD/CRT, aircraft presentation, calibration and revised spatial audio
+are shared with the macOS source; Windows packaging now includes the matching
+aircraft assets and shader notices. The published Windows download remains
+Preview 2. Local regression/GPU/shader evidence and the earlier full-oracle and
+symlink-fixture failures are recorded in
+[ENGINE_NOTES](ENGINE_NOTES.md#windows-lto-vulkan-shaders-and-feature-parity-2026-10-24).
+
+Windows NTSC shader follow-up removes immediate GPU waiting and redundant
+Off-mode sprite scaling. A bounded Original viewport/HUD run holds 59.64 fps
+after startup; busy 16:10 scenes still fall below target. See
+[NTSC measurements](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
+
+Renderer direction (2026-10-24): the preview captures native partial-frame state
+and reconstructs road/tile/sprite layers on the CPU, in addition to the native
+render. Measured 16:10/sharp-HUD/ground scene reconstruction reaches 5.5 ms;
+these combined measurements do not isolate each option or establish 16:9 cost.
+The next increment is a primary renderer with a bounded variable logical width,
+224 rows and a centered native origin. Preserve CPU/device timing, partial-frame
+palette/priority rules and native sprite feedback. Retain the snapshot renderer
+as a comparison reference until the integrated path passes independent MAME,
+native-state, enhancement and sustained-load gates.
+
+The experimental path shares the primary road/tile pass with a native center
+crop and now supplies it at live partial-render frontiers to the enhanced
+visibility/effects/HUD/aircraft consumer. Retained snapshots remain the
+comparison reference; compact mode omits the tile snapshot and reuses one
+metadata slot. Frontend migration and matched timing are implemented; full
+acceptance remains open. The first slice's synthetic comparisons pass 80/80 cases
+and four deliberate faults are rejected; see
+[scope and validation limits](ENGINE_NOTES.md#integrated-primary-renderer-first-underlay-slice-2026-10-24).
+The live follow-up matches 2,643 paired frame observations across 358/398/522,
+passes 30 clip fixtures and rejects three additional consumer faults; see
+[live integration evidence](ENGINE_NOTES.md#live-primary-underlay-consumer-and-compact-capture-2026-10-24).
+The frontend adapter is now opt-in with `--scene-renderer integrated`. Matched NTSC
+runs reduce board-plus-scene CPU time by 4.7% (16:9) / 3.6% (16:10), with identical
+final images, but busy intervals still miss 59.6 fps. Independent stock-MAME RGB
+checks pass 3,500/3,500 comparisons and reject two renderer faults. Full acceptance
+remains open. Developer Mode resolved the retained symlink fixture; complete
+`test` and `verify-stage1` pass. Instrumented CPU/device oracle and supplemental full acceptance
+are deferred by user request until this feature is tested on the Mac; see
+[frontend timing and acceptance](ENGINE_NOTES.md#frontend-adapter-matched-ntsc-timing-and-independent-mame-rgb-2026-10-24).
+Width 522 is a nominal square-pixel 21:9 test case, rounded
+even for symmetric margins, not an enabled or accepted ultrawide mode. Custom
+stages remain a separate opt-in stage/object-data interface: renderer integration
+is reusable infrastructure, not authorization to change arcade activation,
+targeting, collisions, stage scripts or spawn rules. See the
+[integration work order](WIDESCREEN_PLAN.md#primary-renderer-integration-work-order-2026-10-24).
 
 macOS release source is tagged `v0.1.0-preview.3`; the package manifests identify the
 exact source commit. The SDL3 native game is

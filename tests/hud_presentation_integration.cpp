@@ -77,7 +77,7 @@ struct Aspect {
     explicit Aspect(unsigned width):original(roms,width),replacement(roms,width){}
     void reset(){original.reset();replacement.reset();}
 };
-void check_presentation(GameSession& captured,std::array<Aspect,3>& aspects,Witnesses& witnesses) {
+void check_presentation(GameSession& captured,std::span<Aspect> aspects,Witnesses& witnesses) {
     const auto scene=captured.wide_scene();require(scene.ready,"HUD scene capture missing after completed frame");
     const auto native=captured.frame();
     for(auto& aspect:aspects){
@@ -114,10 +114,12 @@ void check_presentation(GameSession& captured,std::array<Aspect,3>& aspects,Witn
 
 int main() try {
     require(roms.load_aburner2(),"ROMs required");
-    GameSession original(roms),captured(roms);
+    auto original_owner=std::make_unique<GameSession>(roms),captured_owner=std::make_unique<GameSession>(roms);
+    auto& original=*original_owner;auto& captured=*captured_owner;
     captured.capture_wide_scene(true,native_width);
     require(!captured.wide_scene().ready,"HUD capture ready before first rendering");
-    std::array<Aspect,3> aspects{Aspect(320),Aspect(358),Aspect(398)};
+    std::vector<Aspect> aspects;aspects.reserve(3);
+    for(unsigned width:{320u,358u,398u})aspects.emplace_back(width);
     Witnesses witnesses;
     for(unsigned frame=0;frame<781;++frame){
         if(frame==520){

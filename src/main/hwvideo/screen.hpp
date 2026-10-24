@@ -59,6 +59,27 @@ public:
     // sprite scaler feedback; disabled display neither draws nor changes it.
     void render_partial(RGB888* output, int top, int bottom, bool display,
                         uint8_t* sprite_bank = nullptr);
+    // Experimental primary-renderer underlay. Road/tile layers are rasterized
+    // once at this width, then their native center feeds normal composition.
+    // Text, sprites and their hardware feedback retain native coordinates.
+    // Values exclude text, ground correction and detached visibility; consumers
+    // borrow the planes until the next render into this viewport.
+    class ViewportLayers {
+    public:
+        explicit ViewportLayers(unsigned logical_width);
+        unsigned width() const { return logical_width; }
+        unsigned origin() const { return (logical_width-320)/2; }
+        std::span<const uint16_t> indices() const { return pixels; }
+        std::span<const uint8_t> priorities() const { return priority; }
+    private:
+        friend class Screen;
+        unsigned logical_width;
+        std::vector<uint16_t> pixels;
+        std::vector<uint8_t> priority;
+    };
+    void render_integrated_partial(RGB888* native_output, ViewportLayers& viewport,
+                                   int top, int bottom, bool display,
+                                   uint8_t* sprite_bank = nullptr);
     // Passive raw sprite raster from the last clip; reading it never reruns
     // the hardware scaler or its RAM feedback.
     std::span<const uint16_t> sprite_words() const { return sprite_pixels; }
@@ -66,6 +87,8 @@ public:
     const std::vector<uint8_t>& priorities() const { return priority; }
 
 private:
+    void render_partial_impl(RGB888* output, int top, int bottom, bool display,
+                             uint8_t* sprite_bank, ViewportLayers* viewport);
     int width, height;
     HWPalette& palette;
     HWRoad& road;

@@ -138,8 +138,9 @@ profile passed at `build/workflow/20261019T050739.004809Z/`. Earlier
 release/lifecycle results above retain their historical scope. These checks do
 not declare a new release or exhaustive scene acceptance.
 
-Next: finish controller/scene and sustained-load audits for both widths,
-establish named Windows/Linux/GPU coverage, then implement ultrawide. Optional
+Next: integrate the primary renderer in the work order below while retaining
+controller/scene and sustained-load audits for both widths. Establish named
+Windows/Linux/GPU coverage before accepting ultrawide. Optional
 pixel-aspect correction, edge-anchored HUD and wider gameplay rules are separate
 features. Do not promote finite lifecycle coverage into exhaustive visual coverage.
 
@@ -168,6 +169,79 @@ residuals may leave narrow bars. Actual ultrawide panels need their measured
 aspect, not a universal width labelled 21:9. Cap supported width explicitly.
 
 ## Architecture
+
+### Primary-renderer integration work order (2026-10-24)
+
+The preview's isolation makes it a useful comparison reference, but duplicates
+CPU work. With Sprite Filter Off and the NTSC scanline preset, the measured
+16:10/sharp-HUD/ground path spends 2.7–5.5 ms reconstructing scenes in addition
+to approximately 10–12 ms of board execution. This motivates sharing rendering
+work; the measurements do not attribute all that cost to viewport width alone.
+See [the bounded evidence](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
+
+Target pipeline:
+
+`native partial-render frontier -> primary variable-width layers -> native center + enhanced presentation -> SDL`
+
+1. **Shared road/tile pass:** experimental `Screen::render_integrated_partial`
+   accepts reusable `Screen::ViewportLayers`, renders the underlay once at the
+   selected width and copies its center into normal native composition. Native
+   text, sprite raster dimensions and feedback stay unchanged. It is a testable
+   first slice; the snapshot frontend remains the default comparison reference.
+2. **Live frontier integration (experimental):** the host can now select the
+   shared pass at its existing partial-render boundary. An optional synchronous
+   consumer on `GameSession::capture_wide_scene` supplies pre-feedback metadata
+   and borrowed primary layers to `WideScene::render_primary_clip`.
+   `finish_primary_frame` publishes the enhanced output only after the native
+   board tick. The optional completion callback also covers hidden startup frames.
+   Native observers and `GameSession::frame()` remain intact. The frontend adapter
+   is selectable with `--scene-renderer integrated`; `snapshot` remains the default
+   until full acceptance. The setting is a launch-time experimental override.
+   Retained snapshots support comparisons; compact capture reuses one metadata
+   slot, omits the unused tile snapshot and makes `wide_scene()` unavailable.
+3. **Enhanced composition (experimental):** the live consumer uses the existing
+   extended descriptors, ground correction, shadows, fragment chains, detached
+   HUD and aircraft policy while bypassing duplicate road/tile rasterization and
+   tile/road-device reloads. Paired-session and snapshot comparisons cover the
+   recorded 358/398/522 trajectories and lifecycle changes. Retain the snapshot
+   reference and native sprite feedback pass; remaining scene, GPU, custom-art
+   and sustained-load acceptance precede removing further work.
+4. **Acceptance and rollout:** compare native RGB/PCM/time and feedback with
+   independent MAME fixtures, reject relevant mutations, compare enhanced output
+   with the retained preview, and benchmark matched settings and busy trajectories.
+   Run complete required gates before promoting the path to the playable frontend.
+   A synthetic pass is not MAME or whole-host acceptance.
+   Windows independent RGB passes 3,500/3,500 comparisons; complete `test` and
+   `verify-stage1` pass. Instrumented CPU/device and supplemental full gates are explicitly
+   deferred to the user's Mac; this keeps default promotion open.
+5. **Additional ratios:** keep logical width independent of menu presets. The
+   initial API follows the existing bound of even widths 320–640 and 224 rows;
+   522 exercises nominal 21:9 geometry. Wider visibility, actual panel ratios,
+   scene coverage, HUD placement and performance require separate validation.
+   No new viewport selection is enabled by this prototype.
+
+Matched frontend timing uses the same executable, viewport/settings, shader
+runtime and neutral controller policy in snapshot/integrated/integrated/snapshot
+order. Compare `board_ms + wide_scene_ms`: primary background work moves into the
+board tick, while enhanced-consumer time is reported separately. The runner keeps
+every interval/log/final image, excludes the first timing interval from summaries,
+and rejects different final images or inactive requested rendering paths. Example:
+
+```powershell
+python tools/video/benchmark_integrated_frontend.py --binary build/windows-lto/afterburner2.exe --shader build/playable/shaders/ntsc/ntsc-320px-composite-scanline.slangp --runtime build/playable/librashader.dll
+```
+
+Stop unrelated builds/captures while timing. These finite Practice measurements
+do not replace sustained full-stage/fullscreen acceptance. Independent MAME RGB
+comparisons validate the native center only; physical hardware has no outer band.
+
+Custom stages are a complementary content workstream: document stage progression,
+road/scenery placement, formations, spawn timing and transition contracts, then
+build an opt-in stage-data interface using understood routines. New behavior
+requires an explicit extension contract. Widening the renderer does not provide
+stage authoring or justify changing the verified arcade execution path.
+
+### Retained preview architecture
 
 `native partial-frame snapshots -> read-only wide renderer -> enhanced planes -> SDL presentation`
 

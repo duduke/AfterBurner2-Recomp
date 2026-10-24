@@ -70,7 +70,7 @@ int main(int argc, char** argv)try
     unsigned practice_start_stage = 0;
     bool shuffle_start = false;
     std::optional<uint32_t> shuffle_seed;
-    bool boot_to_flight = false, profile = false;
+    bool boot_to_flight = false, profile = false,integrated_scene=false;
     std::string recording_path;
     std::string settings_path, menu_preview, frame_preview, hud_atlas, player_aircraft,shader_preset,shader_runtime;
     for (int i=1;i<argc;++i)
@@ -78,6 +78,11 @@ int main(int argc, char** argv)try
         const std::string_view option(argv[i]);
         if (option == "--boot-to-flight") { boot_to_flight=true; continue; }
         if (option == "--profile") { profile=true; continue; }
+        if(option=="--scene-renderer" && i+1<argc){
+            const std::string_view value(argv[++i]);
+            if(value!="snapshot"&&value!="integrated")throw std::runtime_error("Scene renderer must be snapshot or integrated");
+            integrated_scene=value=="integrated";continue;
+        }
         if (option == "--shuffle") { shuffle_start=true; continue; }
         if (option == "--shuffle-seed" && i+1<argc) {
             const std::string_view value(argv[++i]);uint32_t seed;
@@ -95,7 +100,7 @@ int main(int argc, char** argv)try
         if (option == "--shader-runtime" && i+1<argc) { shader_runtime=argv[++i]; continue; }
         if (option == "--menu-preview" && i+1<argc) { menu_preview=argv[++i]; continue; }
         if ((option != "--frames" && option != "--stage" && option != "--practice-stage") || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number]] [--boot-to-flight] [--record path] [--profile] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime librashader.dylib] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
+        { std::cerr << "Usage: afterburner2 [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number]] [--boot-to-flight] [--record path] [--profile] [--scene-renderer snapshot|integrated] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime library-path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
         const std::string_view value(argv[++i]);
         auto& count = option == "--stage" ? start_stage : option == "--practice-stage" ? practice_start_stage : frame_limit;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
@@ -182,16 +187,21 @@ int main(int argc, char** argv)try
 
     SDL_GPUDevice* gpu_device=nullptr;
     SDL_Renderer* renderer=nullptr;
-    bool metal_backend=false;
-    const auto create_renderer=[&](bool native_metal) {
-        metal_backend=false;
+    bool native_shader_backend=false;
+    const auto create_renderer=[&](bool native_shader) {
+        native_shader_backend=false;
 #ifdef __APPLE__
-        if(native_metal) {
+        if(native_shader) {
             renderer=SDL_CreateRenderer(window,"metal");
-            metal_backend=renderer!=nullptr;
+            native_shader_backend=renderer!=nullptr;
+        } else
+#elif defined(_WIN32)
+        if(native_shader) {
+            renderer=SDL_CreateRenderer(window,"vulkan");
+            native_shader_backend=renderer!=nullptr;
         } else
 #else
-        (void)native_metal;
+        (void)native_shader;
 #endif
         {
             gpu_device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,false,nullptr);
@@ -204,9 +214,10 @@ int main(int argc, char** argv)try
         }
         if(!renderer)return false;
 #ifdef _WIN32
-        const bool win_vulkan_gpu=gpu_device && SDL_GetGPUDeviceDriver(gpu_device) &&
-            std::string_view(SDL_GetGPUDeviceDriver(gpu_device))=="vulkan";
-        SDL_SetRenderVSync(renderer,win_vulkan_gpu?0:1);
+        const bool win_vulkan=(gpu_device && SDL_GetGPUDeviceDriver(gpu_device) &&
+            std::string_view(SDL_GetGPUDeviceDriver(gpu_device))=="vulkan") ||
+            std::string_view(SDL_GetRendererName(renderer))=="vulkan";
+        SDL_SetRenderVSync(renderer,win_vulkan?0:1);
 #else
         SDL_SetRenderVSync(renderer,1);
 #endif
@@ -240,7 +251,7 @@ int main(int argc, char** argv)try
             settings.crt=Frontend::Crt::off;slang_renderer.reset();
             if(!shader_preset.empty())settings.shader_preset=stored_shader_preset;
             if(!shader_runtime.empty())settings.shader_runtime=stored_shader_runtime;
-            if(metal_backend) {
+            if(native_shader_backend) {
                 SDL_DestroyRenderer(renderer);renderer=nullptr;
                 if(!create_renderer(false))throw std::runtime_error(SDL_GetError());
             }
@@ -298,6 +309,7 @@ int main(int argc, char** argv)try
     std::unique_ptr<Frontend::GPUSpriteScaler> gpu_scaler;
     if(gpu_device)gpu_scaler=std::make_unique<Frontend::GPUSpriteScaler>(renderer);
     std::unique_ptr<Presentation::WideScene> wide_renderer;
+    double primary_scene_ms=0;
     SDL_Texture* sprite_texture=nullptr;
     unsigned sprite_texture_factor=0;
     uint64_t last_sprite_frame=UINT64_MAX;
@@ -305,7 +317,20 @@ int main(int argc, char** argv)try
         const bool detached=Frontend::is_wide(value)||value.hud!=Frontend::Hud::original||aircraft_renderer->available();
         if(detached && (!wide_renderer || wide_renderer->view().width!=Frontend::viewport_width(value)))
             wide_renderer=std::make_unique<Presentation::WideScene>(roms,Frontend::viewport_width(value));
-        if(!detached)wide_renderer.reset();game.capture_wide_scene(detached,Frontend::viewport_width(value));
+        if(!detached)wide_renderer.reset();
+        if(detached&&integrated_scene){
+            // Keep a settings copy for the whole partial frame, including
+            // hidden Practice/Shuffle startup and renderer replacement.
+            game.capture_wide_scene(true,Frontend::viewport_width(value),
+                [&,options=value](const auto& clip,uint64_t frame,const auto& layers){
+                    const auto started=SDL_GetPerformanceCounter();
+                    wide_renderer->render_primary_clip(clip,frame,layers,options.ground,Frontend::is_wide(options),options.hud==Frontend::Hud::original);
+                    primary_scene_ms+=(SDL_GetPerformanceCounter()-started)*1000.0/SDL_GetPerformanceFrequency();
+                },false,[&](uint64_t frame){
+                    const auto started=SDL_GetPerformanceCounter();wide_renderer->finish_primary_frame(frame);
+                    primary_scene_ms+=(SDL_GetPerformanceCounter()-started)*1000.0/SDL_GetPerformanceFrequency();
+                });
+        }else game.capture_wide_scene(detached,Frontend::viewport_width(value));
         if(wide_renderer){
             const unsigned translucent=(value.clouds?(1u<<unsigned(Presentation::Effect::cloud)):0)|
                 (value.trails?(1u<<unsigned(Presentation::Effect::missile_trail)):0)|
@@ -364,7 +389,7 @@ int main(int argc, char** argv)try
     };
     // Renderer-owned objects release their textures before the backend dies.
     // Board, audio, input, menus and the current frame remain live throughout.
-    const auto rebuild_renderer=[&](bool native_metal,const Frontend::Settings& value) {
+    const auto rebuild_renderer=[&](bool native_shader,const Frontend::Settings& value) {
         slang_renderer.reset();menu->rebind(nullptr,roms);hud_renderer->rebind(nullptr);
         aircraft_renderer.reset();crt_renderer.reset();
         if(!gpu_scaler)SDL_DestroyTexture(sprite_texture);
@@ -372,7 +397,7 @@ int main(int argc, char** argv)try
         SDL_DestroyTexture(texture);texture=nullptr;
         SDL_DestroyRenderer(renderer);renderer=nullptr;
         if(gpu_device)SDL_DestroyGPUDevice(gpu_device);gpu_device=nullptr;
-        if(!create_renderer(native_metal))throw std::runtime_error(std::string("Display backend unavailable: ")+SDL_GetError());
+        if(!create_renderer(native_shader))throw std::runtime_error(std::string("Display backend unavailable: ")+SDL_GetError());
         texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,SCREEN_WIDTH,SCREEN_HEIGHT);
         if(!texture || !Frontend::apply_settings(window,renderer,texture,value))throw std::runtime_error(SDL_GetError());
         hud_renderer->rebind(renderer);crt_renderer=std::make_unique<Frontend::NativeCrt>(renderer);
@@ -464,16 +489,16 @@ int main(int argc, char** argv)try
     auto apply_pending_shader=[&] {
         if(!pending_shader_settings)return;
         const auto requested=*pending_shader_settings;pending_shader_settings.reset();
-        const auto previous=accepted_settings;const bool previous_metal=metal_backend;
-#ifdef __APPLE__
-        const bool wants_metal=requested.crt==Frontend::Crt::retroarch;
+        const auto previous=accepted_settings;const bool previous_native=native_shader_backend;
+#if defined(__APPLE__) || defined(_WIN32)
+        const bool wants_native=requested.crt==Frontend::Crt::retroarch;
 #else
-        const bool wants_metal=false;
+        const bool wants_native=false;
 #endif
         bool rebuilt=false,loaded=false;
         audio_output->pause(true);audio_output->clear();
         try {
-            if(wants_metal!=metal_backend) {rebuilt=true;rebuild_renderer(wants_metal,requested);}
+            if(wants_native!=native_shader_backend) {rebuilt=true;rebuild_renderer(wants_native,requested);}
             if(requested.crt==Frontend::Crt::retroarch) {
                 if(!slang_renderer)slang_renderer=std::make_unique<Frontend::NativeSlang>(renderer,window);
                 if(!slang_renderer->load(requested.shader_preset,requested.shader_runtime))
@@ -493,7 +518,7 @@ int main(int argc, char** argv)try
             auto restored=previous;
             // A failed preset reload keeps its accepted chain. A backend
             // replacement needs fresh renderer textures and a restored chain.
-            if(rebuilt)rebuild_renderer(previous_metal,restored);
+            if(rebuilt)rebuild_renderer(previous_native,restored);
             if(restored.crt==Frontend::Crt::retroarch && (rebuilt || loaded)) {
                 if(!slang_renderer)slang_renderer=std::make_unique<Frontend::NativeSlang>(renderer,window);
                 if(!slang_renderer->load(restored.shader_preset,restored.shader_runtime)) {
@@ -650,10 +675,13 @@ int main(int argc, char** argv)try
         {
             const bool measure=profile || menu->settings.stats!=Frontend::Stats::off;
             const auto core_start=measure ? SDL_GetPerformanceCounter() : 0;
+            const double scene_before=primary_scene_ms;
             advance(input);
             feedback->consume(game.take_feedback());
             feedback->update(!input_manager->focused);
-            if(measure) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency;
+            const double scene_elapsed=primary_scene_ms-scene_before;
+            profile_scene+=scene_elapsed;
+            if(measure) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency-scene_elapsed;
             ++profile_frames;
             // Playback owns bounded queues and never clocks the emulated board.
             take_audio();
@@ -664,7 +692,7 @@ int main(int argc, char** argv)try
 
         auto planes=game.sprite_presentation();auto scene=game.sprite_scene();
         unsigned render_width=SCREEN_WIDTH;bool wide_ready=false;
-        if(wide_renderer){const auto scene_start=SDL_GetPerformanceCounter();auto captured=game.wide_scene();if(captured.ready)wide_renderer->render(captured.clips,captured.info.number,menu->settings.ground,Frontend::is_wide(menu->settings),menu->settings.hud==Frontend::Hud::original);
+        if(wide_renderer){const auto scene_start=SDL_GetPerformanceCounter();auto captured=game.wide_scene();if(!integrated_scene&&captured.ready)wide_renderer->render(captured.clips,captured.info.number,menu->settings.ground,Frontend::is_wide(menu->settings),menu->settings.hud==Frontend::Hud::original);
             auto wide=wide_renderer->view();wide_ready=wide.ready;
             if(wide_ready){render_width=wide.width;planes={wide.background,wide.sprites,wide.protection,true};scene={wide.heads,wide.fragments,true};}
             else planes.ready=false;
@@ -801,6 +829,7 @@ int main(int argc, char** argv)try
                              <<" filter_submit_ms="<<(filter_frames?profile_filter/filter_frames:0)
                              <<" board_ms="<<(profile_frames?profile_core/profile_frames:0)
                              <<" wide_scene_ms="<<profile_scene/profile_displays
+                             <<" scene_renderer="<<(wide_renderer?(integrated_scene?"integrated":"snapshot"):"native")
                              <<" crt_submit_ms="<<profile_crt/profile_displays
                              <<" crt_cache_bytes="<<crt_renderer->cached_bytes()
                              <<" crt_rebuilds="<<crt_renderer->rebuilds()

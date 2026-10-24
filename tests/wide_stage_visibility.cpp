@@ -21,14 +21,16 @@ int main(int argc,char** argv)try{
     require(width==398||width==358,"Unsupported test viewport");
     for(unsigned stage=requested?requested:1;stage<=(requested?requested:stage_count);++stage){
         std::cout<<"Wide stage "<<stage<<": boot"<<std::endl;
-        GameSession reference(roms),captured(roms);captured.capture_wide_scene(true,width);
+        auto reference_owner=std::make_unique<GameSession>(roms),captured_owner=std::make_unique<GameSession>(roms);
+        auto& reference=*reference_owner;auto& captured=*captured_owner;captured.capture_wide_scene(true,width);
         auto step=[&](GameControls c){reference.advance(c);captured.advance(c);auto a=reference.frame(),b=captured.frame();
             require(a.info.number==b.info.number&&a.info.time_ns==b.info.time_ns,"wide stage observer changed time");
             require(std::equal(a.pixels.begin(),a.pixels.end(),b.pixels.begin(),[](auto x,auto y){return x.r==y.r&&x.g==y.g&&x.b==y.b;}),"wide stage observer changed native RGB");
             require(reference.take_audio()==captured.take_audio(),"wide stage observer changed native PCM");++frames;};
         for(unsigned f=0;f<600;++f){GameControls c;c.coin=f>=360&&f<372;c.start=f>=420&&f<432;step(c);}
         reference.debug_skip_to_stage(stage);captured.debug_skip_to_stage(stage);captured.capture_feedback(true);
-        Presentation::WideScene plain(roms,width),corrected(roms,width);WideNativeReference legacy(roms);unsigned directions[2]{};
+        auto plain_owner=std::make_unique<Presentation::WideScene>(roms,width),corrected_owner=std::make_unique<Presentation::WideScene>(roms,width);
+        auto& plain=*plain_owner;auto& corrected=*corrected_owner;WideNativeReference legacy(roms);unsigned directions[2]{};
         for(unsigned f=0;f<360;++f){GameControls c;c.stick_x=(f/60)%2?1.f:-1.f;c.stick_y=f<120?1.f:f<240?-1.f:0.f;c.throttle=1;c.cannon=true;c.missile=f%60<4;step(c);
             if(f%120==0)std::cout<<"Wide stage "<<stage<<": render "<<f<<"/360"<<std::endl;
             auto scene=captured.wide_scene();require(scene.ready,"wide stage frontier missing");

@@ -150,13 +150,15 @@ static void visibility_fixtures(){
     large.sprites[0]=0x80;large.extended_sprites.resize(5001);
     for(auto& d:large.extended_sprites)d.bytes[0]=0x40;
     large.extended_sprites.back()=overflow_descriptor;
-    Presentation::WideScene large_scene(roms);large_scene.render(std::span(&large,1),1,false);
+    auto large_owner=std::make_unique<Presentation::WideScene>(roms);auto& large_scene=*large_owner;large_scene.render(std::span(&large,1),1,false);
     require(large_scene.view().ready&&!large_scene.view().fragments.empty(),"dynamic descriptor tail was truncated");
     std::cout<<"Wide visibility fixtures: native cull/slot reuse, wide-edge retirement, horizon endpoints, immutable memory/time; 512 rejected requests, 34 real bucket drops without duplicates, generations/reset and 5001-descriptor tail passed\n";
 }
 static void attract_edge_scene(){
-    GameSession reference(roms),captured(roms);reference.set_dip_switches({255,255,221});captured.set_dip_switches({255,255,221});captured.capture_wide_scene(true);
-    Presentation::WideScene plain(roms),fixed(roms);WideNativeReference legacy(roms);
+    auto reference_owner=std::make_unique<GameSession>(roms),captured_owner=std::make_unique<GameSession>(roms);
+    auto& reference=*reference_owner;auto& captured=*captured_owner;reference.set_dip_switches({255,255,221});captured.set_dip_switches({255,255,221});captured.capture_wide_scene(true);
+    auto plain_owner=std::make_unique<Presentation::WideScene>(roms),fixed_owner=std::make_unique<Presentation::WideScene>(roms);
+    auto& plain=*plain_owner;auto& fixed=*fixed_owner;WideNativeReference legacy(roms);
     for(unsigned f=0;f<840;++f){reference.advance({});captured.advance({});auto a=reference.frame(),b=captured.frame();
         require(a.info.time_ns==b.info.time_ns&&std::equal(a.pixels.begin(),a.pixels.end(),b.pixels.begin(),[](auto x,auto y){return x.r==y.r&&x.g==y.g&&x.b==y.b;}),"attract edge observer changed native RGB/time");
         require(reference.take_audio()==captured.take_audio(),"attract edge observer changed PCM");auto scene=captured.wide_scene();legacy.check(scene.clips,scene.info.number,a.pixels);
@@ -175,17 +177,21 @@ static void attract_edge_scene(){
     std::cout<<"Attract edge: 840 native RGB/PCM/time frames and legacy images exact; translucent-cloud background witness passed\n";
 }
 int main(int argc,char** argv)try{
-    require(roms.load_aburner2(),"ROMs required");visibility_fixtures();if(argc==2&&std::string_view(argv[1])=="--visibility-fixtures")return 0;GameSession original(roms),captured(roms);
-    attract_edge_scene();captured.capture_wide_scene(true);Presentation::WideScene wide(roms),native(roms,320),enhanced(roms),corrected(roms);Frontend::SpriteScaler scaler,native_scaler;Presentation::GroundHorizon horizon({roms.maincpu.rom,roms.maincpu.length},{roms.subcpu.rom,roms.subcpu.length});
+    require(roms.load_aburner2(),"ROMs required");visibility_fixtures();if(argc==2&&std::string_view(argv[1])=="--visibility-fixtures")return 0;
+    auto original_owner=std::make_unique<GameSession>(roms),captured_owner=std::make_unique<GameSession>(roms);
+    auto& original=*original_owner;auto& captured=*captured_owner;
+    std::vector<std::unique_ptr<Presentation::WideScene>> scenes;
+    auto make_scene=[&](unsigned width=398)->Presentation::WideScene&{scenes.push_back(std::make_unique<Presentation::WideScene>(roms,width));return *scenes.back();};
+    attract_edge_scene();captured.capture_wide_scene(true);auto& wide=make_scene();auto& native=make_scene(320);auto& enhanced=make_scene();auto& corrected=make_scene();Frontend::SpriteScaler scaler,native_scaler;Presentation::GroundHorizon horizon({roms.maincpu.rom,roms.maincpu.length},{roms.subcpu.rom,roms.subcpu.length});
     // Independent side-column reference: decode the original planar tile ROM
     // directly and select deliberately distinct virtual tile/column entries.
-    Presentation::SceneClip synthetic;synthetic.display=true;synthetic.bottom=223;synthetic.ns=1;
+    auto synthetic_owner=std::make_unique<Presentation::SceneClip>();auto& synthetic=*synthetic_owner;synthetic.display=true;synthetic.bottom=223;synthetic.ns=1;
     synthetic.sprites[0]=0x80;synthetic.registers[4]=synthetic.registers[5]=0x8000;
     for(unsigned i=0;i<8192;++i)synthetic.palette[i]=uint16_t((i*13)&0x7fff);
     for(unsigned i=0;i<synthetic.tiles.size();++i)synthetic.tiles[i]=uint16_t((i*7+1)&0x1fff);
     for(unsigned i=0;i<0x200;++i){synthetic.road[2*i]=8;synthetic.road[2*i+1]=5;}
     for(unsigned layer=0;layer<2;++layer)for(unsigned col=0;col<32;++col)synthetic.text[0xf16/2+layer*32+col]=col*8;
-    const auto before_bank=synthetic.sprites;Presentation::WideScene column_scene(roms);column_scene.render(std::span(&synthetic,1),1,false);
+    const auto before_bank=synthetic.sprites;auto& column_scene=make_scene();column_scene.render(std::span(&synthetic,1),1,false);
     const auto colview=column_scene.view();HWPalette column_palette(8192);for(unsigned i=0;i<8192;++i)column_palette.write(i,synthetic.palette[i]);
     auto colpixels=scaler.compose(colview.background,colview.sprites,398,224,Frontend::SpriteFilter::none,colview.protection);
     for(unsigned y=0;y<224;++y)for(unsigned x=0;x<398;++x)if(x<39||x>=359){int nx=int(x)-39;unsigned vx=(nx+192)&1023,col=((nx+8)&511)/16,vy=(y+col*8)&511;
@@ -196,7 +202,7 @@ int main(int argc,char** argv)try{
     require(synthetic.sprites==before_bank,"wide renderer wrote native sprite feedback");
     auto upper=synthetic,lower=synthetic;upper.bottom=111;lower.top=112;lower.ns=2;
     upper.palette.fill(0x001f);lower.palette.fill(0x7c00);
-    Presentation::WideScene partial_scene(roms);std::array parts{upper,lower};partial_scene.render(parts,1,false);
+    auto& partial_scene=make_scene();std::vector<Presentation::SceneClip> parts;parts.reserve(2);parts.push_back(upper);parts.push_back(lower);partial_scene.render(parts,1,false);
     auto partial=partial_scene.view();HWPalette partial_palette(8192);partial_palette.write(0,0x001f);auto red=partial_palette.pen(0);partial_palette.write(0,0x7c00);auto blue=partial_palette.pen(0);
     require(partial.background[100*398]==(0xff000000u|uint32_t(red.r)<<16|uint32_t(red.g)<<8|red.b) &&
         partial.background[120*398]==(0xff000000u|uint32_t(blue.r)<<16|uint32_t(blue.g)<<8|blue.b),"wide renderer lost partial-frontier palette/row ownership");
@@ -239,7 +245,7 @@ int main(int argc,char** argv)try{
     // Hold each side for 120 frames so the +/-255 offset has time to decay
     // by six per Sub update before commanding the opposite barrel roll.
     original.debug_skip_to_stage(1);captured.debug_skip_to_stage(1);
-    WideNativeReference inversion_legacy(roms);Presentation::WideScene inversion_plain(roms);unsigned inversion_frames=0;bool inversion_saved[2]{};
+    WideNativeReference inversion_legacy(roms);auto& inversion_plain=make_scene();unsigned inversion_frames=0;bool inversion_saved[2]{};
     for(unsigned f=0;f<720;++f){GameControls c;c.throttle=1;c.cannon=true;c.missile=f%90<12;
         if(f>=120)c.stick_x=((f-120)/120)%2?1:-1;
         original.advance(c);captured.advance(c);auto a=original.frame(),b=captured.frame();

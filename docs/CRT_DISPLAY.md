@@ -23,11 +23,13 @@ darken the picture. The built-in modes include scanlines and the RGB mask.
 RetroArch presets can provide glow, curvature and other effects through the
 separate Slang host below. General frame-pacing changes remain separate work.
 
-## RetroArch Slang presets (macOS Metal)
+<a id="retroarch-slang-presets-macos-metal"></a>
+
+## RetroArch Slang presets (macOS Metal / Windows Vulkan)
 
 The optional shader host loads **`.slangp`** presets through
 [librashader 0.12.0](https://github.com/SnowflakePowered/librashader/tree/librashader-v0.12.0).
-Install its pinned Apple Silicon runtime once, then build the game:
+On Apple Silicon, install its pinned runtime once, then build the game:
 
 ```sh
 python3 tools/deps/fetch_librashader.py
@@ -61,7 +63,7 @@ For an isolated preview:
 ```
 
 The application can switch between its normal SDL GPU renderer and the native
-Metal shader renderer while the game/menu session remains live. Shader mode
+Metal or Vulkan shader renderer while the game/menu session remains live. Shader mode
 uses the existing CPU sprite-filter fallback. Loading and compilation can pause
 presentation briefly. A failed replacement keeps the working preset/display;
 startup failure uses Off and reports the reason. Selecting an unsupported format
@@ -84,8 +86,8 @@ a Metal history-clear bug for chains without history; a requested history reset
 recreates the chain and reapplies parameter values rather than calling that
 broken path. This can cause a compilation stall on reset.
 
-This initial backend supports **macOS Metal / SDR / `.slangp`**. The fetcher is
-for Apple Silicon. Windows/Linux shader backends, legacy `.glslp`/Cg presets,
+The backends support **macOS Metal or Windows Vulkan / SDR / `.slangp`**.
+The fetcher supports Apple Silicon and Windows x64. Linux shader support, legacy `.glslp`/Cg presets,
 HDR output and universal preset compatibility are not implemented. First-input
 mipmap generation is also unavailable. CRT Easymode, CRT Geom and CRT Royale
 have been exercised with a complete local shader pack. Preset cost varies;
@@ -93,12 +95,74 @@ sustained performance must be measured with the chosen preset and settings.
 
 The runtime is optional and loaded dynamically. Search order is an explicit
 `--shader-runtime` path (or saved `shader-runtime`), `AB2_LIBRASHADER`, application
-library locations, then `build/deps/librashader/librashader.dylib`. It must expose
+library locations, then `build/deps/librashader/librashader.dylib` (macOS) or
+`build/deps/librashader/librashader.dll` (Windows). It must expose
 ABI 2 / API 5. The fetcher verifies a pinned release SHA-256 before extraction
 and records source/license metadata. No shader pack or runtime binary is
 committed. The pinned source and redistribution notes are in
 `src/third_party/librashader/NOTICE.md` in the repository/source archive and
 `Notices/librashader/NOTICE.md` in the preview package.
+
+### Windows Vulkan
+
+Build with SDL3 3.4.18 and Vulkan headers; see the [Windows LTO build](../README.md).
+The optional runtime fetcher selects the checksum-pinned Windows x64 0.12.0 ZIP:
+
+```powershell
+python tools/deps/fetch_librashader.py
+./build/windows-lto/afterburner2.exe --shader-preset "C:/RetroArch/shaders/shaders_slang/crt/crt-easymode.slangp"
+```
+
+In a packaged build, supply `--shader-runtime "C:/path/to/librashader.dll"`
+or place that DLL beside the executable. Shader packs and runtime binaries
+remain external. Select presets through the same Video menu used on macOS.
+
+Shader mode uses SDL's **native Vulkan renderer**, sharing its device, graphics
+queue and BGRA target images with librashader. Target unbinding submits SDL's
+source work; explicit image barriers order output sampling on the shared queue.
+The completion fence is waited before command/chain/target reuse, rather than
+immediately after submission, so CPU work and presentation can overlap the
+external pass. There is no per-frame CPU readback. History clears in-place on Vulkan.
+This differs from SDL's GPU renderer running on Vulkan: the latter retains
+compute sprite filters for Off/Subtle/Arcade, while shader mode uses the existing
+CPU sprite filters. Frontend menus are drawn after the shader.
+CPU ScaleFX can be much slower here than the normal GPU implementation; the
+local combined ScaleFX/16:10/HD-aircraft smoke measured roughly 10–11 fps.
+Use Sprite Filter Off when measuring the external preset's own cost.
+
+Explicit checks require a working Vulkan display and the optional runtime:
+
+```powershell
+cmake --build build/windows-lto --target verify-native-slang-mutations verify-native-shader-main -j4
+```
+
+The Windows authored reference covers channel mapping, raw microsecond timing,
+resize through 4K, renderer-state restoration, cached redraws and real previous
+frame history/reset. Three retained mutations reject timing conversion, lost
+history reset and lost renderer state. CRT Easymode also passes the pipeline
+checks. This finite coverage does not establish universal preset compatibility
+or sustained frame pacing.
+
+With Sprite Filter Off, the final bounded Windows Practice/HD-aircraft smoke
+runs near 59.6 fps using CRT Easymode. Shader mode uses the same VSync-off
+choice as normal Windows Vulkan rendering. The separate built-in CRT GPU
+regression currently encounters an SDL 3.4.18 viewport assertion; software CRT
+checks pass, but that supplemental GPU gate remains open.
+
+The four-pass `ntsc/ntsc-320px-composite-scanline.slangp` follow-up removed
+immediate host-side GPU waiting and redundant Off-mode CPU scaling. A 1,200-frame
+windowed Practice run holds 59.64 fps after startup with Original viewport/HUD
+and ground off. The same preset with 16:10/sharp HUD/ground still drops to
+approximately 53–55 fps in later busy scenes, where CPU scene reconstruction
+reaches 5.5 ms. Sprite Filter Off alone does not guarantee the frame budget.
+See [measurements and checks](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
+
+The experimental primary-renderer frontend is selectable at launch with
+`--scene-renderer integrated`; `--scene-renderer snapshot` retains the default
+preview path for comparison. Matched NTSC runs reduce board-plus-scene CPU time
+by roughly 4–5%, with identical final images, but still have busy intervals below
+59.6 fps. This is an opt-in increment, not full performance/platform acceptance.
+See [matched measurements and current gates](ENGINE_NOTES.md#frontend-adapter-matched-ntsc-timing-and-independent-mame-rgb-2026-10-24).
 
 ## Settings and rendering
 

@@ -88,8 +88,23 @@ public:
         for (const uint32_t base : {0x32352u, 0x32224u})
             for (unsigned bank = 0; bank < 4; ++bank)
                 reorder(canonical, plan, base + bank * 0x40, 2);
-        // $DF54: music; $D320: eight-byte stage text.
-        reorder(canonical, plan, 0x2b604, 1);
+        // $DF54: music. $80 dispatches to the sound ROM's $0C91 RET;
+        // its song comes from an earlier original stage, not this row. Carry
+        // that original history into a new adjacency (including cold entry),
+        // while leaving continuous same-song stages and explicit controls alone.
+        uint8_t previous_music = 0x80;
+        for (unsigned position = 0; position < count; ++position) {
+            const auto source = plan.stages[position] - 1;
+            auto inherited = source;
+            while (inherited && canonical.maincpu.rom[0x2b604 + inherited] == 0x80)
+                --inherited;
+            const auto music = canonical.maincpu.rom[0x2b604 + inherited];
+            auto command = canonical.maincpu.rom[0x2b604 + source];
+            if (command == 0x80 && (!position || music != previous_music)) command = music;
+            owned.maincpu.rom[0x2b604 + position] = command;
+            previous_music = music;
+        }
+        // $D320: eight-byte stage text.
         reorder(canonical, plan, 0x2b6ac, 8);
         reorder(canonical, plan, 0x2ea16, 32);
 

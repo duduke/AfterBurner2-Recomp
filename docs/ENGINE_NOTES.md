@@ -1779,6 +1779,8 @@ IRQ entry/return latency; the next section checks the bounded IRQ2/IRQ6
 service window. Independent main-program execution, nested IRQs and the
 ordering of an ADC completion exactly coincident with a raster callback
 remain unverified.
+
+
 `OEngine` still advances its retained native Stage 1 host on fixed display
 steps and does not use this timeline. Do not silently change its refresh or
 wire handlers at invented cycle offsets. Next: use the bounded service contract below to connect the verified
@@ -11590,6 +11592,36 @@ scene/preset performance remain open. Published packages are unchanged.
 
 ## Shuffle mode (2026-10-23)
 
+### Inherited music correction (2026-10-24, Windows)
+
+Seed `12345` opens on source stage 12. Before the correction, its 180-frame
+post-startup music stem had zero energy: only the boot song initialized.
+Main `$DF4E..$DF5E` reads the stage's `$2B604` command; the sound handler table
+at `$08B3` maps the `$80` continue command to `$0C91` (`RET`). Moving that
+row alone loses its original predecessor's song. The owned Shuffle view now
+resolves preceding original commands for continue rows when the new adjacency
+does not supply the same history. Explicit controls and same-history continue
+rows are retained. Canonical ROMs and literal CPU/device code are unchanged.
+
+The new `shuffle_session_integration --music` check observes Final Take Off
+initialization and music energy **192,479,584** over 180 post-startup frames
+with that seed. Its pre-fix probe measured **0**; the new ROM-free inherited
+command check also failed before the fix. The fixed synthetic policy passes,
+including identity order, continue-only openings and explicit controls. All
+eight ROM-free Shuffle mutation controls reject their intended faults. The
+full focused session run passes 660 observer-neutral RGB/PCM/time frames,
+16 canonical-host restoration frames and a 7,118-frame three-position run.
+A rebuilt Windows Release executable completes a 360-frame Vulkan Shuffle
+smoke test with no reported audio underruns. Logs are local under
+`build/shuffle-music-*`, `build/shuffle-session-fixed.log` and
+`build/smoke-shuffle-fixed.log`.
+
+The nine existing focused CTest checks pass (the settings path test required
+an unsandboxed rerun). Real-ROM data checks reached the retained-palette gate,
+but the required MAME captures are absent on this host, so `--roms` as a whole
+did not pass. No new independent MAME equivalence, complete ending run or
+whole-host acceptance is claimed for this local correction.
+
 The root and pause menus now offer [Shuffle](SHUFFLE_MODE.md) alongside
 Practice. A fresh Shuffle permutes gameplay stages 1–22 exactly once, keeping
 the native stage-23 finale last as requested by the user.
@@ -11961,3 +11993,402 @@ that attempt. Exact evidence is retained in
 `build/releases/preview3-sdl-license-mismatch.json`. This package-only repair
 changes no application, compiler, fixture or comparison dependencies of the
 completed release gate.
+
+## Windows LTO, Vulkan shaders and feature parity (2026-10-24)
+
+The installed w64devkit GCC 16.2.0 reports `--disable-lto` and fails CMake's
+compile/link probe. An isolated Windows Release build now uses checksum-verified
+LLVM-MinGW 20261020 UCRT x64 / Clang 23.1.4 / LLD with `-O3 -flto=thin`.
+`AB2_REQUIRE_IPO=ON` enforces a passing probe; a negative configuration with
+the old GCC is rejected. Two presentation headers now include `<cstdlib>`
+explicitly for `std::abs`, fixing standalone regression compilation with libc++.
+CMake discovers Python rather than relying on the nonfunctional Windows
+`python3` App Execution Alias, and copies required runtime DLLs beside the game.
+
+Windows uses an optional native SDL Vulkan Slang host with librashader 0.12.0
+ABI 2 / API 5. It borrows SDL's Vulkan device, queue and target images, submits
+source work on unbind and transitions the output around the external pass.
+The completion fence now waits before command/chain/target reuse rather than
+blocking immediately after every submission; output sampling is ordered on
+the shared graphics queue. SDR output, transactional replacement, parameter
+validation, state restoration, frame caching and in-place history reset match
+the frontend contract. Shader mode uses CPU sprite filters; normal rendering
+retains SDL GPU Vulkan compute filters. Windows Vulkan uses the existing
+VSync-off pacing choice for both renderers. Runtime/shader downloads remain
+external and untracked; Windows runtime archive/member hashes are checked by
+the dependency fetcher. Runtime shader-cache files are ignored.
+
+Compared the changes since `v0.1.0-preview.2` and platform guards in the frontend,
+audio and main loop: Practice/Shuffle, 358×224 and 398×224 viewports, live
+calibration, spatial audio revisions, HUD/CRT and aircraft presentation all use
+the shared source. The missing platform implementation was Slang; Windows
+packaging also lacked the four allowlisted aircraft assets and librashader
+notices. Both are now supplied. The packager identifies the actual native
+compiler/LTO flags and includes available LLVM-MinGW runtime DLLs. No package
+has been published; the clean-tree release gates remain required.
+
+Local evidence under ignored `build/` (not whole-host acceptance):
+
+- `windows-lto-build.log`, `windows-regression-build.log`: successful ThinLTO
+  game and selected regression builds; `windows-lto-negative.log` rejects GCC
+  without LTO support.
+- `windows-regression-tests.log`: 23/24 selected CTest checks pass, including
+  controls, Shuffle ROM policy, settings/input/haptics/music, HUD/CRT, buses,
+  engine and Stage 1. The aircraft file-escape fixture fails at `create_symlink`
+  because this Windows account lacks the privilege; an unsandboxed rerun in
+  `windows-aircraft-recheck.log` fails for the same reason. Coverage is retained.
+- `windows-spatial-tests.log`: generated audio fixture and spatial regression
+  pass. The fetcher suite passes 10 tests, with one existing symlink test skipped
+  for the same host privilege limit (`windows-fetch-tests.log`).
+- `windows-vulkan-shader-test.log`, `windows-vulkan-crt-easymode.log` and
+  `windows-vulkan-crt-pack.log`: authored channel/timing/history references and
+  CRT Easymode, Geom and Royale pass live pipeline, renderer state, cached
+  redraw, failed-preset retention, parameter and widescreen checks. References
+  additionally cover resize through 4K and genuine previous-frame reset.
+- `windows-vulkan-mutations.log`: independent passing baseline and 3/3 rejected
+  timing/history/renderer-state controls, zero skipped. Sources, binaries,
+  fixtures and observations are retained under `build/oracle/slang-vulkan-mutations/`.
+- `windows-vulkan-main-final.log`: real menu-driven SDL GPU → native Vulkan →
+  SDL GPU switch and invalid-preset rollback preserve paused native RGB/PCM/time.
+- `windows-gpu-filters.log`: 630/630 comparisons, 47,209,218 pixels identical,
+  zero skipped. `windows-gpu-hud.log` covers all three viewport widths and 4K.
+  The supplemental built-in CRT GPU test stops at SDL 3.4.18's
+  `SDL_SetGPUViewport_REAL` assertion, "Viewport size exceeds current render
+  target dimensions" (`windows-gpu-crt.log`, repeated in
+  `windows-gpu-crt-abort.log`). It was terminated at the assertion dialog;
+  this GPU gate has not passed. The software CRT regression passes. No
+  comparison, fixture or library assertion was disabled to obtain a pass.
+- `windows-vulkan-practice.log`: the supplied two-pose HD pack loads in the real
+  16:10 Practice game. Combining CPU ScaleFX with the external preset is costly
+  (roughly 10–11 fps in this bounded run); this is not a sustained-performance
+  acceptance pass. Shader-only and normal Shuffle smokes have separate logs.
+- `windows-vulkan-fast-final.log`: final VSync-off shader smoke with the HD
+  aircraft pack measures approximately 59.6 fps, no reported audio underruns;
+  `windows-lto-shuffle.log` records a normal SDL GPU Vulkan Shuffle smoke near
+  59.6 fps. These are bounded observations, not sustained acceptance.
+- `windows-vulkan-startup-fallback.log`: a missing startup preset reports its
+  error and restores SDL GPU Vulkan/compute rendering. The local playable
+  folder was updated with the ThinLTO game and runtime DLLs; the previous EXE
+  is retained under `build/previous-windows-build/`. The resulting executable
+  SHA-256 is `ed9a8ba54261f68da263d816981195622d8dd9c31090cb9c16ff90ee5d0a6b6d`.
+  `windows-playable-shader.log` records a bounded launch of this copied binary.
+
+The Make-based `required` attempt is retained at
+`build/workflow/20261023T214701.334638Z/`; it stops in `test` because this host's
+Make/pkg-config setup resolves SDL headers to the macOS fallback. Native CMake
+checks above do not replace that complete gate. Retained MAME captures are absent
+in this checkout, so full oracle/mutation/natural-recording acceptance is open.
+No gameplay instruction port or capture coverage was changed by this work.
+
+### NTSC preset performance follow-up (2026-10-24)
+
+Reproduced `ntsc/ntsc-320px-composite-scanline.slangp` from the external shader
+pack in `build/playable/shaders/`, with Sprite Filter Off. The Vulkan host was
+waiting on the external pass immediately after submission. It now keeps that
+fence pending until resource reuse; SDL samples the output on the same graphics
+queue after the output barrier. Preset replacement, resize, parameter edits and
+command reuse wait before touching resources; destruction still waits idle.
+The CPU SpriteScaler Off path also bypasses scaling scratch storage and
+coordinate divisions while retaining the same blend/protection rules.
+
+Finite local Practice stage 1 observations (windowed, no HD aircraft):
+
+- `build/ntsc-before.log`: 360 frames, 16:10 / sharp HUD / ground enabled;
+  shader-stage CPU time 2.01–2.16 ms and sprite composition 1.69–1.81 ms.
+- `build/ntsc-after.log`: 600 frames after deferred fencing, shader-stage CPU
+  time 0.53–0.95 ms. These CPU timings do not measure GPU execution alone.
+- `build/ntsc-final.log`: 1,200 frames with both changes; sprite composition
+  0.91–1.26 ms and shader-stage CPU time 0.54–1.14 ms. Early intervals reach
+  59.64 fps, but later busy scenes reach 5.5 ms of scene reconstruction and
+  fall to approximately 53–55 fps. Sustained 16:10 performance remains open.
+- `build/ntsc-original.log`: 1,200 frames, Original viewport/HUD, ground off;
+  first interval 57.55 fps, all remaining intervals 59.64 fps. This is a bounded
+  fallback measurement, not whole-game or fullscreen acceptance.
+
+`build/ntsc-final-build.log` records the ThinLTO build;
+`build/ntsc-final-checks.log` records authored shader references, consecutive
+frames without intermediate readbacks, real renderer switching/rollback with
+unchanged paused RGB/PCM/time, and 3/3 rejected timing/history/state mutations,
+zero skipped. `build/ntsc-final-regressions.log` passes 21/21 selected CTest
+checks including the sprite regression (all 256 alpha values with/without pixel
+protection compared against unchanged uniform EPX composition) and Stage 1.
+The complete Make/oracle gates described above remain open.
+
+The playable EXE was updated; its SHA-256 is
+`2351637b299f4cc7d5e41ec10fb924cf6e1d383b9b6a011d8ae90891486818df`.
+The preceding EXE remains at `build/ntsc-before-afterburner2.exe`.
+
+## Integrated primary renderer: first underlay slice (2026-10-24)
+
+The measured preview cost motivates a shared primary-renderer path, rather than
+changing translated gameplay or simply widening the hardware sprite scaler.
+`Screen::render_integrated_partial` now rasterizes road/BG/FG layers once at a
+bounded even width, then copies the centered 320 columns into native text and
+sprite composition. `Screen::ViewportLayers` owns reusable indexed/priority
+planes at 224 rows; its initial 320–640 width limit matches the preview policy.
+The API supplies the underlay before text, corrected ground, detached visibility
+or sprite effects. Disabled-display clips clear the corresponding underlay
+storage and black the native output without running sprite feedback. Native
+layer observers still see the original 320-wide pre-sprite data.
+
+The ordinary `render_partial` entry point uses the same implementation with no
+extended viewport. The scheduler, bus and translated code are unchanged. Native
+sprite rasterization and word-7 feedback still run at 320×224 in both paths.
+The new entry point is exercised by tests only: no frontend migration, new menu
+ratio, playable EXE update or performance improvement is claimed by this slice.
+
+Evidence retained under ignored `build/`:
+
+- `workflow/20261024T063517.025760Z/`: focused `test-integrated-renderer`
+  passes using the Windows LLVM-MinGW compiler.
+- `integrated-renderer-test.log` records the initial 80/80 synthetic cases.
+  The final fixture primes all rows before its partial/disabled clips so stale
+  prior-frame content must be cleared; `integrated-renderer-regressions.log`
+  passes 22/22 selected CTest checks, including the strengthened fixture,
+  engine and Stage 1. Widths 320/358/398/522/640, all eight road controls,
+  scroll/category policies, native RGB, observer planes, sprite raster, feedback,
+  wide indexed/priority planes, single rows and untouched rows are compared.
+  Final fixture counts: 80/80 cases identical, zero skipped, 240 feedback
+  witnesses and 6,758 distinct side-pixel witnesses.
+- `integrated-renderer-mutations-final.log`: passing baseline and 4/4 rejected
+  center-shift, reversed-origin, lost disabled-row clear and feedback-corruption
+  controls, zero skipped. All sources/logs/binaries remain in
+  `oracle/integrated-renderer-mutations/`. The initial failed control is retained
+  too: it exposed the need to populate rows before testing their erasure.
+- `integrated-renderer-native-build.log`: native ThinLTO game, engine, Stage 1
+  and new regression targets build. `integrated-renderer-native-smoke.log`:
+  120-frame Original/NTSC Practice smoke passes with shader active and no reported
+  audio underruns. This exercises the ordinary rendering path, not a deployed
+  integrated frontend or a controlled performance comparison.
+- `workflow/20261024T063529.753285Z/`: the complete Make gate attempt stops in
+  `test` because `SDL3/SDL.h` is unavailable through this host's Make/pkg-config
+  fallback. It does not reach `verify-stage1` or `oracle-test`. Independent MAME
+  captures remain absent in this checkout; CMake Stage 1 and synthetic comparisons
+  do not close that acceptance gate. No fixture or mutation was removed.
+
+Focused commands:
+
+```bash
+python3 tools/workflow.py run test-integrated-renderer test-integrated-renderer-mutations
+```
+
+```powershell
+cmake --build build/windows-lto --target integrated_renderer_regression -j4
+ctest --test-dir build/windows-lto -R '^integrated_renderer_(regression|mutations)$' --output-on-failure
+```
+
+The follow-up below supplies these primary underlays at live partial-render
+frontiers and compares the enhanced consumer against the retained snapshot
+renderer. Independent MAME native-output/feedback and full required gates precede
+frontend promotion. Variable-width geometry includes nominal 21:9 (522 rounded
+even); ultrawide scene/visibility/HUD and sustained-load acceptance remain open.
+Custom-stage data/object contracts are a separate extension workstream.
+
+### Live primary underlay consumer and compact capture (2026-10-24)
+
+`XBoardHost::integrated_viewport` now selects the shared underlay pass at the
+existing partial-render frontier. `GameSession::capture_wide_scene` accepts an
+optional synchronous primary consumer. Metadata, including the original sprite
+bank, is captured before native scaler feedback; the consumer receives that clip
+and the borrowed underlay after native rendering at the same frontier. Native
+text/sprite composition and frame/audio publication remain authoritative.
+
+`WideScene::render_primary_clip` consumes those indexed/priority planes instead
+of rasterizing road/BG/FG again or reloading road/tile devices. Existing text,
+palette, ground correction, descriptor visibility, shadows, fragment ordering and
+aircraft/HUD ownership still use the same policies. `finish_primary_frame`, called
+after `advance()`, flattens and publishes the completed enhanced frame. Partials
+cannot publish readiness early; frame/options/width/order mismatches are rejected.
+
+Default capture still retains snapshots and the default frontend still uses the
+preview. With a primary consumer and `retain_snapshots=false`, compact capture
+reuses one metadata slot and omits the tile array (`tile_gen=0`); `wide_scene()`
+returns no ready snapshots in this mode. Text/palette/road/sprite/visibility inputs
+needed by the consumer remain available. Restart restores the optional host
+viewport, and disabling capture restores ordinary native rendering. Consumers
+must process borrowed data synchronously and finish frames after advancement.
+
+New local evidence, with original ROM assets external and untracked:
+
+- `build/integrated-live-final-checks.log`: 27/27 selected CTest checks pass,
+  including native engine/Stage 1/session checks and the new live/clip fixtures.
+  `build/integrated-live-final-details.log` retains the detailed CTest output
+  and counts at this checkpoint.
+- `integrated_scene_358`, `_398` and `_522` each compare 881/881 paired native
+  RGB/PCM/time and enhanced-frame observations, zero skipped: 2,643/2,643 total.
+  Each run includes 1,209 partial callbacks, 67 disabled-display clips, seven
+  multi-clip compared frames, 806 frames with sprite fragments, 210 detached-HUD
+  frames and 12 actual aircraft-draw frames. The one deliberate capture-disabled
+  frame per run still checks native RGB/PCM/time, but has no enhanced comparison.
+  Practice helper startup callbacks run too; their intermediate outputs are not
+  counted as paired frame comparisons. The fixture covers a bounded boot/input
+  trajectory, directed stage-1 Practice, retained-to-compact switching, pause,
+  disable/re-enable, compact restart and coexistence with native sprite capture.
+- Native capture frontiers and pre-feedback metadata are compared separately.
+  Enhanced comparisons include background/sprite/protection/ground planes,
+  fragment heads/chains, HUD entries/palettes/occlusion and aircraft geometry/masks.
+  These are local differential checks, not independent MAME CPU/device coverage.
+- `integrated_scene_clips`: 30/30 synthetic-state/external-ROM-graphics cases
+  identical at widths 320/358/398/522/640, zero skipped. Partial palette changes,
+  enabled/disabled clips and native/detached HUD policies pass. Deliberately
+  poisoned tile metadata on the live side proves it uses the primary underlay
+  rather than silently reconstructing the old path.
+- `build/integrated-live-focused-workflow.log` and
+  `build/workflow/20261024T065935.160152Z/`: focused Make targets
+  `test-integrated-renderer` and `verify-integrated-scene-mutations` pass. The
+  latter retains a passing baseline and 3/3 rejected bypassed-underlay,
+  lost-priority and early-publication controls, zero skipped. Inputs, mutants,
+  binaries and logs remain under `build/oracle/integrated-scene-mutations/`.
+  This consumer/hardware fixture does not depend on GameSession's later compact
+  capture change; its relevant sources/dependencies are unchanged by that change.
+- `build/integrated-live-compact-build.log`: final native game and both live/native
+  session integration targets build with the existing ThinLTO configuration.
+
+Commands for this increment:
+
+```bash
+python3 tools/workflow.py run verify-integrated-scene verify-integrated-scene-mutations
+```
+
+```powershell
+cmake --build build/windows-lto --target integrated_scene_integration integrated_scene_clip_regression -j4
+ctest --test-dir build/windows-lto -R '^integrated_scene_(358|398|522|clips|mutations)$' --output-on-failure
+```
+
+No playable-folder update, default frontend rollout, new aspect menu option or
+FPS improvement is claimed. The previously recorded Make SDL/pkg-config failure
+and absent independent MAME corpus still leave complete required acceptance open;
+these local comparisons do not replace it. Next is the frontend adapter and
+matched busy-scene measurements, followed by full/MAME/GPU/lifecycle acceptance
+before promotion. Snapshot reconstruction remains available as the comparison
+reference. Custom art/backend combinations and full-stage ultrawide coverage
+remain unverified.
+
+### Frontend adapter, matched NTSC timing and independent MAME RGB (2026-10-24)
+
+The native frontend now accepts `--scene-renderer snapshot|integrated`. Snapshot
+remains the default while complete acceptance is open. Integrated mode installs
+the compact primary consumer for widened/detached presentation, using a stable
+settings copy for the partial frame. A new optional GameSession completion hook
+runs after the native board tick, before frame/audio extensions; it also finishes
+hidden Practice/Shuffle startup frames. Changing renderer resources retains the
+same menu/settings path. Native Original output and sprite feedback stay intact.
+
+Profiling labels the selected path. Integrated enhanced-consumer time is removed
+from `board_ms` and reported in `wide_scene_ms`; shared background work still
+belongs to the primary pass. Compare their sum when comparing modes.
+
+`tools/video/benchmark_integrated_frontend.py` ran eight matched 1,200-frame
+windowed Practice-stage-1 tests: Off sprite filter, sharp HUD, corrected ground,
+the user's four-pass NTSC scanline preset, explicit runtime and neutral controller
+policy. Each aspect used snapshot/integrated/integrated/snapshot order. The capture
+process tree was temporarily suspended during timing and resumed afterward;
+MAME's virtual-time recordings and all outputs were retained. First intervals
+are excluded from summaries only; raw logs retain them.
+
+| Viewport | Snapshot board + scene | Integrated board + scene | Reduction | Median FPS in each run |
+| --- | --- | --- | --- | --- |
+| 398×224 (16:9) | 13.827 ms | 13.183 ms | 0.644 ms / 4.7% | 59.637 |
+| 358×224 (16:10) | 13.373 ms | 12.897 ms | 0.476 ms / 3.6% | 59.637 |
+
+These are means of the reported per-interval CPU timings, averaged across both
+runs of each mode. Busy integrated intervals still reach 53.37–55.72 fps; the
+change does not establish sustained 59.6 fps. One snapshot interval measured
+19.416 fps despite ordinary reported render-section costs; it is retained as an
+unexplained outlier, not removed or assigned an unsupported cause. All four final
+BMPs within each aspect are byte-identical. Eight raw runs, commands, all
+intervals, images and `results.json` remain under
+`build/oracle/integrated-frontend-perf-verified/`. The measured EXE is retained as
+`afterburner2-measured.exe` there, SHA-256
+`1bea93a54863aafd2276d2ca111314f04129411ff4e0fdeb87dee205ff39c519`.
+The runtime SHA-256 is
+`1890f647c7fbe52d4cc591526db24367caca284996855c4565c6003c7e46f8cc`.
+The earlier `integrated-frontend-perf-final/` attempt rejected an inactive shader
+after runtime discovery failed; it is retained and excluded from accepted timing.
+The final BMP/drawable dimensions are 1194×672 at 16:9 and 1074×672 at 16:10.
+
+Independent MAME evidence:
+
+- Downloaded [official MAME 0.287](https://github.com/mamedev/mame/releases/tag/mame0287)
+  to ignored `build/deps/mame-0.287/`; verified the publisher's SHA256SUMS value
+  `68cdaf6d48213c6f3d0f7fa7f2733db46f74e400ad66db2d8a8d777430a42fb9`.
+  The existing ROMs were packaged locally under ignored `build/oracle/mame-roms/`
+  for MAME's directory layout; its audit passes. No ROM data is committed.
+- Fresh-state stock MAME captures contain 300 attract, 100 no-sprite and 300
+  gameplay frames. `oracle_integrated_video` reuses the existing unmodified RGB
+  comparator, replacing only Screen's rendering entry point and fixing tolerance
+  at zero. All 700 frames match at each of 320/358/398/522/640: **3,500/3,500
+  frame comparisons identical, zero differences/skips**. This validates the native
+  center, not the outer bands or CPU/device chronology. Record:
+  `build/integrated-frontend-mame-all.log`.
+- `build/integrated-frontend-mame-controls.log`: passing independent baseline and
+  2/2 rejected primary-center-shift/native-text-loss mutants, zero skipped. Each
+  variant retains its sources, binary, logs, local ROM inputs and diff images in
+  `build/oracle/integrated-mame-mutations/`.
+- `build/integrated-frontend-focused-final.log`: 32/32 selected CTest checks pass,
+  including the five independent MAME width checks, live scene/clip matrices and
+  existing engine/Stage 1/session regressions. Detailed output is retained in
+  `build/integrated-frontend-focused-final-details.log`.
+- `build/integrated-frontend-shader-main.log`: real integrated 16:10/sharp-HUD
+  GPU → native Vulkan → GPU switching and failed-preset rollback preserve paused
+  native RGB/PCM/time. This is not a complete frontend lifecycle/GPU matrix.
+
+Full acceptance is not declared:
+
+- The Make test setup now uses the installed Windows SDL pkg-config directory
+  and LLVM-MinGW ThinLTO rather than falling back to macOS include paths.
+  The first complete test attempt exposed a Windows fixture stack overflow;
+  moving large renderer fixtures to heap ownership preserves all cases. The
+  retained 14/14 aircraft controls pass afterward. An earlier retry stopped at
+  the existing file-symlink escape fixture because this account lacked privilege,
+  including outside the sandbox. Logs: `build/integrated-frontend-full-test-retry.log`
+  and `build/integrated-frontend-aircraft-privilege-check.error.log`. The fixture
+  and its comparisons remain intact. The user subsequently enabled Windows
+  Developer Mode; the unchanged escape fixture now passes, recorded in
+  `build/integrated-frontend-aircraft-devmode.log`. A later complete run hit
+  `independent effect persistence failed`; the unchanged settings fixture passed
+  twice in isolation and in the next complete run. Its cause is unproven; failed
+  logs remain retained. That next run exposed a stale HUD mutation anchor because
+  its target expression now appears in both rendering paths. The anchor now
+  includes the snapshot-only same-frame return, preserving the original deliberate
+  cache-invalidation fault and expected failure rather than dropping the control.
+  The focused HUD gate passes 10/10 scene controls plus 1/1 native alpha control.
+  The subsequent complete `test` passes in **204.88 s** at
+  `build/workflow/20261024T085930.786742Z/02-test.log`; summary:
+  `build/integrated-frontend-full-test-hudfix.log`. All retained controls execute;
+  the dependency-fetch suite also passes all 11 tests with no symlink skip.
+- The full Stage 1 attempt exposed the same stack limit in the retained geometry
+  fixture; its focused check now passes at both widths. Large scene/host objects
+  in related retained integration fixtures are heap-owned without dropping cases,
+  recordings, assertions or mutation controls. The complete rerun is recorded at
+  `build/integrated-frontend-full-stage1-final.log`: **PASS (1410.72 s)**,
+  workflow `build/workflow/20261024T082107.230663Z/`. This includes both retained
+  23-stage sweeps, Practice/Shuffle lifecycle and all three integrated widths.
+- `build/integrated-frontend-full-oracle.log`: the complete oracle-test attempt
+  fails on unavailable/invalid CPU visibility and IRQ4 operand-read corpora.
+  Stock MAME does not provide the scheduler/CPU probe needed for these gates.
+  The existing probe builder expects an instrumented source/build-object setup;
+  the downloaded binary lacks it (`build/integrated-frontend-scheduler-probe.log`).
+  Previously validated complete captures or a compatible instrumented build are
+  needed; the passing independent RGB gate is not a substitute. The supplemental
+  `full` attempt also stops on an unavailable/invalid arbiter capture
+  (`build/integrated-frontend-supplemental-full.log`). The user explicitly deferred
+  these instrumented CPU/device and supplemental gates to feature testing on
+  their Mac, where the instrumented build and retained corpus exist.
+- A full stock-MAME capture attempt is retained under
+  `build/workflow/20261024T071836.581456Z/`; its full 100,000-frame Shuffle
+  observation recording completed before the remaining routine captures.
+  After that deferral, the broad capture job was stopped after its active MAME
+  recording finished; all controllers exited and all completed/partial files
+  remain retained. Record: `build/integrated-frontend-capture-deferred-final.log`.
+  These ignored captures are not promoted as a complete corpus.
+
+No default promotion, release or playable EXE replacement is claimed while the
+full gates remain open. The integrated frontend is available explicitly for
+testing. Further sprite/fragment work remains the main performance workstream.
+
+From the repository root, the experimental frontend can be launched with
+`build/windows-lto/afterburner2.exe --scene-renderer integrated`; choose the
+existing 16:9 or 16:10 viewport in Options. The playable package has not been
+replaced. For shader testing with this build directory, pass an absolute
+`--shader-runtime` path to `build/playable/librashader.dll`.

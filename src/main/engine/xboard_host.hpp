@@ -10,6 +10,7 @@
 #include "hwvideo/screen.hpp"
 #include "roms.hpp"
 #include <deque>
+#include <memory>
 
 // Autonomous, literal ROM program host. The sound type is an independently
 // clocked board owner; an oracle may attach passive observers to that owner.
@@ -77,6 +78,14 @@ public:
         sub_ack_fn=[this](uint64_t ready){subcpu.hold_until(ready);observe(1,false,0xfffff8,28,0xffff,bus_pc[1],ready,1);subcpu.bus_completed(ready,400);};
     }
     std::span<const uint16_t> sprite_words() const { return screen.sprite_words(); }
+    // Experimental presentation mode. Zero restores the ordinary native pass.
+    // Native sprite execution and its RAM feedback always remain 320x224.
+    void integrated_viewport(unsigned width) {
+        if(!width){primary_viewport.reset();return;}
+        if(!primary_viewport || primary_viewport->width()!=width)
+            primary_viewport=std::make_unique<Screen::ViewportLayers>(width);
+    }
+    const Screen::ViewportLayers* integrated_layers() const { return primary_viewport.get(); }
     void input(Input value){if(!inputs.empty()&&value.ns<inputs.back().ns)throw std::runtime_error("nonmonotonic physical input");inputs.push_back(value);}
     static uint64_t ns_of(Time t){return t<=UINT64_MAX?uint64_t(t)/AS_PER_NS:uint64_t(t/AS_PER_NS);}
     uint64_t time()const{return ns_of(arbiter.state().base);}
@@ -191,6 +200,7 @@ private:
         if(c==0)maincpu.start(states[0].ns,[this]{do{step_instruction(0);}while(maincpu.continue_grant(states[0].ns));},false);
         else{live_sub=substate;subcpu.start(substate.ns,[this]{do{step_instruction(1);}while(subcpu.continue_grant(states[1].ns));},false);}
     }
+    std::unique_ptr<Screen::ViewportLayers> primary_viewport;
     uint64_t rendered_tile_gen{},rendered_palette_gen{};
     void sync_text(){for(unsigned i=0;i<0x800;++i)tiles.write_text(i,word(MainBus::TEXT+2*i));}
     uint16_t word(unsigned offset)const{return (memory.bytes[offset]<<8)|memory.bytes[offset+1];}
@@ -200,7 +210,8 @@ private:
         if(rendered_tile_gen!=tile_gen){for(unsigned i=0;i<0x8000;++i)tiles.write_tile(i,word(MainBus::TILE+2*i));rendered_tile_gen=tile_gen;}
         if(rendered_palette_gen!=palette_gen){for(unsigned i=0;i<8192;++i)palette.write(i,word(MainBus::PALETTE+2*i));rendered_palette_gen=palette_gen;}
         for(unsigned i=0;i<0x800;++i)road.write16(2*i,(memory.road_buffer[2*i]<<8)|memory.road_buffer[2*i+1]);road.read_road_control();road.write_road_control(memory.road_control);
-        screen.render_partial(pixels.data(),top,bottom,display,memory.sprite_buffer.data());
+        if(primary_viewport)screen.render_integrated_partial(pixels.data(),*primary_viewport,top,bottom,display,memory.sprite_buffer.data());
+        else screen.render_partial(pixels.data(),top,bottom,display,memory.sprite_buffer.data());
     }
 public:
     const Screen& compositor()const{return screen;}

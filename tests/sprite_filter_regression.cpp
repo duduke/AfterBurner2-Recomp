@@ -37,6 +37,15 @@ int main()try{
  const std::vector<uint32_t> semi(9,0x80800000u);
  const auto blended=scaler.compose(background,semi,3,3,SpriteFilter::none);
  require(blended[4]==0xff982838u,"premultiplied alpha composition failed");
+ // A uniform EPX neighbourhood leaves every source pixel unchanged. Compare
+ // its retained composition path with Off across every alpha and protection.
+ for(unsigned alpha=0;alpha<256;++alpha)for(uint8_t protect:{uint8_t(0),uint8_t(1)}){
+  const std::vector<uint32_t> bg1{0xff305070u},fg1{(alpha<<24)|(alpha<<16)|((alpha/2)<<8)|(alpha/3)};
+  const std::vector<uint8_t> mask1{protect};
+  const auto off=scaler.compose(bg1,fg1,1,1,SpriteFilter::none,mask1)[0];
+  const auto epx=scaler.compose(bg1,fg1,1,1,SpriteFilter::epx,mask1);
+  require(std::all_of(epx.begin(),epx.end(),[off](auto p){return p==off;}),"Off differs from unchanged uniform EPX composition");
+ }
  bool rejected=false;try{scaler.compose({},empty,3,3,SpriteFilter::epx);}catch(const std::invalid_argument&){rejected=true;}
  require(rejected,"invalid sprite planes were accepted");
  // Compare adaptations to unchanged upstream 16-bit Snes9x entry points.

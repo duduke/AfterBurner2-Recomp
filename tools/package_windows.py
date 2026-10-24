@@ -9,7 +9,8 @@ import shutil
 import tarfile
 import zipfile
 
-from package_macos import ROOT, checked_source, run
+from package_macos import (ROOT, AIRCRAFT_ASSETS, LIBRASHADER_NOTICES,
+                           checked_source, committed_source, run)
 
 
 SOURCES_CROSS = {
@@ -56,6 +57,8 @@ def main():
         parser.error("Use a version beginning with v and a digit")
     if run("git", "status", "--porcelain", "--untracked-files=normal"):
         raise SystemExit("Commit the intended source tree before packaging")
+    aircraft_assets = [(relative, committed_source(relative)) for relative in AIRCRAFT_ASSETS]
+    shader_notices = [committed_source(relative) for relative in LIBRASHADER_NOTICES]
 
     output = ROOT / "build/releases"
     output.mkdir(parents=True, exist_ok=True)
@@ -89,6 +92,19 @@ def main():
             (package / "Notices/SDL3.txt").write_bytes(zip_member_bytes(archive, "/x86_64-w64-mingw32/share/licenses/SDL3/LICENSE.txt"))
         with zipfile.ZipFile(openal_zip) as archive:
             (package / "OpenAL32.dll").write_bytes(zip_member_bytes(archive, "/bin/Win64/soft_oal.dll"))
+        compiler_match = re.search(r"^CMAKE_CXX_COMPILER:(?:FILEPATH|STRING)=(.+)$", cache, re.M)
+        if not compiler_match:
+            raise SystemExit("Missing compiler identity in native build cache")
+        compiler = Path(compiler_match[1])
+        compiler_desc = run(str(compiler), "--version").splitlines()[0]
+        # LLVM-MinGW uses replaceable shared C++/unwind/pthread runtimes.
+        # GCC builds may instead link these statically. Validate imports below.
+        for filename in ("libc++.dll", "libunwind.dll", "libwinpthread-1.dll"):
+            runtime = compiler.parent / filename
+            if runtime.is_file():
+                shutil.copy2(runtime, package / filename)
+        if "clang" in compiler_desc.lower():
+            shutil.copy2(compiler.parent.parent / "LICENSE.TXT", package / "Notices/LLVM.txt")
         shutil.copytree(ROOT / "build/deps/openal/share/licenses/openal-soft", package / "Notices/OpenAL-Soft")
         if args.mingw_notice and args.mingw_notice.is_file():
             shutil.copy2(args.mingw_notice, package / "Notices/MinGW-w64.txt")
@@ -106,8 +122,7 @@ def main():
                 for symbol in ("CreateFiberEx", "ConvertThreadToFiberEx", "SwitchToFiber"):
                     if symbol not in report:
                         raise SystemExit(f"Missing Windows fiber import: {symbol}")
-        compiler_desc = "w64devkit GCC 16.2.0 (MinGW-w64 x86_64, static libstdc++/libgcc)"
-        config_desc = "Release (-O3)"
+        config_desc = "Release (-O3, LTO)" if "-flto" in ninja_rules else "Release (-O3, without LTO)"
         libraries_desc = {"SDL3": "3.4.18", "OpenAL Soft": "1.25.2"}
         runtime_verified = True
         start_here = (
@@ -194,6 +209,13 @@ def main():
         shutil.copy2(ROOT / relative, package / relative)
     shutil.copytree(ROOT / "docs", package / "docs")
     shutil.copytree(ROOT / "LICENSES", package / "Notices/project")
+    for relative, source in aircraft_assets:
+        target = package / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    (package / "Notices/librashader").mkdir()
+    for source in shader_notices:
+        shutil.copy2(source, package / "Notices/librashader" / source.name)
     for relative in ("src/main/frontend/scalers/SNES9X-LICENSE.txt", "src/main/frontend/scalers/scalefx.hpp",
                      "src/third_party/z80.h", "src/third_party/dr_flac/LICENSE", "src/main/frontend/controllerdb/LICENSE"):
         shutil.copy2(ROOT / relative, package / "Notices" / relative.replace("/", "_"))
@@ -211,6 +233,12 @@ def main():
     (package / "Check-Continuations.cmd").write_bytes(
         b'@echo off\r\ncd /d "%~dp0"\r\ncpu_continuation_regression.exe\r\nif errorlevel 1 exit /b 1\r\n'
         b'cpu_continuation_thread_regression.exe\r\nif errorlevel 1 exit /b 1\r\n')
+    start_here += (
+        "\nPractice, Shuffle, 16:10, HUD/CRT controls, calibration and the\n"
+        "registered HD aircraft pack are included. Optional RetroArch .slangp\n"
+        "presets use native Vulkan; the runtime and shader packs are external.\n"
+        "See docs/CRT_DISPLAY.md for setup and backend limits.\n"
+    )
     (package / "START-HERE.txt").write_text(start_here)
     files = {str(p.relative_to(package)).replace("\\", "/"): hashlib.sha256(p.read_bytes()).hexdigest()
              for p in sorted(package.rglob("*")) if p.is_file()}

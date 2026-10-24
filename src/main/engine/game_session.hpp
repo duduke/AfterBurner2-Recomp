@@ -78,6 +78,7 @@ public:
         input.analog = physical.analog;
         scene_ready=false;if(capture_wide)wide_clip_count=0;
         game.tick(input);
+        if(primary_completed)primary_completed(info().number);
         if(capture_feedback_)feedback_frame=feedback.take(info().number,info().time_ns,feedback_word(0x29c09c),feedback_word(0x29c0d2));
         auto samples = game.take_audio();
         if (extensions.process_audio && !samples.empty()) extensions.process_audio(samples, info());
@@ -183,16 +184,33 @@ public:
         return {scene_heads,scene_fragments,true};
     }
     struct ScenePresentation {FrameInfo info;std::span<const Presentation::SceneClip> clips;bool ready{};};
-    void capture_wide_scene(bool enabled,unsigned logical_width=398){
+    // Synchronous partial-frame consumer. The clip is captured before native
+    // feedback; the borrowed primary layers are valid only during the callback.
+    // Snapshots can be retained for comparison. In compact mode the tile array
+    // is omitted (tile_gen=0), one metadata slot is reused and wide_scene() is
+    // unavailable. The optional completion callback runs after the board tick,
+    // before frame/audio extensions. Without it, finish after advance() returns.
+    using PrimarySceneConsumer=std::function<void(const Presentation::SceneClip&,uint64_t,const Screen::ViewportLayers&)>;
+    using PrimaryFrameConsumer=std::function<void(uint64_t)>;
+    void capture_wide_scene(bool enabled,unsigned logical_width=398,PrimarySceneConsumer consumer={},bool retain_snapshots=true,PrimaryFrameConsumer completed={}){
         if(logical_width<320||logical_width>640||logical_width%2)throw std::invalid_argument("Unsupported wide capture width");
-        if(enabled==capture_wide&&(!enabled||logical_width==wide_width))return;
+        if(enabled&&!consumer&&!retain_snapshots)throw std::invalid_argument("Compact capture requires a primary scene consumer");
+        if(enabled&&completed&&!consumer)throw std::invalid_argument("Primary frame completion requires a scene consumer");
+        if(enabled==capture_wide&&(!enabled||logical_width==wide_width)&&!primary_consumer&&!consumer)return;
         if(enabled&&(!visibility||logical_width!=wide_width))visibility=std::make_unique<Presentation::WideVisibility>(active_rom(),(logical_width-320)/2);
+        game.board().integrated_viewport(enabled&&consumer?logical_width:0);
+        primary_consumer=enabled?std::move(consumer):PrimarySceneConsumer{};
+        primary_completed=enabled?std::move(completed):PrimaryFrameConsumer{};
+        retain_wide_snapshots=!enabled||retain_snapshots;
         if(enabled)wide_width=logical_width;
         capture_wide=enabled;wide_clip_count=0;wide_clip_open=false;
         if(enabled){bind_wide_capture();}else {game.board().rendering_started={};if(!capture_sprites)game.board().rendered={};if(visibility)visibility->reset();}
         bind_feedback_capture();
     }
-    ScenePresentation wide_scene()const{return {info(),std::span<const Presentation::SceneClip>(wide_clips.data(),wide_clip_count),capture_wide&&wide_clip_count!=0};}
+    ScenePresentation wide_scene()const{
+        if(!retain_wide_snapshots)return {info(),{},false};
+        return {info(),std::span<const Presentation::SceneClip>(wide_clips.data(),wide_clip_count),capture_wide&&wide_clip_count!=0};
+    }
     void capture_feedback(bool enabled) {
         if(enabled==capture_feedback_)return;
         capture_feedback_=enabled;feedback.clear();feedback_frame={};
@@ -216,6 +234,9 @@ private:
     std::unique_ptr<Presentation::WideVisibility> visibility;
     unsigned prepared_shuffle_position{UINT32_MAX};
     bool capture_wide{}, wide_clip_open{};
+    PrimarySceneConsumer primary_consumer;
+    PrimaryFrameConsumer primary_completed;
+    bool retain_wide_snapshots{true};
     unsigned wide_width{398};
     size_t wide_clip_count{};
     std::vector<Presentation::SceneClip> wide_clips;
@@ -224,13 +245,23 @@ private:
         auto& clip=wide_clips[wide_clip_count-1];
         clip.ns=ns;clip.top=top;clip.bottom=bottom;clip.display=display;
         wide_clip_open=false;
+        if(primary_consumer){
+            const auto* layers=game.board().integrated_layers();
+            if(!layers)throw std::runtime_error("Primary scene layers unavailable");
+            primary_consumer(clip,game.board().frames+1,*layers);
+        }
     }
     void bind_wide_capture(){
+        // A restart creates a fresh host. Reinstall its optional viewport before
+        // binding callbacks; no CPU, scheduler or device clock is advanced here.
+        game.board().integrated_viewport(primary_consumer?wide_width:0);
         game.board().rendering_started=[this]{
-            if(wide_clip_count==wide_clips.size())wide_clips.emplace_back();
-            const auto idx=wide_clip_count++;
+            const auto idx=retain_wide_snapshots?wide_clip_count:0;
+            if(idx==wide_clips.size())wide_clips.emplace_back();
+            wide_clip_count=idx+1;
             auto& p=wide_clips[idx];const auto& h=game.board();const auto& m=h.memory;const auto bytes=std::span(m.bytes);
-            if(p.tile_gen!=h.tile_gen){
+            if(!retain_wide_snapshots)p.tile_gen=0;
+            else if(p.tile_gen!=h.tile_gen){
                 if(idx>0&&wide_clips[idx-1].tile_gen==h.tile_gen)p.tiles=wide_clips[idx-1].tiles;
                 else Presentation::SceneClip::words(p.tiles,bytes.subspan(MainBus::TILE,0x10000));
                 p.tile_gen=h.tile_gen;

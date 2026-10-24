@@ -1661,6 +1661,47 @@ test-video-clip-mutations: test-video-clips
 test: test-video-clip-mutations
 .PHONY: test-video-clips test-video-clip-mutations
 
+build/integrated_renderer_regression: tests/integrated_renderer_regression.cpp $(wildcard src/main/hwvideo/*.hpp) src/main/hwvideo/screen.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwpalette.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main $< src/main/hwvideo/screen.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwpalette.cpp -o $@
+test-integrated-renderer: build/integrated_renderer_regression
+	./build/integrated_renderer_regression
+test-integrated-renderer-mutations: test-integrated-renderer
+	python3 tools/video/check_integrated_renderer_mutations.py --compiler "$(CXX)"
+test: test-integrated-renderer-mutations
+.PHONY: test-integrated-renderer test-integrated-renderer-mutations
+
+build/integrated_scene_clip_regression: tests/integrated_scene_clip_regression.cpp $(wildcard src/main/hwvideo/*.hpp) src/main/hwvideo/screen.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp src/main/roms.hpp src/main/romloader.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main $< src/main/hwvideo/screen.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp src/main/hwvideo/hwsprites.cpp src/main/hwvideo/hwpalette.cpp src/main/roms.cpp src/main/romloader.cpp -o $@
+verify-integrated-scene-clips: build/integrated_scene_clip_regression
+	./build/integrated_scene_clip_regression
+verify-integrated-scene-mutations: verify-integrated-scene-clips
+	python3 tools/video/check_integrated_scene_mutations.py --compiler "$(CXX)"
+build/integrated_scene_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/integrated_scene_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-integrated-scene: build/integrated_scene_integration
+	./build/integrated_scene_integration 358
+	./build/integrated_scene_integration 398
+	./build/integrated_scene_integration 522
+verify-stage1: verify-integrated-scene verify-integrated-scene-mutations
+.PHONY: verify-integrated-scene-clips verify-integrated-scene-mutations verify-integrated-scene
+-include build/native_obj/tests/integrated_scene_integration.d
+
+build/oracle_integrated_video: tests/oracle_integrated_video.cpp tests/oracle_video.cpp $(VIDEO_SRCS) $(wildcard src/main/hwvideo/*.hpp src/main/engine/*.hpp src/main/hwmath/*.hpp)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main $< $(VIDEO_SRCS) -o $@
+oracle-integrated-video: build/oracle_integrated_video
+	./build/oracle_integrated_video 320 build/oracle/frames.bin
+	./build/oracle_integrated_video 358 build/oracle/frames.bin
+	./build/oracle_integrated_video 398 build/oracle/frames.bin
+	./build/oracle_integrated_video 522 build/oracle/frames.bin
+	./build/oracle_integrated_video 640 build/oracle/frames.bin
+oracle-integrated-video-mutations: oracle-integrated-video
+	python3 tools/video/check_integrated_mame_mutations.py --compiler "$(CXX)" build/oracle/frames.bin
+oracle-test: oracle-integrated-video-mutations
+.PHONY: oracle-integrated-video oracle-integrated-video-mutations
+
 build/sprite_filter_regression: tests/sprite_filter_regression.cpp src/main/frontend/sprite_filter.hpp src/main/frontend/native_settings.hpp $(wildcard src/main/frontend/scalers/*) $(wildcard tests/scalers_reference/*)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main -Itests/scalers_reference $< -o $@

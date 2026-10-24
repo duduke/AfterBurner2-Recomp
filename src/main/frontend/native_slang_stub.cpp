@@ -1,7 +1,7 @@
 #include "frontend/native_slang.hpp"
 namespace Frontend {
 struct NativeSlang::Impl {
-    std::string message="RetroArch Slang shaders currently require the native macOS Metal renderer";
+    std::string message="RetroArch Slang shaders require macOS Metal or Windows Vulkan";
     std::vector<ShaderParameter> params;
 };
 NativeSlang::NativeSlang(SDL_Renderer*,SDL_Window*):impl(std::make_unique<Impl>()){}

@@ -195,8 +195,27 @@ class FetchTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as stopped, contextlib.redirect_stderr(io.StringIO()) as errors:
                 fetch.main([])
         self.assertEqual(stopped.exception.code, 2)
-        self.assertIn("Apple Silicon macOS only", errors.getvalue())
+        self.assertIn("Apple Silicon macOS or Windows x64", errors.getvalue())
         self.urlopen.assert_not_called()
+
+    def test_windows_pins_install_and_reuse(self):
+        config = fetch.runtime_config(windows=True)
+        self.assertEqual(config["platform"], "x86_64-windows")
+        self.assertEqual(config["library"], "librashader.dll")
+        self.assertIn("librashader.dll", config["files"])
+        files = {name: ("fixture " + name).encode() for name in config["files"]}
+        archive = self.work / "windows.zip"
+        self.make_archive(archive, files.items())
+        config = dict(config, sha256=fetch.digest(archive),
+                      files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()})
+        target = self.work / "windows"
+        fetch.install(archive, target, config)
+        fetch.validate_installation(target, config)
+        with self.assertRaisesRegex(ValueError, "pinned runtime"):
+            fetch.validate_installation(target)
+        (target / "librashader.dll").write_bytes(b"tampered")
+        with self.assertRaisesRegex(ValueError, "differs from its manifest"):
+            fetch.validate_installation(target, config)
 
 
 if __name__ == "__main__":

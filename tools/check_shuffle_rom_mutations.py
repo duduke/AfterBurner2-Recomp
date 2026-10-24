@@ -9,6 +9,12 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 MUTATIONS = [
     (
+        "lost-inherited-music",
+        "if (command == 0x80 && (!position || music != previous_music)) command = music;",
+        "if (false) command = music;",
+        "Shuffle lost the source stage's inherited music command",
+    ),
+    (
         "omitted-stage-word-table",
         "{0x32196u, 0x32324u, 0x32452u, 0x30d54u}",
         "{0x32324u, 0x32452u, 0x30d54u}",

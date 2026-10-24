@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdlib>
 #include <algorithm>
 #include <array>
 #include <cstdint>

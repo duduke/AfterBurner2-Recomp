@@ -52,7 +52,7 @@ the wider presentation still needs exhaustive scene and platform validation.
 | Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths are included in macOS Preview 3 |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
-| CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal with a separately installed runtime and shader pack; readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
+| CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows Vulkan with a separately installed runtime and shader pack; readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
 | Player aircraft prototype | Optional [registered neutral/gentle-bank HD pack](docs/SPRITE_REPLACEMENT.md), included in macOS Preview 3; unsupported poses retain the original art |
 | Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains the default |
 | Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |
@@ -141,6 +141,27 @@ cmake --build build/windows-release --target afterburner2 cpu_continuation_regre
 ./build/windows-release/afterburner2.exe --profile
 ctest --test-dir build/windows-release -R "^cpu_continuation(_thread)?_regression$" --output-on-failure
 ```
+
+For Windows LTO, use an LTO-capable compiler in a **new build directory**.
+w64devkit GCC 16.2.0 is configured with `--disable-lto`; no compiler flag can
+enable it. The local Windows build uses
+[LLVM-MinGW 20261020 UCRT x64](https://github.com/mstorsjo/llvm-mingw/releases/tag/20261020)
+(Clang 23.1.4 / LLD) with ThinLTO. Install Vulkan headers (the Vulkan SDK, or
+Vulkan-Headers 1.4.341 under `build/deps/`) for the Windows shader host:
+
+```sh
+cmake -S . -B build/windows-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/path/to/llvm-mingw/bin/clang++.exe" -DAB2_REQUIRE_IPO=ON -DSTAGE1_ROM_TESTS=ON
+cmake --build build/windows-lto --target afterburner2 -j4
+python tools/deps/fetch_librashader.py
+./build/windows-lto/afterburner2.exe --shader-preset "C:/path/to/shaders_slang/crt/crt-easymode.slangp"
+```
+
+Set `SDL3_DIR`, `OpenAL_DIR`, and `AB2_VULKAN_INCLUDE_DIR` when these dependencies
+are outside CMake's search paths. CMake copies SDL/OpenAL and available
+LLVM-MinGW runtime DLLs beside the game. `AB2_REQUIRE_IPO=ON` fails configuration
+if LTO cannot actually compile and link. [Windows shader setup](docs/CRT_DISPLAY.md#windows-vulkan)
+includes validation commands. Current Windows source includes the macOS Preview 3
+features; the published Windows Preview 2 download is unchanged.
 
 Multi-configuration generators require `--config Release` at build time; their
 default build is Debug. Use a compiler that supports the engine requirements

@@ -5,6 +5,7 @@
 #include "hwvideo/player_aircraft.hpp"
 #include "hwvideo/hwroad.hpp"
 #include "hwvideo/hwpalette.hpp"
+#include "hwvideo/screen.hpp"
 #include "roms.hpp"
 #include <algorithm>
 #include <vector>
@@ -38,7 +39,7 @@ public:
         for(auto& r:row_fragments)r.clear();row_heads.assign(w*224,UINT32_MAX);heads.assign(w*224,UINT32_MAX);seen.fill(false);
         fragments.clear();hud_clips.clear();hud_raw.clear();hud_occlusion_pixels.clear();
         player_draws.clear();player_visibility.clear();player_bank.clear();
-        last_frame=0;last_ns=0;loaded_tile_gen=loaded_palette_gen=0;ready=false;
+        last_frame=0;last_ns=0;loaded_tile_gen=loaded_palette_gen=0;ready=false;primary_frame_open=false;
     }
     void player_aircraft(bool enabled,unsigned translucent_effects=0,
             std::span<const unsigned> supported_roots={}){
@@ -50,6 +51,7 @@ public:
     }
     void render(std::span<const SceneClip> clips,uint64_t frame,bool corrected_ground,bool extend_visibility=true,bool original_hud=true){
         if(clips.empty())return;
+        if(primary_frame_open)throw std::logic_error("Primary frame has not completed");
         if(frame<last_frame || original_hud!=last_original_hud)reset();
         if(frame==last_frame)return;
         last_frame=frame;last_original_hud=original_hud;hud_clips.clear();player_draws.clear();player_visibility.clear();
@@ -61,6 +63,30 @@ public:
             if(c.display)prev=&c;
         }
         ready=std::all_of(seen.begin(),seen.end(),[](bool x){return x;});flatten();
+    }
+    // Live underlay consumer. No road/tile reconstruction is performed here.
+    // The original snapshot renderer above remains the differential reference.
+    void render_primary_clip(const SceneClip& c,uint64_t frame,const Screen::ViewportLayers& primary,
+                             bool corrected_ground,bool extend_visibility=true,bool original_hud=true){
+        if(primary.width()!=w)throw std::invalid_argument("Primary scene width mismatch");
+        if(c.top>c.bottom || c.bottom>=224)throw std::invalid_argument("Invalid primary scene clip");
+        const unsigned options=unsigned(corrected_ground)|(unsigned(extend_visibility)<<1)|(unsigned(original_hud)<<2);
+        if(primary_frame_open){
+            if(frame!=last_frame || options!=primary_options)throw std::logic_error("Primary frame options changed before completion");
+        }else{
+            if(frame<last_frame || original_hud!=last_original_hud)reset();
+            if(frame==last_frame)throw std::logic_error("Primary frame already completed");
+            last_frame=frame;last_original_hud=original_hud;primary_options=options;primary_frame_open=true;
+            hud_clips.clear();player_draws.clear();player_visibility.clear();ready=false;
+            if(!original_hud){hud_raw.resize(320*224,0xffff);hud_occlusion_pixels.resize(320*224,2);}
+        }
+        if(c.ns<last_ns)throw std::invalid_argument("Unordered primary scene clips");
+        last_ns=c.ns;draw(c,corrected_ground,extend_visibility,original_hud,nullptr,&primary);
+    }
+    void finish_primary_frame(uint64_t frame){
+        if(!primary_frame_open)return;
+        if(frame!=last_frame)throw std::logic_error("Primary frame completion mismatch");
+        ready=std::all_of(seen.begin(),seen.end(),[](bool x){return x;});flatten();primary_frame_open=false;
     }
     View view()const{return {w,224,margin,background,sprites,heads,protection,fragments,ready,ground_indices,{hud_clips,hud_occlusion_pixels},{player_draws,player_visibility}};}
 private:
@@ -81,8 +107,9 @@ private:
     std::vector<unsigned> player_supported_roots;
     std::array<bool,224> seen{};uint64_t last_frame{},last_ns{},loaded_tile_gen{},loaded_palette_gen{};bool ready{};
     bool last_original_hud{true};
+    bool primary_frame_open{};unsigned primary_options{};
     static uint32_t argb(RGB888 p){return 0xff000000|uint32_t(p.r)<<16|uint32_t(p.g)<<8|p.b;}
-    void draw(const SceneClip& c,bool corrected,bool extend_visibility,bool original_hud,const SceneClip* prev=nullptr){
+    void draw(const SceneClip& c,bool corrected,bool extend_visibility,bool original_hud,const SceneClip* prev=nullptr,const Screen::ViewportLayers* primary=nullptr){
         projected.clear();anchors.clear();std::span<const uint8_t> bank=c.sprites;
         if(w>320&&extend_visibility&&!c.extended_sprites.empty()){
             projected.resize((c.extended_sprites.size()+1)*16);anchors.assign(c.extended_sprites.size()+1,INT32_MIN);
@@ -93,7 +120,7 @@ private:
             std::fill(row_heads.begin()+y*w,row_heads.begin()+(y+1)*w,UINT32_MAX);}
         if(!c.display){for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){background[i]=0xff000000;sprites[i]=0;protection[i]=0;}
             if(!original_hud)std::fill(hud_occlusion_pixels.begin()+c.top*320,hud_occlusion_pixels.begin()+(c.bottom+1)*320,2);return;}
-        if(c.tile_gen ? loaded_tile_gen!=c.tile_gen : (!prev || prev->tiles!=c.tiles)){
+        if(!primary && (c.tile_gen ? loaded_tile_gen!=c.tile_gen : (!prev || prev->tiles!=c.tiles))){
             for(unsigned i=0;i<c.tiles.size();++i)tiles.write_tile(i,c.tiles[i]);
             loaded_tile_gen=c.tile_gen;
         }
@@ -114,15 +141,20 @@ private:
             for(unsigned y=c.top;y<=c.bottom;++y)for(unsigned x=0;x<320;++x){const unsigned i=y*320+x;
                 hud_occlusion_pixels[i]=hud_occlusion(hud.entries[(y/8)*40+x/8],hud_raw[i]);}
         }
-        if(!prev || prev->road!=c.road || prev->road_control!=c.road_control){
+        if(!primary && (!prev || prev->road!=c.road || prev->road_control!=c.road_control)){
             for(unsigned i=0;i<0x800;++i)road.write16(2*i,uint16_t(c.road[2*i]<<8|c.road[2*i+1]));
             road.read_road_control();road.write_road_control(c.road_control);
         }
-        std::fill(priority.begin()+c.top*w,priority.begin()+(c.bottom+1)*w,0);
         std::fill(raw.begin()+c.top*w,raw.begin()+(c.bottom+1)*w,0xffff);
-        road.render_background(indices.data(),w,224,c.top,c.bottom);road.render_foreground(indices.data(),w,224,c.top,c.bottom,-int(margin));
-        tiles.draw_layer(indices.data(),priority.data(),w,224,1,-1,1,c.top,c.bottom,-int(margin));
-        tiles.draw_layer(indices.data(),priority.data(),w,224,0,-1,2,c.top,c.bottom,-int(margin));
+        if(primary){
+            std::copy(primary->indices().begin()+c.top*w,primary->indices().begin()+(c.bottom+1)*w,indices.begin()+c.top*w);
+            std::copy(primary->priorities().begin()+c.top*w,primary->priorities().begin()+(c.bottom+1)*w,priority.begin()+c.top*w);
+        }else{
+            std::fill(priority.begin()+c.top*w,priority.begin()+(c.bottom+1)*w,0);
+            road.render_background(indices.data(),w,224,c.top,c.bottom);road.render_foreground(indices.data(),w,224,c.top,c.bottom,-int(margin));
+            tiles.draw_layer(indices.data(),priority.data(),w,224,1,-1,1,c.top,c.bottom,-int(margin));
+            tiles.draw_layer(indices.data(),priority.data(),w,224,0,-1,2,c.top,c.bottom,-int(margin));
+        }
         // Replacement HUD owns text separately; its underlay and sprite
         // decisions must not contain the old glyphs or their priority marks.
         if(original_hud){

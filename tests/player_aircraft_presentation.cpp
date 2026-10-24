@@ -10,6 +10,7 @@
 #include <array>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <string>
 
 namespace {
@@ -141,7 +142,8 @@ void synthetic_scene_fixtures(Roms& rom){
         c.palette[0xf21]=0x7fff;c.palette[0xe81]=0x00f0;
         c.palette[0x1c09]=0x000f;
         auto d=descriptor(rom,0x100a0);put_sprite(c,0,d);
-        Presentation::WideScene original(rom,viewport),replacement(rom,viewport);
+        auto original_owner=std::make_unique<Presentation::WideScene>(rom,viewport),replacement_owner=std::make_unique<Presentation::WideScene>(rom,viewport);
+        auto& original=*original_owner;auto& replacement=*replacement_owner;
         replacement.player_aircraft(true);
         original.render(std::span(&c,1),1,false,false);replacement.render(std::span(&c,1),1,false,false);
         const auto base=compose(original.view()),under=compose(replacement.view());
@@ -162,7 +164,8 @@ void synthetic_scene_fixtures(Roms& rom){
         constexpr std::array<unsigned,2> registered{0x100a0,0x10230};
         for(bool flip:{false,true}){
             auto banked=c;put_sprite(banked,0,descriptor(rom,0x10230,flip));
-            Presentation::WideScene bank_original(rom,viewport),bank_replacement(rom,viewport);
+            auto bank_original_owner=std::make_unique<Presentation::WideScene>(rom,viewport),bank_replacement_owner=std::make_unique<Presentation::WideScene>(rom,viewport);
+            auto& bank_original=*bank_original_owner;auto& bank_replacement=*bank_replacement_owner;
             bank_replacement.player_aircraft(true,0,registered);
             bank_original.render(std::span(&banked,1),1,false,false);
             bank_replacement.render(std::span(&banked,1),1,false,false);
@@ -180,7 +183,8 @@ void synthetic_scene_fixtures(Roms& rom){
         for(unsigned root:registered)for(int edge:{-8,312}){
             auto boundary=c;auto edge_d=descriptor(rom,root);
             edge_d[2]=uint16_t((edge_d[2]&0xfe00)|(190+edge));put_sprite(boundary,0,edge_d);
-            Presentation::WideScene edge_original(rom,viewport),edge_replacement(rom,viewport);
+            auto edge_original_owner=std::make_unique<Presentation::WideScene>(rom,viewport),edge_replacement_owner=std::make_unique<Presentation::WideScene>(rom,viewport);
+            auto& edge_original=*edge_original_owner;auto& edge_replacement=*edge_replacement_owner;
             edge_replacement.player_aircraft(true,0,registered);
             edge_original.render(std::span(&boundary,1),1,false,false);
             edge_replacement.render(std::span(&boundary,1),1,false,false);
@@ -209,7 +213,7 @@ void synthetic_scene_fixtures(Roms& rom){
         // surface remains below both native text categories, including a
         // replacement glyph drawn into a formerly transparent source hole.
         auto low=c;auto low_d=d;low_d[3]=0x1200;put_sprite(low,0,low_d);
-        Presentation::WideScene low_replacement(rom,viewport);low_replacement.player_aircraft(true);
+        auto low_owner=std::make_unique<Presentation::WideScene>(rom,viewport);auto& low_replacement=*low_owner;low_replacement.player_aircraft(true);
         for(unsigned category=0;category<2;++category){
             low.text[(20/8)*64+24+40/8]=uint16_t(0x0241|(category<<15));
             low.text[(20/8)*64+24+48/8]=uint16_t(0x0241|(category<<15));low.ns=category+1;
@@ -362,9 +366,12 @@ void restore(Presentation::WideScene::View view,std::span<const Presentation::Sc
 void integration(const std::filesystem::path& preview_path={}){
     constexpr unsigned physical_frames=3000;
     const auto roots=loaded_roots();
-    require(roms.load_aburner2(),"ROMs required");GameSession original(roms),captured(roms);
+    require(roms.load_aburner2(),"ROMs required");
+    auto original_owner=std::make_unique<GameSession>(roms),captured_owner=std::make_unique<GameSession>(roms);
+    auto& original=*original_owner;auto& captured=*captured_owner;
     captured.capture_wide_scene(true,320);
-    std::array<Aspect,3> aspects{Aspect(320,roots),Aspect(358,roots),Aspect(398,roots)};
+    std::vector<Aspect> aspects;aspects.reserve(3);
+    for(unsigned viewport:{320u,358u,398u})aspects.emplace_back(viewport,roots);
     HWSprites hardware;hardware.init(roms.sprites.rom,roms.sprites.length);Witnesses w;
     std::array<bool,3> previews{};
     for(unsigned frame=0;frame<physical_frames;++frame){

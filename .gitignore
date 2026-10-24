@@ -27,5 +27,8 @@ roms/opr-*
 # Python validation-tool caches.
 __pycache__/
 
+# Optional librashader's generated shader-object cache (Windows).
+/librashader/
+
 # User-provided replacement music
 /soundtrack/

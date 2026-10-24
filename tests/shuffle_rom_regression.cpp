@@ -85,7 +85,25 @@ void compare_tables(const Roms& canonical, const Roms& active, const Shuffle::Pl
                     "Shuffle ordinal table differs from canonical source row");
     };
     for (const auto [base, stride] : tables)
-        if (stride != 4) compare(base, stride);
+        if (stride != 4 && base != 0x2b604) compare(base, stride);
+    // Continue commands depend on the original predecessor. Resolve that
+    // history independently, then check the music requested in shuffled order.
+    std::vector<uint8_t> inherited(plan.stages.size());
+    uint8_t command = 0x80;
+    for (unsigned stage = 0; stage < inherited.size(); ++stage) {
+        const auto next = canonical.maincpu.rom[0x2b604 + stage];
+        if (next != 0x80) command = next;
+        inherited[stage] = command;
+    }
+    for (unsigned position = 0; position < plan.stages.size(); ++position) {
+        const auto source = plan.stages[position] - 1;
+        auto expected = canonical.maincpu.rom[0x2b604 + source];
+        if (expected == 0x80 && (!position ||
+                inherited[source] != inherited[plan.stages[position - 1] - 1]))
+            expected = inherited[source];
+        require(active.maincpu.rom[0x2b604 + position] == expected,
+                "Shuffle lost the source stage's inherited music command");
+    }
     for (const uint32_t base : {0x32352u, 0x32224u})
         for (unsigned bank = 0; bank < 4; ++bank) compare(base + bank * 0x40, 2);
     for (const auto [base, bytes] : palettes)
@@ -304,6 +322,19 @@ int main(int argc, char** argv) try {
     rejects([] { Shuffle::validate({0, {2,1}}, 2); });
     rejects([] { Shuffle::validate({0, {}}, 0); });
     Roms artificial; synthetic(artificial); verify(artificial);
+    // Multiple inherited rows, song changes, and explicit controls must work
+    // even when a continue-only stage becomes the very first stage.
+    for (unsigned stage = 0; stage < 23; ++stage)
+        artificial.maincpu.rom[0x2b604 + stage] = stage % 4 ? 0x80 : uint8_t(0x91 + stage % 6);
+    artificial.maincpu.rom[0x2b604 + 8] = 0x84; // Synthetic explicit control marker.
+    verify(artificial);
+    auto inherited_first = Shuffle::generate(23, 0);
+    const auto second = std::find(inherited_first.stages.begin(), inherited_first.stages.end(), 2u);
+    std::iter_swap(inherited_first.stages.begin(), second);
+    Shuffle::RomView inherited_view(artificial, inherited_first);
+    compare_tables(artificial, inherited_view.rom(), inherited_first);
+    require(inherited_view.rom().maincpu.rom[0x2b604] == artificial.maincpu.rom[0x2b604],
+            "Continue-only opening stage did not start its original song");
     auto misplaced_ending = Shuffle::generate(23, 0x51a9u);
     std::swap(misplaced_ending.stages.front(), misplaced_ending.stages.back());
     const auto original_main = std::vector<uint8_t>(artificial.maincpu.rom,

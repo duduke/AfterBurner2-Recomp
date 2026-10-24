@@ -16,7 +16,11 @@ static uint64_t image(SDL_Renderer* renderer,bool* lit=nullptr){
 int main(int argc,char** argv){try{
  const std::filesystem::path output=SDL_getenv("AB2_SLANG_TEST_OUTPUT")?SDL_getenv("AB2_SLANG_TEST_OUTPUT"):"build/oracle/retroarch-probe";std::filesystem::create_directories(output);
  require(SDL_Init(SDL_INIT_VIDEO),"video");auto* w=SDL_CreateWindow("Slang renderer integration",960,672,SDL_WINDOW_HIDDEN);require(w,"window");
+#ifdef _WIN32
+ auto* r=SDL_CreateRenderer(w,"vulkan");require(r,"native Vulkan renderer");
+#else
  auto* r=SDL_CreateRenderer(w,"metal");require(r,"native Metal renderer");
+#endif
  {
  Frontend::NativeSlang shader(r,w);require(!shader.available(),"no implicit preset");
  require(!shader.load("missing.glslp"),"reject other formats");require(!shader.available(),"format error has no chain");
@@ -74,13 +78,23 @@ int main(int argc,char** argv){try{
  require(shader.load((scratch/"reference.slangp").string()),shader.error());
  require(shader.begin(320,81),shader.error());draw();require(shader.end(81,59.6374,12345),shader.error());
  std::filesystem::remove(scratch/"reference.slangp");shader.invalidate();require(shader.begin(320,82),shader.error());draw();
+#ifdef __APPLE__
  require(!shader.end(82,59.6374,12345),"missing reset preset fails visibly");require(SDL_GetRenderTarget(r)==target,"failure restores target");require(image(r)==baseline,"failure retains original game image");
+#else
+ // Vulkan clears history in-place, so it must not reopen the preset on reset.
+ require(shader.end(82,59.6374,12345),shader.error());require(SDL_GetRenderTarget(r)==target,"history reset restores target");
+ require(!shader.begin(8193,83),"oversized source rejected");require(SDL_GetRenderTarget(r)==target,"failed begin preserves target");
+#endif
  require(shader.load("tests/fixtures/native_slang/reference.slangp"),shader.error());require(shader.begin(320,83),shader.error());draw();require(shader.end(83,59.6374,12345),shader.error());require(shader.error().empty(),"successful frame clears transient error");
  // Genuine temporal dependence: red then blue must retain half the preceding
  // input. Cached UI redraws leave that history intact; invalidate clears it.
  require(shader.load("tests/fixtures/native_slang/history.slangp"),shader.error());
  auto solid=[&](uint32_t color){std::fill(pixels.begin(),pixels.end(),color);require(SDL_UpdateTexture(source,nullptr,pixels.data(),1280),"temporal source");};
  auto temporal_pixel=[&](int red,int green,int blue){auto* a=SDL_RenderReadPixels(r,nullptr);require(a,"temporal output");auto* b=SDL_ConvertSurface(a,SDL_PIXELFORMAT_RGBA32);SDL_DestroySurface(a);require(b,"temporal format");const auto* p=(unsigned char*)b->pixels+(b->h/2)*b->pitch+(b->w/2)*4;require(std::abs(int(p[0])-red)<=1&&std::abs(int(p[1])-green)<=1&&std::abs(int(p[2])-blue)<=1&&p[3]==255,"temporal RGB matches previous original frame");SDL_DestroySurface(b);};
+ // Exercise command/resource reuse without a readback fence between frames.
+ for(uint64_t frame=84;frame<90;++frame){solid(frame%2?0xff0000ffu:0xffff0000u);require(shader.begin(320,frame),shader.error());draw();require(shader.end(frame,59.6374,12345),shader.error());}
+ temporal_pixel(128,0,128);
+ require(shader.load("tests/fixtures/native_slang/history.slangp"),shader.error());
  solid(0xffff0000u);require(shader.begin(320,90),shader.error());draw();require(shader.end(90,59.6374,12345),shader.error());temporal_pixel(128,0,0);
  solid(0xff0000ffu);require(shader.begin(320,91),shader.error());draw();require(shader.end(91,59.6374,12345),shader.error());temporal_pixel(128,0,128);
  const auto temporal_hash=image(r);require(!shader.needs_frame(91),"temporal same-frame cache");shader.draw_cached();require(image(r)==temporal_hash,"cached redraw preserves temporal image");

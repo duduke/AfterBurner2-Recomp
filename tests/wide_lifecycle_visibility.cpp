@@ -24,7 +24,9 @@ int main(int argc,char** argv)try{
     std::string magic,line;unsigned frames,a,b,c;require(bool(input>>magic>>frames>>a>>b>>c)&&magic=="AB2PHYS1"&&a<256&&b<256&&c<256,"Invalid recording");
     std::getline(reference,line);if(!line.empty()&&line.back()=='\r')line.pop_back();require(line=="frame,time_ns,mode,stage_index,lives,death_state,score,credits_bcd,carrier_state,refuel_state","Invalid MAME reference columns");
     require(roms.load_aburner2(),"ROMs required");XBoardGame game(roms);auto& h=game.board();h.switches={uint8_t(a),uint8_t(b),uint8_t(c)};
-    Presentation::WideVisibility visibility(roms);Presentation::WideScene plain(roms),corrected(roms);
+    Presentation::WideVisibility visibility(roms);
+    auto plain_owner=std::make_unique<Presentation::WideScene>(roms),corrected_owner=std::make_unique<Presentation::WideScene>(roms);
+    auto& plain=*plain_owner;auto& corrected=*corrected_owner;
     WideNativeReference legacy(roms);
     std::vector<Presentation::SceneClip> clips;std::optional<Presentation::SceneClip> pending;
     h.phase=[&](const auto& p){visibility.observe(p,h);};

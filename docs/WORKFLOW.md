@@ -104,6 +104,16 @@ supports both a native Windows x64 Release build (`--native-build build/win`,
 with SDL3 3.4.18 and OpenAL Soft 1.25.2 enabled) and the macOS LLVM-MinGW
 cross-build (`build/windows-cross`). The artifact is unsigned.
 
+Current Windows source also includes the macOS Preview 3 features and native
+Vulkan RetroArch shaders. Use the [LTO-capable Windows build](../README.md) and
+[shader setup](CRT_DISPLAY.md#windows-vulkan). w64devkit GCC 16.2.0 was built
+without LTO; LLVM-MinGW 20261020 / Clang 23.1.4 supports checked ThinLTO.
+`AB2_REQUIRE_IPO=ON` makes an unavailable LTO toolchain a configuration error.
+The packager now copies the same four allowlisted aircraft assets and
+librashader notices as macOS and includes detected LLVM-MinGW runtime DLLs.
+The published Windows Preview 2 artifact remains unchanged; a new package still
+requires the clean committed tree and complete release gates below.
+
 To package a native Windows x64 build on Windows (with `SDL3-3.4.18.tar.gz`,
 `SDL3-3.4.18-mingw.zip`, `openal-soft-1.25.2.tar.gz` and
 `openal-soft-1.25.2-bin.zip` in `build/deps/`):

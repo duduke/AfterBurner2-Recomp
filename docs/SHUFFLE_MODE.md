@@ -40,6 +40,13 @@ selected DIP bank. Stage 23 contains a scripted aircraft that requests the
 ending independently of the stage counter, so the plan keeps it last. An early
 stage-23 MAME test exposed that dependency; its failed capture is retained.
 
+Music follows the source stage's original command history. A stage whose entry
+only continues the preceding music requests that inherited command when its
+new predecessor does not supply it, including when it opens the run. Adjacent
+stages with the same inherited music keep the continue command; explicit song
+and control commands stay intact. This avoids silent openings such as source
+stage 12, which inherits Final Take Off from original stage 11.
+
 Original command-18 events prepare the original next stage's palette. They
 are omitted from copied event programs. At the audited initialization boundary,
 Shuffle installs the destination's settled alternate palette when its original

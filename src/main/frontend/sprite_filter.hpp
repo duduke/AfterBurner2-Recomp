@@ -26,6 +26,25 @@ public:
             throw std::invalid_argument("invalid sprite presentation dimensions");
         if(!protected_pixels.empty() && protected_pixels.size()!=background.size())
             throw std::invalid_argument("invalid sprite protection dimensions");
+        const auto blend=[](uint32_t fg,uint32_t bg) {
+            const auto alpha=fg>>24;
+            if(!alpha)return bg;
+            if(alpha==255)return fg;
+            uint32_t color=0xff000000u;
+            for(unsigned shift: {0u,8u,16u}) {
+                const auto value=((fg>>shift)&255)+((((bg>>shift)&255)*(255-alpha)+127)/255);
+                color|=std::min(value,255u)<<shift;
+            }
+            return color;
+        };
+        // Off needs only composition: avoid the scaler's scratch image,
+        // neighbourhood setup and per-pixel coordinate divisions.
+        if(filter==SpriteFilter::none) {
+            result.resize(background.size());
+            for(size_t i=0;i<result.size();++i)
+                result[i]=!protected_pixels.empty()&&protected_pixels[i]?background[i]:blend(sprites[i],background[i]);
+            return result;
+        }
         const auto factor=sprite_factor(filter);
         filtered.resize(background.size()*factor*factor); result.resize(filtered.size());
         if(filter==SpriteFilter::scalefx) ScaleFX::scale(sprites,width,height,filtered,metric,strength,flags,tags);
@@ -54,17 +73,7 @@ public:
         for(unsigned y=0;y<height*factor;++y)for(unsigned x=0;x<width*factor;++x) {
             const auto i=y*width*factor+x;const auto fg=filtered[i],bg=background[(y/factor)*width+x/factor];
             if(!protected_pixels.empty() && protected_pixels[(y/factor)*width+x/factor]) {result[i]=bg;continue;}
-            const auto alpha=fg>>24;
-            if(!alpha)result[i]=bg;
-            else if(alpha==255)result[i]=fg;
-            else {
-                uint32_t color=0xff000000u;
-                for(unsigned shift: {0u,8u,16u}) {
-                    const auto value=((fg>>shift)&255)+((((bg>>shift)&255)*(255-alpha)+127)/255);
-                    color|=std::min(value,255u)<<shift;
-                }
-                result[i]=color;
-            }
+            result[i]=blend(fg,bg);
         }
         return result;
     }
