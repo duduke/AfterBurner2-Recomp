@@ -1,5 +1,54 @@
 # Release notes
 
+## v0.1.0-preview.5 — ROM startup, menus and widescreen effects
+
+This refreshes the **Apple Silicon / macOS 26+** package at
+[GitHub Releases](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5).
+Windows remains on Preview 2; its newer source features await a refreshed package.
+The release tag, package manifest and GitHub release identify the exact source
+commit and ZIP checksum.
+
+### Changes
+
+- Load your own extracted ROM directory or stored/Deflate `aburner2.zip` directly.
+  Startup automatically tries `roms/aburner2.zip`, offers a native ZIP picker
+  when necessary and remembers a successful selection. Chip sizes/CRCs remain
+  checked; no ROMs are included.
+- Direct Arcade, Practice and Shuffle startup choices. Settings are grouped into
+  Display, Graphics, CRT and Shaders, Controls, Audio, Arcade Settings and
+  Diagnostics. The pause menu adds Restart Run and Change Mode; Controls
+  separates bindings, analog setup, Input Monitor and feedback tests.
+- Metal GPU sprite filters stay active with external Slang presets, removing
+  the CPU ScaleFX fallback behind the reported NTSC Composite slowdown.
+- Corrected ground fixes fast-roll sky triangles and reproduced blue/cloud
+  side gaps while retaining terrain and foreground protection.
+- Widescreen retains world explosions, ground/air hit effects, player/enemy
+  missile smoke and world-projected player damage/death emissions after native
+  horizontal removal. Private visual copies preserve their ROM animation and
+  lifetime rules; gameplay, native pools/rings, sound and respawn stay unchanged.
+- Generated Shuffle runs start on gameplay stages rather than scripted stages
+  5, 13 or 23. Every stage still appears once, with stage 23 last.
+- Retains the integrated renderer, 16:9/16:10, Practice, HUD/CRT, optional
+  registered HD aircraft pack, calibration, replacement music and spatial audio.
+
+### Package and limits
+
+Apple Silicon, **macOS 26+**; SDL3 3.4.16 and OpenAL Soft 1.25.2 are bundled
+with matching sources/notices. Binaries are **ad-hoc signed, not Developer ID
+signed or notarized**. Extract the complete ZIP and run `Launch.command`.
+Supply your own ROM directory or ZIP. ROMs, original Sega media, captures,
+preferences, personal soundtracks, external shader runtimes and shader packs
+are excluded. Windows Preview 2, Intel/older macOS and Linux packaging are
+unchanged; ultrawide remains unavailable.
+
+Widescreen, spatial audio, replacement artwork and sustained peak-load/platform
+coverage remain experimental. Full-game acceptance and continuous whole-credit
+CPU/device/RGB/audio comparison remain open. The required final-source release
+gate is recorded in the
+[Preview 5 release record](ENGINE_NOTES.md#preview-5-release-2026-10-26);
+the GitHub release records independent extracted-package checks.
+
+
 ## v0.1.0-preview.4 — Integrated primary renderer
 
 This release updates the **Apple Silicon / macOS 26+** download at

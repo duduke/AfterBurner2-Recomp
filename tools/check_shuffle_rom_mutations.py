@@ -9,6 +9,13 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 MUTATIONS = [
     (
+        "scripted-opening-allowed",
+        "} while (result.stages.front() == 5 || result.stages.front() == 13\n"
+        "             || result.stages.front() == 23);",
+        "} while (false);",
+        "Shuffle starts with a scripted stage",
+    ),
+    (
         "lost-inherited-music",
         "if (command == 0x80 && (!position || music != previous_music)) command = music;",
         "if (false) command = music;",

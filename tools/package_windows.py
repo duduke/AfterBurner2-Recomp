@@ -217,7 +217,7 @@ def main():
     for source in shader_notices:
         shutil.copy2(source, package / "Notices/librashader" / source.name)
     for relative in ("src/main/frontend/scalers/SNES9X-LICENSE.txt", "src/main/frontend/scalers/scalefx.hpp",
-                     "src/third_party/z80.h", "src/third_party/dr_flac/LICENSE", "src/main/frontend/controllerdb/LICENSE"):
+                     "src/third_party/z80.h", "src/third_party/dr_flac/LICENSE", "src/third_party/miniz/LICENSE", "src/main/frontend/controllerdb/LICENSE"):
         shutil.copy2(ROOT / relative, package / "Notices" / relative.replace("/", "_"))
     for path in sources:
         shutil.copy2(path, package / "Sources" / path.name)

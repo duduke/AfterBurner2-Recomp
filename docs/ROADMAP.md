@@ -1,13 +1,14 @@
 # Roadmap
 
-Updated **2026-10-24**. [Preview v0.1.0-preview.4](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.4)
-adds the integrated primary renderer to Apple Silicon / macOS 26+, with the
-Practice, Shuffle, 16:10, HUD/CRT, aircraft, calibration and spatial-audio features
-from Preview 3. The
+Updated **2026-10-26**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
+refreshes Apple Silicon / macOS 26+ with ROM ZIP loading/picker, reorganized menus,
+native Metal filters with Slang presets, Shuffle gameplay openings, corrected
+rolling sky/cloud coverage and broader widescreen effect retention. It retains
+the integrated renderer, Practice/Shuffle, HUD/CRT, optional aircraft art,
+calibration and spatial audio. The
 [Windows 10/11 x64 download remains Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
-Both include the native game, menus, GPU filters/translucency, replacement music,
-SDL rumble, experimental OpenAL Soft 1.25.2 cockpit audio and 16:9 presentation.
-Original remains the regression reference.
+Original remains the regression reference. See
+[release notes](RELEASE_NOTES.md#v010-preview5--rom-startup-menus-and-widescreen-effects).
 
 ## Summarized roadmap
 
@@ -195,7 +196,65 @@ does not authorize changes to arcade activation, targeting, collisions, stage
 scripts or spawn rules. See the
 [integration work order](WIDESCREEN_PLAN.md#primary-renderer-integration-work-order-2026-10-24).
 
-macOS release source is tagged `v0.1.0-preview.4`; the package manifests identify the
+Local macOS shader follow-up (2026-10-25): source builds retain native Metal
+GPU sprite filters with Slang presets. This removes the CPU ScaleFX fallback
+behind the reported NTSC Composite slowdown. Exact CPU-reference comparisons
+pass 882/882 cases (157,452,162 pixels), with six rejected controls and all three
+live shader/viewport integration checks passing. See the
+[Metal sprite-filter record](ENGINE_NOTES.md#native-metal-sprite-filters-with-slang-2026-10-25)
+for measurements and validation scope. Included in macOS Preview 5.
+
+Local menu organization (2026-10-25): source builds now group settings into
+Display, Graphics, CRT and Shaders, Controls, Audio, Arcade Settings and
+Diagnostics. Startup offers all three modes directly; the pause menu adds
+Restart Run and Change Mode. Controls separates bindings, analog settings,
+Input Monitor and feedback cues/tests. Focused regression, software/Metal menu
+and release-build evidence is recorded in the
+[menu organization record](ENGINE_NOTES.md#native-menu-organization-2026-10-25).
+Included in macOS Preview 5; the Windows download remains Preview 2.
+
+Local ROM startup update (2026-10-25): source builds accept extracted directories
+or stored/Deflate ZIPs, automatically try `roms/aburner2.zip`, and open a native
+ZIP picker when startup cannot load the ROM set. Successful selections are
+remembered; chip sizes/CRCs and interleave remain checked. See the
+[ROM startup record](ENGINE_NOTES.md#zip-rom-loading-and-startup-picker-2026-10-25)
+and [setup instructions](../roms/README.md). Published packages are unchanged.
+
+Local widescreen visibility update (2026-10-25): source builds now retain
+world explosions across the native horizontal retirement boundary in 16:9
+and 16:10. Detached animation keeps native pause, hidden-frame and
+depth/vertical retirement rules. Independent MAME calls, branch coverage and
+rejected controls are recorded in the
+[world-explosion record](ENGINE_NOTES.md#wide-world-explosion-retention-2026-10-25).
+Other object controllers and broader scene/platform acceptance remain open.
+
+The subsequent source increment adds ground/air hit-effect retention through
+their separate horizontal cull, preserving ground drift, scale growth and ROM
+animation/palette rules. Independent MAME coverage and integration scope are in
+the [hit-effect record](ENGINE_NOTES.md#wide-ground-and-air-hit-effect-retention-2026-10-25).
+
+The following source increment adds horizontal retention for player/enemy
+missile smoke and world-projected player damage/death emissions. Visual copies
+retain each family's lifetime rules and the native emission-pool reset, with
+no changes to missiles, native rings/pools, damage, sound or respawn. See the
+[three-family record](ENGINE_NOTES.md#wide-missile-trails-and-player-damage-emissions-2026-10-25)
+for independent MAME comparisons and finite coverage limits.
+
+Local sky correction follow-up (2026-10-25): Corrected ground now uses the
+published horizon marker ordering when the current roll has crossed an axis
+before the displayed strip. This removes the reproduced Stage 6 white sky
+triangles at both wide render widths. See the
+[fast-roll evidence](ENGINE_NOTES.md#stage-6-fast-roll-sky-triangles-2026-10-25)
+for regression scope; included in macOS Preview 5.
+
+The follow-up also closes reproduced blue cloud gaps and further white sky
+cuts by prioritizing measured marker ordering and copying only observed,
+matching flat-color ground fields inside one render clip. The expanded test
+checks both measured sides throughout the Stage 6 replay; see the
+[two-sided horizon record](ENGINE_NOTES.md#stage-6-two-sided-horizon-correction-2026-10-25)
+for evidence and finite coverage.
+
+macOS release source is tagged `v0.1.0-preview.5`; the package manifests identify the
 exact source commit. The SDL3 native game is
 on `main`; the separate Three.js prototype remains on
 [`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).
@@ -211,7 +270,7 @@ on `main`; the separate Three.js prototype remains on
 | Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes; all six native song contexts and natural fades observed | Replacement-file natural fade/listening acceptance |
 | Spatial audio | Chip-rate OpenAL Soft, headphone HRTF, 2.1/5.1 profiles, dry stereo music, reviewed routing and stall recovery; 117,509 exact MAME ownership observations and 104,452 unchanged native lifecycle frames; original Deluxe stereo wiring traced | Revised-cue listening, physical surround/unplug and Windows/Linux checks, end-to-end latency, ABII cabinet-revision evidence |
 | Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
-| Distribution | ROM-free macOS Preview 4 and runtime-verified Windows Preview 2 ZIPs with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS ad-hoc signed; Windows unsigned and awaiting the new features; Intel/older macOS and Linux packages remain open |
+| Distribution | ROM-free macOS Preview 5 and runtime-verified Windows Preview 2 ZIPs with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS ad-hoc signed; Windows unsigned and awaiting the new features; Intel/older macOS and Linux packages remain open |
 
 Local source update: the viewport selector now offers Original,
 16:9 (398×224) and 16:10 (358×224), with width-specific detached visibility and
@@ -284,6 +343,11 @@ and the focused plans for scope.
 
 ## Next acceptance tasks
 
+macOS Preview 5 includes the 25 October ROM startup, menu, Metal sprite-filter,
+horizon and widescreen effect updates. The complete final-source `required`
+release gate passes; see the [release record](ENGINE_NOTES.md#preview-5-release-2026-10-26).
+The remaining acceptance work below stays open.
+
 macOS Preview 4 includes the default integrated renderer and the complete
 required/supplemental and natural-lifecycle results recorded in the
 [Mac renderer acceptance](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
@@ -347,6 +411,12 @@ with four rejected catalog mutations. The existing palette check remains
 menu/Practice launch checks pass. Complete stage-entry state, Time Attack and natural
 whole-credit acceptance remain open; see the
 [Practice evidence](ENGINE_NOTES.md#stage-select--practice-first-increment-2026-10-23).
+
+Local Shuffle follow-up (2026-10-25): generated runs cannot open with scripted
+stages 5, 13 or 23. All stages remain in the order, with stage 23 fixed last;
+seeded retries remain reproducible. Policy regressions and all nine ROM-policy
+controls pass; see [the validation record](ENGINE_NOTES.md#shuffle-gameplay-openings-2026-10-25)
+for scope and integration results.
 
 Local enhancement increment (2026-10-23): [Shuffle](SHUFFLE_MODE.md) randomizes
 gameplay stages 1–22 once each, keeping stage 23 as the native finale. It runs

@@ -1,8 +1,11 @@
 # Shuffle mode
 
-Choose **Shuffle** in the initial or pause menu, then **Start Shuffle**. It
-starts a fresh run with gameplay stages 1–22 in a random order, each appearing
+Choose **Shuffle** at startup, or **Change Mode → Shuffle** in the pause menu,
+then **Start Shuffle**. It starts a fresh run with gameplay stages 1–22 in a random order, each appearing
 once. Stage 23 stays last as the native finale. Current DIP settings apply.
+Generated orders never start with scripted stages 5, 13 or 23. Stages 5 and 13
+remain in the run; a rejected opening is reshuffled using the same seeded RNG.
+Seeds that previously opened with either stage now produce a different order.
 Score, lives, damage and weapons continue through the run and into the ending.
 
 **F5** restarts the same order. Shuffle → **New Shuffle** starts a newly seeded

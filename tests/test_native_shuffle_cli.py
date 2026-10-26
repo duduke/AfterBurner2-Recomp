@@ -50,6 +50,7 @@ def verify(binary):
             order = [int(value) for value in match[2].split(',')]
             assert sorted(order) == list(range(1, 24)), order
             assert order[-1] == 23, 'Shuffle moved the native finale'
+            assert order[0] not in (5, 13, 23), 'Shuffle starts with a scripted stage'
             pixels = preview.read_bytes()
             assert pixels[:2] == b'BM' and len(pixels) > 54, 'Missing Shuffle frame preview'
             return order, pixels

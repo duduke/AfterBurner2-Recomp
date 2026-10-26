@@ -27,6 +27,8 @@ def main():
     capture = args.capture.resolve(strict=True)
     destination = ROOT / "build/oracle/integrated-mame-mutations" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     inputs = destination / "inputs"
+    # Preserve the embedded ZIP reader at romloader.cpp's relative include path.
+    shutil.copytree(ROOT / "src/third_party/miniz", destination / "third_party/miniz")
     for header in (ROOT / "src/main").rglob("*.hpp"):
         target = inputs / header.relative_to(ROOT / "src/main")
         target.parent.mkdir(parents=True, exist_ok=True)

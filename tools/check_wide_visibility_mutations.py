@@ -4,6 +4,20 @@ from pathlib import Path
 import os,shlex,subprocess,tempfile
 ROOT=Path(__file__).resolve().parents[1]
 MUTATIONS=[
+ ('player-trail-hook','wide_visibility.hpp','(pc==0xabca||pc==0xabd2)&&handler==0xaaee','false','player missile trail lost at native edge'),
+ ('enemy-trail-hook','wide_visibility.hpp','if(pc==0x14fa8)','if(false)','enemy missile trail lost at native edge'),
+ ('damage-trail-hook','wide_visibility.hpp','(pc==0xff64||pc==0xff6c)&&(handler==0xfcb4||handler==0xfdfa)','false','damage emission lost at native edge'),
+ ('trail-native-cull','wide_visibility.hpp','TrailEffectProjection::update(bus,regs,margin,g.trail)','TrailEffectProjection::update(bus,regs,0,g.trail)','fixed/draw-only trail changed after native slot reuse'),
+ ('trail-hidden-retirement','wide_visibility.hpp','alive=state!=TrailEffectProjection::State::retired','alive=state==TrailEffectProjection::State::visible','hidden trail retired instead of reappearing'),
+ ('trail-pool-reset','wide_visibility.hpp','if(pc==0x10310)reset_trail_pool();','/* omit native pool reset */','trail survived native pool reset'),
+ ('hit-effect-hook','wide_visibility.hpp','if(pc==0x8fa2||pc==0x8faa)','if(false)','hit effect deleted at native edge'),
+ ('hit-effect-native-cull','wide_visibility.hpp','HitEffectProjection::update(bus,regs,margin,g.effect==1)','HitEffectProjection::update(bus,regs,0,g.effect==1)','hit effect lost after slot reuse'),
+ ('hit-effect-family','wide_visibility.hpp','margin,g.effect==1','margin,g.effect==2','hit-effect ground/air drift ownership differs'),
+ ('hit-effect-hidden-retirement','wide_visibility.hpp','alive=state!=HitEffectProjection::State::retired','alive=state==HitEffectProjection::State::visible','hidden hit effect retired instead of reappearing'),
+ ('explosion-hook','wide_visibility.hpp','if(pc==0x92ae||pc==0x92b6)','if(false)','world explosion deleted at native edge'),
+ ('explosion-native-cull','wide_visibility.hpp','ExplosionProjection::update(bus,regs,margin)','ExplosionProjection::update(bus,regs,0)','hidden explosion retired instead of reappearing'),
+ ('explosion-hidden-retirement','wide_visibility.hpp','alive=state!=ExplosionProjection::State::retired','alive=state==ExplosionProjection::State::visible','hidden explosion retired instead of reappearing'),
+
  ('water-depth-advance','wide_visibility.hpp','w(d[1],bus.read16(scratch+36))','w(d[1],bus.read16(scratch+36)-256)','takeoff water projection changed native depth or coordinates'),
  ('takeoff-water-field','wide_visibility.hpp','extend_water(h,out,submitted[readlong(h,0x2a3c04)&0xfffff],need_scratch);','/* omit adjacent water cells */','takeoff water field extension missing or leaked into another mode'),
  ('nonflight-scenery','wide_visibility.hpp','(mode!=1&&mode!=15&&mode!=16)','mode!=16','non-flight scenery retention missing'),

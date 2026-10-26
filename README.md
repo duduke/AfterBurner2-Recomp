@@ -7,7 +7,8 @@ with reimplemented YM2151/SegaPCM devices. SDL3 handles the desktop frontend.
 Independent MAME captures check the translated game against the arcade ROM.
 Inspired by [Cannonball](https://github.com/djyt/cannonball).
 
-Supply your own [ROM dump](roms/README.md). ROMs, original artwork and personal
+Supply your own [ROM dump](roms/README.md). macOS Preview 5 and source builds also load
+`roms/aburner2.zip` directly and offer a ZIP file picker when ROMs are missing. ROMs, original artwork and personal
 soundtracks are not distributed. This project is not affiliated with SEGA.
 See [LICENSE.txt](LICENSE.txt) and [third-party notices](docs/THIRD-PARTY-NOTICES.md).
 
@@ -27,17 +28,18 @@ other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
 [roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-24) for scope.
 
-Preview 4 updates the Apple Silicon macOS download with the integrated primary
-renderer enabled by default for widescreen and detached HUD/aircraft presentation.
-It includes the Practice/Shuffle, 16:10, calibration, spatial-audio, HUD/CRT and
-HD aircraft features from Preview 3. The Windows x64 download remains Preview 2.
-See the [roadmap](docs/ROADMAP.md#next-acceptance-tasks) and
-[release notes](docs/RELEASE_NOTES.md).
+Preview 5 refreshes the Apple Silicon macOS download with direct ROM ZIP
+loading and a native picker, reorganized settings and run controls, native Metal
+sprite filters with Slang presets, cleaner rolling horizons and wider retention
+of smoke, explosions and player damage effects. Shuffle now starts on a gameplay
+stage. It retains Practice, 16:10/16:9, HUD/CRT, optional HD aircraft, calibration
+and spatial audio. The Windows x64 download remains Preview 2. See the
+[release notes](docs/RELEASE_NOTES.md) and [roadmap](docs/ROADMAP.md).
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
 queue and depth-bucket limits, retains scenery as it crosses the wider edges,
-and fixes reproduced rolling scenery, takeoff wave coverage and attract-cloud
-corner artifacts. It also fixes the reported enemy-coordinate overflow stop
+and fixes reproduced rolling scenery, takeoff wave coverage, fast-roll sky
+triangles, blue cloud gaps and attract-cloud corner artifacts. It also fixes the reported enemy-coordinate overflow stop
 at PC `$15C10`. The original simulation remains the comparison reference;
 the wider presentation still needs exhaustive scene and platform validation.
 
@@ -45,10 +47,10 @@ the wider presentation still needs exhaustive scene and platform validation.
 
 | Area | Implemented features |
 | --- | --- |
-| Menus | Arcade-font Enter Arcade/Options/Practice/Shuffle/Quit and in-game pause menu; Video, Controls, Audio and DIP Switches submenus; keyboard, mouse and controller navigation; slim scrollbars show hidden items and position |
+| Menus | Arcade-font Arcade/Practice/Shuffle/Settings/Quit launcher; pause/resume, restart and mode selection; grouped display, graphics, CRT, controls, audio and arcade settings; keyboard, mouse and controller navigation |
 | Stage Select / Practice | [Practice mode](docs/PRACTICE_MODE.md): fresh directed entry to 23 ROM stages, normal lives/damage, F5 retry and return to arcade; separate from natural recordings |
 | Shuffle | [Shuffle mode](docs/SHUFFLE_MODE.md): stages 1–22 in random order with stage 23 as the finale, continuous score/lives, same-order F5 retry and fresh New Shuffle |
-| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 4 |
+| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery, world explosions, hit effects, player/enemy missile smoke and player damage emissions with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 5 |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
 | CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows Vulkan with a separately installed runtime and shader pack; readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
@@ -57,12 +59,12 @@ the wider presentation still needs exhaustive scene and platform validation.
 | Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |
 | Controls | Keyboard, gamepad and raw joystick remapping; axes/buttons/hats; live calibration display, deadzone, sensitivity, polarity and full-axis throttle; hotplug and persisted device profiles |
 | Controller feedback | Optional SDL body and Xbox trigger rumble; cannon, missile, player-impact and full-throttle cues; strengths, motor tests, device selection and lifecycle stops |
-| Arcade settings | Lives/Credit (3 or 4), Ship Increase (credit-multiplied lives) and Difficulty; Apply & Restart, F5 or next launch applies saved DIP choices |
+| Arcade settings | Lives/Credit (3 or 4), Ship Increase (credit-multiplied lives) and Difficulty; Apply and Restart, F5 or next launch applies saved DIP choices |
 | Audio | Six WAV/FLAC track replacements, preview, live current-song switching, Original fallback; independent music/effects/per-track volume; replacement music balanced at -12 dB |
 | Spatial audio (experimental) | Optional OpenAL Soft: four virtual cockpit speakers with headphone HRTF, 2.1/5.1 profiles, chip-rate interpolation, output-device selection and speaker test; Original SDL remains default |
 | Preferences and diagnostics | Saved video/input/audio/feedback/DIP preferences, physical-input recording, bounded launch checks and performance reporting |
 
-Source builds and macOS Preview 4 use the integrated primary renderer for widescreen and detached
+Source builds and macOS Preview 5 use the integrated primary renderer for widescreen and detached
 HUD/aircraft presentation. It shares the native partial-frame road/tile pass;
 `--scene-renderer snapshot` selects the retained reconstruction reference.
 The `16:9 Preview` and `16:10 Preview` labels describe remaining widescreen
@@ -76,9 +78,10 @@ Force-feedback stick effects, incoming-warning cues, complete widescreen visibil
 complete replacement animation, broader shader backends, save states and additional gameplay modes
 remain **planned**. The [haptics notes](docs/HAPTICS_PLAN.md) cover current SDL
 output and remaining platform hardware checks.
-Choose **Options → Video → Viewport → 16:9 Preview** to try the wider view.
-The wider view now retains side scenery and recovers hidden sprite requests.
-Choose **Ground → Corrected** for full-width sky correction during rolls.
+Choose **Settings → Display → Aspect Ratio → 16:9 Preview** to try the wider view.
+The wider view retains side scenery, smoke and effects beyond native screen-edge
+removal while leaving gameplay intact, and recovers hidden sprite requests.
+Choose **Settings → Graphics → Ground → Corrected** for full-width sky correction during rolls.
 The wider renderer now recovers requests discarded by the original 192-request
 queue and full depth buckets, and renders a dynamic descriptor list. Native
 object allocation and gameplay limits stay unchanged. All 23 stage slots and
@@ -88,10 +91,11 @@ validation for both widths and ultrawide remain open. See the
 
 ## Build and play
 
-Download [macOS Preview 4](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.4)
+Download [macOS Preview 5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
 or [Windows Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
 and extract the complete ZIP. Put your own extracted ROM
-files in its `roms/` directory. Sources, notices and SHA-256 files accompany
+files in its `roms/` directory. macOS Preview 5 also accepts `aburner2.zip`
+there, or lets you select a ROM ZIP on startup. Sources, notices and SHA-256 files accompany
 the packages; ROMs, captures and personal settings are excluded.
 
 The **Apple Silicon / macOS 26+** package opens with `Launch.command`.
@@ -116,13 +120,13 @@ make native-release
 ./build/afterburner2-release
 ```
 
-This opens the initial menu. Choose **Enter Arcade** to watch the original boot
+This opens the initial menu. Choose **Arcade** to watch the original boot
 and attract sequence, then insert a coin and press Start (keyboard **5**, then
 **Enter**). `make play-native` uses the same startup with performance reporting.
 For the explicit automatic coin/start shortcut, use
 `./build/afterburner2-release --boot-to-flight`.
 
-Choose **Practice** in the main or pause menu to select a starting stage, or
+Choose **Practice** at startup or under **Change Mode** in the pause menu to select a starting stage, or
 **Shuffle → Start Shuffle** for a continuous run through stages 1–22 in random
 order and stage 23 last. **F5** retries the selected Practice stage or the same
 Shuffle order; **New Shuffle** generates another order. Both modes offer
@@ -205,14 +209,14 @@ physical-device acceptance must be established separately.
 
 Gamepads default to left-stick flight, South/East weapons, triggers for throttle
 and Back/Start for coin/start. Raw joysticks default to axes 0/1 and buttons 0–5.
-Remap in **Options → Controls**: Enter captures, Backspace clears and Escape
-cancels/returns. For throttle sliders, choose Full Axis and bind Boost toward
-maximum; this replaces Brake. Identical device models share a GUID/type profile.
-Select a gamepad or joystick, then open **Calibration** to compare bound stick
+Remap in **Settings → Controls → Button Bindings**: Enter captures, Backspace clears and Escape
+cancels/returns. For throttle sliders, choose Full Axis under **Analog Settings**
+and bind Boost toward maximum; this replaces Brake. Identical device models share a GUID/type profile.
+Select a gamepad or joystick, then open **Input Monitor** to compare bound stick
 and throttle input before and after dead zone and sensitivity are applied.
-Remapped axis direction is reflected live; Calibration is disabled for Keyboard.
+Remapped axis direction is reflected live; Input Monitor is disabled for Keyboard.
 
-Enable rumble in **Options → Controls → Feedback**. Choose the output device,
+Enable rumble in **Settings → Controls → Feedback**. Choose the output device,
 turn Enabled On, and adjust body/trigger strengths independently. Motor tests
 work with gameplay feedback Off. See the [motor mapping table](docs/HAPTICS_PLAN.md#motor-mapping)
 for left/right body and trigger assignments. Cannon uses the right trigger and
@@ -223,7 +227,7 @@ open. Unsupported devices retain normal controls.
 ## Custom music
 
 Put WAV/FLAC files directly in `soundtrack/`, then choose them in
-**Options → Audio → Music Tracks**. The six tracks are Maximum Power, Final Take
+**Settings → Audio → Music Tracks**. The six tracks are Maximum Power, Final Take
 Off, Red Out, Super Stripe, After Burner and City 202. Left/Right cycles choices;
 Space or gamepad North previews while paused.
 
@@ -234,7 +238,7 @@ replacement baseline. Original at 100% preserves exact native PCM. See
 [music behavior and coverage](docs/MUSIC_REPLACEMENT_PLAN.md) and
 [Sega Saturn (SEGA AGES) track naming](docs/MUSIC_REPLACEMENT_PLAN.md#sega-saturn-sega-ages-soundtrack-tracklist).
 
-For optional spatial playback, open **Options → Audio → Output** and choose
+For optional spatial playback, open **Settings → Audio → Output Setup** and choose
 Headphones HRTF, 2.1 Speakers or 5.1 Speakers. Interpolation lists the resamplers
 supported by OpenAL Soft. Speaker Test plays front-left, front-right, rear-left,
 rear-right. HRTF/actual output status appears below the options; unsupported

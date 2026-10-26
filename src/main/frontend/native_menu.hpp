@@ -8,6 +8,7 @@
 #include <functional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include "roms.hpp"
 #include "engine/game_session.hpp"
 #include "frontend/native_settings.hpp"
@@ -69,418 +70,135 @@ public:
     bool practice_allowed{true};
     bool shuffle_active{},shuffle_allowed{true};
     std::function<bool(const Settings&)> apply;
+    enum class Page { root, modes, settings, display, graphics, effects, crt, diagnostics,
+        controls, bindings, analog, monitor, feedback, cues, feedback_tests,
+        audio, music, volumes, output, arcade, practice, shuffle };
+    Page page() const {return current;}
+    int row_count() const {return int(rows().size());}
+    std::string row_label(int row) const {return rows().at(row).label;}
     void open(GameSession& game) {
-        if (opened) return;
+        if(opened)return;
         if(feedback)feedback->stop();
-        was_paused=game.paused(); initial=game.info().number==0;
-        game.set_paused(true); opened=true; options=false; video=false; dips=false; controls=false;practice_page=false;shuffle_page=false;calibration_page=false;feedback_page=false;audio_page=0; selected=0;
+        was_paused=game.paused();initial=game.info().number==0;
+        game.set_paused(true);opened=true;current=Page::root;selected=0;history.clear();scroll=0;
     }
     void close(GameSession& game) {
-        if (!opened) return;
-        if(feedback)feedback->stop();feedback_page=false;calibration_page=false;if(audio)audio->clear();
-        game.set_paused(was_paused); opened=false;audio_page=0;if(music)music->stop_preview(); if(input)input->cancel();
+        if(!opened)return;
+        if(feedback)feedback->stop();if(audio)audio->clear();
+        if(music)music->stop_preview();if(input)input->cancel();
+        game.set_paused(was_paused);opened=false;
     }
-    bool is_open() const { return opened; }
-    bool in_video() const { return video; }
-    bool in_dips() const { return dips; }
-    bool in_controls() const {return controls;}
-    bool in_calibration() const {return calibration_page;}
-    bool in_options() const { return options; }
-    bool in_practice() const {return practice_page;}
-    bool in_shuffle() const {return shuffle_page;}
-    int selection() const { return selected; }
-    bool fullscreen_toggle() {
-        auto changed=settings;changed.fullscreen=!changed.fullscreen;
-        return change(changed);
-    }
-    bool stats_toggle() {
-        auto changed=settings;changed.stats=static_cast<Stats>((static_cast<int>(changed.stats)+1)%3);
-        return change(changed);
-    }
+    bool is_open() const {return opened;}
+    bool in_video() const {return current==Page::display || current==Page::graphics || current==Page::effects || current==Page::crt;}
+    bool in_dips() const {return current==Page::arcade;}
+    bool in_controls() const {return current==Page::controls || current==Page::bindings || current==Page::analog;}
+    bool in_calibration() const {return current==Page::monitor;}
+    bool in_options() const {return current==Page::settings || in_video() || current==Page::diagnostics;}
+    bool in_practice() const {return current==Page::practice;}
+    bool in_shuffle() const {return current==Page::shuffle;}
+    int selection() const {return selected;}
+    bool fullscreen_toggle() {auto changed=settings;changed.fullscreen=!changed.fullscreen;return change(changed);}
+    bool stats_toggle() {auto changed=settings;changed.stats=static_cast<Stats>((int(changed.stats)+1)%3);return change(changed);}
     Action key(SDL_Keycode key) {
-        if(shuffle_page) {
-            const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
-            if(key==SDLK_ESCAPE || key==SDLK_F1 || (enter && selected==2)) {
-                shuffle_page=false;selected=3;return Action::none;
-            }
-            if(key==SDLK_UP)selected=(selected+2)%3;
-            if(key==SDLK_DOWN)selected=(selected+1)%3;
-            if(enter) {
-                if(!shuffle_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
-                if(selected==0)return Action::shuffle;
-                if(selected==1 && shuffle_active)return Action::arcade;
-            }
+        const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
+        if(key==SDLK_ESCAPE || key==SDLK_F1)return back();
+        if(input && current==Page::bindings && input->waiting())return Action::none;
+        if(current==Page::monitor){if(enter)return back();return Action::none;}
+        auto entries=rows();
+        if(key==SDLK_UP || key==SDLK_DOWN){
+            if(feedback)feedback->stop();notice.clear();
+            selected=(selected+int(entries.size())+(key==SDLK_UP?-1:1))%int(entries.size());
             return Action::none;
         }
-        if(practice_page) {
-            const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
-            if(key==SDLK_ESCAPE || key==SDLK_F1 || (enter && selected==3)) {
-                practice_page=false;selected=2;return Action::none;
-            }
-            if(key==SDLK_UP)selected=(selected+3)%4;
-            if(key==SDLK_DOWN)selected=(selected+1)%4;
-            if(key==SDLK_LEFT || key==SDLK_RIGHT || enter) {
-                if(!practice_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
-                if(selected==0)practice_stage=(practice_stage-1+practice_stages+(key==SDLK_LEFT?-1:1))%practice_stages+1;
-                if(enter && selected==1)return Action::practice;
-                if(enter && selected==2 && (active_practice_stage || shuffle_active))return Action::arcade;
-            }
+        const auto row=entries.at(selected);
+        if(key==SDLK_BACKSPACE && current==Page::bindings && row.id>=4 && row.id<15){input->clear(row.id-4);return Action::none;}
+        if(current==Page::music && key==SDLK_SPACE && row.id<6){
+            if(music->previewing() && music->previewing_track()==row.id)music->stop_preview();else music->preview(row.id);
             return Action::none;
         }
-        if(calibration_page && input) {
-            if(key==SDLK_ESCAPE || key==SDLK_F1 || key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER) {
-                calibration_page=false;selected=16;
-            }
-            return Action::none;
+        if(!enter && key!=SDLK_LEFT && key!=SDLK_RIGHT)return Action::none;
+        if(!row.enabled){notice=row.help;return Action::none;}
+        if(row.kind==Kind::back)return enter?back():Action::none;
+        if(row.kind==Kind::page){if(enter)visit(row.destination);return Action::none;}
+        if(row.kind==Kind::action)return enter?row.action:Action::none;
+        const int direction=key==SDLK_LEFT?-1:1;
+        if(in_video() || current==Page::diagnostics){
+            if(row.id==14){if(enter){if(choose_shader)choose_shader();else notice="SHADER PICKER UNAVAILABLE";}}
+            else adjust(row.id,direction);
+        } else if(current==Page::arcade){
+            auto changed=settings;
+            if(row.id==0)changed.lives^=1;
+            if(row.id==1)changed.difficulty=(changed.difficulty+(direction<0?3:1))%4;
+            if(row.id==2)changed.lives^=2;
+            change(changed);
+        } else if(current==Page::practice){
+            practice_stage=(practice_stage-1+practice_stages+direction)%practice_stages+1;
+        } else if(current==Page::controls || current==Page::analog || current==Page::bindings){
+            if(row.id==0)input->cycle(direction);
+            if(row.id==1)input->deadzone(direction);
+            if(row.id==2)input->sensitivity(direction);
+            if(row.id==3)input->throttle_mode();
+            if(enter && row.id>=4 && row.id<15)input->begin(row.id-4);
+            if(enter && row.id==15)input->reset();
+        } else if(current==Page::feedback || current==Page::cues || current==Page::feedback_tests){
+            if(row.id<9)feedback->adjust(row.id,direction);
+            else if(enter && row.id>=10 && row.id<=13)feedback->test(row.id-10);
+            else if(enter && row.id==14)feedback->stop();
+        } else if(current==Page::audio){
+            if(row.id<2)music->volume(row.id==1,direction);
+            else if(enter)music->defaults();
+        } else if(current==Page::music || current==Page::volumes){
+            if(row.id<6){if(current==Page::music)music->cycle(row.id,direction);else music->track_volume(row.id,direction);}
+            else if(enter){if(current==Page::music)music->originals();else {music->settings.track_volume.fill(100);music->track_volume(0,0);}}
+        } else if(current==Page::output){
+            if(row.id==0)audio->cycle_profile(direction);
+            if(row.id==1)audio->cycle_device(direction);
+            if(row.id==2)audio->cycle_resampler(direction);
+            if(enter && row.id==3)audio->speaker_test();
         }
-        if(feedback_page && feedback) {
-            const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
-            if(key==SDLK_ESCAPE || key==SDLK_F1 || (enter && selected==15)){feedback->stop();feedback_page=false;selected=17;return Action::none;}
-            if(key==SDLK_UP || key==SDLK_DOWN){feedback->stop();selected=(selected+16+(key==SDLK_UP?-1:1))%16;}
-            if(key==SDLK_LEFT || key==SDLK_RIGHT || enter){
-                if(selected<9)feedback->adjust(selected,key==SDLK_LEFT?-1:1);
-                else if(enter && selected>=10 && selected<=13)feedback->test(selected-10);
-                else if(enter && selected==14)feedback->stop();
-            }
-            return Action::none;
-        }
-        if(dips) {
-            if(key==SDLK_ESCAPE || key==SDLK_F1) {dips=false;selected=dip_row();return Action::none;}
-            if(key==SDLK_UP)selected=(selected+4)%5;
-            if(key==SDLK_DOWN)selected=(selected+1)%5;
-            const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
-            if(key==SDLK_LEFT || key==SDLK_RIGHT || enter) {
-                auto changed=settings;const unsigned delta=key==SDLK_LEFT?3:1;
-                if(selected==0)changed.lives^=1;
-                if(selected==1)changed.difficulty=(changed.difficulty+delta)%4;
-                if(selected==2)changed.lives^=2;
-                if(selected<3)change(changed);
-                if(enter && selected==3)return Action::restart;
-                if(enter && selected==4){dips=false;selected=dip_row();}
-            }
-            return Action::none;
-        }
-        if(audio_page && music) {
-            if(key==SDLK_ESCAPE || key==SDLK_F1) {
-                music->stop_preview();if(audio && audio_page==4)audio->clear();
-                if(audio_page==1){audio_page=0;selected=audio_row();}else {audio_page=1;selected=audio_page_previous;}
-                return Action::none;
-            }
-            const int rows=audio_page==1?(audio?7:6):audio_page==4?5:8;
-            if(key==SDLK_UP)selected=(selected+rows-1)%rows;
-            if(key==SDLK_DOWN)selected=(selected+1)%rows;
-            const bool enter=key==SDLK_RETURN || key==SDLK_KP_ENTER;
-            if(audio_page==2 && key==SDLK_SPACE && selected<6) {if(music->previewing() && music->previewing_track()==selected)music->stop_preview();else music->preview(selected);return Action::none;}
-            if(key==SDLK_LEFT || key==SDLK_RIGHT || enter) {
-                const auto delta=key==SDLK_LEFT?-1:1;
-                if(audio_page==1) {
-                    if(selected<2)music->volume(selected==1,delta);
-                    else if(enter && selected<4){audio_page_previous=selected;audio_page=selected==2?2:3;selected=0;music->refresh();}
-                    else if(enter && selected==4)music->defaults();
-                    else if(enter && selected==5 && audio){audio_page_previous=5;audio_page=4;selected=0;}
-                    else if(enter && selected==(audio?6:5)){audio_page=0;selected=audio_row();}
-                } else if(audio_page==4 && audio){
-                    if(selected==0)audio->cycle_profile(delta);
-                    else if(selected==1)audio->cycle_device(delta);
-                    else if(selected==2)audio->cycle_resampler(delta);
-                    else if(enter && selected==3)audio->speaker_test();
-                    else if(enter && selected==4){audio->clear();audio_page=1;selected=5;}
-                } else if(selected<6) {
-                    if(audio_page==2)music->cycle(selected,delta);else music->track_volume(selected,delta);
-                } else if(enter && selected==6) {if(audio_page==2)music->originals();else {music->settings.track_volume.fill(100);music->track_volume(0,0);}}
-                else if(enter && selected==7) {music->stop_preview();audio_page=1;selected=audio_page_previous;}
-            }
-            return Action::none;
-        }
-        if(controls && input) {
-            if(key==SDLK_ESCAPE || key==SDLK_F1) {input->cancel();controls=false;selected=1;return Action::none;}
-            if(input->waiting())return Action::none;
-            if(key==SDLK_UP)selected=(selected+control_rows()-1)%control_rows();
-            if(key==SDLK_DOWN)selected=(selected+1)%control_rows();
-            if(key==SDLK_BACKSPACE && selected>=4 && selected<15)input->clear(selected-4);
-            const bool enter=key==SDLK_RETURN || key==SDLK_SPACE || key==SDLK_KP_ENTER;
-            if(key==SDLK_LEFT || key==SDLK_RIGHT || enter) {
-                const int delta=key==SDLK_LEFT?-1:1;
-                if(selected==0)input->cycle(delta);
-                else if(selected==1)input->deadzone(delta);
-                else if(selected==2)input->sensitivity(delta);
-                else if(selected==3)input->throttle_mode();
-                else if(enter && selected<15)input->begin(selected-4);
-                else if(enter && selected==15)input->reset();
-                else if(enter && selected==16 && input->controller_selected()){calibration_page=true;}
-                else if(enter && selected==17 && feedback){feedback_page=true;selected=0;feedback->stop();}
-                else if(enter && selected==control_rows()-1) {controls=false;selected=1;}
-            }
-            return Action::none;
-        }
-        if (key==SDLK_ESCAPE || key==SDLK_F1) {
-            if (video) {video=false;selected=0;option_scroll=0;return Action::none;}
-            if (options) { options=false;selected=1;return Action::none; }
-            return Action::close;
-        }
-        const int rows=options?visible_rows():5;
-        if (key==SDLK_UP) selected=(selected+rows-1)%rows;
-        if (key==SDLK_DOWN) selected=(selected+1)%rows;
-        if (video && (key==SDLK_LEFT || key==SDLK_RIGHT)) adjust(key==SDLK_LEFT?-1:1);
-        if (key!=SDLK_RETURN && key!=SDLK_SPACE && key!=SDLK_KP_ENTER) return Action::none;
-        if (options) {
-            if(video) {
-                if(selected==15){video=false;selected=0;option_scroll=0;}
-                else if(selected==14){if(choose_shader)choose_shader();else notice="SHADER PICKER UNAVAILABLE";}
-                else adjust(1);
-            } else if(selected==option_rows()-1) {options=false;selected=1;}
-            else if(selected==0) {video=true;selected=0;option_scroll=0;}
-            else if(selected==dip_row()) {dips=true;selected=0;}
-            else if(input && selected==1) {controls=true;selected=0;}
-            else if(music && selected==audio_row()) {audio_page=1;selected=0;}
-            return Action::none;
-        }
-        if (selected==0) return initial?Action::start:Action::close;
-        if (selected==1) {options=true;selected=0;return Action::none;}
-        if (selected==2) {
-            if(!practice_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
-            practice_page=true;selected=0;return Action::none;
-        }
-        if (selected==3) {
-            if(!shuffle_allowed){notice="UNAVAILABLE WHILE RECORDING";return Action::none;}
-            shuffle_page=true;selected=0;return Action::none;
-        }
-        return Action::quit;
+        return Action::none;
     }
     Action pointer(float x,float y,bool click) {
-        if(shuffle_page) {
-            for(int i=0;i<3;++i)if(x>=24 && x<=304 && y>=86+i*26 && y<110+i*26) {
-                selected=i;return click?key(SDLK_RETURN):Action::none;
-            }
-            return Action::none;
-        }
-        if(practice_page) {
-            for(int i=0;i<4;++i)if(x>=24 && x<=304 && y>=74+i*26 && y<98+i*26) {
-                selected=i;return click?key(SDLK_RETURN):Action::none;
-            }
-            return Action::none;
-        }
-        if(calibration_page && input){if(click){calibration_page=false;selected=16;}return Action::none;}
-        if(feedback_page && feedback){const int first=selected/8*8;
-            for(int i=first;i<std::min(first+8,16);++i)if(x>=24&&x<=304&&y>=58+(i-first)*17&&y<75+(i-first)*17){if(selected!=i)feedback->stop();selected=i;return click?key(SDLK_RETURN):Action::none;}return Action::none;}
-        if(dips) {
-            for(int i=0;i<5;++i)if(x>=24 && x<=304 && y>=64+i*24 && y<88+i*24){selected=i;return click?key(SDLK_RETURN):Action::none;}
-            return Action::none;
-        }
-        if(audio_page && music) {
-            const int rows=audio_page==1?(audio?7:6):audio_page==4?5:8;
-            for(int i=0;i<rows;++i)if(x>=24 && x<=304 && y>=61+i*16 && y<77+i*16){selected=i;return click?key(SDLK_RETURN):Action::none;}
-            return Action::none;
-        }
-        if(controls && input) {
-            if(input->waiting())return Action::none;
-            const int first=selected/6*6;
-            for(int i=first;i<std::min(first+6,control_rows());++i)if(x>=24 && x<=296 && y>=64+(i-first)*20 && y<84+(i-first)*20) {
-                selected=i;return click?key(SDLK_RETURN):Action::none;
-            }
-            return Action::none;
-        }
-        const int rows=options?visible_rows():5;
-        const int first=options?option_first():0;
-        for (int i=first;i<std::min(rows,first+8);++i) {
-            const float top=options?option_top(i):100.f+i*17.f;
-            if(x>=32 && x<=296 && y>=top && y<top+(options?option_spacing():17)) {
-                selected=i;return click?key(SDLK_RETURN):Action::none;
+        if(input && current==Page::bindings && input->waiting())return Action::none;
+        if(current==Page::monitor)return click?back():Action::none;
+        const int first=first_row();
+        for(int i=first;i<std::min(row_count(),first+capacity());++i){
+            const float top=row_top(i);
+            if(x>=24 && x<=304 && y>=top-3 && y<top+spacing()-3){
+                if(selected!=i){if(feedback)feedback->stop();notice.clear();}selected=i;return click?key(SDLK_RETURN):Action::none;
             }
         }
         return Action::none;
     }
     void draw() {
-        if(shuffle_page) {
-            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
-            centered("SHUFFLE MODE",16,{255,255,255,255});
-            centered("CONTINUOUS RUN",36,{125,153,180,255});
-            centered(std::to_string(practice_stages-1)+" STAGES THEN FINALE",50,{125,153,180,255});
-            centered("NATIVE LIVES / DAMAGE / SCORE",64,{125,153,180,255});
-            const char* labels[]{shuffle_active?"NEW SHUFFLE":"START SHUFFLE","RETURN TO ARCADE","BACK"};
-            for(int i=0;i<3;++i) {
-                const bool enabled=i==2 || (shuffle_allowed && (i!=1 || shuffle_active));
-                const auto color=!enabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
-                text(labels[i],40,92+i*26,color);if(i==selected)cursor(16,92+i*26);
-            }
-            centered("F5 RESTARTS THE SAME ORDER",176,{125,153,180,255});
-            centered("NEW SHUFFLE STARTS A FRESH RUN",190,{125,153,180,255});
-            centered(shuffle_allowed?"ENTER SELECT   ESC RETURN":"UNAVAILABLE WHILE RECORDING",208,{125,153,180,255});return;
+        SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
+        if(current==Page::monitor){draw_monitor();return;}
+        const bool root=current==Page::root;
+        if(root && initial){title("AFTER",16,{240,244,255,255});title("BURNER II",51,{240,244,255,255});}
+        else {centered(page_title(),16,{255,255,255,255});centered(page_context(),36,{125,153,180,255});}
+        const auto entries=rows();
+        for(int i=first_row();i<std::min(int(entries.size()),first_row()+capacity());++i){
+            const auto& row=entries[i];const float y=row_top(i);
+            const SDL_Color color=!row.enabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
+            text(row.label,32,y,color);
+            std::string value=row.value;
+            std::transform(value.begin(),value.end(),value.begin(),[](unsigned char c){return std::toupper(c);});
+            text(value.substr(0,14),184,y,row.enabled?SDL_Color{54,184,255,255}:color);
+            if(row.kind==Kind::page)text(">",296,y,color);
+            if(i==selected)cursor(8,y);
         }
-        if(practice_page) {
-            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
-            centered("STAGE SELECT / PRACTICE",16,{255,255,255,255});
-            centered("STARTS A FRESH SESSION",36,{125,153,180,255});
-            centered("NORMAL LIVES / DAMAGE",50,{125,153,180,255});
-            const std::string labels[]{"STAGE "+std::to_string(practice_stage)+" / "+std::to_string(practice_stages),"START PRACTICE","RETURN TO ARCADE","BACK"};
-            for(int i=0;i<4;++i) {
-                const bool enabled=i==3 || (practice_allowed && (i!=2 || active_practice_stage || shuffle_active));
-                const auto color=!enabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
-                text(labels[i],40,80+i*26,color);if(i==selected)cursor(16,80+i*26);
-            }
-            centered(practice_allowed?"LEFT/RIGHT STAGE - ENTER SELECT":"UNAVAILABLE WHILE RECORDING",183,{125,153,180,255});
-            centered("F5 RETRY ACTIVE PRACTICE STAGE",197,{125,153,180,255});
-            centered("ESC RETURN - NO SESSION CHANGE",211,{125,153,180,255});return;
+        scrollbar(first_row(),int(entries.size()),capacity(),row_top(first_row()),spacing()*capacity());
+        auto help=notice.empty()?entries.at(selected).help:notice;
+        if(help.empty())help=page_help();
+        // Full device/preset names remain readable without widening the native UI.
+        auto detail=entries.at(selected).value;
+        std::transform(detail.begin(),detail.end(),detail.begin(),[](unsigned char c){return std::toupper(c);});
+        if(detail.size()>14){
+            if(detail.size()>38){detail+="    ";const auto offset=(SDL_GetTicks()/250)%detail.size();detail=detail.substr(offset)+detail.substr(0,offset);}
+            centered(detail.substr(0,38),184,{54,184,255,255});
         }
-        if(calibration_page && input){
-            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
-            centered("INPUT CALIBRATION",16,{255,255,255,255});
-            if(!input->controller_selected()){
-                centered("CONTROLLER DISCONNECTED",96,{255,255,255,255});
-                centered("ENTER OR ESC TO RETURN",208,{125,153,180,255});return;
-            }
-            auto name=input->device_name();std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return std::toupper(c);});
-            centered(name.substr(0,38),38,{54,184,255,255});
-            const auto sample=input->calibration();
-            const char* labels[]{"STICK X","STICK Y","THROTTLE"};
-            const float raw[]{sample.raw.stick_x,sample.raw.stick_y,sample.raw.throttle};
-            const float mapped[]{sample.mapped.stick_x,sample.mapped.stick_y,sample.mapped.throttle};
-            text("RAW",151,59,{135,157,181,255});text("MAPPED",216,59,{54,184,255,255});
-            for(int i=0;i<3;++i){
-                const int y=82+i*35;
-                text(labels[i],24,y,{255,255,255,255});
-                text(std::to_string(int(std::round(raw[i]*100))),151,y,{135,157,181,255});
-                text(std::to_string(int(std::round(mapped[i]*100))),224,y,{54,184,255,255});
-                SDL_SetRenderDrawColor(renderer,65,75,88,255);SDL_RenderLine(renderer,24,y+17,296,y+17);
-                SDL_SetRenderDrawColor(renderer,54,184,255,255);
-                SDL_RenderLine(renderer,160,y+17,160+int(std::round(std::clamp(mapped[i],-1.f,1.f)*136)),y+17);
-            }
-            centered("DEAD ZONE "+std::to_string(input->profile().deadzone)+"%  SENSITIVITY "+std::to_string(input->profile().sensitivity)+"%",192,{125,153,180,255});
-            centered("ENTER OR ESC TO RETURN",208,{125,153,180,255});return;
-        }
-        if(feedback_page && feedback){
-            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
-            centered("CONTROLLER FEEDBACK",16,{255,255,255,255});centered("LEFT/RIGHT CHANGE - ENTER TEST",36,{125,153,180,255});
-            const char* labels[]{"ENABLED","OUTPUT DEVICE","BODY STRENGTH","TRIGGER STRENGTH","CANNON","MISSILES","PLAYER IMPACT","AFTERBURNER","SWAP TRIGGERS","CAPABILITIES","TEST LOW BODY","TEST HIGH BODY","TEST LEFT TRIGGER","TEST RIGHT TRIGGER","STOP ALL","BACK"};
-            auto& s=feedback->settings;const int first=selected/8*8;
-            for(int i=first;i<std::min(first+8,16);++i){std::string value;
-                if(i==0)value=s.enabled?"ON":"OFF";if(i==1)value=feedback->device_name();
-                if(i==2)value=std::to_string(s.body)+"%";if(i==3)value=std::to_string(s.triggers)+"%";
-                if(i>=4&&i<=8){bool flags[]{s.cannon,s.missile,s.impact,s.boost,s.swap};value=flags[i-4]?"ON":"OFF";}
-                if(i==9)value=feedback->capabilities();
-                std::transform(value.begin(),value.end(),value.begin(),[](unsigned char c){return std::toupper(c);});
-                text(labels[i],24,58+(i-first)*17,i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255});
-                text(value.substr(0,16),176,58+(i-first)*17,{54,184,255,255});if(i==selected)cursor(8,58+(i-first)*17);
-            }
-            scrollbar(first,16,8,58,136);
-            centered(feedback->notice.substr(0,38),204,{125,153,180,255});return;
-        }
-        if(dips) {
-            SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
-            centered("DIP SWITCHES",16,{255,255,255,255});
-            centered("LEFT/RIGHT CHANGE",36,{125,153,180,255});
-            const char* labels[]{"LIVES/CREDIT","DIFFICULTY","SHIP INCREASE","APPLY & RESTART","BACK"};
-            const char* values[]{lives_labels[settings.lives%2],difficulty_labels[settings.difficulty],settings.lives>=2?"YES":"NO","",""};
-            for(int i=0;i<5;++i) {
-                text(labels[i],32,64+i*24,i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255});
-                text(values[i],184,64+i*24,{54,184,255,255});if(i==selected)cursor(8,64+i*24);
-            }
-            centered("CHANGES REQUIRE A RESTART",195,{125,153,180,255});
-            centered(notice.empty()?"RESTART ENDS THE CURRENT GAME":notice,211,{125,153,180,255});
-            return;
-        }
-        SDL_SetRenderDrawColor(renderer,0,0,0,255); SDL_RenderClear(renderer);
-        if(audio_page && music) {
-            centered(audio_page==1?"AUDIO":audio_page==2?"MUSIC REPLACEMENTS":audio_page==4?"AUDIO OUTPUT":"TRACK VOLUMES",16,{255,255,255,255});
-            centered(audio_page==2?"L/R CHANGE  SPACE PREVIEW":"LEFT/RIGHT ADJUST",36,{125,153,180,255});
-            const int rows=audio_page==1?(audio?7:6):audio_page==4?5:8;
-            for(int i=0;i<rows;++i) {
-                std::string label,value;
-                if(audio_page==1) {
-                    const char* labels[]{"MUSIC VOLUME","EFFECTS VOLUME","MUSIC TRACKS","TRACK VOLUMES","RESET VOLUMES",audio?"OUTPUT":"BACK","BACK"};label=labels[i];
-                    if(i<2)value=std::to_string(i?music->settings.effects:music->settings.music)+"%";
-                } else if(audio_page==4 && audio){
-                    const char* labels[]{"PROFILE","DEVICE","INTERPOLATION","SPEAKER TEST","BACK"};label=labels[i];
-                    if(i==0)value=audio_profiles[int(audio->settings.profile)];
-                    if(i==1){value=audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device;if(value.starts_with("OpenAL Soft on "))value.erase(0,15);}
-                    if(i==2)value=audio->settings.profile==AudioProfile::original?"NATIVE":audio->settings.resampler.empty()?"DEFAULT":audio->settings.resampler;
-                } else if(i<6) {label=music_titles[i];value=audio_page==2?music->selection(i):std::to_string(music->settings.track_volume[i])+"%";}
-                else label=i==6?(audio_page==2?"ALL ORIGINAL":"RESET VOLUMES"):"BACK";
-                std::transform(value.begin(),value.end(),value.begin(),[](unsigned char ch){return std::toupper(ch);});
-                auto color=i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
-                text(label,32,64+i*16,color);text(value.substr(0,15),176,64+i*16,{54,184,255,255});if(i==selected)cursor(8,64+i*16);
-            }
-            if((audio_page==2 && selected<6) || (audio_page==4 && audio && (selected==1 || selected==2))) {
-                auto detail=audio_page==2?music->selection(selected):selected==1?(audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device):(audio->settings.profile==AudioProfile::original?"NATIVE":audio->settings.resampler.empty()?"DEFAULT":audio->settings.resampler);
-                if(audio_page==4 && selected==1 && detail.starts_with("OpenAL Soft on "))detail.erase(0,15);
-                std::transform(detail.begin(),detail.end(),detail.begin(),[](unsigned char ch){return std::toupper(ch);});
-                if(detail.size()>38){detail+="    ";const auto offset=(SDL_GetTicks()/250)%detail.size();detail=detail.substr(offset)+detail.substr(0,offset);}
-                centered(detail.substr(0,38),188,{54,184,255,255});
-            }
-            centered((audio_page==4 && audio?audio->status().text:music->notice).substr(0,38),203,{125,153,180,255});
-            return;
-        }
-        if(controls && input) {
-            centered("CONTROLS",16,{255,255,255,255});
-            centered("UP/DOWN SCROLL - ENTER REMAP",36,{125,153,180,255});
-            const int first=selected/6*6;
-            for(int i=first;i<std::min(first+6,control_rows());++i) {
-                std::string label,value;
-                if(i==0) {label="DEVICE";value=input->device_name();}
-                else if(i==1) {label="DEAD ZONE";value=std::to_string(input->profile().deadzone)+"%";}
-                else if(i==2) {label="SENSITIVITY";value=std::to_string(input->profile().sensitivity)+"%";}
-                else if(i==3) {label="THROTTLE";value=input->raw_device()?(input->profile().full_throttle?"FULL AXIS":"HALF AXES"):"BUTTONS/TRIGGERS";}
-                else if(i<15) {label=NativeInput::labels[i-4];value=input->binding_name(i-4);}
-                else if(i==16){label="CALIBRATION";if(!input->controller_selected())value="SELECT DEVICE";}
-                else label=i==17&&feedback?"FEEDBACK":"BACK";
-                auto color=i==16&&!input->controller_selected()?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
-                std::transform(value.begin(),value.end(),value.begin(),[](unsigned char ch){return std::toupper(ch);});
-                text(label,32,64+(i-first)*20,color);text(value.substr(0,18),144,64+(i-first)*20,{54,184,255,255});
-                if(i==selected)cursor(8,64+(i-first)*20);
-            }
-            scrollbar(first,control_rows(),6,64,120);
-            centered(input->status.empty()?"BACKSPACE CLEAR - ESC RETURN":input->status.substr(0,38),195,{125,153,180,255});
-            return;
-        }
-        if(video) {
-            centered("VIDEO",16,{255,255,255,255});
-            if(selected==9)centered("EXPERIMENTAL WIDE VIEW",36,{125,153,180,255});
-            if(selected==5)centered("FLAME: FULL THROTTLE ONLY",36,{125,153,180,255});
-            if(selected==10)centered("TEXT PLANE - NATIVE PLACEMENT",36,{125,153,180,255});
-            const bool retroarch=settings.crt==Crt::retroarch;
-            if(selected>=11 && selected<=14)centered((retroarch || selected==14)?
-                (shader_status.empty()?(selected==14?"ENTER CHOOSE .SLANGP PRESET":"SELECT SHADER PRESET BELOW"):shader_status.substr(0,38)):"PRESETS RESET BOTH STRENGTHS",36,{125,153,180,255});
-            const char* labels[]{"UPSCALING","SPRITES","CLOUDS","TRAILS","EXPLOSIONS","AFTERBURNER","SCREEN","STATS","GROUND","VIEWPORT","HUD","CRT MODE","SCANLINES","RGB MASK","SHADER PRESET","BACK"};
-            const char* scales[]{"NEAREST","SMOOTH","INTEGER","PIXEL ART"};
-            const char* stats[]{"OFF","FPS","DETAILED"};
-            auto preset=settings.shader_preset.empty()?std::string("CHOOSE..."):std::filesystem::path(settings.shader_preset).filename().string();
-            std::transform(preset.begin(),preset.end(),preset.begin(),[](unsigned char ch){return std::toupper(ch);});
-            const std::string values[]{scales[static_cast<int>(settings.scaling)],sprite_filter_labels[static_cast<int>(settings.sprites)],settings.clouds?"TRANSLUCENT":"OPAQUE",settings.trails?"TRANSLUCENT":"OPAQUE",settings.explosions?"TRANSLUCENT":"OPAQUE",settings.afterburner?"TRANSLUCENT":"OPAQUE",settings.fullscreen?"FULLSCREEN":"WINDOWED",stats[static_cast<int>(settings.stats)],settings.ground?"CORRECTED":"ORIGINAL",viewport_labels[static_cast<unsigned>(settings.viewport)],hud_labels[static_cast<unsigned>(settings.hud)],crt_labels[static_cast<unsigned>(settings.crt)],retroarch?"IN PRESET":std::to_string(settings.crt_scanlines)+"%",retroarch?"IN PRESET":std::to_string(settings.crt_mask)+"%",preset.substr(0,13),""};
-            for(int i=option_first();i<std::min(visible_rows(),option_first()+8);++i) {
-                const bool disabled=retroarch && (i==12 || i==13);
-                const SDL_Color color=disabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
-                text(labels[i],32,option_top(i),color);
-                text(values[i],184,option_top(i),i==selected&&!disabled?SDL_Color{54,184,255,255}:color);
-                if(i==selected)cursor(8,option_top(i));
-            }
-            scrollbar(option_first(),visible_rows(),8,64,128);
-            centered(selected==14?"ENTER CHOOSE PRESET  ESC RETURN":"UP/DOWN SCROLL  LEFT/RIGHT CHANGE",195,{125,153,180,255});
-        } else {
-            title("AFTER",16,SDL_Color{240,244,255,255});
-            title("BURNER II",51,SDL_Color{240,244,255,255});
-            SDL_SetRenderDrawColor(renderer,45,164,236,255);
-            SDL_RenderLine(renderer,40,94,280,94);
-            if(options) {
-                for(int i=0;i<option_rows();++i) {
-                    const char* label=i==0?"VIDEO":i==option_rows()-1?"BACK":i==dip_row()?"DIP SWITCHES":input && i==1?"CONTROLS":"AUDIO";
-                    text(label,48,option_top(i),i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255});
-                    if(i==selected)cursor(27,option_top(i));
-                }
-                centered("ENTER SELECT   ESC RETURN",199,{125,153,180,255});
-            } else {
-                const char* labels[]{initial?"ENTER ARCADE":"RESUME GAME","OPTIONS","PRACTICE","SHUFFLE","QUIT"};
-                for(int i=0;i<5;++i) {
-                    const auto x=160-static_cast<int>(std::char_traits<char>::length(labels[i]))*4;
-                    const bool enabled=(i!=2 || practice_allowed) && (i!=3 || shuffle_allowed);
-                    const auto color=!enabled?SDL_Color{85,99,113,255}:i==selected?SDL_Color{255,255,255,255}:SDL_Color{135,157,181,255};
-                    text(labels[i],x,106+i*17,color);
-                    if(i==selected) cursor(x-32,106+i*17);
-                }
-                centered(initial?"INSERT COIN / START IN ARCADE":"ENTER SELECT   ESC RETURN",193,{125,153,180,255});
-            }
-        }
-        SDL_SetRenderDrawColor(renderer,41,125,190,255); SDL_RenderLine(renderer,24,210,296,210);
-        centered(notice.empty()?"AFTER BURNER II / NATIVE EDITION":notice,215,{73,152,210,255});
+        centered(help.substr(0,38),198,{125,153,180,255});
+        centered(current==Page::music?"L/R CHANGE  SPACE PREVIEW  ESC BACK":"ENTER SELECT  L/R CHANGE  ESC BACK",214,{73,152,210,255});
     }
     void draw_practice_status() {
         if(!active_practice_stage && !shuffle_active)return;
@@ -521,56 +239,199 @@ private:
         SDL_SetRenderDrawColor(renderer,41,65,90,255);SDL_RenderFillRect(renderer,&track);
         SDL_SetRenderDrawColor(renderer,54,184,255,255);SDL_RenderFillRect(renderer,&thumb);
     }
-    bool feedback_page{},calibration_page{};
-    int control_rows() const {return feedback?19:18;}
+    enum class Kind {setting,page,action,back};
+    struct Row {
+        std::string label,value,help;int id{};bool enabled=true;Kind kind=Kind::setting;
+        Page destination=Page::root;Action action=Action::none;
+    };
+    struct Location {Page page;int selected,scroll;};
+    Page current=Page::root;
+    std::vector<Location> history;
     SDL_Renderer* renderer;
     SDL_Texture* atlas{};
     int scale_count,selected{};
     const unsigned practice_stages;
-    bool opened{},options{},video{},dips{},controls{},practice_page{},shuffle_page{},was_paused{},initial{};
-    int audio_page{},audio_page_previous=2;
-    mutable int option_scroll{};
-    int audio_row()const{return 1+(input?1:0);}
-    int dip_row()const{return 1+(input?1:0)+(music?1:0);}
-    int option_rows()const{return 3+(input?1:0)+(music?1:0);}
-    int visible_rows()const{return video?16:option_rows();}
-    int option_first()const {
-        option_scroll=std::clamp(option_scroll,0,std::max(0,visible_rows()-8));
-        if(selected<option_scroll)option_scroll=selected;
-        if(selected>=option_scroll+8)option_scroll=selected-7;
-        return option_scroll;
+    bool opened{},was_paused{},initial{};
+    mutable int scroll{};
+    void visit(Page page){history.push_back({current,selected,scroll});current=page;selected=0;scroll=0;notice.clear();if(page==Page::music)music->refresh();}
+    Action back(){
+        if(current==Page::root)return Action::close;
+        if(feedback)feedback->stop();if(current==Page::output && audio)audio->clear();
+        if(current==Page::music && music)music->stop_preview();if(current==Page::bindings && input)input->cancel();
+        const auto previous=history.back();history.pop_back();current=previous.page;selected=previous.selected;scroll=previous.scroll;notice.clear();
+        return Action::none;
     }
-    float option_spacing()const{return video?16.f:20.f;}
-    float option_top(int row)const{return video?64.f+(row-option_first())*option_spacing():103.f+row*option_spacing();}
+    int capacity()const{return current==Page::root?5:current==Page::settings?8:7;}
+    float spacing()const{return current==Page::settings?16.f:17.f;}
+    int first_row()const {
+        scroll=std::clamp(scroll,0,std::max(0,row_count()-capacity()));
+        if(selected<scroll)scroll=selected;
+        if(selected>=scroll+capacity())scroll=selected-capacity()+1;
+        return scroll;
+    }
+    float row_top(int row)const{return (current==Page::root?106.f:60.f)+(row-first_row())*spacing();}
+    std::string page_title()const {
+        switch(current){
+        case Page::root:return active_practice_stage?"PAUSED - PRACTICE "+std::to_string(active_practice_stage):shuffle_active?"PAUSED - SHUFFLE":"PAUSED - ARCADE";
+        case Page::modes:return "CHANGE MODE";case Page::settings:return "SETTINGS";
+        case Page::display:return "DISPLAY";case Page::graphics:return "GRAPHICS";case Page::effects:return "TRANSPARENCY EFFECTS";
+        case Page::crt:return "CRT AND SHADERS";case Page::diagnostics:return "DIAGNOSTICS";
+        case Page::controls:return "CONTROLS";case Page::bindings:return "BUTTON BINDINGS";case Page::analog:return "ANALOG SETTINGS";
+        case Page::monitor:return "INPUT MONITOR";case Page::feedback:return "CONTROLLER FEEDBACK";
+        case Page::cues:return "FEEDBACK CUES";case Page::feedback_tests:return "FEEDBACK TESTS";
+        case Page::audio:return "AUDIO";case Page::music:return "MUSIC REPLACEMENTS";case Page::volumes:return "TRACK VOLUMES";
+        case Page::output:return "AUDIO OUTPUT";case Page::arcade:return "ARCADE SETTINGS";
+        case Page::practice:return "STAGE SELECT / PRACTICE";case Page::shuffle:return "SHUFFLE MODE";
+        }
+        return {};
+    }
+    std::string page_context()const {
+        if(current==Page::settings)return "CHOOSE A CATEGORY";
+        if(current==Page::practice)return "STARTS A FRESH SESSION";
+        if(current==Page::shuffle)return std::to_string(practice_stages-1)+" STAGES THEN FINALE";
+        if(current==Page::modes)return "STARTING A MODE ENDS THIS RUN";
+        if(current==Page::arcade)return "CHANGES REQUIRE A RESTART";
+        if(current==Page::root)return "CURRENT RUN IS PAUSED";
+        return "SETTINGS / "+page_title();
+    }
+    std::string page_help()const {
+        if(current==Page::practice)return "F5 RETRIES ACTIVE PRACTICE STAGE";
+        if(current==Page::shuffle)return "F5 RESTARTS THE SAME ORDER";
+        if(current==Page::bindings)return input->status.empty()?"ENTER REMAP - BACKSPACE CLEAR":input->status;
+        if(current==Page::feedback || current==Page::feedback_tests)return feedback->notice;
+        if(current==Page::output)return audio->status().text;
+        if(current==Page::audio || current==Page::music || current==Page::volumes)return music->notice;
+        return {};
+    }
+    std::vector<Row> rows()const {
+        std::vector<Row> result;
+        auto setting=[&](int id,std::string label,std::string value="",std::string help="",bool enabled=true){result.push_back({label,value,help,id,enabled});};
+        auto link=[&](std::string label,Page page,std::string help="",bool enabled=true){Row row{label,"",help,0,enabled,Kind::page};row.destination=page;result.push_back(row);};
+        auto action=[&](std::string label,Action action,std::string help="",bool enabled=true){Row row{label,"",help,0,enabled,Kind::action};row.action=action;result.push_back(row);};
+        auto back=[&]{result.push_back({"BACK","","",0,true,Kind::back});};
+        const auto recording="UNAVAILABLE WHILE RECORDING";
+        switch(current){
+        case Page::root:
+            action(initial?"ARCADE":"RESUME",initial?Action::start:Action::close,initial?"INSERT COIN / START IN ARCADE":"");
+            if(initial){link("PRACTICE",Page::practice,practice_allowed?"START AT A SELECTED STAGE":recording,practice_allowed);link("SHUFFLE",Page::shuffle,shuffle_allowed?"PLAY STAGES IN RANDOM ORDER":recording,shuffle_allowed);}
+            else {action("RESTART RUN",Action::restart,"ENDS AND RESTARTS THE CURRENT RUN");link("CHANGE MODE...",Page::modes,"STARTING A MODE ENDS THIS RUN");}
+            link("SETTINGS",Page::settings);action("QUIT",Action::quit);break;
+        case Page::modes:
+            action("ARCADE",Action::arcade,practice_allowed&&shuffle_allowed?"START A FRESH ARCADE SESSION":recording,practice_allowed&&shuffle_allowed);
+            link("PRACTICE",Page::practice,practice_allowed?"START AT A SELECTED STAGE":recording,practice_allowed);
+            link("SHUFFLE",Page::shuffle,shuffle_allowed?"PLAY STAGES IN RANDOM ORDER":recording,shuffle_allowed);back();break;
+        case Page::settings:
+            link("DISPLAY",Page::display);link("GRAPHICS",Page::graphics);link("CRT AND SHADERS",Page::crt);
+            if(input)link("CONTROLS",Page::controls);if(music)link("AUDIO",Page::audio);
+            link("ARCADE SETTINGS",Page::arcade,"LIVES AND DIFFICULTY REQUIRE RESTART");link("DIAGNOSTICS",Page::diagnostics);back();break;
+        case Page::display: {
+            const char* scales[]{"NEAREST","SMOOTH","INTEGER","PIXEL ART"};
+            setting(6,"DISPLAY MODE",settings.fullscreen?"FULLSCREEN":"WINDOWED");
+            setting(9,"ASPECT RATIO",viewport_labels[unsigned(settings.viewport)],"WIDE VIEWS ARE EXPERIMENTAL");
+            setting(0,"OUTPUT SCALING",scales[int(settings.scaling)]);back();break;
+        }
+        case Page::graphics:
+            setting(1,"SPRITE FILTER",sprite_filter_labels[int(settings.sprites)]);
+            setting(10,"HUD STYLE",hud_labels[unsigned(settings.hud)],"TEXT PLANE - NATIVE PLACEMENT");
+            setting(8,"GROUND",settings.ground?"CORRECTED":"ORIGINAL");link("TRANSPARENCY",Page::effects);back();break;
+        case Page::effects:
+            setting(2,"CLOUDS",settings.clouds?"TRANSLUCENT":"OPAQUE");setting(3,"TRAILS",settings.trails?"TRANSLUCENT":"OPAQUE");
+            setting(4,"EXPLOSIONS",settings.explosions?"TRANSLUCENT":"OPAQUE");setting(5,"AFTERBURNER",settings.afterburner?"TRANSLUCENT":"OPAQUE","FLAME: FULL THROTTLE ONLY");back();break;
+        case Page::crt: {
+            const bool retro=settings.crt==Crt::retroarch;
+            setting(11,"CRT MODE",crt_labels[unsigned(settings.crt)],shader_status.empty()?"PRESETS RESET BOTH STRENGTHS":shader_status);
+            setting(12,"SCANLINES",retro?"IN PRESET":std::to_string(settings.crt_scanlines)+"%",retro?"CONTROLLED BY THE SHADER PRESET":"",!retro);
+            setting(13,"RGB MASK",retro?"IN PRESET":std::to_string(settings.crt_mask)+"%",retro?"CONTROLLED BY THE SHADER PRESET":"",!retro);
+            setting(14,"SHADER PRESET",settings.shader_preset.empty()?"CHOOSE...":std::filesystem::path(settings.shader_preset).filename().string(),"ENTER CHOOSES A .SLANGP PRESET");back();break;
+        }
+        case Page::diagnostics:{const char* stats[]{"OFF","FPS","DETAILED"};setting(7,"PERFORMANCE",stats[int(settings.stats)],"F3 CYCLES THIS DURING PLAY");back();break;}
+        case Page::controls:
+            setting(0,"INPUT DEVICE",input->device_name());link("BUTTON BINDINGS",Page::bindings);link("ANALOG SETTINGS",Page::analog);
+            link("INPUT MONITOR",Page::monitor,input->controller_selected()?"LIVE RAW AND MAPPED AXES":"SELECT A CONTROLLER FIRST",input->controller_selected());
+            if(feedback)link("FEEDBACK",Page::feedback);back();break;
+        case Page::analog:
+            setting(1,"DEAD ZONE",std::to_string(input->profile().deadzone)+"%");setting(2,"SENSITIVITY",std::to_string(input->profile().sensitivity)+"%");
+            setting(3,"THROTTLE",input->raw_device()?(input->profile().full_throttle?"FULL AXIS":"HALF AXES"):"BUTTONS/TRIGGERS");back();break;
+        case Page::bindings:
+            for(int i=0;i<11;++i)setting(i+4,NativeInput::labels[i],input->binding_name(i));
+            setting(15,"RESET CONTROLS","","ENTER RESTORES DEVICE DEFAULTS");back();break;
+        case Page::feedback:
+            setting(0,"ENABLED",feedback->settings.enabled?"ON":"OFF");setting(1,"OUTPUT DEVICE",feedback->device_name());
+            setting(2,"BODY STRENGTH",std::to_string(feedback->settings.body)+"%");setting(3,"TRIGGER STRENGTH",std::to_string(feedback->settings.triggers)+"%");
+            link("CUES",Page::cues);link("TEST FEEDBACK",Page::feedback_tests,feedback->capabilities());back();break;
+        case Page::cues:{auto& s=feedback->settings;
+            const char* labels[]{"CANNON","MISSILES","PLAYER IMPACT","AFTERBURNER","SWAP TRIGGERS"};const bool flags[]{s.cannon,s.missile,s.impact,s.boost,s.swap};
+            for(int i=0;i<5;++i)setting(i+4,labels[i],flags[i]?"ON":"OFF");back();break;}
+        case Page::feedback_tests:
+            setting(10,"TEST LOW BODY");setting(11,"TEST HIGH BODY");setting(12,"TEST LEFT TRIGGER");setting(13,"TEST RIGHT TRIGGER");setting(14,"STOP ALL","",feedback->capabilities());back();break;
+        case Page::audio:
+            setting(0,"MUSIC VOLUME",std::to_string(music->settings.music)+"%");setting(1,"EFFECTS VOLUME",std::to_string(music->settings.effects)+"%");
+            if(audio)link("OUTPUT SETUP",Page::output);link("MUSIC TRACKS",Page::music);link("TRACK VOLUMES",Page::volumes);setting(4,"RESET VOLUMES");back();break;
+        case Page::music:case Page::volumes:
+            for(int i=0;i<6;++i)setting(i,music_titles[i],current==Page::music?music->selection(i):std::to_string(music->settings.track_volume[i])+"%");
+            setting(6,current==Page::music?"ALL ORIGINAL":"RESET VOLUMES");back();break;
+        case Page::output: {
+            setting(0,"PROFILE",audio_profiles[int(audio->settings.profile)]);
+            auto device=audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device;
+            if(device.starts_with("OpenAL Soft on "))device.erase(0,15);
+            setting(1,"DEVICE",device);setting(2,"INTERPOLATION",audio->settings.profile==AudioProfile::original?"NATIVE":audio->settings.resampler.empty()?"DEFAULT":audio->settings.resampler);
+            setting(3,"SPEAKER TEST");back();break;
+        }
+        case Page::arcade:
+            setting(0,"LIVES/CREDIT",lives_labels[settings.lives%2]);setting(1,"DIFFICULTY",difficulty_labels[settings.difficulty]);setting(2,"SHIP INCREASE",settings.lives>=2?"YES":"NO");
+            action("APPLY AND RESTART",Action::restart,"RESTART ENDS THE CURRENT GAME");back();break;
+        case Page::practice:
+            setting(0,"STAGE",std::to_string(practice_stage)+" / "+std::to_string(practice_stages),practice_allowed?"NORMAL LIVES / DAMAGE":recording,practice_allowed);
+            action("START PRACTICE",Action::practice,practice_allowed?"STARTS A FRESH SESSION":recording,practice_allowed);
+            action("RETURN TO ARCADE",Action::arcade,practice_allowed?"STARTS A FRESH ARCADE SESSION":recording,practice_allowed&&(active_practice_stage||shuffle_active));back();break;
+        case Page::shuffle:
+            action(shuffle_active?"NEW SHUFFLE":"START SHUFFLE",Action::shuffle,shuffle_allowed?"NEW SHUFFLE STARTS A FRESH RUN":recording,shuffle_allowed);
+            action("RETURN TO ARCADE",Action::arcade,shuffle_allowed?"STARTS A FRESH ARCADE SESSION":recording,shuffle_allowed&&shuffle_active);back();break;
+        case Page::monitor:back();break;
+        }
+        return result;
+    }
+    void draw_monitor(){
+        centered("INPUT MONITOR",16,{255,255,255,255});
+        if(!input->controller_selected()){centered("CONTROLLER DISCONNECTED",96,{255,255,255,255});centered("ENTER OR ESC TO RETURN",208,{125,153,180,255});return;}
+        auto name=input->device_name();std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return std::toupper(c);});centered(name.substr(0,38),38,{54,184,255,255});
+        const auto sample=input->calibration();const char* labels[]{"STICK X","STICK Y","THROTTLE"};
+        const float raw[]{sample.raw.stick_x,sample.raw.stick_y,sample.raw.throttle},mapped[]{sample.mapped.stick_x,sample.mapped.stick_y,sample.mapped.throttle};
+        text("RAW",151,59,{135,157,181,255});text("MAPPED",216,59,{54,184,255,255});
+        for(int i=0;i<3;++i){const int y=82+i*35;text(labels[i],24,y,{255,255,255,255});text(std::to_string(int(std::round(raw[i]*100))),151,y,{135,157,181,255});text(std::to_string(int(std::round(mapped[i]*100))),224,y,{54,184,255,255});
+            SDL_SetRenderDrawColor(renderer,65,75,88,255);SDL_RenderLine(renderer,24,y+17,296,y+17);SDL_SetRenderDrawColor(renderer,54,184,255,255);SDL_RenderLine(renderer,160,y+17,160+int(std::round(std::clamp(mapped[i],-1.f,1.f)*136)),y+17);}
+        centered("DEAD ZONE "+std::to_string(input->profile().deadzone)+"%  SENSITIVITY "+std::to_string(input->profile().sensitivity)+"%",192,{125,153,180,255});centered("ENTER OR ESC TO RETURN",208,{125,153,180,255});
+    }
     bool change(const Settings& changed) {
         if (apply && !apply(changed)) {notice="SETTING UNAVAILABLE";return false;}
         settings=changed;return true;
     }
-    void adjust(int direction) {
+    // Presentation IDs keep the existing setting adjustments independent of page order.
+    void adjust(int id,int direction) {
         auto changed=settings;
-        if(selected==0) changed.scaling=static_cast<Scaling>((static_cast<int>(settings.scaling)+scale_count+direction)%scale_count);
-        if(selected==1) changed.sprites=static_cast<SpriteFilter>((static_cast<int>(settings.sprites)+sprite_filter_count+direction)%sprite_filter_count);
-        if(selected==2) changed.clouds=!settings.clouds;
-        if(selected==3) changed.trails=!settings.trails;
-        if(selected==4) changed.explosions=!settings.explosions;
-        if(selected==5) changed.afterburner=!settings.afterburner;
-        if(selected==6) changed.fullscreen=!settings.fullscreen;
-        if(selected==7) changed.stats=static_cast<Stats>((static_cast<int>(settings.stats)+3+direction)%3);
-        if(selected==8) changed.ground=!settings.ground;
-        if(selected==9)changed.viewport=static_cast<Viewport>((static_cast<int>(settings.viewport)+viewport_count+direction)%viewport_count);
-        if(selected==10){const unsigned count=custom_hud_available?hud_count:2;
+        if(id==0) changed.scaling=static_cast<Scaling>((static_cast<int>(settings.scaling)+scale_count+direction)%scale_count);
+        if(id==1) changed.sprites=static_cast<SpriteFilter>((static_cast<int>(settings.sprites)+sprite_filter_count+direction)%sprite_filter_count);
+        if(id==2) changed.clouds=!settings.clouds;
+        if(id==3) changed.trails=!settings.trails;
+        if(id==4) changed.explosions=!settings.explosions;
+        if(id==5) changed.afterburner=!settings.afterburner;
+        if(id==6) changed.fullscreen=!settings.fullscreen;
+        if(id==7) changed.stats=static_cast<Stats>((static_cast<int>(settings.stats)+3+direction)%3);
+        if(id==8) changed.ground=!settings.ground;
+        if(id==9)changed.viewport=static_cast<Viewport>((static_cast<int>(settings.viewport)+viewport_count+direction)%viewport_count);
+        if(id==10){const unsigned count=custom_hud_available?hud_count:2;
             changed.hud=static_cast<Hud>((static_cast<unsigned>(settings.hud)+count+direction)%count);}
-        if(selected==11){
+        if(id==11){
             changed.crt=static_cast<Crt>((static_cast<int>(settings.crt)+int(crt_count)+direction)%int(crt_count));
             if(changed.crt==Crt::subtle || changed.crt==Crt::arcade){changed.crt_scanlines=changed.crt==Crt::arcade?50:25;changed.crt_mask=changed.crt==Crt::arcade?35:15;}
         }
-        if(selected==12 || selected==13){
+        if(id==12 || id==13){
             if(changed.crt==Crt::retroarch)return;
-            auto& strength=selected==12?changed.crt_scanlines:changed.crt_mask;
+            auto& strength=id==12?changed.crt_scanlines:changed.crt_mask;
             strength=unsigned(std::clamp(int(strength)+direction*5,0,100));
             if(changed.crt==Crt::off)changed.crt=Crt::subtle;
         }
-        if(selected<14) change(changed);
+        if(id<14) change(changed);
     }
     void tile(unsigned code,float x,float y,SDL_Color color,float scale=1) {
         SDL_SetTextureColorMod(atlas,color.r,color.g,color.b);

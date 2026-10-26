@@ -1,8 +1,8 @@
 # Enhancement backlog
 
-Difficulty ratings assessed **2026-10-17**; feature status updated **2026-10-23**.
+Difficulty ratings assessed **2026-10-17**; feature status updated **2026-10-25**.
 The published release is
-[macOS v0.1.0-preview.3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3)
+[macOS v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
 with the [Windows Preview 2 download](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2) retained;
 see the roadmap for platform results and outstanding validation.
 Use the [summarized roadmap](ROADMAP.md#summarized-roadmap) for priorities and
@@ -33,7 +33,7 @@ ratings apply to future work, not delivered foundations.
 
 | Area | Current implementation | Remaining acceptance / extension |
 | --- | --- | --- |
-| Menus | Arcade-font initial/pause menus; Stage Select / Practice, Shuffle, Video, Controls, Audio, DIP Switches; live bound-input calibration display, scroll hints, mouse/controller navigation, persisted preferences | Service/sound test, coin ratios, high-score persistence and additional modes |
+| Menus | Arcade-font initial/pause menus; direct Arcade/Practice/Shuffle startup, grouped Display/Graphics/CRT/Controls/Audio/Arcade Settings; live bound-input calibration display, scroll hints, mouse/controller navigation, persisted preferences | Service/sound test, coin ratios, high-score persistence and additional modes |
 | Input | Keyboard/gamepad/raw-joystick remapping, axes/buttons/hats, deadzone/sensitivity/polarity, full-axis throttle, hotplug and community mappings | Named HOTAS/retro-controller presets, response curves and physical calibration across platforms |
 | Feedback | SDL body/trigger rumble, motor tests, device selection, gains, four verified cues and lifecycle stops | See [haptics plan](HAPTICS_PLAN.md): Windows/Linux/fallback hardware, warning cues, stick forces and motion telemetry |
 | Presentation | Off/EPX/Scale3x/2xSaI/Super2xSaI/ScaleFX; GPU composition with CPU fallback; independent original-art opacity; Off/Subtle/Arcade CRT and optional macOS Metal RetroArch `.slangp` presets with an external runtime | Other shader backends, HDR, sustained performance and new assets |
@@ -41,7 +41,7 @@ ratings apply to future work, not delivered foundations.
 | Widescreen | 16:9 and 16:10 previews with wider road/tiles/sprites, detached scenery, horizon/water extension, native request/depth-drop recovery and dynamic presentation storage | Broader scene/performance/platform acceptance for both widths, ultrawide and optional HUD anchoring; [plan](WIDESCREEN_PLAN.md) |
 | Music | Six WAV/FLAC replacements, preview/fallback, separate gains and live active-song changes; all six native song contexts/fades observed | Replacement-file natural fade and listening checks; [plan](MUSIC_REPLACEMENT_PLAN.md) |
 | Spatial output | OpenAL Soft chip-rate interpolation, headphone HRTF, 2.1/5.1 modes, direct stereo music, reviewed routing, stall recovery and original Deluxe stereo wiring audit | Revised-cue listening, physical surround/unplug, other platforms and end-to-end latency; ABII cabinet-revision evidence; [plan](SPATIAL_AUDIO_PLAN.md) |
-| Distribution | ROM-free Apple Silicon/macOS 26+ Preview 3 and Windows x64 Preview 2 ZIPs, bundled libraries/sources/notices and checksums | Windows feature refresh, broader OS/architecture packages and signing/notarization |
+| Distribution | ROM-free Apple Silicon/macOS 26+ Preview 5 and Windows x64 Preview 2 ZIPs, bundled libraries/sources/notices and checksums | Windows feature refresh, broader OS/architecture packages and signing/notarization |
 
 The 2026-10-22 macOS checkpoint passed the complete `required` and supplemental
 `full` gates, including the local spatial-audio and HUD changes. The later CRT

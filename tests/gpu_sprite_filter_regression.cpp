@@ -2,19 +2,39 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#ifdef AB2_NATIVE_METAL_SPRITES
+#include "frontend/native_metal_sprite_filter.hpp"
+#else
 #include "frontend/gpu_sprite_filter.hpp"
+#endif
 int main(int argc,char** argv)try {
     if(argc>2)throw std::runtime_error("Usage: gpu_sprite_filter_regression [native-plane-fixture]");
     if(!SDL_Init(SDL_INIT_VIDEO))throw std::runtime_error(SDL_GetError());
+#ifdef AB2_NATIVE_METAL_SPRITES
+    SDL_GPUDevice* device=nullptr;
+    auto* window=SDL_CreateWindow("Native Metal sprite regression",64,64,SDL_WINDOW_HIDDEN);
+    if(!window)throw std::runtime_error(SDL_GetError());
+    auto* renderer=SDL_CreateRenderer(window,"metal");if(!renderer)throw std::runtime_error(SDL_GetError());
+#else
     auto* device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,true,nullptr);
     if(!device)throw std::runtime_error(SDL_GetError());
     auto* renderer=SDL_CreateGPURenderer(device,nullptr);if(!renderer)throw std::runtime_error(SDL_GetError());
+#endif
     if(argc==2)std::cout<<"Native fixture replay: "<<argv[1]<<'\n';
-    std::cout<<"GPU scaler backend: "<<SDL_GetGPUDeviceDriver(device)<<'\n';
+    std::cout<<"GPU scaler backend: "<<(device?SDL_GetGPUDeviceDriver(device):"native Metal")<<'\n';
     unsigned compared=0;uint64_t pixels=0;
     {
-        Frontend::GPUSpriteScaler gpu(renderer);Frontend::SpriteScaler cpu;
-        for(const auto [w,h]:{std::pair{1u,1u},std::pair{2u,3u},std::pair{7u,9u},std::pair{32u,24u},std::pair{320u,224u}}) {
+#ifdef AB2_NATIVE_METAL_SPRITES
+        Frontend::NativeMetalSpriteScaler gpu(renderer);
+#else
+        Frontend::GPUSpriteScaler gpu(renderer);
+#endif
+        Frontend::SpriteScaler cpu;
+        std::vector dimensions{std::pair{1u,1u},std::pair{2u,3u},std::pair{7u,9u},std::pair{32u,24u},std::pair{320u,224u}};
+#ifdef AB2_NATIVE_METAL_SPRITES
+        dimensions.emplace_back(358u,224u);dimensions.emplace_back(398u,224u);
+#endif
+        for(const auto [w,h]:dimensions) {
             std::vector<uint32_t> sprites(w*h),background(w*h);std::vector<uint8_t> protection(w*h);
             auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,w*3,h*3);
             if(!target)throw std::runtime_error(SDL_GetError());
@@ -76,8 +96,34 @@ int main(int argc,char** argv)try {
             }
             SDL_DestroyTexture(target);
         }
+#ifdef AB2_NATIVE_METAL_SPRITES
+        // Queue SDL reads across same-size output reuse and resource resize.
+        // There is deliberately no readback fence between these three frames.
+        auto* queued=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,12,4);
+        if(!queued || !SDL_SetRenderTarget(renderer,queued))throw std::runtime_error(SDL_GetError());
+        constexpr uint32_t colors[]{0xffff0000u,0xff0000ffu,0xff00ff00u};
+        for(unsigned frame=0;frame<3;++frame) {
+            const unsigned width=frame==2?2:4;
+            const std::vector<uint32_t> background(width*4,colors[frame]),sprites(width*4,0);
+            auto* output=gpu.compose(background,sprites,width,4,Frontend::SpriteFilter::none);
+            const SDL_FRect destination{float(frame*4),0,4,4};
+            if(!SDL_RenderTexture(renderer,output,nullptr,&destination))throw std::runtime_error(SDL_GetError());
+        }
+        auto* read=SDL_RenderReadPixels(renderer,nullptr);if(!read)throw std::runtime_error(SDL_GetError());
+        auto* argb=SDL_ConvertSurface(read,SDL_PIXELFORMAT_ARGB8888);SDL_DestroySurface(read);
+        if(!argb)throw std::runtime_error(SDL_GetError());
+        for(unsigned y=0;y<4;++y)for(unsigned x=0;x<12;++x)
+            if(reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(argb->pixels)+y*argb->pitch)[x]!=colors[x/4])
+                throw std::runtime_error("Native Metal queued texture reuse/resize changed prior output");
+        SDL_DestroySurface(argb);SDL_SetRenderTarget(renderer,nullptr);SDL_DestroyTexture(queued);
+        std::cout<<"Native Metal queued reads: output reuse and resize preserve all three frames, no intervening readback.\n";
+#endif
     }
-    SDL_DestroyRenderer(renderer);SDL_DestroyGPUDevice(device);SDL_Quit();
+    SDL_DestroyRenderer(renderer);if(device)SDL_DestroyGPUDevice(device);
+#ifdef AB2_NATIVE_METAL_SPRITES
+    SDL_DestroyWindow(window);
+#endif
+    SDL_Quit();
     std::cout<<"GPU sprite filters: "<<compared<<" of "<<compared<<" identical, "<<pixels<<" pixels, 0 skipped.\n";
     return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';SDL_Quit();return 1;}

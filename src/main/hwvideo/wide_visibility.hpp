@@ -2,6 +2,9 @@
 #include "hwvideo/wide_projection.hpp"
 #include "hwvideo/scene_snapshot.hpp"
 #include "hwvideo/wide_scenery.hpp"
+#include "hwvideo/wide_explosion.hpp"
+#include "hwvideo/wide_hit_effect.hpp"
+#include "hwvideo/wide_trail_effect.hpp"
 #include "hwvideo/wide_request.hpp"
 #include "engine/xboard_game.hpp"
 #include <map>
@@ -13,7 +16,7 @@ namespace Presentation {
 class WideVisibility {
     using Host=XBoardGame::Host;
     using Request=std::array<uint8_t,16>;
-    struct Ghost {uint32_t object{};std::array<uint8_t,64> data{};unsigned size{};bool fresh=true;};
+    struct Ghost {uint32_t object{};std::array<uint8_t,64> data{};unsigned size{},effect{},trail{};bool fresh=true,explosion=false,visible=true;};
     using Extra=std::pair<Request,unsigned>;
     struct Submission {Request request;unsigned index;bool rejected;uint32_t object;std::array<uint8_t,64> data;};
     struct Bank {std::vector<WideDescriptor> full,half;std::vector<Extra> extras;std::vector<Submission> submitted;};
@@ -61,14 +64,23 @@ class WideVisibility {
         const auto o=MainBus::memory_offset(addr);
         if(o!=MainBus::UNMAPPED&&o+count<=0x10000)std::copy_n(h.memory.bytes.begin()+o,count,scratch_memory.bytes.begin()+o);
     }
-    void recover(const Host& h,const Host::Entry& e){
+    void recover(const Host& h,const Host::Entry& e,bool explosion=false,unsigned effect=0){
         sync_scene(h);
         auto regs=e.state.registers;const auto p=regs.a[5];
-        const int half=int16_t(read(h,0x2a3800+unsigned(region(h,p+20,1)[0])*4))>>1;
+        // $92A4/$8F98 use D7/16, unlike $8B94's scaled sprite-width table.
+        const int half=(explosion||effect) ? int16_t(regs.d[7])>>4 : int16_t(read(h,0x2a3800+unsigned(region(h,p+20,1)[0])*4))>>1;
         if(int16_t(read(h,p+4))>half+160+int(margin)||int16_t(read(h,p+4))<=-half-160-int(margin))return;
         restore_scratch(h,p,64);restore_scratch(h,0x29c080,0x100);
-        if(!SceneryProjection::finish(scratch_bus,regs))return;
-        Ghost g;g.object=p;g.size=unsigned(half*2);
+        Ghost g;g.object=p;g.size=unsigned(half*2);g.explosion=explosion;g.effect=effect;
+        if(effect){
+            const auto state=HitEffectProjection::finish(scratch_bus,regs);
+            if(state==HitEffectProjection::State::retired)return;
+            g.visible=state==HitEffectProjection::State::visible;
+        }else if(explosion){
+            const auto state=ExplosionProjection::finish(scratch_bus,regs);
+            if(state==ExplosionProjection::State::retired)return;
+            g.visible=state==ExplosionProjection::State::visible;
+        }else if(!SceneryProjection::finish(scratch_bus,regs))return;
         for(unsigned i=0;i<64;++i)g.data[i]=scratch_bus.read8(p+i);
         ghosts.emplace(++serial,g);
     }
@@ -102,6 +114,33 @@ class WideVisibility {
         }
         water_history=std::move(next);
     }
+    void recover_trail(const Host& h,const Host::Entry& e,unsigned family){
+        sync_scene(h);auto regs=e.state.registers;const auto p=regs.a[5];
+        const int x=int16_t(read(h,p+4));
+        if(family==TrailEffectProjection::enemy){
+            // $14F92..$14FA8: preserve word NEG wrap and the inclusive >= edge.
+            uint16_t absolute=uint16_t(x);if(int16_t(absolute)<0)absolute=uint16_t(-absolute);
+            const int radius=(region(h,p+1,1)[0]>>1)+180+int(margin);
+            if(int16_t(absolute)>=radius)return;
+        }else{
+            const int half=family==TrailEffectProjection::player?region(h,p+1,1)[0]>>2:(read(h,p)&0x3ff)>>2;
+            if(x>half+160+int(margin)||x<=-half-160-int(margin))return;
+        }
+        restore_scratch(h,p,64);restore_scratch(h,0x29c080,0x380);restore_scratch(h,0xffff9100,0x140);
+        const auto state=TrailEffectProjection::finish(scratch_bus,regs,family);
+        if(state==TrailEffectProjection::State::retired)return;
+        Ghost g;g.object=p;g.trail=family;g.visible=state==TrailEffectProjection::State::visible;
+        for(unsigned n=0;n<64;++n)g.data[n]=scratch_bus.read8(p+n);
+        ghosts.emplace(++serial,g);
+    }
+    void reset_trail_pool(){
+        // $10310 clears precisely the ROM-defined emission pool. Copies must
+        // not outlive that non-horizontal lifecycle boundary, even after reuse.
+        const auto main=std::span(rom.maincpu.rom,rom.maincpu.length);
+        const auto base=MainBus::memory_offset(longword(main,0x1c5d0));const auto count=word(main,0x1c5d6);
+        std::erase_if(ghosts,[&](const auto& item){const auto& g=item.second;const auto offset=MainBus::memory_offset(g.object);
+            return g.trail&&offset>=base&&offset<base+count*64u;});
+    }
     void publish(const Host& h){
         sync_scene(h);
         auto& out=pending[readlong(h,0x2a3c04)&0xfffff];out.clear();
@@ -116,12 +155,28 @@ class WideVisibility {
             // storage. Keep the current native pair when advancing the copy.
             bus.write16(width_addr,g.size);
             OMainObjects::Registers regs;regs.a[5]=g.object;regs.a[6]=0x2e4000;
-            if(!g.fresh&&!SceneryProjection::update(bus,regs,margin)){
+            bool alive=true;
+            if(!g.fresh){
+                if(g.trail){
+                    const auto state=TrailEffectProjection::update(bus,regs,margin,g.trail);
+                    alive=state!=TrailEffectProjection::State::retired;
+                    g.visible=state==TrailEffectProjection::State::visible;
+                }else if(g.effect){
+                    const auto state=HitEffectProjection::update(bus,regs,margin,g.effect==1);
+                    alive=state!=HitEffectProjection::State::retired;
+                    g.visible=state==HitEffectProjection::State::visible;
+                }else if(g.explosion){
+                    const auto state=ExplosionProjection::update(bus,regs,margin);
+                    alive=state!=ExplosionProjection::State::retired;
+                    g.visible=state==ExplosionProjection::State::visible;
+                }else alive=SceneryProjection::update(bus,regs,margin);
+            }
+            if(!alive){
                 restore_scratch(h,g.object,64);restore_scratch(h,width_addr,2);
                 i=ghosts.erase(i);continue;
             }
             g.fresh=false;
-            auto r=request(bus,g.object);out.push_back({r,2});
+            auto r=request(bus,g.object);if(g.visible)out.push_back({r,g.trail?9u+g.trail:g.effect?7u+g.effect:g.explosion?7u:2u});
             auto projected=projector.project(r,std::span(scratch_memory.bytes).subspan(MainBus::SHARED,0x8000),{rom.subcpu.rom,rom.subcpu.length},margin);g.size=projected.width;
             for(unsigned n=0;n<64;++n)g.data[n]=bus.read8(g.object+n);
             restore_scratch(h,g.object,64);restore_scratch(h,width_addr,2);
@@ -218,6 +273,28 @@ public:
         if(pc==0xb628)submit(h,*p.entry);
         if(pc==0x8bb0||pc==0x8bb8){const auto sr=p.entry->state.sr;const bool less=bool(sr&8)!=bool(sr&2),equal=sr&4;
             if(pc==0x8bb0?(!equal&&!less):(equal||less))recover(h,*p.entry);}
+        // Observe only a taken horizontal retirement, before $9556 frees the
+        // native record. Vertical/depth retirement and gameplay stay native.
+        if(pc==0x92ae||pc==0x92b6){const auto sr=p.entry->state.sr;const bool less=bool(sr&8)!=bool(sr&2),equal=sr&4;
+            if(pc==0x92ae?(!equal&&!less):(equal||less))recover(h,*p.entry,true);}
+        if(pc==0x8fa2||pc==0x8faa){const auto sr=p.entry->state.sr;const bool less=bool(sr&8)!=bool(sr&2),equal=sr&4;
+            if(pc==0x8fa2?(!equal&&!less):(equal||less)){
+                // Both controllers join this cull; preserve the live handler's
+                // ground/air identity before native $9556 releases the slot.
+                const auto handler=readlong(h,p.entry->state.registers.a[5]+16);
+                if(handler==0x8e18||handler==0x8ece)recover(h,*p.entry,false,handler==0x8e18?1:2);
+            }}
+        if(pc==0xabca||pc==0xabd2||pc==0xff64||pc==0xff6c){
+            const auto sr=p.entry->state.sr;const bool less=bool(sr&8)!=bool(sr&2),equal=sr&4;
+            const bool right=pc==0xabca||pc==0xff64;
+            if(right?(!equal&&!less):(equal||less)){
+                const auto handler=readlong(h,p.entry->state.registers.a[5]+16);
+                if((pc==0xabca||pc==0xabd2)&&handler==0xaaee)recover_trail(h,*p.entry,TrailEffectProjection::player);
+                if((pc==0xff64||pc==0xff6c)&&(handler==0xfcb4||handler==0xfdfa))recover_trail(h,*p.entry,TrailEffectProjection::damage);
+            }}
+        if(pc==0x14fa8){const auto sr=p.entry->state.sr;
+            if(bool(sr&8)==bool(sr&2)&&readlong(h,p.entry->state.registers.a[5]+16)==0x14ee2)recover_trail(h,*p.entry,TrailEffectProjection::enemy);}
+        if(pc==0x10310)reset_trail_pool();
         if(pc==0xb684)publish(h);
         if(pc==0x10fba)extend_horizon(h,*p.entry);
         if(pc==0xb7c2||pc==0xb7d2){selected=readlong(h,0x2a3c14)&0xfffff;interpolated=pc==0xb7d2;}

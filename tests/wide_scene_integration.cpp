@@ -12,18 +12,18 @@ void require(bool c,const char* m){if(!c)throw std::runtime_error(m);}
 // Explicit presentation fixtures: isolated host memory, no CPU progression.
 // They prove retention across original culling and native object-slot reuse.
 static void visibility_fixtures(){
-    XBoardGame fixture(roms);auto& h=fixture.board();auto& b=h.bus;Presentation::WideVisibility visibility(roms);
+    XBoardGame fixture(roms);auto& h=fixture.board();auto& b=h.bus;Presentation::WideVisibility visibility(roms);auto* observer=&visibility;
     const uint32_t object=0x3fc400;OMainSprites sprites;sprites.initialize(b);
     b.write16(0x29c09c,16);b.write16(0x29c060,0);b.write16(0x29c08e,200);b.write16(0x29c092,127);
     auto event=[&](unsigned cpu,uint32_t pc,OMainObjects::Registers r={},uint16_t sr=0){
         XBoardGame::Host::Entry entry;entry.state.registers=r;entry.state.pc=pc;entry.state.sr=sr;
         XBoardGame::Host::Phase phase;phase.cpu=cpu;phase.pc=pc;phase.entry=&entry;
-        const auto before=h.memory.bytes;const auto time=h.time();visibility.observe(phase,h);
+        const auto before=h.memory.bytes;const auto time=h.time();observer->observe(phase,h);
         require(h.memory.bytes==before&&h.time()==time,"wide observer changed native memory/time");
     };
     auto latch=[&]{b.write32(0x2a3c08,b.read32(0x2a3c04));b.write32(0x2a3c14,b.read32(0x2a3c18));
         event(1,0x648);event(0,0xb7c2);h.memory.sprite_buffer.fill(0);h.memory.sprite_buffer[0]=0x80;
-        XBoardGame::Host::Phase phase;phase.write=true;phase.address=0x110000;const auto before=h.memory.bytes;visibility.observe(phase,h);
+        XBoardGame::Host::Phase phase;phase.write=true;phase.address=0x110000;const auto before=h.memory.bytes;observer->observe(phase,h);
         require(h.memory.bytes==before,"wide observer changed native memory/time");
     };
     event(0,0xb684); // establish the flight/stage generation before a cull
@@ -57,6 +57,137 @@ static void visibility_fixtures(){
         require(visibility.descriptors().empty(),"retained scenery crossed a stage change");b.write16(0x29c060,0);
     }
     visibility.reset();sprites.initialize(b);b.write16(0x29c09c,16);b.write32(0x29c194,0);
+    // World explosions have their own cull/animation controller ($91C0),
+    // independent of the ordinary scenery width table. Both supported margins
+    // retain either edge through native slot reuse, hide/reappear vertically,
+    // and honor native depth/vertical retirement and scene reset.
+    for(unsigned margin:{19u,39u})for(int side:{-1,1})for(unsigned retirement=0;retirement<4;++retirement){
+        Presentation::WideVisibility explosions(roms,margin);observer=&explosions;
+        sprites.initialize(b);b.write16(0x29c09c,16);b.write16(0x29c060,0);
+        b.write16(0x29c08e,side*192);b.write16(0x29c08c,0);b.write16(0x29c0aa,0);
+        b.write16(0x29c0c6,0);b.write8(0xffff91d0,0);
+        for(unsigned n=0;n<64;++n)b.write8(object+n,0);
+        b.write16(object,0xc07f);b.write8(object+3,0xe8);b.write16(object+4,side*192);
+        b.write16(object+36,0x400);b.write16(object+48,10);b.write16(object+50,256);
+        b.write32(object+12,b.read32(0x11000));b.write32(object+54,0x29c190);
+        b.write32(0x29c190,0);b.write32(0x29c194,0);
+        auto explosion=r;explosion.d[7]=511;
+        event(0,0xb684);event(0,side>0?0x92ae:0x92b6,explosion,side>0?0:8);
+        event(0,0xb684);latch();
+        auto visible=[&]{return std::any_of(explosions.descriptors().begin(),explosions.descriptors().end(),[](const auto& d){return d.kind==7;});};
+        require(visible(),"world explosion deleted at native edge");
+        const auto initial=explosions.descriptors();
+        for(unsigned n=0;n<64;++n)b.write8(object+n,0xff);
+        b.write8(0xffff91d0,1);event(0,0xb684);latch();
+        require(visible()&&explosions.descriptors().front().bytes==initial.front().bytes,"paused explosion changed after slot reuse");
+        b.write8(0xffff91d0,0);b.write16(0x29c08c,300);event(0,0xb684);latch();
+        require(!visible(),"above-screen explosion published");
+        b.write16(0x29c08c,0);event(0,0xb684);latch();
+        require(visible(),"hidden explosion retired instead of reappearing");
+        if(retirement==0)b.write16(0x29c08e,side*500);
+        if(retirement==1)b.write16(0x29c08c,-400);
+        if(retirement==2)b.write16(0x29c0aa,0x800);
+        if(retirement==3)b.write16(0x29c060,1);
+        event(0,0xb684);latch();
+        require(!visible(),"explosion ignored edge/depth/vertical/scene retirement");
+        b.write16(0x29c08e,side*192);b.write16(0x29c08c,0);b.write16(0x29c0aa,0);b.write16(0x29c060,0);
+        event(0,0xb684);latch();
+        require(!visible(),"retired explosion reappeared");
+    }
+    // Ground/air hit-effect families share $8FA2/$8FAA but retain their
+    // distinct $8E18/$8ECE update. A zero margin must recover neither family.
+    for(unsigned family:{1u,2u})for(unsigned margin:{0u,19u,39u})for(int side:{-1,1})for(unsigned retirement=0;retirement<4;++retirement){
+        Presentation::WideVisibility effects(roms,margin);observer=&effects;
+        sprites.initialize(b);b.write16(0x29c09c,16);b.write16(0x29c060,0);
+        b.write16(0x29c08e,side*192);b.write16(0x29c08c,0);b.write16(0x29c0aa,0);
+        b.write16(0x29c0c6,0);b.write8(0xffff91d0,0);b.write16(0x29c33c,1);b.write16(0x29c33e,4);
+        b.write16(0x29c0a4,0);b.write8(0x29c0a0,0);
+        for(unsigned n=0;n<64;++n)b.write8(object+n,0);
+        const auto animation=b.read32(0x345c8);const auto count=b.read16(animation);
+        b.write16(object,0xc07f);b.write16(object+4,side*192);b.write16(object+36,0x400);b.write16(object+38,4);
+        b.write32(object+16,family==1?0x8e18:0x8ece);b.write8(object+46,count);b.write8(object+47,count);
+        b.write32(object+60,animation+2);b.write32(object+54,0x29c190);
+        b.write32(0x29c190,0);b.write32(0x29c194,0);
+        auto effect=r;effect.d[7]=511;
+        event(0,0xb684);
+        // The untaken native branch must never create an extra object.
+        event(0,side>0?0x8fa2:0x8faa,effect,side>0?4:0);event(0,0xb684);latch();
+        require(effects.descriptors().empty(),"hit effect recovered an untaken cull");
+        event(0,side>0?0x8fa2:0x8faa,effect,side>0?0:8);event(0,0xb684);latch();
+        auto find=[&]{return std::find_if(effects.descriptors().begin(),effects.descriptors().end(),[&](const auto& d){return d.kind==7+family;});};
+        auto visible=[&]{return find()!=effects.descriptors().end();};
+        if(!margin){require(!visible(),"hit effect changed Original visibility");continue;}
+        require(visible(),"hit effect deleted at native edge");const auto initial=*find();
+        for(unsigned n=0;n<64;++n)b.write8(object+n,0xff);
+        b.write8(0xffff91d0,1);event(0,0xb684);latch();
+        require(visible()&&find()->bytes==initial.bytes,"paused hit effect changed after slot reuse");
+        b.write8(0xffff91d0,0);event(0,0xb684);latch();
+        require(visible(),"hit effect lost after slot reuse");
+        require(family==1?find()->x>initial.x:find()->x==initial.x,"hit-effect ground/air drift ownership differs");
+        b.write16(0x29c08c,300);event(0,0xb684);latch();require(!visible(),"above-screen hit effect published");
+        b.write16(0x29c08c,0);event(0,0xb684);latch();require(visible(),"hidden hit effect retired instead of reappearing");
+        if(retirement==0)b.write16(0x29c08e,side*500);
+        if(retirement==1)b.write16(0x29c08c,-400);
+        if(retirement==2)b.write16(0x29c0aa,0x800);
+        if(retirement==3)b.write16(0x29c060,1);
+        event(0,0xb684);latch();require(!visible(),"hit effect ignored edge/depth/vertical/scene retirement");
+        b.write16(0x29c08e,side*192);b.write16(0x29c08c,0);b.write16(0x29c0aa,0);b.write16(0x29c060,0);
+        event(0,0xb684);latch();require(!visible(),"retired hit effect reappeared");
+    }
+    // Three new families, including both damage animation modes. Use a real
+    // emission-pool address so $10310's ROM-defined reset range is exercised.
+    for(unsigned variant=1;variant<=4;++variant)for(unsigned margin:{0u,19u,39u})for(int side:{-1,1})for(unsigned retirement=0;retirement<6;++retirement){
+        const unsigned family=variant<3?variant:3;const uint32_t trail_object=b.read32(0x1c5d0);
+        Presentation::WideVisibility trails(roms,margin);observer=&trails;sprites.initialize(b);
+        b.write16(0x29c09c,16);b.write16(0x29c060,0);b.write8(0x29c200,0x1e);b.write8(0xffff91d0,0);
+        b.write16(0xffff9124,0);b.write16(0x29c080,0);b.write16(0x29c088,0);b.write8(0x29c09f,0);
+        b.write16(0x29c090,0);b.write16(0x29c092,127);b.write16(0x29c0aa,0);b.write16(0x29c0ac,0);
+        b.write16(0x29c0c4,0);b.write16(0x29c0c6,0);
+        const int position=side*(family==1?192:family==2?219:176);b.write16(0x29c08a,position);
+        for(unsigned n=0;n<64;++n)b.write8(trail_object+n,0);
+        b.write16(trail_object,0x8000|(family==1?127:family==2?78:63));b.write8(trail_object+2,127);
+        b.write16(trail_object+4,position);b.write16(trail_object+6,127);b.write16(trail_object+8,position);b.write16(trail_object+10,127);
+        b.write16(trail_object+36,0x400);b.write16(trail_object+50,8);
+        b.write16(trail_object+44,family==2?15:32);if(family==2)b.write16(trail_object+30,32);
+        b.write32(trail_object+16,family==1?0xaaee:family==2?0x14ee2:variant==3?0xfcb4:0xfdfa);
+        b.write32(trail_object+12,b.read32(0x28c64));
+        if(variant==4){b.write32(trail_object+26,0x2bc34);b.write16(trail_object+30,0);b.write16(trail_object+32,1000);
+            b.write16(trail_object+34,b.read8(0x2bc39));b.write32(trail_object+12,b.read32(0x2bc34));}
+        auto tail=r;tail.a[5]=trail_object;tail.d[7]=family==2?511:32;tail.d[2]=64;
+        const auto pc=family==1?(side>0?0xabca:0xabd2):family==2?0x14fa8:(side>0?0xff64:0xff6c);
+        event(0,0xb684);event(0,pc,tail,family==2?8:side>0?4:0);event(0,0xb684);latch();
+        require(trails.descriptors().empty(),"trail recovered an untaken horizontal branch");
+        event(0,pc,tail,family==2?4:side>0?0:8);event(0,0xb684);latch();
+        auto find=[&]{return std::find_if(trails.descriptors().begin(),trails.descriptors().end(),[&](const auto& d){return d.kind==9+family;});};
+        auto visible=[&]{return find()!=trails.descriptors().end();};
+        if(!margin){require(!visible(),"trail retention changed Original visibility");continue;}
+        require(visible(),family==1?"player missile trail lost at native edge":family==2?"enemy missile trail lost at native edge":"damage emission lost at native edge");
+        const auto initial=*find();for(unsigned n=0;n<64;++n)b.write8(trail_object+n,0xff);
+        b.write8(0xffff91d0,6);event(0,0xb684);latch();
+        require(visible()&&find()->bytes==initial.bytes,"fixed/draw-only trail changed after native slot reuse");
+        b.write8(0xffff91d0,0);event(0,0xb684);latch();require(visible(),"trail lost after native slot reuse");
+        b.write16(0x29c088,500);event(0,0xb684);latch();require(!visible(),"above-screen trail visible");
+        b.write16(0x29c088,0);event(0,0xb684);latch();require(visible(),"hidden trail retired instead of reappearing");
+        bool survives=false;
+        if(retirement==0)b.write16(0x29c08a,side*600);
+        if(retirement==1){b.write16(0x29c088,-500);survives=family==2;}
+        if(retirement==2){b.write16(0x29c0aa,0x4000);b.write16(0x29c0ac,0x800);}
+        if(retirement==3)b.write16(0x29c060,1);
+        if(retirement==4){
+            if(family==2){
+                b.write16(0x29c08a,0);
+                for(unsigned age=19;age<=36;++age){event(0,0xb684);latch();require(age<36?visible():!visible(),"enemy trail did not honor its 36-tick lifetime");}
+            }else{b.write8(0x29c200,0);survives=family==1;}
+        }else if(retirement==5){event(0,0x10310);}
+        if(!(retirement==4&&family==2)){event(0,0xb684);latch();require(survives||!visible(),retirement==5?"trail survived native pool reset":"trail ignored native retirement");}
+        b.write16(0x29c08a,position);b.write16(0x29c088,0);b.write16(0x29c0aa,0);b.write16(0x29c0ac,0);b.write16(0x29c060,0);b.write8(0x29c200,0x1e);
+        event(0,0xb684);latch();require(survives?visible():!visible(),"trail used another family's lifetime rules");
+        event(0,0x10310);event(0,0xb684);latch();require(!visible(),"trail survived native pool reset");
+    }
+    observer=&visibility;visibility.reset();sprites.initialize(b);
+    b.write16(0x29c08c,0);b.write16(0x29c0aa,0);b.write8(0xffff91d0,0);
+    b.write16(0x29c088,0);b.write16(0x29c08a,0);b.write16(0x29c0ac,0);
+    b.write16(0x29c33c,0);b.write16(0x29c33e,0);
     // The ROM's finite water field needs adjacent world columns during takeoff.
     for(unsigned mode:{1u,15u,16u}){
         visibility.reset();sprites.initialize(b);b.write16(0x29c09c,mode);b.write16(0x29c08e,0);
@@ -91,11 +222,11 @@ static void visibility_fixtures(){
         r.d[0]+=8u<<16;b.write16(0x29c09c,mode);event(0,0x10fba,r);event(0,0xb628,r);event(0,0xb684);latch();
         require(std::any_of(visibility.descriptors().begin(),visibility.descriptors().end(),[](const auto& d){return d.kind==3;}),"non-flight published horizon missing");
         const auto first_x=std::find_if(visibility.descriptors().begin(),visibility.descriptors().end(),[](const auto& d){return d.kind==3;})->x;
-        event(0,0xb7d2);{XBoardGame::Host::Phase phase;phase.write=true;phase.address=0x110000;visibility.observe(phase,h);}
+        event(0,0xb7d2);{XBoardGame::Host::Phase phase;phase.write=true;phase.address=0x110000;observer->observe(phase,h);}
         require(std::find_if(visibility.descriptors().begin(),visibility.descriptors().end(),[](const auto& d){return d.kind==3;})->x==first_x,"horizon interpolation crossed a scene change");
         r.d[0]+=8u<<16;event(0,0x10fba,r);event(0,0xb628,r);event(0,0xb684);latch();
         const auto full_x=std::find_if(visibility.descriptors().begin(),visibility.descriptors().end(),[](const auto& d){return d.kind==3;})->x;
-        event(0,0xb7d2);{XBoardGame::Host::Phase phase;phase.write=true;phase.address=0x110000;visibility.observe(phase,h);}
+        event(0,0xb7d2);{XBoardGame::Host::Phase phase;phase.write=true;phase.address=0x110000;observer->observe(phase,h);}
         const auto half=std::find_if(visibility.descriptors().begin(),visibility.descriptors().end(),[](const auto& d){return d.kind==3;});
         require(half!=visibility.descriptors().end()&&half->x==full_x-4,"non-flight horizon interpolation differs");
         event(0,0xb628,r);event(0,0xb684);latch();
@@ -131,18 +262,18 @@ static void visibility_fixtures(){
     for(unsigned i=0;i<64;++i){OMainObjects::Registers regs;regs.a[4]=sorted+i*16;regs.a[5]=(requests&0xfffff)+sub.read8(SubBus::A6+0x7d00+i)*16;event(1,0x7b8,regs);}
     b.write32(0x2a3c14,sorted);event(0,0xb7c2);
     std::copy_n(h.memory.bytes.begin()+MainBus::memory_offset(sorted),65*16,h.memory.sprite_buffer.begin());
-    {XBoardGame::Host::Phase phase;phase.cpu=0;phase.write=true;phase.address=0x110000;visibility.observe(phase,h);}
+    {XBoardGame::Host::Phase phase;phase.cpu=0;phase.write=true;phase.address=0x110000;observer->observe(phase,h);}
     require(visibility.descriptors().size()==64,"depth bucket overflow lost requests or duplicated stale native order");
     require(std::count_if(visibility.descriptors().begin(),visibility.descriptors().end(),[](const auto& d){return d.kind==5;})==34,"depth bucket overflow recovery census differs");
     visibility.reset();
     // Enabling halfway through a Sub pass cannot treat uncaptured leading
     // slots as request zero or replace them with default descriptors.
     {OMainObjects::Registers regs;regs.a[4]=sorted+63*16;regs.a[5]=(requests&0xfffff)+sub.read8(SubBus::A6+0x7d00+63)*16;event(1,0x7b8,regs);}
-    event(0,0xb7c2);{XBoardGame::Host::Phase phase;phase.cpu=0;phase.write=true;phase.address=0x110000;visibility.observe(phase,h);}
+    event(0,0xb7c2);{XBoardGame::Host::Phase phase;phase.cpu=0;phase.write=true;phase.address=0x110000;observer->observe(phase,h);}
     require(visibility.descriptors().size()==64,"mid-pass enable discarded uncaptured native slots");
     require(std::equal(visibility.descriptors()[0].bytes.begin(),visibility.descriptors()[0].bytes.end(),h.memory.sprite_buffer.begin()),"mid-pass enable replaced uncaptured native descriptor");
     b.write8(0x29c03a,1);event(1,0x648);event(0,0xb7d2);
-    {XBoardGame::Host::Phase phase;phase.cpu=0;phase.write=true;phase.address=0x110000;visibility.observe(phase,h);}
+    {XBoardGame::Host::Phase phase;phase.cpu=0;phase.write=true;phase.address=0x110000;observer->observe(phase,h);}
     require(std::equal(visibility.descriptors()[0].bytes.begin(),visibility.descriptors()[0].bytes.end(),h.memory.sprite_buffer.begin()),"mid-pass interpolation replaced uncaptured native descriptor");
     b.write8(0x29c03a,0);
     visibility.reset();
@@ -163,7 +294,8 @@ static void attract_edge_scene(){
         require(a.info.time_ns==b.info.time_ns&&std::equal(a.pixels.begin(),a.pixels.end(),b.pixels.begin(),[](auto x,auto y){return x.r==y.r&&x.g==y.g&&x.b==y.b;}),"attract edge observer changed native RGB/time");
         require(reference.take_audio()==captured.take_audio(),"attract edge observer changed PCM");auto scene=captured.wide_scene();legacy.check(scene.clips,scene.info.number,a.pixels);
         plain.render(scene.clips,scene.info.number,false);fixed.render(scene.clips,scene.info.number,true);auto p=plain.view(),q=fixed.view();
-        for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i])require(valid_wide_ground_change(p,q,i),"attract edge correction overwrote terrain");
+        const auto fill_witness=wide_ground_fill_witness(p,scene.clips);
+        for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i])require(valid_wide_ground_change(p,q,i,fill_witness),"attract edge correction overwrote terrain");
         if(f==140){const unsigned i=180*398+390;
             require(p.ground_indices[i]>=0x1720&&p.ground_indices[i]<0x1730,"banked attract corner reproduction lost its gap");
             require(q.ground_indices[i]>=0x1700&&q.ground_indices[i]<0x1708,"banked attract corner retained its color block");
@@ -227,7 +359,8 @@ int main(int argc,char** argv)try{
                 save_wide_ground_fixture(q,"build/oracle/widescreen/edge-inverted-"+std::to_string(c.stick_x>0)+".bin");}
             ++inverted[c.stick_x>0];}
 
-        for(unsigned i=0;i<w.ground_indices.size();++i)if(e.ground_indices[i]!=q.ground_indices[i]){++ground_changes;++corrections_by_mode[scene.clips.back().mode];if(roll_normal&&(i%398<39||i%398>=359))++side_corrections[roll_normal>0];require(valid_wide_ground_change(e,q,i),"wide ground correction overwrote terrain/tile indices");}require(w.ready&&n.ready,"wide scene row coverage missing");
+        const auto fill_witness=wide_ground_fill_witness(e,scene.clips);
+        for(unsigned i=0;i<w.ground_indices.size();++i)if(e.ground_indices[i]!=q.ground_indices[i]){++ground_changes;++corrections_by_mode[scene.clips.back().mode];if(roll_normal&&(i%398<39||i%398>=359))++side_corrections[roll_normal>0];require(valid_wide_ground_change(e,q,i,fill_witness),"wide ground correction overwrote terrain/tile indices");}require(w.ready&&n.ready,"wide scene row coverage missing");
         auto output=scaler.compose(w.background,w.sprites,w.width,224,Frontend::SpriteFilter::none,w.protection);
         auto normal=native_scaler.compose(n.background,n.sprites,320,224,Frontend::SpriteFilter::none,n.protection);
         for(unsigned y=0;y<224;++y)for(unsigned x=0;x<320;++x){unsigned i=y*320+x;auto p=a.pixels[i];auto expected=0xff000000u|uint32_t(p.r)<<16|uint32_t(p.g)<<8|p.b;
@@ -253,7 +386,8 @@ int main(int argc,char** argv)try{
         require(original.take_audio()==captured.take_audio(),"inverted roll observer changed native PCM");
         auto scene=captured.wide_scene();inversion_legacy.check(scene.clips,scene.info.number,a.pixels);
         corrected.render(scene.clips,scene.info.number,true);inversion_plain.render(scene.clips,scene.info.number,false);auto p=inversion_plain.view(),q=corrected.view();
-        for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i])require(valid_wide_ground_change(p,q,i),"inverted roll correction overwrote terrain");
+        const auto fill_witness=wide_ground_fill_witness(p,scene.clips);
+        for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i])require(valid_wide_ground_change(p,q,i,fill_witness),"inverted roll correction overwrote terrain");
         const auto angle=uint8_t(scene.clips.back().roll);const int turn=int8_t(uint8_t(angle-previous_angle));previous_angle=angle;
         if(f>=120&&scene.clips.back().mode==16&&horizon.normal(angle)[1]<-100&&turn){
             if(!inversion_saved[turn>0]){save_wide_ground_fixture(q,"build/oracle/widescreen/edge-full-inversion-"+std::to_string(turn>0)+".bin");inversion_saved[turn>0]=true;}

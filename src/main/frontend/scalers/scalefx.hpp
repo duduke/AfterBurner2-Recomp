@@ -102,31 +102,31 @@ inline float str(float d,vec2 a,vec2 b){
  const float wght2=clamp((1.f-d)+(min(a.x,b.x)+a.x>min(a.y,b.y)+a.y?diff:-diff),0.f,1.f);
  return (wght1*wght2)*(a.x*a.y);
 }
-vec4 dom(vec3 x, vec3 y, vec3 z, vec3 w){
+inline vec4 dom(vec3 x, vec3 y, vec3 z, vec3 w){
 	return 2.f * vec4(x.y, y.y, z.y, w.y) - (vec4(x.x, y.x, z.x, w.x) + vec4(x.z, y.z, z.z, w.z));
 }
 
 // necessary but not sufficient junction condition for orthogonal edges
-float clear(vec2 crn, vec2 a, vec2 b){
+inline float clear(vec2 crn, vec2 a, vec2 b){
 	return (crn.x >= max(min(a.x, a.y), min(b.x, b.y))) && (crn.y >= max(min(a.x, b.y), min(b.x, a.y))) ? 1.f : 0.f;
 }
 
-bvec4 loadCorn(vec4 x){
+inline bvec4 loadCorn(vec4 x){
 	return bvec4(floor(mod(x*15.f + 0.5f, 2.f)));
 }
 
 // extract second bool4 from float4 - horizontal edges
-bvec4 loadHori(vec4 x){
+inline bvec4 loadHori(vec4 x){
 	return bvec4(floor(mod(x*7.5f + 0.25f, 2.f)));
 }
 
 // extract third bool4 from float4 - vertical edges
-bvec4 loadVert(vec4 x){
+inline bvec4 loadVert(vec4 x){
 	return bvec4(floor(mod(x*3.75f + 0.125f, 2.f)));
 }
 
 // extract fourth bool4 from float4 - orientation
-bvec4 loadOr(vec4 x){
+inline bvec4 loadOr(vec4 x){
 	return bvec4(floor(mod(x*1.875f + 0.0625f, 2.f)));
 }
 

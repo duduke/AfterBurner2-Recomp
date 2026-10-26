@@ -646,6 +646,68 @@ local function inject_call()
   set(0x3f90f0,n%19,2);set(0x3f90fc,n%3,2);set(0x3f91fe,n%64*4,2)
   set(0x3f9104,n,2)
  end
+ -- Supplemental world-explosion operands. The original fixture profiles
+ -- above remain unchanged; execute the real ROM with its runtime art table.
+ if selected==0x91c0 and os.getenv("AB2_ORACLE_WIDE_EXPLOSIONS")=="1" then
+  local animation=space:read_u32(0x347be)
+  set(0x3fc400,0xc000,2);set(0x3fc404,0,4);set(0x3fc408,0,4)
+  set(0x3fc40c,space:read_u32(animation+2),4)
+  set(0x3fc403,space:read_u8(animation+6),1)
+  set(0x3fc415,space:read_u8(animation+7),1)
+  set(0x3fc42e,space:read_u16(animation),1);set(0x3fc42f,0,1)
+  set(0x3fc430,({0,1,0xffff,0x8000,0x7fff})[(n//8)%5+1],2)
+  set(0x3fc432,space:read_u8(animation+9),2);set(0x3fc43c,animation+2,4)
+  set(0x3fc424,n%16==7 and 0xffe0 or 0x400,2);set(0x3fc426,0,2);set(0x3fc42a,0,2)
+  set(0x29c190,0,4);set(0x29c194,0,4)
+  set(0x29c08e,({0,200,0xff38,0,0,0,0,0})[n%8+1],2)
+  set(0x29c08c,n%8==4 and 300 or n%8==5 and 0xfe70 or 0,2)
+  set(0x29c090,0,2);set(0x29c092,127,2);set(0x29c0aa,0,2)
+  set(0x29c0c6,n%8==6 and 64 or 0,2);set(0x3f91d0,n%8==3 and 1 or 0,1)
+  set(0x2a3cf0,0,2)
+ end
+ -- Additional hit-effect operands; old fixture profiles stay unchanged.
+ if (selected==0x8e18 or selected==0x8ece) and os.getenv("AB2_ORACLE_WIDE_HIT_EFFECTS")=="1" then
+  local animation=space:read_u32(0x345c8+((n//32)%4)*4)
+  local count=space:read_u16(animation)
+  set(0x3fc400,0xc000,2);set(0x3fc404,0,4);set(0x3fc408,0,4)
+  set(0x3fc410,selected,4);set(0x3fc40c,space:read_u32(animation+2),4)
+  set(0x3fc403,space:read_u8(animation+14),1)
+  set(0x3fc42e,count,1);set(0x3fc42f,(n//8)%4==3 and count or 0,1)
+  set(0x3fc43c,animation+2,4);set(0x3fc436,0x29c190,4)
+  set(0x3fc424,n%8==7 and 0xffe0 or 0x400,2)
+  set(0x3fc426,({0,1,2,3,4,0x7fff,0xffff,0x8000})[(n//8)%8+1],2);set(0x3fc42a,0,2)
+  set(0x29c190,0,4);set(0x29c194,0,4)
+  set(0x29c08e,({0,200,0xff38,0,0,0,0,0})[n%8+1],2)
+  set(0x29c08c,n%8==4 and 300 or n%8==5 and 0xfe70 or 0,2)
+  set(0x29c090,0,2);set(0x29c092,127,2);set(0x29c0aa,0,2)
+  set(0x29c0c6,n%8==6 and 64 or 0,2)
+  set(0x29c33c,(n//64)%2,2);set(0x29c33e,16,2)
+  set(0x29c0a4,((n//16)%3)*4,2);set(0x29c0a0,((n//8)%4)*16,1)
+  set(0x3f91d0,n%8==3 and 1 or 0,1);set(0x2a3cf0,0,2)
+ end
+ if (selected==0xaaee or selected==0x14ee2 or selected==0xfcb4 or selected==0xfdfa) and os.getenv("AB2_ORACLE_WIDE_TRAILS")=="1" then
+  local phase=n%16
+  set(0x3fc400,0x8000,2);set(0x3fc404,0,4);set(0x3fc408,0,4);set(0x3fc410,selected,4);set(0x3fc414,0,1)
+  set(0x3fc40c,selected==0xaaee and space:read_u32(0x28c64) or 0x164b0,4)
+  set(0x3fc424,phase==5 and 0xffe0 or 0x400,2)
+  set(0x3fc418,0,4);set(0x3fc41e,0,2);set(0x3fc426,0,2)
+  set(0x3fc42a,0,2);set(0x3fc42c,selected==0x14ee2 and (phase==10 and 29 or phase==11 and 35 or (n//16)%3*6) or 0,2)
+  set(0x3fc42e,0,2);set(0x3fc432,phase==9 and 9 or (n//16)%3*4,2)
+  set(0x29c080,0,2);set(0x29c088,phase==3 and 500 or phase==4 and 0xfe0c or 0,2)
+  set(0x29c08a,phase==1 and 300 or phase==2 and 0xfed4 or 0,2)
+  set(0x29c090,0,2);set(0x29c092,127,2);set(0x29c09f,phase==14 and 0x80 or 0,1)
+  set(0x29c0aa,phase==13 and 0x100 or 0,2);set(0x29c0ac,phase==13 and 0x80 or 0,2)
+  set(0x29c0c4,phase==8 and 64 or 0,2);set(0x29c0c6,phase==8 and 64 or 0,2)
+  set(0x29c200,phase==6 and 0 or 0x1e,1);set(0x3f91d0,phase==7 and 6 or 0,1)
+  set(0x3f9124,phase==12 and 5 or (n//16)%2*4,2);set(0x3f9118,n%2,1)
+  set(0x3f8e7f,1,1);set(0x3f8e80,0,1);set(0x3f9162,1,1);set(0x3f9163,1,1);set(0x3f9164,0,1)
+  set(0x2a3cf0,0,2)
+  if selected==0xfdfa then
+   set(0x3fc41a,0x2bc34,4);set(0x3fc41e,0,2);set(0x3fc40c,space:read_u32(0x2bc34),4)
+   set(0x3fc403,space:read_u8(0x2bc38),1);set(0x3fc422,space:read_u8(0x2bc39),2)
+   set(0x3fc420,({0,1,0x8000,0xffff})[(n//16)%4+1],2)
+  end
+ end
  guard=false
  injected=selected;before=snapshot();pre=registers();mathpre=mathstate();io_input=port_input();written,other,events={},{},{}
  main.state.PC.value=selected

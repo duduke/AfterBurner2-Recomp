@@ -1,6 +1,7 @@
 # Stage Select / Practice
 
-The local native application offers **Practice** in the initial and pause menus.
+The local native application offers **Practice** at startup and under
+**Change Mode → Practice** in the pause menu.
 Choose a stage with Left/Right, then select **Start Practice**. The menu supports
 keyboard, controller and mouse navigation. Stage numbers are the ordered ROM
 slots, 1..23 for this ROM set; the count and descriptors are read at runtime.
@@ -14,7 +15,7 @@ reconstructing the complete history of an arcade run.
 
 **F5** retries the stage that started the active Practice session. Browsing a
 different stage and cancelling leaves that retry target unchanged. Escape/F1
-opens the pause menu; Practice → **Return to Arcade** creates a fresh cold board
+opens the pause menu; Change Mode → Practice → **Return to Arcade** creates a fresh cold board
 and restores normal coin/start play. The gameplay overlay and window title
 identify the Practice retry stage. This choice is session state, not a saved
 preference. It does not change the native frame pixels or timers.

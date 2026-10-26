@@ -5,6 +5,15 @@ import os,subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
 source=(root/'src/main/hwvideo/ground_horizon.hpp').read_text()
 mutations={
+ 'inferred axis vetoes measured sky':('if(rx||cy||!fallback)','if(!fallback)'),
+ 'corner overwrites measured terrain':('!profile.ground(x,y,nx,ny)&&extend_plane','extend_plane'),
+ 'corner overwrites measured sky':('!observed_sky(x,y)&&plane_max','plane_max'),
+ 'missing flat-field donor':('if(fill!=fields.end()&&fill->pen>=0)','if(false&&fill!=fields.end()&&fill->pen>=0)'),
+ 'mixed flat-field palette':('palette[sample]!=palette[indices[i]]','false'),
+ 'wrong flat-field control':('f.color==word(0x600+y)','true'),
+
+ 'stale roll vertical quadrant':('if(dy)ny=','if(false&&dy)ny='),
+ 'stale roll quadrant':('if(dx)nx=','if(false&&dx)nx='),
  'lost clipped side normal':('profile.sky(x,y,nx,ny,extend_plane)','profile.sky(x,y,nx,ny,false)'),
  'missing banked corner plane':('if(extend_plane&&profile.measured)','if(false&&extend_plane&&profile.measured)'),
  'native-edge seam':('else if(extend_plane&&!priority[i]','else if((original<0||original>=320)&&!priority[i]'),
@@ -48,3 +57,29 @@ for name,(before,after) in fixture_mutations.items():
   result=subprocess.run([str(binary),"--no-images"],cwd=root,capture_output=True,text=True)
   assert result.returncode==1 and any(message in result.stderr for message in ['erased sea below published horizon','blue wedge remains above published horizon']),(name,result.stderr)
   print('Ground fixture mutation rejected: '+name,flush=True)
+
+# Prove the new cross-row comparison gate itself rejects incompatible donors.
+reference=(root/'tests/wide_ground_reference.hpp').read_text()
+reference_mutations={
+ 'reference wrong control':('observed[word(0x600+y)]','observed[0]'),
+ 'reference mixed palette':('color!=clip.palette[0x1700+pen]','false'),
+ 'reference lost clip':('y<=clip.bottom','y<224'),
+ 'reference priority bypass':('!before.protection[i]&&',''),
+ 'reference solid fill bypass':('if(word(y)&0xa00)continue;','if(false)continue;'),
+ 'reference invented pen':('(fill_witness[y]&(1u<<(b-0x1700)))','fill_witness[y]'),
+}
+with tempfile.TemporaryDirectory(prefix='ab2-ground-reference-') as temporary:
+ path=Path(temporary)
+ for name,control in [('baseline',None),*reference_mutations.items()]:
+  text=reference
+  if control:
+   before,after=control
+   assert before in text,name
+   text=text.replace(before,after)
+  (path/'wide_ground_reference.hpp').write_text(text)
+  (path/'check.cpp').write_text((root/'tests/wide_ground_reference_regression.cpp').read_text())
+  binary=path/'check'
+  subprocess.run([os.environ.get('CXX','c++'),'-std=c++20','-O2','-I'+str(path),'-I'+str(root/'src/main'),str(path/'check.cpp'),'-o',str(binary)],check=True)
+  result=subprocess.run([str(binary)],capture_output=True,text=True)
+  assert (result.returncode==0 if control is None else result.returncode==1 and 'ground reference' in result.stderr.lower()),(name,result.stderr)
+  print('Ground donor reference baseline passed' if control is None else 'Ground reference mutation rejected: '+name,flush=True)

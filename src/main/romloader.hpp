@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 class RomLoader
 {
@@ -28,7 +29,11 @@ public:
     // Allocate a zeroed region of the given size to load ROM chips into.
     void init(uint32_t region_size);
 
-    // Load a ROM file from the roms/ directory into this region at `offset`,
+    // Empty restores roms/ with roms/aburner2.zip as a fallback. An explicit
+    // source is either an extracted directory or a ZIP; it is never modified.
+    static void set_source(const std::string& path);
+
+    // Load a ROM file from the selected source into this region at `offset`,
     // de-interleaving every `mode` bytes if mode != NORMAL, and verify it
     // against `expected_crc`. Returns 0 on success, 1 on failure.
     int load_rom(const char* filename, uint32_t offset, uint32_t expected_length,

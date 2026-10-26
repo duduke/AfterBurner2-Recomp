@@ -60,6 +60,8 @@ ifeq ($(shell uname -s),Darwin)
 SLANG_SOURCE = src/main/frontend/native_slang.mm
 SLANG_FLAGS = -fobjc-arc
 SLANG_LIBS = -framework Foundation -framework Metal -framework QuartzCore -framework CoreVideo
+METAL_SPRITE_OBJECT = src/main/frontend/native_metal_sprite_filter.o
+NATIVE_METAL_SPRITE_OBJECT = build/native_obj/src/main/frontend/native_metal_sprite_filter.o
 else
 SLANG_SOURCE = src/main/frontend/native_slang_stub.cpp
 SLANG_FLAGS =
@@ -67,6 +69,7 @@ SLANG_LIBS =
 endif
 SLANG_OBJECT = src/main/frontend/native_slang.o
 OBJS = $(SRCS:.cpp=.o) src/main/frontend/music_decoder.o $(SLANG_OBJECT)
+OBJS += $(METAL_SPRITE_OBJECT)
 DEPS = $(OBJS:.o=.d)
 -include $(DEPS)
 TARGET = afterburner2
@@ -78,6 +81,9 @@ $(TARGET): $(OBJS)
 
 $(SLANG_OBJECT): $(SLANG_SOURCE)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SLANG_FLAGS) -MMD -MP -c $< -o $@
+
+src/main/frontend/native_metal_sprite_filter.o: src/main/frontend/native_metal_sprite_filter.mm
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -fobjc-arc -MMD -MP -c $< -o $@
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
@@ -1532,7 +1538,11 @@ build/native_obj/src/main/frontend/native_slang.o: $(SLANG_SOURCE) build/native_
 	@mkdir -p $(dir $@)
 	$(CXX) $(NATIVE_CXXFLAGS) $(INCLUDES) $(SLANG_FLAGS) -MMD -MP -c $< -o $@
 -include build/native_obj/src/main/frontend/native_slang.d
-build/afterburner2-release: $(addprefix build/native_obj/,$(SRCS:.cpp=.o)) build/native_obj/src/main/frontend/music_decoder.o build/native_obj/src/main/frontend/native_slang.o
+build/native_obj/src/main/frontend/native_metal_sprite_filter.o: src/main/frontend/native_metal_sprite_filter.mm build/native_obj/config $(NATIVE_CONFIG_CHANGED)
+	@mkdir -p $(dir $@)
+	$(CXX) $(NATIVE_CXXFLAGS) $(INCLUDES) -fobjc-arc -MMD -MP -c $< -o $@
+-include build/native_obj/src/main/frontend/native_metal_sprite_filter.d
+build/afterburner2-release: $(addprefix build/native_obj/,$(SRCS:.cpp=.o)) build/native_obj/src/main/frontend/music_decoder.o build/native_obj/src/main/frontend/native_slang.o $(NATIVE_METAL_SPRITE_OBJECT)
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS) $(SLANG_LIBS)
 native-release: build/afterburner2-release
 play-native: native-release
@@ -1621,6 +1631,13 @@ test-librashader-fetch:
 	python3 tests/test_fetch_librashader.py
 test: test-librashader-fetch
 ifeq ($(shell uname -s),Darwin)
+build/native_metal_sprite_filter_regression: tests/gpu_sprite_filter_regression.cpp $(METAL_SPRITE_OBJECT) src/main/frontend/native_metal_sprite_filter.hpp src/main/frontend/sprite_filter.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -DAB2_NATIVE_METAL_SPRITES $< $(METAL_SPRITE_OBJECT) -pthread -o $@ $(LIBS) $(SLANG_LIBS)
+verify-native-metal-sprite-filters: build/native_metal_sprite_filter_regression
+	./build/native_metal_sprite_filter_regression
+verify-native-metal-sprite-mutations: verify-native-metal-sprite-filters
+	python3 tools/scalers/check_native_metal_mutations.py
+.PHONY: verify-native-metal-sprite-filters verify-native-metal-sprite-mutations
 build/check_obj/tests/native_slang_integration.o: tests/native_slang_integration.mm build/check_obj/config $(CHECK_CONFIG_CHANGED)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
@@ -1630,7 +1647,7 @@ verify-native-slang: build/native_slang_integration
 	./build/native_slang_integration
 verify-native-slang-mutations: verify-native-slang
 	python3 tools/video/check_native_slang_mutations.py
-build/native_shader_main_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/native_shader_main_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))) build/native_obj/src/main/frontend/music_decoder.o build/native_obj/src/main/frontend/native_slang.o
+build/native_shader_main_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/native_shader_main_integration.cpp $(filter-out src/main/main.cpp,$(SRCS)))) build/native_obj/src/main/frontend/music_decoder.o build/native_obj/src/main/frontend/native_slang.o $(NATIVE_METAL_SPRITE_OBJECT)
 	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS) $(SLANG_LIBS)
 verify-native-shader-main: build/native_shader_main_integration
 	SDL_AUDIODRIVER=dummy ./build/native_shader_main_integration tests/fixtures/native_slang/reference.slangp
@@ -1932,6 +1949,65 @@ oracle-wide-projection:
 	./build/oracle_subsprites build/oracle/subsprites.bin
 	./build/oracle_subsprites build/oracle/subsprites_gameplay.bin
 .PHONY: oracle-wide-projection
+verify-wide-world: build/oracle_world_visibility
+	./build/oracle_world_visibility build/oracle/world.bin
+	./build/oracle_world_visibility build/oracle/world_directed.bin
+	./build/oracle_world_visibility build/oracle/wide_explosions_directed.bin --explosion-coverage
+oracle-capture-handlers: oracle-capture-wide-explosions
+oracle-capture-wide-explosions:
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_WIDE_EXPLOSIONS=1 AB2_ORACLE_HANDLERS=91c0 tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/wide_explosions_directed.bin 128 45
+HANDLER_CAPTURES += wide_explosions_directed
+.PHONY: oracle-capture-wide-explosions
+build/oracle_world_visibility: tests/oracle_handlers.cpp src/main/hwvideo/wide_explosion.hpp src/main/hwvideo/wide_scenery.hpp src/main/hwvideo/wide_hit_effect.hpp src/main/hwvideo/wide_trail_effect.hpp $(HANDLER_SRCS)
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/oracle_handlers.cpp $(HANDLER_SRCS) -o $@
+.PHONY: verify-wide-world
+oracle-capture-handlers: oracle-capture-wide-hit-effects
+oracle-capture-wide-hit-effects:
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_WIDE_HIT_EFFECTS=1 AB2_ORACLE_HANDLERS=8e18,8ece tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/wide_hit_effects_directed.bin 256 45
+HANDLER_CAPTURES += wide_hit_effects_directed
+verify-wide-hit-effects: build/oracle_world_visibility
+	./build/oracle_world_visibility build/oracle/effects_directed.bin
+	./build/oracle_world_visibility build/oracle/wide_hit_effects_directed.bin --hit-effect-coverage
+.PHONY: oracle-capture-wide-hit-effects verify-wide-hit-effects
+verify-wide-hit-effect-mutations:
+	python3 tools/check_wide_hit_effect_mutations.py
+.PHONY: verify-wide-hit-effect-mutations
+oracle-capture-handlers: oracle-capture-wide-trail-effects
+oracle-capture-wide-trail-effects: oracle-capture-wide-trail-frontier oracle-capture-wide-trail-directed
+oracle-capture-wide-trail-frontier:
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_WIDE_TRAILS=1 AB2_ORACLE_HANDLERS=aaee,14ee2,fcb4,fdfa tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/wide_trail_effects_frontier.bin 512 60
+oracle-capture-wide-trail-directed:
+	AB2_ORACLE_GAMEPLAY=1 AB2_ORACLE_HANDLER_CALLS=1 AB2_ORACLE_HANDLER_DELAY=0.002 AB2_ORACLE_WIDE_TRAILS=1 AB2_ORACLE_HANDLERS=aaee,14ee2,fcb4,fdfa tools/oracle/capture.sh tools/oracle/capture_handlers.lua build/oracle/wide_trail_effects_directed.bin 512 60
+HANDLER_CAPTURES += wide_trail_effects_frontier wide_trail_effects_directed
+verify-wide-trail-effects: build/oracle_world_visibility
+	./build/oracle_world_visibility build/oracle/missiles_directed.bin
+	./build/oracle_world_visibility build/oracle/enemy_effects.bin
+	./build/oracle_world_visibility build/oracle/companion_directed.bin
+	./build/oracle_world_visibility build/oracle/companion_gameplay.bin
+	./build/oracle_world_visibility build/oracle/wide_trail_effects_frontier.bin
+	./build/oracle_world_visibility build/oracle/wide_trail_effects_directed.bin --trail-effect-coverage
+.PHONY: oracle-capture-wide-trail-effects oracle-capture-wide-trail-frontier oracle-capture-wide-trail-directed verify-wide-trail-effects
+verify-wide-trail-effect-mutations:
+	python3 tools/check_wide_trail_effect_mutations.py
+.PHONY: verify-wide-trail-effect-mutations
+oracle-test: verify-wide-trail-effects verify-wide-trail-effect-mutations
+oracle-test: verify-wide-hit-effects verify-wide-hit-effect-mutations
+verify-wide-explosion-mutations:
+	python3 tools/check_wide_explosion_mutations.py
+.PHONY: verify-wide-explosion-mutations
+oracle-test: verify-wide-world verify-wide-explosion-mutations
+verify-wide-explosions-natural: build/wide_lifecycle_visibility
+	./build/wide_lifecycle_visibility weapons --integrated 358
+	./build/wide_lifecycle_visibility weapons --integrated 398
+.PHONY: verify-wide-explosions-natural
+verify-wide-hit-effects-natural: verify-wide-explosions-natural
+.PHONY: verify-wide-hit-effects-natural
+verify-wide-trails-natural: build/wide_lifecycle_visibility
+	./build/wide_lifecycle_visibility weapons --integrated 358
+	./build/wide_lifecycle_visibility weapons --integrated 398
+	./build/wide_lifecycle_visibility continue --integrated 358
+	./build/wide_lifecycle_visibility continue --integrated 398
+.PHONY: verify-wide-trails-natural
 verify-wide-visibility-mutations: build/wide_scene_integration
 	python3 tools/check_wide_visibility_mutations.py
 .PHONY: verify-wide-visibility-mutations
@@ -2007,3 +2083,36 @@ verify-integrated-lifecycle-358 verify-integrated-lifecycle-398: build/wide_life
 	done
 .PHONY: verify-integrated-lifecycle-358 verify-integrated-lifecycle-398
 .PHONY: oracle-integrated-host oracle-integrated-host-mutations verify-integrated-lifecycle
+
+# ROM-free ZIP fixtures retain invalid archive/CRC/size/interleave coverage.
+build/romloader_regression: tests/romloader_regression.cpp src/main/romloader.cpp src/main/romloader.hpp $(wildcard src/third_party/miniz/*)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/romloader_regression.cpp src/main/romloader.cpp -o $@
+
+test-romloader: build/romloader_regression
+	python3 tests/test_romloader_zip.py build/romloader_regression
+
+test: test-romloader
+.PHONY: test-romloader
+
+build/native_rom_picker_regression: tests/native_rom_picker_regression.cpp src/main/frontend/native_rom_picker.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/native_rom_picker_regression.cpp -o $@ $(LIBS)
+
+test-rom-picker: build/native_rom_picker_regression
+	./build/native_rom_picker_regression
+
+test: test-rom-picker
+.PHONY: test-rom-picker
+
+verify-native-roms: native-release
+	python3 tests/test_native_rom_startup.py build/afterburner2-release
+.PHONY: verify-native-roms
+
+# Independent comparison gate for flat-color cross-row ground donors.
+build/wide_ground_reference_regression: tests/wide_ground_reference_regression.cpp tests/wide_ground_reference.hpp src/main/hwvideo/wide_scene.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
+test-wide-ground-reference: build/wide_ground_reference_regression
+	./build/wide_ground_reference_regression
+test: test-wide-ground-reference
+.PHONY: test-wide-ground-reference

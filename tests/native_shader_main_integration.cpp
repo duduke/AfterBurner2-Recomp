@@ -128,10 +128,11 @@ bool observed_present(SDL_Renderer* renderer) {
             shader_test.native_rgb.assign(rgb.begin(),rgb.end());shader_test.native_pcm=game->last_nonempty_pcm;
             shader_test.native_pcm_frames=game->pcm_frames;shader_test.native_pcm_samples=game->pcm_samples;
             require_shader(!shader_test.native_pcm.empty(),"Shader main PCM baseline was empty");
-            // Pause, open Options/Video, then select RetroArch at row 11. With
-            // no saved preset this invokes the real main-thread chooser path.
-            key(SDLK_P);key(SDLK_ESCAPE);key(SDLK_DOWN);key(SDLK_RETURN);key(SDLK_RETURN);
-            for(unsigned i=0;i<11;++i)key(SDLK_DOWN);
+            // Pause, open Settings / CRT and Shaders, then select RetroArch.
+            // No saved preset invokes the real main-thread chooser path.
+            key(SDLK_P);key(SDLK_ESCAPE);
+            for(unsigned i=0;i<3;++i)key(SDLK_DOWN);key(SDLK_RETURN);
+            key(SDLK_DOWN);key(SDLK_DOWN);key(SDLK_RETURN);
             key(SDLK_RIGHT);key(SDLK_RIGHT);key(SDLK_RIGHT);
             shader_test.step=Step::metal;
         } else if(shader_test.step==Step::metal) {
@@ -146,7 +147,7 @@ bool observed_present(SDL_Renderer* renderer) {
             same_native_output();
             require_shader(!metal && shader_test.gpu_creations==2,
                 "Leaving RetroArch did not restore the normal GPU frontend");
-            // Select Shader Preset row 14; the second chooser supplies a
+            // Select Shader Preset (the fourth CRT and Shaders row); the second chooser supplies a
             // preset with a missing pass, forcing a real compile/load error.
             key(SDLK_DOWN);key(SDLK_DOWN);key(SDLK_DOWN);key(SDLK_RETURN);
             shader_test.step=Step::rollback;
@@ -157,9 +158,9 @@ bool observed_present(SDL_Renderer* renderer) {
             const auto saved=Frontend::load_settings(shader_test.config,Frontend::pixel_art_available());
             require_shader(saved.crt==Frontend::Crt::arcade && saved.shader_preset==shader_test.valid,
                 "Invalid shader preset replaced accepted settings");
-            // Move from Shader Preset (14) to Viewport (9), then cycle all
-            // three choices through the real main-loop resource adapter.
-            for(unsigned i=0;i<5;++i)key(SDLK_UP);
+            // Return from CRT and Shaders to Settings / Display / Aspect Ratio,
+            // then cycle all choices through the real main-loop resource adapter.
+            key(SDLK_ESCAPE);key(SDLK_UP);key(SDLK_UP);key(SDLK_RETURN);key(SDLK_DOWN);
             key(SDLK_RIGHT);shader_test.step=Step::viewport;
         } else if(shader_test.step==Step::viewport) {
             same_native_output();

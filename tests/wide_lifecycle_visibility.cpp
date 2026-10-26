@@ -37,7 +37,8 @@ int main(int argc,char** argv)try{
     std::unique_ptr<Presentation::WideScene> live_plain,live_corrected;
     if(integrated){live_plain=std::make_unique<Presentation::WideScene>(roms,width);live_corrected=std::make_unique<Presentation::WideScene>(roms,width);}
     std::vector<Presentation::SceneClip> clips;std::optional<Presentation::SceneClip> pending;
-    h.phase=[&](const auto& p){visibility.observe(p,h);};
+    uint64_t pool_resets=0;
+    h.phase=[&](const auto& p){if(p.cpu==0&&p.entry&&p.entry->state.pc==0x10310)++pool_resets;visibility.observe(p,h);};
     h.rendering_started=[&]{pending.emplace();auto& q=*pending;const auto& m=h.memory;auto bytes=std::span(m.bytes);
         Presentation::SceneClip::words(q.tiles,bytes.subspan(MainBus::TILE,0x10000));Presentation::SceneClip::words(q.text,bytes.subspan(MainBus::TEXT,0x1000));Presentation::SceneClip::words(q.palette,bytes.subspan(MainBus::PALETTE,0x4000));
         q.road=m.road_buffer;q.sprites=m.sprite_buffer;q.road_control=m.road_control;q.registers=game.video_registers();q.extended_sprites=visibility.descriptors();
@@ -47,7 +48,8 @@ int main(int argc,char** argv)try{
             live_plain->render_primary_clip(*pending,h.frames+1,*layers,false);
             live_corrected->render_primary_clip(*pending,h.frames+1,*layers,true);}
         clips.push_back(std::move(*pending));pending.reset();};
-    std::set<unsigned> modes,stages,carrier,refuel,death,horizon_modes;uint64_t corrections=0,overflow=0,max_descriptors=0;
+    std::set<unsigned> modes,stages,carrier,refuel,death,horizon_modes;uint64_t corrections=0,overflow=0,max_descriptors=0,explosions=0,ground_effects=0,air_effects=0;
+    std::array<uint64_t,3> trail_effects{};
     for(unsigned f=0;f<frames;++f){unsigned index,value;Host::Input pins;
         require(bool(input>>index>>value)&&index==f&&value<256,"Missing physical frame");pins.buttons=value;
         for(auto& axis:pins.analog){require(bool(input>>value)&&value<256,"Invalid physical axis");axis=value;}
@@ -70,13 +72,17 @@ int main(int argc,char** argv)try{
         if(width==398&&name=="neutral"&&f==960){require(q.ground_indices[20*398+380]>=0x1720&&q.ground_indices[20*398+380]<0x1730,"departure blue side column remains");
             save_wide_ground_fixture(q,"build/oracle/widescreen/edge-departure.bin");}
         require(std::equal(p.sprites.begin(),p.sprites.end(),q.sprites.begin())&&std::equal(p.protection.begin(),p.protection.end(),q.protection.begin()),"Wide lifecycle ground correction changed protected layers");
-        for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i]){require(valid_wide_ground_change(p,q,i),"Wide lifecycle correction overwrote terrain");++corrections;}
-        for(auto& clip:clips){max_descriptors=std::max<uint64_t>(max_descriptors,clip.extended_sprites.size());for(auto& d:clip.extended_sprites){overflow+=d.kind==4||d.kind==5;if(d.kind==3)horizon_modes.insert(clip.mode);}}
+        const auto fill_witness=wide_ground_fill_witness(p,clips);
+        for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i]){require(valid_wide_ground_change(p,q,i,fill_witness),"Wide lifecycle correction overwrote terrain");++corrections;}
+        for(auto& clip:clips){max_descriptors=std::max<uint64_t>(max_descriptors,clip.extended_sprites.size());for(auto& d:clip.extended_sprites){overflow+=d.kind==4||d.kind==5;explosions+=d.kind==7;ground_effects+=d.kind==8;air_effects+=d.kind==9;if(d.kind>=10&&d.kind<=12)++trail_effects[d.kind-10];if(d.kind==3)horizon_modes.insert(clip.mode);}}
         if(f%3000==0)std::cout<<"Wide lifecycle "<<name<<": "<<f+1<<'/'<<frames<<" mode="<<observed[2]<<" stage="<<observed[3]<<std::endl;
     }
     input>>std::ws;require(input.peek()==EOF,"Trailing physical input frames");require(!std::getline(reference,line),"Trailing MAME observation frames");
     require(horizon_modes.contains(1)&&horizon_modes.contains(15),"Attract/takeoff published horizon missing from wider edges");
     if(name=="ending"){for(unsigned s=0;s<23;++s)require(stages.contains(s),"Missing natural stage");for(unsigned s=0;s<13;++s)require(carrier.contains(s),"Missing natural carrier state");for(unsigned s=0;s<8;++s)require(refuel.contains(s),"Missing natural refuel state");for(unsigned m:{0u,1u,16u,17u,18u,19u,20u,21u,22u,25u,26u})require(modes.contains(m),"Missing ending/ranking/attract mode");}
+    std::cout<<"Retained world explosion descriptor observations: "<<explosions<<'\n';
+    std::cout<<"Retained hit-effect descriptor observations: ground="<<ground_effects<<" air="<<air_effects<<'\n';
+    std::cout<<"Retained trail-effect descriptor observations: player="<<trail_effects[0]<<" enemy="<<trail_effects[1]<<" damage="<<trail_effects[2]<<"; native pool-reset entry observations="<<pool_resets<<'\n';
     std::cout<<(integrated?"Integrated + snapshot lifecycle ":"Wide lifecycle ")<<name<<" width="<<width<<" PASS: "<<frames<<'/'<<frames<<" MAME ten-column observations, zero skips; full-width rows and terrain/protection preserved; modes=";
     for(auto m:modes)std::cout<<m<<',';std::cout<<" stages="<<stages.size()<<" carrier="<<carrier.size()<<" refuel="<<refuel.size()<<" death_states="<<death.size()<<" corrections="<<corrections<<" overflow observations="<<overflow<<" max descriptors="<<max_descriptors<<" horizon_modes=";for(auto m:horizon_modes)std::cout<<m<<',';std::cout<<std::endl;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

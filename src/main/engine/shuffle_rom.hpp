@@ -40,12 +40,17 @@ inline Plan generate(unsigned count, uint32_t seed) {
     std::mt19937 random(seed);
     // Explicit rejection sampling makes the seeded order independent of the
     // standard library's distribution/shuffle implementation.
-    for (unsigned size = count - 1; size > 1; --size) {
-        const uint32_t threshold = uint32_t(0u - size) % size;
-        uint32_t value;
-        do { value = uint32_t(random()); } while (value < threshold);
-        std::swap(result.stages[size - 1], result.stages[value % size]);
-    }
+    // Reject scripted openings while retaining every stage and the fixed finale.
+    // Continuing the same RNG stream preserves deterministic seed/F5 retries.
+    do {
+        for (unsigned size = count - 1; size > 1; --size) {
+            const uint32_t threshold = uint32_t(0u - size) % size;
+            uint32_t value;
+            do { value = uint32_t(random()); } while (value < threshold);
+            std::swap(result.stages[size - 1], result.stages[value % size]);
+        }
+    } while (result.stages.front() == 5 || result.stages.front() == 13
+             || result.stages.front() == 23);
     return result;
 }
 

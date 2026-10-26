@@ -169,7 +169,7 @@ private:
             std::fill(text_priority.begin()+c.top*320,text_priority.begin()+(c.bottom+1)*320,0);
             tiles.draw_text(text_indices.data(),text_priority.data(),320,224,-1,4,c.top,c.bottom);
         }
-        if(corrected)ground.apply(indices,priority,c.road,c.road_control,bank,sprite_rom,c.top,c.bottom,uint8_t(c.roll),assets,w,-int(margin),anchors);
+        if(corrected)ground.apply(indices,priority,c.road,c.road_control,bank,sprite_rom,c.top,c.bottom,uint8_t(c.roll),assets,w,-int(margin),anchors,c.palette);
         std::copy(indices.begin()+c.top*w,indices.begin()+(c.bottom+1)*w,ground_indices.begin()+c.top*w);
         const bool boost=full_throttle_flame(c.mode,c.throttle);
         if(player_enabled)bank=replace_player(bank,c.top,c.bottom,boost,original_hud);

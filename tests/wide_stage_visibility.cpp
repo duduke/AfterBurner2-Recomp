@@ -38,8 +38,9 @@ int main(int argc,char** argv)try{
             plain.render(scene.clips,scene.info.number,false);corrected.render(scene.clips,scene.info.number,true);
             auto p=plain.view(),q=corrected.view();require(p.ready&&q.ready,"wide stage row coverage missing");
             require(std::equal(p.sprites.begin(),p.sprites.end(),q.sprites.begin()),"wide stage ground correction changed sprites");
-            for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i]){
-                require(valid_wide_ground_change(p,q,i),"wide stage correction overwrote terrain");++changes;}
+            const auto fill_witness=wide_ground_fill_witness(p,scene.clips);
+        for(unsigned i=0;i<p.ground_indices.size();++i)if(p.ground_indices[i]!=q.ground_indices[i]){
+                require(valid_wide_ground_change(p,q,i,fill_witness),"wide stage correction overwrote terrain");++changes;}
             for(auto& clip:scene.clips)for(auto& d:clip.extended_sprites)retained+=d.kind==2;
             ++directions[c.stick_x>0];
             if(f==210||f==270){std::ofstream image("build/oracle/widescreen/stage-"+std::to_string(stage)+"-"+std::to_string(f)+(width==398?"":"-358")+".ppm",std::ios::binary);image<<"P6\n"<<width<<" 224\n255\n";

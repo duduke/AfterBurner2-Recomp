@@ -1,6 +1,6 @@
 # High-resolution HUD presentation
 
-The local source offers **Options → Video → HUD → Original / Sharp 3x /
+The local source offers **Settings → Graphics → HUD Style → Original / Sharp 3x /
 Custom**. Original is the default. Sharp 3x applies Scale3x to the ROM's
 individual text tiles and draws them separately with linear sampling at the
 window's output resolution. Custom uses larger user-supplied tiles. This
@@ -35,7 +35,7 @@ Launch with:
 ./build/afterburner2-release --hud-atlas /absolute/path/hud.png
 ```
 
-This selects Custom for that launch. When a Video setting is saved, `hud=custom`
+This selects Custom for that launch. When a presentation setting is saved, `hud=custom`
 and `hud-atlas=/absolute/path/hud.png` persist in the normal settings file.
 Alternatively place the atlas next to that file as `settings.cfg.hud.png` and
 select Custom. With `--settings-file build/my.cfg`, that default is

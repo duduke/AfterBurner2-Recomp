@@ -14,6 +14,9 @@
 #include "engine/omainobjects.hpp"
 #include "engine/omainhost.hpp"
 #include "hwvideo/wide_scenery.hpp"
+#include "hwvideo/wide_explosion.hpp"
+#include "hwvideo/wide_hit_effect.hpp"
+#include "hwvideo/wide_trail_effect.hpp"
 
 
 namespace
@@ -48,6 +51,11 @@ int main(int argc, char** argv) try
     constexpr size_t N = MainBus::MEMORY_BYTES;
     std::vector<uint8_t> before(N), after(N), expected_w(N), other_w(N), reads(N), writes(N);
     unsigned scenery_kept=0,scenery_culled=0;unsigned total=0, identical=0, failed=0, skipped=0, reported=0, active=0;
+    unsigned explosion_visible=0,explosion_hidden=0,explosion_retired=0;
+    std::map<std::string,unsigned> explosion_paths;
+    std::map<uint32_t,std::map<std::string,unsigned>> hit_effect_paths;
+    std::map<uint32_t,std::map<std::string,unsigned>> trail_effect_paths;
+    std::map<uint32_t,unsigned> trail_races;
     std::vector<std::pair<uint32_t,unsigned>> entries;
     std::map<uint32_t,std::array<unsigned,3>> outcomes;
     std::map<std::string,unsigned> damage_paths;
@@ -207,7 +215,14 @@ int main(int argc, char** argv) try
         }
         bool race=false;
         for (size_t i=0;i<N;++i) race |= reads[i] && other_w[i];
-        if (race) { ++skipped; ++outcomes[entry][2]; continue; }
+        if (race) {
+            if((entry==0xaaee||entry==0x14ee2||entry==0xfcb4||entry==0xfdfa)&&trail_races[entry]++==0){
+                std::cout<<"Trail-effect raced input offsets for "<<std::hex<<entry<<':';unsigned shown=0;
+                for(unsigned i=0;i<N&&shown<6;++i)if(reads[i]&&other_w[i]){std::cout<<' '<<i;++shown;}
+                std::cout<<std::dec<<'\n';
+            }
+            ++skipped; ++outcomes[entry][2]; continue;
+        }
         if(entry==0x8af2){
             MainBus::Memory detached;std::copy(before.begin(),before.end(),detached.bytes.begin());
             MainBus shadow(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,detached);
@@ -222,6 +237,100 @@ int main(int argc, char** argv) try
             }else ++scenery_culled;
         }
 
+        if(entry==0x91c0){
+            MainBus::Memory detached;std::copy(before.begin(),before.end(),detached.bytes.begin());
+            MainBus shadow(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,detached);
+            auto input=projection_entry;
+            const auto state=Presentation::ExplosionProjection::update(shadow,input,0);
+            const bool culled=expected_w[MainBus::memory_offset(0xffff8d80)]!=0;
+            // Append can reject a visible object when the native queue is full.
+            const auto count_offset=MainBus::memory_offset(0x2a3cf0);
+            const bool queue_full=int16_t(uint16_t(before[count_offset]<<8|before[count_offset+1]))>=0xc0;
+            const bool published=expected_w[count_offset]!=0;
+            using State=Presentation::ExplosionProjection::State;
+            if((state==State::retired)!=culled || (!queue_full && (state==State::visible)!=published))
+                throw std::runtime_error("detached explosion lifetime differs from MAME");
+            const auto object=MainBus::memory_offset(input.a[5]);
+            if(culled){
+                if(int16_t(shadow.read16(input.a[5]+36))<0)++explosion_paths["near-depth"];
+                else if(expected_w[object+6])++explosion_paths["below-screen"];
+                else ++explosion_paths[int16_t(shadow.read16(input.a[5]+4))<0?"left-edge":"right-edge"];
+            }
+            if(before[MainBus::memory_offset(0xffff91d0)]&1)++explosion_paths["paused"];
+            if(!culled){
+                for(unsigned n=0;n<64;++n)if(detached.bytes[object+n]!=after[object+n])
+                    throw std::runtime_error("detached explosion evolution differs from MAME");
+                if(before[object+47]!=after[object+47])++explosion_paths["animation-frame"];
+                if(state==State::visible)++explosion_visible;else ++explosion_hidden;
+            }else ++explosion_retired;
+        }
+        if(entry==0x8e18||entry==0x8ece){
+            MainBus::Memory detached;std::copy(before.begin(),before.end(),detached.bytes.begin());
+            MainBus shadow(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,detached);
+            auto input=projection_entry;
+            const auto state=Presentation::HitEffectProjection::update(shadow,input,0,entry==0x8e18);
+            using State=Presentation::HitEffectProjection::State;
+            const bool culled=expected_w[MainBus::memory_offset(0xffff8d80)]!=0;
+            const auto count_offset=MainBus::memory_offset(0x2a3cf0),object=MainBus::memory_offset(input.a[5]);
+            auto preword=[&](uint32_t address){const auto o=MainBus::memory_offset(address);return uint16_t(before[o]<<8|before[o+1]);};
+            const bool queue_full=int16_t(preword(0x2a3cf0))>=0xc0;
+            const bool published=expected_w[count_offset]!=0;
+            if((state==State::retired)!=culled||(!queue_full&&(state==State::visible)!=published))
+                throw std::runtime_error("detached hit-effect lifetime differs from MAME");
+            auto& paths=hit_effect_paths[entry];
+            if(culled){
+                if(int16_t(shadow.read16(input.a[5]+36))<0)++paths["near-depth"];
+                else if(expected_w[object+6])++paths["below-screen"];
+                else ++paths[int16_t(shadow.read16(input.a[5]+4))<0?"left-edge":"right-edge"];
+            }else{
+                ++paths[state==State::visible?"visible":"hidden"];
+                for(unsigned n=0;n<64;++n)if(detached.bytes[object+n]!=after[object+n])
+                    throw std::runtime_error("detached hit-effect evolution differs from MAME");
+            }
+            if(before[MainBus::memory_offset(0xffff91d0)]&1)++paths["paused"];
+            else if(!culled&&state==State::visible){
+                ++paths[before[object+47]!=after[object+47]?"frame-advanced":"frame-held"];
+                if(before[object+46]==before[object+47]&&!(shadow.read16(input.a[5]+38)&1))++paths["frame-limit-held"];
+                ++paths[int16_t(shadow.read16(input.a[5]+38))>4?"age-capped":"age-uncapped"];
+                ++paths[entry==0x8e18&&preword(0x29c33c)?"ground-drift":"sway"];
+                if(preword(0x29c0a4))++paths["direction-offset"];
+            }
+        }
+        if(entry==0xaaee||entry==0x14ee2||entry==0xfcb4||entry==0xfdfa){
+            MainBus::Memory detached;std::copy(before.begin(),before.end(),detached.bytes.begin());
+            MainBus shadow(roms.maincpu.rom,roms.maincpu.length,roms.subcpu.rom,roms.subcpu.length,detached);
+            auto input=projection_entry;const auto family=entry==0xaaee?1u:entry==0x14ee2?2u:3u;
+            const auto object=MainBus::memory_offset(input.a[5]);
+            const auto state=Presentation::TrailEffectProjection::update(shadow,input,0,family,entry);
+            using State=Presentation::TrailEffectProjection::State;
+            const auto count_offset=MainBus::memory_offset(0x2a3cf0);
+            auto preword=[&](uint32_t a){const auto o=MainBus::memory_offset(a);return uint16_t(before[o]<<8|before[o+1]);};
+            const bool published=expected_w[count_offset]!=0,queue_full=int16_t(preword(0x2a3cf0))>=0xc0;
+            const bool culled=expected_w[MainBus::memory_offset(0xffff8e7f)]!=0 || (family==2&&!(before[object]&0x80)&&!published);
+            if((state==State::retired)!=culled||(!culled&&!queue_full&&(state==State::visible)!=published))
+                throw std::runtime_error("detached trail-effect lifetime differs from MAME");
+            auto& paths=trail_effect_paths[entry];
+            ++paths[state==State::retired?"retired":state==State::hidden?"hidden":"visible"];
+            if(!culled)for(unsigned n=0;n<64;++n){
+                if(detached.bytes[object+n]!=after[object+n])throw std::runtime_error("detached trail-effect evolution differs from MAME");
+            }
+            for(unsigned n=0;n<N;++n)if((n<object||n>=object+64)&&detached.bytes[n]!=before[n])
+                throw std::runtime_error("detached trail effect wrote outside its object");
+            if(culled){
+                const bool disabled=family!=1&&!(before[MainBus::memory_offset(0x29c200)]&(family==2?2:4));
+                if(disabled)++paths["disabled"];
+                else if(family==2&&int16_t(shadow.read16(input.a[5]+44))>=36)++paths["age-limit"];
+                else if(family==2?shadow.read16(input.a[5]+36)>=0x7fe0:int16_t(shadow.read16(input.a[5]+36))<0)++paths["depth-limit"];
+                else if(family!=2&&expected_w[object+6])++paths["bottom"];
+                else ++paths[int16_t(shadow.read16(input.a[5]+4))<0?"left":"right"];
+            }else{
+                if(family!=1&&(before[MainBus::memory_offset(0xffff91d0)]&(family==2?2:4)))++paths["draw-only"];
+                if(before[object+50]!=after[object+50]||before[object+51]!=after[object+51])++paths["ramp-step"];
+                if(family==2&&preword(input.a[5]+44)>=29)++paths["taper"];
+                if(family==3&&before[object+31]!=after[object+31])++paths["animation-step"];
+                if(entry==0xfcb4&&preword(0xffff9124)>=5)++paths["animation-transition"];
+            }
+        }
         active += std::any_of(expected_w.begin(),expected_w.end(),[](uint8_t n){ return n!=0; });
         unsigned differences = (events!=expected_events) + !contract + !chips;
         for (size_t i=0;i<N;++i)
@@ -266,6 +375,48 @@ int main(int argc, char** argv) try
         std::cout << '\n';
     }
     if(scenery_kept||scenery_culled)std::cout<<"Detached scenery: "<<scenery_kept<<" accepted updates match MAME, "<<scenery_culled<<" native culls\n";
+    if(explosion_visible||explosion_hidden||explosion_retired)std::cout<<"Detached explosions: "<<explosion_visible<<" visible, "<<explosion_hidden<<" hidden, "<<explosion_retired<<" retired match MAME\n";
+    if(!explosion_paths.empty()){
+        std::cout<<"Detached explosion coverage:";
+        for(const auto& [path,n]:explosion_paths)std::cout<<' '<<path<<'='<<n;
+        std::cout<<'\n';
+    }
+    if(argc==3&&std::string_view(argv[2])=="--explosion-coverage"){
+        for(const auto* path:{"near-depth","below-screen","left-edge","right-edge","paused","animation-frame"})
+            if(!explosion_paths[path])throw std::runtime_error(std::string("Missing explosion coverage: ")+path);
+        if(!explosion_visible||!explosion_hidden||!explosion_retired||skipped)throw std::runtime_error("Incomplete explosion lifetime coverage");
+    }
+    for(const auto& [entry,paths]:hit_effect_paths){
+        std::cout<<"Detached hit-effect "<<std::hex<<entry<<std::dec<<" coverage:";
+        for(const auto& [path,n]:paths)std::cout<<' '<<path<<'='<<n;
+        std::cout<<'\n';
+    }
+    if(argc==3&&std::string_view(argv[2])=="--hit-effect-coverage"){
+        for(auto entry:{0x8e18u,0x8eceu}){
+            auto& paths=hit_effect_paths[entry];
+            for(auto path:{"near-depth","below-screen","left-edge","right-edge","paused","visible","hidden","frame-advanced","frame-held","frame-limit-held","age-capped","age-uncapped","direction-offset","sway"})
+                if(!paths[path])throw std::runtime_error(std::string("Missing hit-effect coverage: ")+path);
+            if(entry==0x8e18&&!paths["ground-drift"])throw std::runtime_error("Missing hit-effect ground drift");
+        }
+        if(skipped)throw std::runtime_error("Hit-effect coverage contains races");
+    }
+    for(const auto& [entry,paths]:trail_effect_paths){
+        std::cout<<"Detached trail-effect "<<std::hex<<entry<<std::dec<<" coverage:";
+        for(const auto& [path,n]:paths)std::cout<<' '<<path<<'='<<n;
+        std::cout<<'\n';
+    }
+    if(argc==3&&std::string_view(argv[2])=="--trail-effect-coverage"){
+        for(auto entry:{0xaaeeu,0x14ee2u,0xfcb4u,0xfdfau}){
+            auto& paths=trail_effect_paths[entry];
+            for(auto path:{"visible","retired","left","right","depth-limit"})
+                if(!paths[path])throw std::runtime_error(std::string("Missing trail-effect coverage: ")+path);
+            if(entry!=0x14ee2){for(auto path:{"hidden","bottom","ramp-step"})if(!paths[path])throw std::runtime_error(std::string("Missing trail-effect coverage: ")+path);}
+            if(entry!=0xaaee){for(auto path:{"disabled","draw-only"})if(!paths[path])throw std::runtime_error(std::string("Missing trail-effect coverage: ")+path);}
+        }
+        if(!trail_effect_paths[0x14ee2]["age-limit"]||!trail_effect_paths[0x14ee2]["taper"]||!trail_effect_paths[0xfcb4]["animation-transition"]||!trail_effect_paths[0xfdfa]["animation-step"])
+            throw std::runtime_error("Missing trail-effect age/animation coverage");
+        if(skipped)throw std::runtime_error("Trail-effect coverage contains races");
+    }
     return total && identical && !failed ? 0 : 1;
 }
 catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

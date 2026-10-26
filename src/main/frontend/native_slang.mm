@@ -36,6 +36,7 @@ struct Api {
             if(const char* base=SDL_GetBasePath()) {
                 paths.emplace_back(std::string(base)+"librashader.dylib");
                 paths.emplace_back(std::string(base)+"../Frameworks/librashader.dylib");
+                paths.emplace_back(std::string(base)+"deps/librashader/librashader.dylib");
                 paths.emplace_back(std::string(base)+"build/deps/librashader/librashader.dylib");
             }
             paths.emplace_back("build/deps/librashader/librashader.dylib");

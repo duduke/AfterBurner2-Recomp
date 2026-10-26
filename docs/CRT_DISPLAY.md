@@ -1,6 +1,6 @@
 # CRT display mode
 
-Select **Options → Video → CRT Mode → Off / Subtle / Arcade / RetroArch**. Off is the
+Select **Settings → CRT and Shaders → CRT Mode → Off / Subtle / Arcade / RetroArch**. Off is the
 default. Subtle starts at **25% scanlines / 15% RGB mask**; Arcade starts at
 **50% / 35%**. Selecting an active preset restores both of its starting
 strengths. Off retains the last strengths. The two strength rows adjust
@@ -47,7 +47,7 @@ Then launch the extracted package with explicit paths:
   --shader-preset "/path/to/shaders_slang/crt/crt-geom.slangp"
 ```
 
-Choose **Options → Video → Shader Preset**, then select a `.slangp` from a
+Choose **Settings → CRT and Shaders → Shader Preset**, then select a `.slangp` from a
 complete RetroArch `shaders_slang` directory. Successful selection activates
 RetroArch mode and saves the path. Keep the preset's relative shader files,
 includes and lookup textures together. The built-in scanline/mask strength
@@ -63,8 +63,10 @@ For an isolated preview:
 ```
 
 The application can switch between its normal SDL GPU renderer and the native
-Metal or Vulkan shader renderer while the game/menu session remains live. Shader mode
-uses the existing CPU sprite-filter fallback. Loading and compilation can pause
+Metal or Vulkan shader renderer while the game/menu session remains live. macOS
+shader mode runs the existing sprite-filter and scene-composition kernels on
+native Metal, including ScaleFX; Windows shader mode uses the CPU sprite-filter
+fallback. Loading and compilation can pause
 presentation briefly. A failed replacement keeps the working preset/display;
 startup failure uses Off and reports the reason. Selecting an unsupported format
 or an SDR-incompatible HDR preset reports a readable error.
@@ -95,13 +97,19 @@ sustained performance must be measured with the chosen preset and settings.
 
 The runtime is optional and loaded dynamically. Search order is an explicit
 `--shader-runtime` path (or saved `shader-runtime`), `AB2_LIBRASHADER`, application
-library locations, then `build/deps/librashader/librashader.dylib` (macOS) or
+library locations (including `deps/librashader/librashader.dylib` beside the
+macOS executable), then `build/deps/librashader/librashader.dylib` (macOS) or
 `build/deps/librashader/librashader.dll` (Windows). It must expose
 ABI 2 / API 5. The fetcher verifies a pinned release SHA-256 before extraction
 and records source/license metadata. No shader pack or runtime binary is
 committed. The pinned source and redistribution notes are in
 `src/third_party/librashader/NOTICE.md` in the repository/source archive and
 `Notices/librashader/NOTICE.md` in the preview package.
+
+Source-built macOS executables discover the fetched runtime independently of
+the working directory. Older builds can use an absolute `--shader-runtime`
+path to `build/deps/librashader/librashader.dylib` until rebuilt. Downloading a
+shader pack alone does not install this optional runtime.
 
 ### Windows Vulkan
 
@@ -115,7 +123,7 @@ python tools/deps/fetch_librashader.py
 
 In a packaged build, supply `--shader-runtime "C:/path/to/librashader.dll"`
 or place that DLL beside the executable. Shader packs and runtime binaries
-remain external. Select presets through the same Video menu used on macOS.
+remain external. Select presets through the same CRT and Shaders menu used on macOS.
 
 Shader mode uses SDL's **native Vulkan renderer**, sharing its device, graphics
 queue and BGRA target images with librashader. Target unbinding submits SDL's
@@ -166,6 +174,14 @@ its finite timings do not establish exhaustive preset/platform performance.
 See the [Mac acceptance record](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24)
 and [Windows matched measurements](ENGINE_NOTES.md#frontend-adapter-matched-ntsc-timing-and-independent-mame-rgb-2026-10-24).
 
+On macOS, source builds also retain GPU sprite filtering when a Slang preset is
+active. Previously, combining ScaleFX with `ntsc-320px-composite.slangp` moved
+ScaleFX to the CPU and could reduce frame rate to roughly 36–43 fps even with
+the Original viewport. The native Metal path uses the same filter kernels and
+keeps the selected filter and preset intact. See the
+[Mac ScaleFX follow-up](ENGINE_NOTES.md#native-metal-sprite-filters-with-slang-2026-10-25)
+for exact-image checks and finite timing results.
+
 ## Settings and rendering
 
 The normal `AB2SETTINGS1` file saves `crt=off|subtle|arcade|retroarch`,
@@ -198,6 +214,8 @@ time alone does not measure GPU completion or total presentation latency.
 ```sh
 python3 tools/workflow.py run test-native-settings test-native-crt test-crt-mutations
 python3 tools/workflow.py run verify-native-menu verify-gpu-crt verify-gpu-native-menu native-release
+# macOS native Metal sprite-filter gate (no optional shader runtime needed):
+python3 tools/workflow.py run verify-native-metal-sprite-mutations
 # Optional Metal/runtime gate (needs the runtime installed above):
 python3 tools/workflow.py run test-librashader-fetch verify-native-slang-mutations verify-native-shader-main
 ```

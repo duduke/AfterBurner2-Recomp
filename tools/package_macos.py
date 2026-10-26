@@ -126,6 +126,7 @@ def main():
         (ROOT / "src/main/frontend/scalers/scalefx.hpp", "ScaleFX.hpp"),
         (ROOT / "src/third_party/z80.h", "z80.h"),
         (ROOT / "src/third_party/dr_flac/LICENSE", "dr_flac.txt"),
+        (ROOT / "src/third_party/miniz/LICENSE", "miniz.txt"),
         (ROOT / "src/main/frontend/controllerdb/LICENSE", "SDL_GameControllerDB.txt"),
     ]:
         shutil.copy2(source, package / "Notices" / dest)
@@ -147,8 +148,9 @@ def main():
     (package / "START-HERE.txt").write_text(
         f"AfterBurner2 {args.version} — macOS Apple Silicon preview\n\n"
         "Requires macOS 26 or newer and an Apple Silicon Mac.\n"
-        "Extract the complete ZIP into a writable folder. Put your own extracted\n"
-        "MAME aburner2 ROM files in roms/ (see roms/README.md).\n"
+        "Extract the complete ZIP into a writable folder. Supply your own extracted\n"
+        "MAME aburner2 ROM files in roms/, put aburner2.zip there, or choose a\n"
+        "ROM ZIP in the startup picker (see roms/README.md).\n"
         "Double-click Launch.command, or run it from Terminal. Keep lib/ alongside it.\n"
         "Enter Arcade starts attract mode; 5 inserts a coin, Enter starts.\n"
         "Practice selects a stage for a fresh run; F5 retries that Practice stage.\n"
@@ -156,12 +158,13 @@ def main():
         "F5 restarts the same Shuffle order; New Shuffle creates another order.\n"
         "Return to Arcade starts a fresh original board. See docs/PRACTICE_MODE.md\n"
         "and docs/SHUFFLE_MODE.md for details.\n"
-        "Escape opens settings. Video > Viewport offers 16:10 and 16:9 previews;\n"
+        "Escape opens the pause menu; Settings > Display > Aspect Ratio offers\n"
+        "16:10 and 16:9 previews. Restart Run and Change Mode are on the pause menu.\n"
         "These viewports and detached HUD/aircraft use the integrated renderer by default.\n"
         "The Preview labels describe remaining widescreen coverage, not renderer selection.\n"
         "--scene-renderer snapshot selects the retained reconstruction reference.\n"
-        "Ground > Corrected enables the enhanced horizon correction.\n"
-        "Video > CRT Mode includes the built-in Off / Subtle / Arcade modes.\n"
+        "Settings > Graphics > Ground > Corrected enables horizon correction.\n"
+        "Settings > CRT and Shaders includes built-in Off / Subtle / Arcade modes.\n"
         "RetroArch Slang presets need a separately installed optional runtime\n"
         "and shader pack; neither is bundled. See docs/CRT_DISPLAY.md for setup.\n"
         "The optional neutral/gentle-bank aircraft prototype is in assets/player-aircraft/;\n"

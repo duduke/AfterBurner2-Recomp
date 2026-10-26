@@ -15,6 +15,19 @@ std::vector<uint32_t> readback(SDL_Renderer* renderer,const char* capture=nullpt
     if(capture)require(SDL_SaveBMP(image,capture),"CRT readback capture failed");
     SDL_DestroySurface(image);return pixels;
 }
+using Menu=Frontend::NativeMenu;
+void select(Menu& menu,const std::string& label){
+    for(int i=0;i<menu.row_count();++i){if(menu.row_label(menu.selection())==label)return;menu.key(SDLK_DOWN);}
+    throw std::runtime_error("Menu entry missing: "+label);
+}
+void enter(Menu& menu,const std::string& label){select(menu,label);menu.key(SDLK_RETURN);}
+void navigate(Menu& menu,std::initializer_list<const char*> path){
+    for(int i=0;menu.page()!=Menu::Page::root && i<10;++i)menu.key(SDLK_ESCAPE);
+    require(menu.page()==Menu::Page::root,"menu could not return to root");
+    for(auto label:path)enter(menu,label);
+}
+void practice(Menu& menu){navigate(menu,{"CHANGE MODE...","PRACTICE"});}
+void shuffle(Menu& menu){navigate(menu,{"CHANGE MODE...","SHUFFLE"});}
 int main(int argc,char** argv) try {
     const bool gpu=argc==2 && std::string_view(argv[1])=="--gpu";
     require(roms.load_aburner2(),"ROMs required");
@@ -31,7 +44,8 @@ int main(int argc,char** argv) try {
         require(target && SDL_SetRenderTarget(renderer,target),"scrollbar render target unavailable");
         require(SDL_SetRenderLogicalPresentation(renderer,320,224,SDL_LOGICAL_PRESENTATION_DISABLED),"scrollbar native coordinates unavailable");
         Frontend::NativeInput input("");Frontend::NativeHaptics feedback(input,"");
-        GameSession game(roms);Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.input=&input;menu.feedback=&feedback;
+        Frontend::NativeMusic music("","build/oracle/music-fixtures");
+        GameSession game(roms);Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.input=&input;menu.feedback=&feedback;menu.music=&music;
         auto thumb=[&](const char* capture=nullptr){
             menu.draw();auto* raw=SDL_RenderReadPixels(renderer,nullptr);require(raw,"scrollbar readback failed");
             auto* image=SDL_ConvertSurface(raw,SDL_PIXELFORMAT_ARGB8888);SDL_DestroySurface(raw);require(image,"scrollbar conversion failed");
@@ -42,21 +56,21 @@ int main(int argc,char** argv) try {
             if(capture){std::filesystem::create_directories("build/oracle");require(SDL_SaveBMP(image,capture),"scrollbar capture failed");}
             SDL_DestroySurface(image);return range;
         };
-        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
-        require(thumb()[0]<0,"short Options menu displayed a scrollbar");
-        menu.key(SDLK_RETURN);auto video_top=thumb();menu.key(SDLK_UP);auto video_bottom=thumb();
-        require(video_top[0]==64 && video_bottom[0]>video_top[0] && video_bottom[1]==191,"Video scrollbar did not reach both ends");
-        menu.key(SDLK_ESCAPE);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
+        menu.open(game);navigate(menu,{"SETTINGS"});
+        require(thumb()[0]<0,"Settings overview should fit without scrolling");
+        enter(menu,"DISPLAY");require(thumb()[0]<0,"short Display page displayed a scrollbar");
+        navigate(menu,{"SETTINGS","GRAPHICS"});require(thumb()[0]<0,"short Graphics page displayed a scrollbar");
+        navigate(menu,{"SETTINGS","CRT AND SHADERS"});require(thumb()[0]<0,"short CRT page displayed a scrollbar");
+        navigate(menu,{"SETTINGS","CONTROLS","BUTTON BINDINGS"});
         auto controls_top=thumb("build/oracle/scrollbar-controls-top.bmp");
-        for(int i=0;i<6;++i)menu.key(SDLK_DOWN);auto controls_middle=thumb();
-        for(int i=0;i<12;++i)menu.key(SDLK_DOWN);auto controls_bottom=thumb("build/oracle/scrollbar-controls-bottom.bmp");
-        require(controls_top[0]==64 && controls_middle[0]>controls_top[0] && controls_bottom[0]>controls_middle[0] && controls_bottom[1]==183,"Controls scrollbar position failed");
-        menu.key(SDLK_UP);menu.key(SDLK_RETURN);auto feedback_top=thumb("build/oracle/scrollbar-feedback-top.bmp");
-        for(int i=0;i<8;++i)menu.key(SDLK_DOWN);auto feedback_bottom=thumb("build/oracle/scrollbar-feedback-bottom.bmp");
-        require(feedback_top[0]==58 && feedback_bottom[0]>feedback_top[0] && feedback_bottom[1]==193,"Feedback scrollbar position failed");
+        for(int i=0;i<6;++i)menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);auto controls_middle=thumb();
+        select(menu,"BACK");auto controls_bottom=thumb("build/oracle/scrollbar-controls-bottom.bmp");
+        require(controls_top[0]==60 && controls_middle[0]>controls_top[0] && controls_bottom[0]>controls_middle[0] && controls_bottom[1]==178,"Bindings scrollbar position failed");
+        navigate(menu,{"SETTINGS","CONTROLS","FEEDBACK"});require(thumb("build/oracle/scrollbar-feedback-top.bmp")[0]<0,"short Feedback page displayed a scrollbar");
+        enter(menu,"TEST FEEDBACK");require(thumb("build/oracle/scrollbar-feedback-bottom.bmp")[0]<0,"short Feedback Tests page displayed a scrollbar");
         menu.close(game);require(!game.info().number,"scrollbar rendering advanced the board");
         require(SDL_SetRenderTarget(renderer,nullptr),"scrollbar target restore failed");SDL_DestroyTexture(target);
-        std::cout<<"Menu scrollbars: Video/Controls/Feedback top, middle and bottom readbacks passed; short menus hide the indicator.\n";
+        std::cout<<"Menu scrollbars: Bindings top, middle and bottom readbacks passed; short category pages hide indicators.\n";
     }
     {
         auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_TARGET,320,224);
@@ -71,34 +85,34 @@ int main(int argc,char** argv) try {
         menu.open(game);menu.key(SDLK_UP);
         require(menu.selection()==4 && menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::quit,"Practice displaced root Quit wrap");
         menu.key(SDLK_DOWN);require(menu.selection()==0,"five-row root forward wrap failed");
-        require(menu.pointer(160,141,true)==Frontend::NativeMenu::Action::none && menu.in_practice(),"Practice pointer entry failed");
+        enter(menu,"CHANGE MODE...");require(menu.pointer(160,77,true)==Frontend::NativeMenu::Action::none && menu.in_practice(),"Practice pointer entry failed");
         require(menu.practice_stage==1 && !menu.active_practice_stage,"Practice initial selection or active state incorrect");
         menu.key(SDLK_LEFT);require(menu.practice_stage==count,"Practice reverse stage wrap failed");
         menu.key(SDLK_RIGHT);require(menu.practice_stage==1,"Practice forward stage wrap failed");
         menu.key(SDLK_RETURN);require(menu.practice_stage==2,"Practice Enter stage adjustment failed");
         for(unsigned i=0;i<count;++i)menu.key(SDLK_RIGHT);
         require(menu.practice_stage==2,"Practice stage traversal lost the selected ROM slot");
-        require(menu.pointer(80,107,true)==Frontend::NativeMenu::Action::practice,"Practice Start pointer action failed");
+        require(menu.pointer(80,77,true)==Frontend::NativeMenu::Action::practice,"Practice Start pointer action failed");
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::practice,"Practice Start keyboard action failed");
         require(!menu.active_practice_stage,"Practice menu action changed active session before launch");
-        require(menu.pointer(80,133,true)==Frontend::NativeMenu::Action::none,"inactive Practice enabled Return to Arcade");
+        require(menu.pointer(80,94,true)==Frontend::NativeMenu::Action::none,"inactive Practice enabled Return to Arcade");
         menu.active_practice_stage=count;
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::arcade,"active Practice Return to Arcade action failed");
         menu.draw();readback(renderer,"build/oracle/practice-menu.bmp");
-        menu.pointer(80,81,true);require(menu.practice_stage==3 && menu.active_practice_stage==count,"candidate stage edit changed retry target");
-        menu.key(SDLK_ESCAPE);require(!menu.in_practice() && menu.selection()==2,"Practice Escape did not restore root row");
+        menu.pointer(80,60,true);require(menu.practice_stage==3 && menu.active_practice_stage==count,"candidate stage edit changed retry target");
+        menu.key(SDLK_ESCAPE);require(!menu.in_practice() && menu.selection()==1,"Practice Escape did not restore root row");
         menu.key(SDLK_RETURN);menu.key(SDLK_UP);
         require(menu.selection()==3 && menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::none && !menu.in_practice(),"Practice Back or reverse wrap failed");
         menu.key(SDLK_RETURN);require(menu.in_practice(),"Practice keyboard reentry failed");
-        require(menu.pointer(80,159,true)==Frontend::NativeMenu::Action::none && !menu.in_practice(),"Practice pointer Back failed");
-        menu.key(SDLK_RETURN);menu.key(SDLK_F1);require(!menu.in_practice() && menu.selection()==2,"Practice F1 did not restore root row");
+        require(menu.pointer(80,111,true)==Frontend::NativeMenu::Action::none && !menu.in_practice(),"Practice pointer Back failed");
+        menu.key(SDLK_RETURN);menu.key(SDLK_F1);require(!menu.in_practice() && menu.selection()==1,"Practice F1 did not restore root row");
         menu.practice_allowed=false;
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::none && !menu.in_practice() && menu.notice=="UNAVAILABLE WHILE RECORDING","recording allowed Practice entry");
-        require(menu.pointer(160,141,true)==Frontend::NativeMenu::Action::none && !menu.in_practice(),"recording allowed Practice pointer entry");
+        require(menu.pointer(160,77,true)==Frontend::NativeMenu::Action::none && !menu.in_practice(),"recording allowed Practice pointer entry");
         menu.practice_allowed=true;menu.notice.clear();menu.key(SDLK_RETURN);menu.practice_allowed=false;
         const auto selected_stage=menu.practice_stage;menu.key(SDLK_RIGHT);
         require(menu.practice_stage==selected_stage,"recording allowed Practice stage mutation");
-        require(menu.pointer(80,107,true)==Frontend::NativeMenu::Action::none && menu.pointer(80,133,true)==Frontend::NativeMenu::Action::none,"recording allowed Practice launch or Arcade return");
+        require(menu.pointer(80,77,true)==Frontend::NativeMenu::Action::none && menu.pointer(80,94,true)==Frontend::NativeMenu::Action::none,"recording allowed Practice launch or Arcade return");
         menu.draw();menu.key(SDLK_ESCAPE);require(!menu.in_practice(),"recording guard trapped Practice Back");
         SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
         const auto blank=readback(renderer);menu.active_practice_stage=0;menu.draw_practice_status();
@@ -112,7 +126,7 @@ int main(int argc,char** argv) try {
                 std::memcmp(pixels.data(),game.frame().pixels.data(),pixels.size()*sizeof(RGB888))==0 &&
                 game.take_audio().empty() && game.dip_switches()==switches,"Practice UI changed native RGB/PCM/time or DIP state");
         menu.close(game);require(!game.paused(),"Practice UI did not restore original pause state");
-        game.set_paused(true);menu.practice_allowed=true;menu.open(game);menu.pointer(160,141,true);
+        game.set_paused(true);menu.practice_allowed=true;menu.open(game);practice(menu);
         require(menu.in_practice(),"paused Practice entry failed");menu.key(SDLK_ESCAPE);menu.close(game);
         require(game.paused(),"Practice UI lost preexisting pause state");
         require(SDL_SetRenderTarget(renderer,nullptr),"Practice render target restore failed");SDL_DestroyTexture(target);
@@ -127,30 +141,30 @@ int main(int argc,char** argv) try {
         const std::vector<RGB888> pixels(source.begin(),source.end());const auto switches=game.dip_switches();
         Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());
         const auto stage=NativeStageSkip::stage_count(roms);menu.practice_stage=stage;menu.active_practice_stage=stage;
-        menu.open(game);menu.draw();readback(renderer,"build/oracle/shuffle-root-menu.bmp");
-        menu.pointer(160,158,false);require(menu.selection()==3 && !menu.in_shuffle(),"Shuffle root hover entered submenu");
-        require(menu.pointer(160,158,true)==Frontend::NativeMenu::Action::none && menu.in_shuffle() && !menu.in_practice(),"Shuffle pointer entry failed");
+        menu.open(game);enter(menu,"CHANGE MODE...");menu.draw();readback(renderer,"build/oracle/shuffle-root-menu.bmp");
+        menu.pointer(160,94,false);require(menu.selection()==2 && !menu.in_shuffle(),"Shuffle root hover entered submenu");
+        require(menu.pointer(160,94,true)==Frontend::NativeMenu::Action::none && menu.in_shuffle() && !menu.in_practice(),"Shuffle pointer entry failed");
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::shuffle && !menu.shuffle_active,"Shuffle keyboard action changed active session before launch");
         menu.draw();const auto inactive=readback(renderer);
-        require(menu.pointer(80,119,true)==Frontend::NativeMenu::Action::none,"inactive Shuffle enabled Return to Arcade");
+        require(menu.pointer(80,77,true)==Frontend::NativeMenu::Action::none,"inactive Shuffle enabled Return to Arcade");
         menu.shuffle_active=true;
-        require(menu.pointer(80,93,true)==Frontend::NativeMenu::Action::shuffle,"New Shuffle pointer action failed");
+        require(menu.pointer(80,60,true)==Frontend::NativeMenu::Action::shuffle,"New Shuffle pointer action failed");
         menu.draw();require(readback(renderer,"build/oracle/shuffle-menu.bmp")!=inactive,"active Shuffle did not update New Shuffle label");
-        require(menu.pointer(80,119,true)==Frontend::NativeMenu::Action::arcade,"active Shuffle Return to Arcade failed");
+        require(menu.pointer(80,77,true)==Frontend::NativeMenu::Action::arcade,"active Shuffle Return to Arcade failed");
         menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);require(menu.selection()==0,"Shuffle forward row wrap failed");
         menu.key(SDLK_UP);require(menu.selection()==2,"Shuffle reverse row wrap failed");
-        require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::none && !menu.in_shuffle() && menu.selection()==3,"Shuffle Back failed to restore root row");
-        menu.key(SDLK_RETURN);menu.key(SDLK_ESCAPE);require(!menu.in_shuffle() && menu.selection()==3,"Shuffle Escape failed");
-        menu.key(SDLK_RETURN);menu.key(SDLK_F1);require(!menu.in_shuffle() && menu.selection()==3,"Shuffle F1 failed");
+        require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::none && !menu.in_shuffle() && menu.selection()==2,"Shuffle Back failed to restore root row");
+        menu.key(SDLK_RETURN);menu.key(SDLK_ESCAPE);require(!menu.in_shuffle() && menu.selection()==2,"Shuffle Escape failed");
+        menu.key(SDLK_RETURN);menu.key(SDLK_F1);require(!menu.in_shuffle() && menu.selection()==2,"Shuffle F1 failed");
         require(menu.practice_stage==stage && menu.active_practice_stage==stage,"Shuffle changed independent Practice selection or retry target");
-        menu.active_practice_stage=0;menu.pointer(160,141,true);require(menu.in_practice(),"Practice entry from Shuffle run failed");
-        require(menu.pointer(80,133,true)==Frontend::NativeMenu::Action::arcade,"Practice could not return active Shuffle run to Arcade");
+        menu.active_practice_stage=0;menu.pointer(160,77,true);require(menu.in_practice(),"Practice entry from Shuffle run failed");
+        require(menu.pointer(80,94,true)==Frontend::NativeMenu::Action::arcade,"Practice could not return active Shuffle run to Arcade");
         menu.key(SDLK_ESCAPE);menu.shuffle_allowed=false;
-        require(menu.pointer(160,158,true)==Frontend::NativeMenu::Action::none && !menu.in_shuffle() && menu.notice=="UNAVAILABLE WHILE RECORDING","recording allowed Shuffle pointer entry");
+        require(menu.pointer(160,94,true)==Frontend::NativeMenu::Action::none && !menu.in_shuffle() && menu.notice=="UNAVAILABLE WHILE RECORDING","recording allowed Shuffle pointer entry");
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::none && !menu.in_shuffle(),"recording allowed Shuffle keyboard entry");
         menu.shuffle_allowed=true;menu.notice.clear();menu.key(SDLK_RETURN);menu.shuffle_allowed=false;
-        require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::none && menu.pointer(80,119,true)==Frontend::NativeMenu::Action::none,"recording allowed Shuffle launch or Arcade return");
-        menu.draw();require(menu.pointer(80,145,true)==Frontend::NativeMenu::Action::none && !menu.in_shuffle(),"recording guard trapped Shuffle pointer Back");
+        require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::none && menu.pointer(80,77,true)==Frontend::NativeMenu::Action::none,"recording allowed Shuffle launch or Arcade return");
+        menu.draw();require(menu.pointer(80,94,true)==Frontend::NativeMenu::Action::none && !menu.in_shuffle(),"recording guard trapped Shuffle pointer Back");
         menu.shuffle_active=false;SDL_SetRenderDrawColor(renderer,0,0,0,255);SDL_RenderClear(renderer);
         const auto blank=readback(renderer);menu.draw_practice_status();require(readback(renderer)==blank,"inactive Shuffle drew a gameplay label");
         menu.shuffle_active=true;
@@ -167,7 +181,7 @@ int main(int argc,char** argv) try {
                 std::memcmp(pixels.data(),game.frame().pixels.data(),pixels.size()*sizeof(RGB888))==0 &&
                 game.take_audio().empty() && game.dip_switches()==switches,"Shuffle UI changed native RGB/PCM/time or DIP state");
         menu.close(game);require(!game.paused(),"Shuffle UI did not restore original pause state");
-        game.set_paused(true);menu.shuffle_allowed=true;menu.open(game);menu.pointer(160,158,true);
+        game.set_paused(true);menu.shuffle_allowed=true;menu.open(game);shuffle(menu);
         require(menu.in_shuffle(),"paused Shuffle entry failed");menu.key(SDLK_ESCAPE);menu.close(game);
         require(game.paused(),"Shuffle UI lost preexisting pause state");
         require(SDL_SetRenderTarget(renderer,nullptr),"Shuffle render target restore failed");SDL_DestroyTexture(target);
@@ -181,10 +195,10 @@ int main(int argc,char** argv) try {
         menu.apply=[&](const Frontend::Settings& s){return Frontend::apply_settings(window,renderer,texture,s);};
         menu.open(game);require(game.paused(),"opening menu did not freeze board");
         require(!game.advance({}) && game.info().number==before.number,"menu admitted a physical board frame");
-        menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);require(menu.in_options(),"options navigation failed");
+        navigate(menu,{"SETTINGS"});require(menu.in_options(),"options navigation failed");
         const auto root_settings=menu.settings;menu.key(SDLK_LEFT);menu.key(SDLK_RIGHT);
         require(menu.settings==root_settings,"Options root changed a video setting");
-        menu.key(SDLK_RETURN);require(menu.in_video(),"Video submenu entry failed");
+        enter(menu,"DISPLAY");select(menu,"OUTPUT SCALING");require(menu.in_video(),"Video submenu entry failed");
         menu.key(SDLK_LEFT);menu.key(SDLK_RIGHT); // wrap filter selection without invalid enum
         menu.key(SDLK_RIGHT);require(menu.settings.scaling==Frontend::Scaling::linear,"smooth scaling selection failed");
         SDL_ScaleMode scale{};require(SDL_GetTextureScaleMode(texture,&scale) && scale==SDL_SCALEMODE_LINEAR,"SDL filter not applied");
@@ -192,13 +206,13 @@ int main(int argc,char** argv) try {
         SDL_RendererLogicalPresentation presentation{};int w,h;
         require(SDL_GetRenderLogicalPresentation(renderer,&w,&h,&presentation) &&
             presentation==SDL_LOGICAL_PRESENTATION_INTEGER_SCALE && w==320 && h==224,"integer presentation not applied");
-        menu.key(SDLK_DOWN);
+        navigate(menu,{"SETTINGS","GRAPHICS"});
         menu.key(SDLK_LEFT);require(menu.settings.sprites==Frontend::SpriteFilter::scalefx,"sprite filter reverse wrap failed");
         menu.key(SDLK_RIGHT);require(menu.settings.sprites==Frontend::SpriteFilter::none,"sprite filter forward wrap failed");
         for(int i=1;i<Frontend::sprite_filter_count;++i) {
             menu.key(SDLK_RIGHT);require(static_cast<int>(menu.settings.sprites)==i,"sprite filter selection failed");
         }
-        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.clouds && !menu.settings.trails,"cloud toggle failed");menu.key(SDLK_LEFT);
+        enter(menu,"TRANSPARENCY");menu.key(SDLK_RIGHT);require(menu.settings.clouds && !menu.settings.trails,"cloud toggle failed");menu.key(SDLK_LEFT);
         menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.trails && !menu.settings.clouds,"trail toggle failed");menu.key(SDLK_LEFT);
         menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.explosions && !menu.settings.afterburner,"explosion toggle failed");menu.key(SDLK_LEFT);
         menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.afterburner && !menu.settings.explosions,"afterburner toggle failed");menu.key(SDLK_LEFT);
@@ -210,7 +224,7 @@ int main(int argc,char** argv) try {
             require(SDL_RenderPresent(renderer),"GPU menu initial window presentation failed");
             SDL_PumpEvents();
         }
-        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);
+        navigate(menu,{"SETTINGS","DISPLAY"});menu.key(SDLK_RIGHT);
         const auto fullscreen_deadline=SDL_GetTicks()+3000;
         while(menu.settings.fullscreen && !(SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN) && SDL_GetTicks()<fullscreen_deadline) {
             SDL_PumpEvents();SDL_Delay(10);
@@ -225,14 +239,14 @@ int main(int argc,char** argv) try {
             SDL_PumpEvents();SDL_Delay(10);
         }
         require(!menu.settings.fullscreen && !(SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN),"windowed restoration failed");
-        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);menu.key(SDLK_RIGHT);
+        navigate(menu,{"SETTINGS","DIAGNOSTICS"});menu.key(SDLK_RIGHT);menu.key(SDLK_RIGHT);
         require(menu.settings.stats==Frontend::Stats::detailed,"stats mode selection failed");
         menu.draw();menu.draw_stats({59.6,59.6,16.8,12,1},true);SDL_RenderPresent(renderer);
         require(game.info().number==before.number && game.info().time_ns==before.time_ns &&
             std::memcmp(pixels.data(),game.frame().pixels.data(),pixels.size()*sizeof(RGB888))==0,
             "UI rendering mutated native frame/time");
-        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(menu.settings.ground,"ground correction UI failed");menu.draw(); // Ground scrolls the Video viewport.
-        menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(Frontend::is_wide(menu.settings),"Viewport entry missing");
+        navigate(menu,{"SETTINGS","GRAPHICS"});select(menu,"GROUND");menu.key(SDLK_RIGHT);require(menu.settings.ground,"ground correction UI failed");menu.draw(); // Ground scrolls the Video viewport.
+        navigate(menu,{"SETTINGS","DISPLAY"});select(menu,"ASPECT RATIO");menu.key(SDLK_RIGHT);require(Frontend::is_wide(menu.settings),"Viewport entry missing");
         require(SDL_GetRenderLogicalPresentation(renderer,&w,&h,&presentation)&&w==398&&h==224,"wide logical viewport not applied");
         SDL_Rect safe{39,0,320,224};require(SDL_SetRenderViewport(renderer,&safe),"centered menu viewport failed");
         float wx,wy;require(SDL_RenderCoordinatesToWindow(renderer,60,65,&wx,&wy),"wide mouse transform unavailable");
@@ -248,15 +262,14 @@ int main(int argc,char** argv) try {
         menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide16_10,"viewport reverse wrap failed");
         menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide16_9,"16:9 viewport return failed");
         menu.key(SDLK_LEFT);require(!Frontend::is_wide(menu.settings),"Original viewport return failed");SDL_SetRenderViewport(renderer,nullptr);
-        menu.pointer(60,65,false); // Hover its first visible row without shifting it.
+        navigate(menu,{"SETTINGS","GRAPHICS","TRANSPARENCY"});menu.pointer(60,60,false); // Hover the first effects row.
         const auto prior_clouds=menu.settings.clouds;menu.key(SDLK_RIGHT);
         require(menu.settings.clouds!=prior_clouds,"scrolled mouse row selected the wrong option");
         const auto accepted=menu.settings;menu.apply=[](const auto&){return false;};menu.key(SDLK_RIGHT);
         require(menu.settings==accepted,"failed option must retain last accepted settings");
         menu.notice.clear();
-        menu.key(SDLK_ESCAPE);require(!menu.in_video() && menu.in_options() && menu.selection()==0,"Video Escape failed");
-        menu.key(SDLK_RETURN);menu.key(SDLK_UP);require(menu.selection()==15,"Video reverse navigation failed");
-        for(int i=0;i<5;++i)menu.key(SDLK_UP);require(menu.selection()==10,"HUD menu row missing");
+        menu.key(SDLK_ESCAPE);require(menu.page()==Menu::Page::graphics && menu.row_label(menu.selection())=="TRANSPARENCY","Effects Escape lost parent selection");
+        select(menu,"HUD STYLE");
         menu.apply=[&](const Frontend::Settings& s){return Frontend::apply_settings(window,renderer,texture,s);};
         menu.key(SDLK_RIGHT);require(menu.settings.hud==Frontend::Hud::sharp,"Sharp HUD selection failed");
         menu.key(SDLK_RIGHT);require(menu.settings.hud==Frontend::Hud::original,"missing custom atlas trapped forward HUD navigation");
@@ -265,9 +278,9 @@ int main(int argc,char** argv) try {
         menu.key(SDLK_RIGHT);require(menu.settings.hud==Frontend::Hud::custom,"Custom HUD selection failed");
         menu.key(SDLK_RIGHT);require(menu.settings.hud==Frontend::Hud::original,"HUD forward wrap failed");
         menu.key(SDLK_LEFT);require(menu.settings.hud==Frontend::Hud::custom,"HUD reverse wrap failed");
-        menu.key(SDLK_RIGHT);for(int i=0;i<5;++i)menu.key(SDLK_DOWN);
-        menu.key(SDLK_RETURN);require(!menu.in_video() && menu.in_options(),"Video Back failed");
-        menu.pointer(60,104,true);require(menu.in_video(),"Video pointer entry failed");
+        menu.key(SDLK_RIGHT);select(menu,"BACK");
+        menu.key(SDLK_RETURN);require(menu.page()==Menu::Page::settings && menu.row_label(menu.selection())=="GRAPHICS","Graphics Back failed");
+        select(menu,"DISPLAY");menu.pointer(60,60,true);require(menu.page()==Menu::Page::display,"Display pointer entry failed");
         menu.draw();auto* video_image=SDL_RenderReadPixels(renderer,nullptr);require(video_image,"Video menu readback failed");
         require(SDL_SaveBMP(video_image,"build/oracle/video-menu.bmp"),"Video image save failed");SDL_DestroySurface(video_image);
         menu.key(SDLK_ESCAPE);
@@ -278,7 +291,16 @@ int main(int argc,char** argv) try {
         menu.open(game);menu.key(SDLK_UP);
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::quit,"menu quit action failed");menu.close(game);
         GameSession cold(roms);menu.open(cold);
-        require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::start,"cold menu Start action failed");menu.close(cold);
+        require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::start,"cold menu Start action failed");
+        require(menu.row_label(0)=="ARCADE" && menu.row_label(1)=="PRACTICE" && menu.row_label(2)=="SHUFFLE" && menu.row_label(3)=="SETTINGS","startup mode/settings order wrong");
+        menu.pointer(60,123,true);require(menu.in_practice(),"startup Practice pointer entry failed");menu.key(SDLK_ESCAPE);
+        menu.pointer(60,140,true);require(menu.in_shuffle(),"startup Shuffle pointer entry failed");menu.key(SDLK_ESCAPE);
+        menu.close(cold);menu.open(game);
+        require(menu.row_label(0)=="RESUME" && menu.row_label(1)=="RESTART RUN" && menu.row_label(2)=="CHANGE MODE...","pause actions missing");
+        select(menu,"RESTART RUN");require(menu.key(SDLK_RETURN)==Menu::Action::restart,"pause Restart Run action failed");
+        enter(menu,"CHANGE MODE...");require(menu.key(SDLK_RETURN)==Menu::Action::arcade,"Change Mode Arcade action failed");
+        menu.practice_allowed=false;require(menu.key(SDLK_RETURN)==Menu::Action::none,"recording allowed Change Mode Arcade");
+        enter(menu,"BACK");require(menu.page()==Menu::Page::root && menu.row_label(menu.selection())=="CHANGE MODE...","Change Mode Back lost root selection");menu.close(game);
     }
     {
         const std::string config="build/oracle/crt-menu.cfg";std::filesystem::remove(config);
@@ -287,18 +309,18 @@ int main(int argc,char** argv) try {
         Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());
         menu.apply=[&](const Frontend::Settings& s){return Frontend::apply_settings(window,renderer,texture,s) && Frontend::save_settings(config,s);};
         const auto persisted=[&]{require(Frontend::load_settings(config,true)==menu.settings,"CRT menu settings not persisted");};
-        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);menu.key(SDLK_RETURN);
+        menu.open(game);navigate(menu,{"SETTINGS","CRT AND SHADERS"});
         unsigned shader_choices=0;menu.choose_shader=[&]{++shader_choices;};
-        menu.key(SDLK_UP);require(menu.selection()==15,"CRT rows displaced Video Back");
-        menu.key(SDLK_UP);require(menu.selection()==14,"RetroArch preset row missing");
+        menu.key(SDLK_UP);require(menu.selection()==4,"CRT rows displaced Video Back");
+        menu.key(SDLK_UP);require(menu.selection()==3,"RetroArch preset row missing");
         menu.key(SDLK_RIGHT);menu.key(SDLK_LEFT);require(!shader_choices,"preset picker opened without explicit activation");
         const auto before_choice=menu.settings;menu.key(SDLK_RETURN);
         require(shader_choices==1 && menu.settings==before_choice,"preset picker callback changed settings before an accepted result");
-        menu.key(SDLK_UP);require(menu.selection()==13,"RGB Mask menu row missing");
+        menu.key(SDLK_UP);require(menu.selection()==2,"RGB Mask menu row missing");
         menu.key(SDLK_RIGHT);require(menu.settings.crt==Frontend::Crt::subtle && menu.settings.crt_scanlines==25 && menu.settings.crt_mask==20,"adjusting mask while Off did not enable CRT independently");persisted();
         menu.key(SDLK_UP);menu.key(SDLK_RIGHT);
         require(menu.settings.crt==Frontend::Crt::subtle && menu.settings.crt_scanlines==30 && menu.settings.crt_mask==20,"scanline adjustment changed mask");
-        menu.key(SDLK_UP);require(menu.selection()==11,"CRT mode menu row missing");
+        menu.key(SDLK_UP);require(menu.selection()==0,"CRT mode menu row missing");
         menu.key(SDLK_RIGHT);require(menu.settings.crt==Frontend::Crt::arcade && menu.settings.crt_scanlines==50 && menu.settings.crt_mask==35,"Arcade preset did not reset strengths");persisted();
         menu.key(SDLK_DOWN);menu.key(SDLK_LEFT);
         require(menu.settings.crt==Frontend::Crt::arcade && menu.settings.crt_scanlines==45 && menu.settings.crt_mask==35,"strength edit changed the active preset");
@@ -311,7 +333,7 @@ int main(int argc,char** argv) try {
         menu.shader_status="CRT-GEOM ACTIVE";const auto shader_settings=menu.settings;
         menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);menu.key(SDLK_DOWN);menu.key(SDLK_LEFT);menu.draw();
         require(menu.settings==shader_settings,"RetroArch mode allowed built-in scanline/mask edits");
-        menu.key(SDLK_DOWN);require(menu.selection()==14,"RetroArch preset picker unreachable");menu.key(SDLK_RETURN);
+        menu.key(SDLK_DOWN);require(menu.selection()==3,"RetroArch preset picker unreachable");menu.key(SDLK_RETURN);
         require(shader_choices==2,"RetroArch preset picker did not activate");
         menu.key(SDLK_UP);menu.key(SDLK_UP);menu.key(SDLK_UP);menu.key(SDLK_RIGHT);
         require(menu.settings.crt==Frontend::Crt::off && !menu.settings.crt_scanlines && !menu.settings.crt_mask,"Off changed retained CRT strengths");persisted();
@@ -323,14 +345,14 @@ int main(int argc,char** argv) try {
         const auto accepted=menu.settings;menu.apply=[](const auto&){return false;};menu.key(SDLK_RIGHT);
         require(menu.settings==accepted,"rejected CRT strength changed accepted settings");menu.notice.clear();
         menu.apply=[&](const Frontend::Settings& s){return Frontend::apply_settings(window,renderer,texture,s) && Frontend::save_settings(config,s);};
-        menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.draw();require(menu.selection()==15,"Video Back unreachable after CRT edits");
-        menu.pointer(60,113,true);require(menu.selection()==11 && menu.settings.crt==Frontend::Crt::arcade,"scrolled CRT mode pointer selected the wrong row");persisted();
-        menu.pointer(60,129,true);require(menu.selection()==12 && menu.settings.crt_scanlines==55,"scrolled Scanlines pointer selected the wrong row");
-        menu.pointer(60,145,true);require(menu.selection()==13 && menu.settings.crt_mask==40,"scrolled RGB Mask pointer selected the wrong row");persisted();
-        menu.pointer(60,161,true);require(menu.selection()==14 && shader_choices==3,"scrolled preset pointer selected the wrong row");
+        menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.draw();require(menu.selection()==4,"Video Back unreachable after CRT edits");
+        menu.pointer(60,60,true);require(menu.selection()==0 && menu.settings.crt==Frontend::Crt::arcade,"scrolled CRT mode pointer selected the wrong row");persisted();
+        menu.pointer(60,77,true);require(menu.selection()==1 && menu.settings.crt_scanlines==55,"scrolled Scanlines pointer selected the wrong row");
+        menu.pointer(60,94,true);require(menu.selection()==2 && menu.settings.crt_mask==40,"scrolled RGB Mask pointer selected the wrong row");persisted();
+        menu.pointer(60,111,true);require(menu.selection()==3 && shader_choices==3,"scrolled preset pointer selected the wrong row");
         menu.draw();const auto before_rebind=readback(renderer);
-        menu.rebind(nullptr,roms);require(menu.is_open() && menu.in_video() && menu.selection()==14 && menu.settings.crt==Frontend::Crt::arcade,"renderer detach lost menu state");
-        menu.rebind(renderer,roms);menu.key(SDLK_RETURN);require(shader_choices==4 && menu.selection()==14 && menu.shader_status=="CRT-GEOM ACTIVE","renderer rebind lost callbacks or shader status");
+        menu.rebind(nullptr,roms);require(menu.is_open() && menu.in_video() && menu.selection()==3 && menu.settings.crt==Frontend::Crt::arcade,"renderer detach lost menu state");
+        menu.rebind(renderer,roms);menu.key(SDLK_RETURN);require(shader_choices==4 && menu.selection()==3 && menu.shader_status=="CRT-GEOM ACTIVE","renderer rebind lost callbacks or shader status");
         menu.draw();require(readback(renderer)==before_rebind,"renderer rebind changed menu font/layout pixels");
         menu.draw();const auto ui=readback(renderer);
         std::vector<uint32_t> uploaded(pixels.size());
@@ -340,7 +362,7 @@ int main(int argc,char** argv) try {
         menu.draw();require(readback(renderer,"build/oracle/crt-video-menu.bmp")==ui,"CRT pass changed the following frontend UI");
         require(!game.advance({}) && game.info().number==before.number && game.info().time_ns==before.time_ns &&
                 std::memcmp(pixels.data(),game.frame().pixels.data(),pixels.size()*sizeof(RGB888))==0,"CRT menu changed native frame/time");
-        menu.pointer(60,177,true);require(!menu.in_video() && menu.in_options() && menu.selection()==0,"scrolled Video Back pointer failed");
+        menu.pointer(60,128,true);require(!menu.in_video() && menu.in_options() && menu.row_label(menu.selection())=="CRT AND SHADERS","scrolled Video Back pointer failed");
         menu.key(SDLK_RETURN);menu.key(SDLK_UP);menu.key(SDLK_DOWN);require(menu.selection()==0,"Video forward wrap failed with CRT rows");
         menu.key(SDLK_ESCAPE);menu.close(game);require(!game.paused(),"CRT menu lost pause state");std::filesystem::remove(config);
         std::cout<<"CRT menu: presets, independent 5% strengths/clamps, persistence, rejection, scroll/pointer navigation and native frame/time identity passed.\n";
@@ -385,9 +407,7 @@ int main(int argc,char** argv) try {
     {
         GameSession game(roms);game.advance({});const auto before=game.info();
         Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());
-        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
-        menu.key(SDLK_DOWN);
-        menu.key(SDLK_RETURN);require(menu.in_dips(),"DIP submenu entry failed");
+        menu.open(game);navigate(menu,{"SETTINGS","ARCADE SETTINGS"});require(menu.in_dips(),"DIP submenu entry failed");
         menu.key(SDLK_LEFT);require(menu.settings.lives==1,"lives reverse wrap failed");
         menu.key(SDLK_RIGHT);require(menu.settings.lives==0,"lives forward wrap failed");
         menu.key(SDLK_RIGHT);require(menu.settings.lives==1,"four lives selection failed");
@@ -403,7 +423,7 @@ int main(int argc,char** argv) try {
         menu.draw();auto* image=SDL_RenderReadPixels(renderer,nullptr);require(image,"DIP menu readback failed");
         require(SDL_SaveBMP(image,"build/oracle/dip-menu.bmp"),"DIP image save failed");SDL_DestroySurface(image);
         require(game.info().number==before.number && game.info().time_ns==before.time_ns && game.dip_switches()==std::array<uint8_t,3>{255,255,221},"pending DIP edit changed active board");
-        menu.key(SDLK_DOWN);require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::restart,"Apply & Restart action missing");
+        menu.key(SDLK_DOWN);require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::restart,"Apply and Restart action missing");
         menu.close(game);game.restart();game.set_dip_switches(Frontend::dip_switches(menu.settings));
         require(game.dip_switches()==std::array<uint8_t,3>{255,255,133},"restart did not apply selected DIP pins");
         const std::string recording_path="build/oracle/dip-menu-input.txt";
@@ -417,50 +437,51 @@ int main(int argc,char** argv) try {
         std::filesystem::remove(recording_path);std::filesystem::remove(recording_path+".json");
         game.advance({});bool rejected=false;try{game.set_dip_switches({255,255,221});}catch(const std::runtime_error&){rejected=true;}
         require(rejected,"running board accepted cold-only DIP configuration");
-        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
-        menu.key(SDLK_ESCAPE);require(menu.in_options() && menu.selection()==1,"DIP Escape did not restore Options row");
-        menu.key(SDLK_RETURN);menu.pointer(40,164,true);require(!menu.in_dips(),"DIP pointer Back failed");menu.close(game);
+        menu.open(game);navigate(menu,{"SETTINGS","ARCADE SETTINGS"});
+        menu.key(SDLK_ESCAPE);require(menu.in_options() && menu.row_label(menu.selection())=="ARCADE SETTINGS","DIP Escape did not restore Options row");
+        menu.key(SDLK_RETURN);menu.pointer(40,128,true);require(!menu.in_dips(),"DIP pointer Back failed");menu.close(game);
     }
     {
         Frontend::NativeInput input("");Frontend::NativeHaptics feedback(input,"");
         GameSession game(roms);Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.input=&input;menu.feedback=&feedback;
-        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
-        for(int i=0;i<17;++i)menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
+        menu.open(game);navigate(menu,{"SETTINGS","CONTROLS","FEEDBACK"});
         require(menu.selection()==0,"Feedback submenu entry");menu.key(SDLK_RETURN);require(feedback.settings.enabled,"Feedback enabled UI");
-        for(int row=0;row<16;++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}
-        menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.selection()==17,"Feedback Escape navigation");menu.key(SDLK_RETURN);
-        menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_RIGHT);require(feedback.settings.body==60,"Feedback strength UI");
+        for(int row=0;row<menu.row_count();++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}
+        enter(menu,"CUES");for(int row=0;row<menu.row_count();++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}menu.key(SDLK_ESCAPE);
+        enter(menu,"TEST FEEDBACK");for(int row=0;row<menu.row_count();++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}menu.key(SDLK_ESCAPE);
+        menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.row_label(menu.selection())=="FEEDBACK","Feedback Escape navigation");menu.key(SDLK_RETURN);
+        select(menu,"BODY STRENGTH");menu.key(SDLK_RIGHT);require(feedback.settings.body==60,"Feedback strength UI");
         menu.close(game);require(!menu.is_open(),"Feedback menu close");
     }
     {
-        const auto config=(std::filesystem::temp_directory_path()/"ab2-menu-input.cfg").string();
+        const auto config=(std::filesystem::temp_directory_path()/"ab2-menu-input.cfg").string();std::filesystem::remove(config);
         SDL_VirtualJoystickDesc descriptor;SDL_INIT_INTERFACE(&descriptor);
         descriptor.type=SDL_JOYSTICK_TYPE_FLIGHT_STICK;descriptor.naxes=3;descriptor.nbuttons=6;descriptor.nhats=1;
         descriptor.name="Calibration test joystick";
         const auto virtual_id=SDL_AttachVirtualJoystick(&descriptor);require(virtual_id!=0,"calibration joystick attach failed");
         Frontend::NativeInput input(config);
         GameSession game(roms);Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.input=&input;
-        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
-        menu.key(SDLK_DOWN);
-        menu.key(SDLK_RETURN);require(menu.in_controls(),"Controls entry unavailable");
-        for(int i=0;i<16;++i)menu.key(SDLK_DOWN);
-        menu.key(SDLK_RETURN);require(!menu.in_calibration(),"Keyboard calibration should be disabled");
-        for(int i=0;i<16;++i)menu.key(SDLK_UP);
+        menu.open(game);navigate(menu,{"SETTINGS","CONTROLS"});require(menu.in_controls(),"Controls entry unavailable");
+        enter(menu,"INPUT MONITOR");require(!menu.in_calibration(),"Keyboard calibration should be disabled");
+        select(menu,"INPUT DEVICE");
         for(size_t i=0;i<input.connected().size() && input.device_name()!="Calibration test joystick";++i)menu.key(SDLK_RIGHT);
         require(input.device_name()=="Calibration test joystick","Controls device selection failed");
-        for(int i=0;i<16;++i)menu.key(SDLK_DOWN);
-        menu.key(SDLK_RETURN);require(menu.in_calibration(),"Joystick calibration did not open");
+        enter(menu,"ANALOG SETTINGS");const auto deadzone=input.profile().deadzone;
+        menu.key(SDLK_RIGHT);require(input.profile().deadzone==deadzone+5,"Analog dead zone navigation failed");menu.key(SDLK_LEFT);
+        select(menu,"SENSITIVITY");const auto sensitivity=input.profile().sensitivity;menu.key(SDLK_RIGHT);require(input.profile().sensitivity==sensitivity+10,"Analog sensitivity navigation failed");menu.key(SDLK_LEFT);
+        select(menu,"THROTTLE");const bool full=input.profile().full_throttle;menu.key(SDLK_RETURN);require(input.profile().full_throttle!=full,"Analog throttle navigation failed");menu.key(SDLK_RETURN);menu.key(SDLK_ESCAPE);
+        enter(menu,"INPUT MONITOR");require(menu.in_calibration(),"Joystick calibration did not open");
         const auto joystick=std::find_if(input.connected().begin(),input.connected().end(),[&](const auto& d){return d.id==virtual_id;});
         require(joystick!=input.connected().end() && SDL_SetJoystickVirtualAxis(joystick->stick,0,16384),"calibration joystick movement failed");
         SDL_UpdateJoysticks();require(input.calibration().mapped.stick_x>.4f,"live joystick calibration did not respond");
         menu.draw();
         auto* calibration_image=SDL_RenderReadPixels(renderer,nullptr);require(calibration_image,"Calibration readback failed");
         require(SDL_SaveBMP(calibration_image,"build/oracle/input-calibration.bmp"),"Calibration image save failed");SDL_DestroySurface(calibration_image);
-        menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.selection()==16,"Calibration return navigation");
-        for(int i=0;i<16;++i)menu.key(SDLK_UP);
+        menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.row_label(menu.selection())=="INPUT MONITOR","Calibration return navigation");
+        select(menu,"INPUT DEVICE");
         for(size_t i=0;i<input.connected().size() && input.controller_selected();++i)menu.key(SDLK_LEFT);
         require(!input.controller_selected(),"Controls keyboard return failed");
-        for(int i=0;i<4;++i)menu.key(SDLK_DOWN);
+        enter(menu,"BUTTON BINDINGS");
         menu.key(SDLK_RETURN);require(input.waiting(),"UI did not start key capture");
         SDL_Event e{};e.type=SDL_EVENT_KEY_DOWN;e.key.key=SDLK_D;e.key.scancode=SDL_SCANCODE_D;
         require(input.event(e) && !input.waiting() && input.profile().bindings[0].index==SDL_SCANCODE_D,"UI key remap failed");
@@ -473,7 +494,7 @@ int main(int argc,char** argv) try {
             }
             SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);
         }
-        menu.key(SDLK_ESCAPE);require(!menu.in_controls() && menu.in_options(),"Controls back navigation");
+        menu.key(SDLK_ESCAPE);menu.key(SDLK_ESCAPE);require(!menu.in_controls() && menu.in_options(),"Controls back navigation");
         menu.close(game);require(SDL_DetachVirtualJoystick(virtual_id),"calibration joystick detach failed");std::filesystem::remove(config);
     }
     {
@@ -481,7 +502,7 @@ int main(int argc,char** argv) try {
         const auto config=(folder/"menu-audio.cfg").string();std::filesystem::remove(config);
         Frontend::NativeMusic music(config,folder);GameSession game(roms);
         Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());menu.music=&music;
-        menu.open(game);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
+        menu.open(game);navigate(menu,{"SETTINGS","AUDIO"});
         menu.key(SDLK_LEFT);require(music.settings.music==95 && music.settings.effects==100,"music volume UI failed");
         menu.key(SDLK_DOWN);menu.key(SDLK_LEFT);require(music.settings.effects==95,"effects volume UI failed");
         menu.key(SDLK_DOWN);menu.key(SDLK_RETURN);
@@ -495,14 +516,14 @@ int main(int argc,char** argv) try {
         menu.key(SDLK_ESCAPE); // Audio page, Track Volumes selected.
         const auto output_config=(folder/"menu-output.cfg").string();std::filesystem::remove(output_config);
         Frontend::AudioOutput output(output_config);menu.audio=&output;music.output=&output;output.pause(true);
-        menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN); // Output page.
+        enter(menu,"OUTPUT SETUP"); // Output page.
         menu.key(SDLK_RIGHT);require(output.settings.profile==Frontend::AudioProfile::headphones,"headphones profile menu failed");
         require(Frontend::load_output_settings(output_config)==output.settings,"output profile not persisted");
         menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_DOWN);menu.key(SDLK_RETURN); // finite speaker test
         menu.draw();image=SDL_RenderReadPixels(renderer,nullptr);require(image,"Audio Output menu readback failed");
         require(SDL_SaveBMP(image,"build/oracle/audio-output-menu.bmp"),"Audio Output menu image save failed");SDL_DestroySurface(image);
         menu.key(SDLK_ESCAPE); // clears test and returns to Audio/Output.
-        menu.key(SDLK_UP);menu.key(SDLK_UP);menu.key(SDLK_UP);menu.key(SDLK_RETURN);menu.key(SDLK_SPACE);
+        enter(menu,"MUSIC TRACKS");menu.key(SDLK_SPACE);
         require(music.previewing(),"selected-backend preview did not start");music.update_preview();menu.key(SDLK_SPACE);require(!music.previewing(),"selected-backend preview did not stop");
         menu.key(SDLK_ESCAPE);
         const auto before=game.info();require(!game.advance({}) && game.info().time_ns==before.time_ns,"audio menu advanced native board");
@@ -512,11 +533,11 @@ int main(int argc,char** argv) try {
         for(unsigned present=0;present<4;++present) {
             Frontend::NativeMenu navigation(renderer,roms,{},Frontend::pixel_art_available());
             navigation.input=present&1?&input:nullptr;navigation.music=present&2?&music:nullptr;
-            navigation.open(game);navigation.key(SDLK_DOWN);navigation.key(SDLK_RETURN);
-            navigation.pointer(60,104,true);require(navigation.in_video(),"optional menu layout lost Video entry");
+            navigation.open(game);navigate(navigation,{"SETTINGS"});
+            navigation.pointer(60,60,true);require(navigation.in_video(),"optional menu layout lost Video entry");
             navigation.key(SDLK_ESCAPE);
-            const int dip_row=1+bool(present&1)+bool(present&2);
-            navigation.pointer(60,104+dip_row*20,true);require(navigation.in_dips(),"optional menu layout lost DIP entry");
+            const int dip_row=3+bool(present&1)+bool(present&2);
+            navigation.pointer(60,60+dip_row*16,true);require(navigation.in_dips(),"optional menu layout lost DIP entry");
             navigation.key(SDLK_ESCAPE);require(navigation.selection()==dip_row,"optional DIP return row wrong");
             if(present==3){navigation.draw();auto* image=SDL_RenderReadPixels(renderer,nullptr);require(image,"Options readback failed");require(SDL_SaveBMP(image,"build/oracle/options-menu.bmp"),"Options image save failed");SDL_DestroySurface(image);}
             navigation.close(game);

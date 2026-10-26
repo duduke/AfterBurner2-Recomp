@@ -37,6 +37,8 @@ def main():
     logs = ROOT / 'build/oracle/widescreen/mutations' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
     inputs = logs / 'inputs'
     shutil.copytree(ROOT / 'src/main', inputs / 'src/main', ignore=shutil.ignore_patterns('*.o', '*.d'))
+    # Preserve the embedded ZIP reader alongside the frozen loader source.
+    shutil.copytree(ROOT / 'src/third_party/miniz', inputs / 'src/third_party/miniz')
     (inputs / 'tests').mkdir()
     for name in ('wide_scene_geometry.cpp', 'wide_ground_reference.hpp'):
         shutil.copy2(ROOT / 'tests' / name, inputs / 'tests' / name)

@@ -73,6 +73,32 @@ int main()try {
     wide.assign(wide.size(),0x1720);std::fill(wide_priority.begin(),wide_priority.end(),0);
     Presentation::GroundHorizon::correct(wide,wide_priority,road,0,223,0,128,ground,-39);
     require(wide[180*398+20]==0x1720,"outer ground fill invented a missing native color");
+    // A local measured direction can disagree with the corner projection
+    // near an axis crossing. Neither extrapolated side may override it.
+    Presentation::GroundHorizon::Profile folded(398);folded.measured=true;
+    for(unsigned y:{0u,1u}){folded.pixel(200,y,1);folded.pixel(210,y,14);}
+    folded.pixel(80,100,14);folded.pixel(100,100,1);
+    wide.assign(wide.size(),0x1720);wide[100*398+50]=0x1703;
+    Presentation::GroundHorizon::correct(wide,wide_priority,road,0,223,127,0,folded,-39);
+    require(wide[100*398+250]==0x1720,"ground corner projection inserted white into measured sky");
+    require(wide[100*398+50]==0x1703,"ground corner projection cut blue into measured terrain");
+    // A clipped ground row may borrow a flat field only from matching color
+    // control and the same clip. Distinct pens need an identical palette word.
+    std::vector<uint16_t> palette(8192);
+    for(unsigned fault=0;fault<6;++fault){
+        wide.assign(wide.size(),0x1720);std::fill(wide_priority.begin(),wide_priority.end(),0);
+        std::fill(road.begin(),road.end(),0);palette[0x1702]=palette[0x1704]=0x7fff;
+        wide[180*398+100]=0x1702;wide[180*398+101]=0x1704;
+        if(fault==1)palette[0x1704]=0;
+        if(fault==2)road[0xc00+150*2+1]=1;
+        if(fault==4)wide_priority[180*398+100]=wide_priority[180*398+101]=4;
+        if(fault==5)road[180*2]=8;
+        wide_priority[150*398+20]=4;
+        Presentation::GroundHorizon::correct(wide,wide_priority,road,fault==3?140:0,fault==3?160:223,0,128,ground,-39,palette);
+        require(wide[150*398+200]==(fault?0x1720:0x1702),"ground flat-field donor color/control/clip protection differs");
+        require(wide[150*398+20]==0x1720,"ground flat-field donor overwrote priority");
+    }
+    std::fill(road.begin(),road.end(),0);std::fill(wide_priority.begin(),wide_priority.end(),0);
     // At a banked viewport corner neither its row nor its column intersects
     // the visible strip. The observed envelope still defines the same plane.
     for(int sign:{-1,1}){
@@ -88,6 +114,40 @@ int main()try {
         require(wide[gy*398+390]==0x1703,"banked outer ground corner lost its plane");
         require(wide[sy*398]==0x1720,"inverted outer sky corner retained road fill");
         require(wide[gy*398+200]==0x1703,"banked plane changed native ground color");
+    }
+    // Stage 6 fast-roll reproduction: the current roll crosses an axis
+    // before the displayed/interpolated strip. In a clipped row only one
+    // marker survives, so fallback must follow the observed raster quadrant.
+    for(unsigned width:{358u,398u})for(bool flip_x:{false,true})for(bool flip_y:{false,true})for(bool transpose:{false,true}){
+        Presentation::GroundHorizon::Profile delayed(width);delayed.measured=true;
+        const auto tx=[&](unsigned x){return flip_x?width-1-x:x;};
+        const auto ty=[&](unsigned y){return flip_y?223-y:y;};
+        for(unsigned u=0;u<(transpose?224u:width);++u)for(unsigned pen=1;pen<=14;++pen){
+            const unsigned v=100+u/3+(pen-1)*30/13;
+            const unsigned x=transpose?v:u,y=transpose?u:v;
+            if(x<width&&y<224)delayed.pixel(tx(x),ty(y),pen);
+        }
+        std::vector<uint16_t> delayed_pixels(width*224,0x1704);
+        std::vector<uint8_t> delayed_priority(delayed_pixels.size());
+        const auto index=[&](unsigned u,unsigned v){return ty(transpose?u:v)*width+tx(transpose?v:u);};
+        const auto sky=index(100,110),terrain=index(100,190);
+        const auto protected_sky=index(100,109);delayed_priority[protected_sky]=4;
+        Presentation::GroundHorizon::correct(delayed_pixels,delayed_priority,road,0,223,
+            (flip_x?-1:1)*(transpose?127:21),(flip_y?-1:1)*(transpose?21:127),delayed,-int((width-320)/2));
+        require(delayed_pixels[sky]==0x1720,"ground delayed roll retained a sky triangle");
+        require(delayed_pixels[terrain]==0x1704,"ground delayed roll erased observed terrain");
+        require(delayed_pixels[protected_sky]==0x1704,"ground delayed roll overwrote priority");
+    }
+    // With neither axis locally ordered, global raster ordering still owns
+    // the clipped silhouette fallback (retain both stale-quadrant controls).
+    for(bool transpose:{false,true}){
+        Presentation::GroundHorizon::Profile inferred(398);inferred.measured=true;
+        const auto point=[&](unsigned x,unsigned y,unsigned pen){inferred.pixel(transpose?y:x,transpose?x:y,pen);};
+        for(unsigned y:{0u,1u}){point(100,y,14);point(120,y,1);}point(80,100,1);
+        wide.assign(wide.size(),0x1704);std::fill(wide_priority.begin(),wide_priority.end(),0);
+        Presentation::GroundHorizon::correct(wide,wide_priority,road,0,223,transpose?0:21,transpose?21:0,inferred,-39);
+        const unsigned x=transpose?100:200,y=transpose?200:100;
+        require(wide[y*398+x]==0x1720,"ground inferred clipped quadrant retained a white triangle");
     }
     reset();pixels[180*320]=0x1720;Presentation::GroundHorizon::correct(pixels,priority,road,0,223,0,128,flat);
     require(pixels[180*320]==0x1720,"wide ground extension changed original viewport policy");

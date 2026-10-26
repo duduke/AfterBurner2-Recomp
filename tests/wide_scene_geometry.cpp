@@ -93,8 +93,9 @@ int main(int argc,char** argv)try {
         if(!(p.descriptor[0]&0x50))horizon_clip.extended_sprites.push_back({p.descriptor,p.x,0,true,3});}
     for(unsigned mode:{1u,15u,16u}){horizon_clip.mode=mode;auto& plain=make_scene();auto& fixed=make_scene();
         plain.render(std::span(&horizon_clip,1),1,false);fixed.render(std::span(&horizon_clip,1),1,true);auto a=plain.view(),b=fixed.view();unsigned changed=0,left=0,right=0;
+        const auto fill_witness=wide_ground_fill_witness(a,std::span(&horizon_clip,1));
         for(unsigned i=0;i<a.ground_indices.size();++i)if(a.ground_indices[i]!=b.ground_indices[i]){++changed;left+=i%width<margin;right+=i%width>=(width-margin);
-            require(valid_wide_ground_change(a,b,i),"non-flight correction changed terrain");}
+            require(valid_wide_ground_change(a,b,i,fill_witness),"non-flight correction changed terrain");}
         require(changed&&left&&right,"non-flight outer sky-fill missing");
         require(std::equal(a.sprites.begin(),a.sprites.end(),b.sprites.begin())&&std::equal(a.protection.begin(),a.protection.end(),b.protection.begin()),"non-flight correction changed protected layers");
     }

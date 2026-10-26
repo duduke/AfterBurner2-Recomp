@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit macOS Metal gate: prove retained Slang timing/history controls fail.
+"""Explicit macOS Metal gate: prove retained Slang runtime/timing/history controls fail.
 
 Requires an unlocked usable Metal display environment and the optional
 librashader ABI 2 / API 5 runtime. Never used by the ordinary headless test
@@ -20,6 +20,12 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 MUTATIONS = (
+    (
+        "missing-executable-relative-runtime",
+        'paths.emplace_back(std::string(base)+"deps/librashader/librashader.dylib");',
+        '/* Deliberately omit source-build executable-relative runtime discovery. */',
+        "FAIL: runtime discovered beside executable from unrelated working directory:",
+    ),
     (
         "milliseconds-instead-of-microseconds",
         "std::clamp(delta_us,0.,double(UINT32_MAX))",
@@ -72,6 +78,10 @@ def main():
     def run(name, body):
         staged = destination / name
         staged.mkdir()
+        runtime = Path(os.environ.get("AB2_LIBRASHADER") or ROOT / "build/deps/librashader/librashader.dylib").resolve()
+        runtime_destination = staged / "deps/librashader/librashader.dylib"
+        runtime_destination.parent.mkdir(parents=True)
+        shutil.copyfile(runtime, runtime_destination)
         path = staged / "native_slang.mm"
         path.write_text(body)
         binary = staged / "native_slang_integration"

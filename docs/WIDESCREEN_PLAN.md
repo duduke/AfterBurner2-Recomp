@@ -43,6 +43,29 @@ wave animation and world projection, so the extra width includes wave artwork.
 Native allocator reuse cannot overwrite them. These objects never enter native
 collision, targeting, sound or sprite-request state.
 
+Local source follow-up (2026-10-25) also retains world explosions deleted by
+the separate `$92AE/$92B6` horizontal branches. Detached `$91C0..$9364`
+updates preserve native animation, double sway, pause and near-depth/vertical
+retirement. Above-screen explosions remain hidden and can reappear; stage/mode
+changes clear the copies. This extends visual lifetime only. See the
+[world-explosion record](ENGINE_NOTES.md#wide-world-explosion-retention-2026-10-25).
+
+The subsequent ground/air hit-effect increment covers `$8E18/$8ECE` through
+their shared `$8FA2/$8FAA` cull. It preserves age-limited scale growth,
+ground-only special drift, alternate-tick animation, directional artwork and
+base-frame palette selection in detached records. Original visibility and
+native gameplay remain unchanged. See the
+[hit-effect record](ENGINE_NOTES.md#wide-ground-and-air-hit-effect-retention-2026-10-25).
+
+The next source increment retains player missile smoke (`$AAEE`), enemy missile
+smoke (`$14EE2`) and world-projected player damage/death emissions
+(`$FCB4/$FDFA`) at their horizontal removal branches. Copies keep the native
+growth/taper, age/depth, enable/draw-only and animation rules; enemy smoke keeps
+its 36-tick lifetime. The ROM-defined emission-pool reset also clears affected
+copies. Native missiles, trail rings, allocation, damage, sound and respawn
+remain authoritative. See the
+[three-family record](ENGINE_NOTES.md#wide-missile-trails-and-player-damage-emissions-2026-10-25).
+
 The horizon extends the `$10ED8` generator's exact 16.16 segment increments at
 both ends, using its current ROM frame/flips and previous-frame positions. The
 **Ground → Corrected** option measures these full-width sprites. It

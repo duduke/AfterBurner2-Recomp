@@ -3,12 +3,74 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <fstream>
+
+// Compile the vendored reader here so standalone oracle tools need no new
+// library or link flags. No archive writing or zlib compatibility API.
+#define MINIZ_NO_DEFLATE_APIS
+#define MINIZ_NO_ARCHIVE_WRITING_APIS
+#define MINIZ_NO_ZLIB_APIS
+#include "../third_party/miniz/miniz.c"
+#include "../third_party/miniz/miniz_tinfl.c"
+#include "../third_party/miniz/miniz_zip.c"
 #include "romloader.hpp"
 
 namespace
 {
-    // Directory that ROM files are read from, relative to the working directory.
-    constexpr const char* ROM_DIR = "roms/";
+    std::filesystem::path source;
+    struct ZipReader {
+        mz_zip_archive archive{};
+        std::filesystem::path path;
+        bool open{};
+        ~ZipReader() { reset(); }
+        void reset() {
+            if (open) mz_zip_reader_end(&archive);
+            if (input) std::fclose(input);
+            input = nullptr; archive = {}; path.clear(); open = false;
+        }
+        bool read(const std::filesystem::path& filename, const char* chip,
+                  uint32_t expected_length, std::vector<uint8_t>& buffer) {
+            if (filename != path || !open) {
+                reset(); path = filename;
+                // Use a FILE opened through filesystem::path for Windows Unicode paths.
+                #ifdef _WIN32
+                auto* file = _wfopen(filename.c_str(), L"rb");
+                #else
+                auto* file = std::fopen(filename.c_str(), "rb");
+                #endif
+                if (!file) return false;
+                open = mz_zip_reader_init_cfile(&archive, file, 0, 0);
+                // init_cfile borrows the FILE. Keep ownership in this reader.
+                if (!open) { std::fclose(file); return false; }
+                input = file;
+            }
+            // Permit a folder prefix in ZIPs. Match complete chip basenames,
+            // reject duplicates instead of depending on archive entry order.
+            int found = -1;
+            for (mz_uint i = 0; i < mz_zip_reader_get_num_files(&archive); ++i) {
+                mz_zip_archive_file_stat stat{};
+                if (!mz_zip_reader_file_stat(&archive, i, &stat)) return false;
+                if (mz_zip_reader_is_file_a_directory(&archive, i)) continue;
+                const std::string name(stat.m_filename);
+                const auto slash = name.find_last_of("/\\");
+                if (name.substr(slash == std::string::npos ? 0 : slash + 1) != chip) continue;
+                if (found >= 0 || stat.m_uncomp_size != expected_length ||
+                    !mz_zip_reader_is_file_supported(&archive, i)) return false;
+                found = static_cast<int>(i);
+            }
+            if (found < 0) return false;
+            buffer.resize(expected_length);
+            return mz_zip_reader_extract_to_mem(&archive, found, buffer.data(), buffer.size(), 0);
+        }
+        std::FILE* input{};
+    } zip;
+}
+
+void RomLoader::set_source(const std::string& path)
+{
+    zip.reset();
+    source = std::filesystem::path(std::u8string(path.begin(), path.end()));
 }
 
 RomLoader::RomLoader() = default;
@@ -70,30 +132,32 @@ uint32_t RomLoader::crc32(const uint8_t* data, uint32_t length)
 int RomLoader::load_rom(const char* filename, uint32_t offset, uint32_t expected_length,
                          uint32_t expected_crc, Mode mode, bool verbose)
 {
-    std::string path = std::string(ROM_DIR) + filename;
+    const auto stride = static_cast<uint32_t>(mode);
+    if (!rom || (stride != 1 && stride != 2 && stride != 4) || !expected_length ||
+        offset >= length || uint64_t(offset) + uint64_t(expected_length - 1) * stride >= length)
+        return 1;
 
-    long size = filesize(path.c_str());
-    if (size < 0)
-    {
-        std::cerr << "romloader: cannot open " << path << std::endl;
-        return 1;
+    const auto base = source.empty() ? std::filesystem::path("roms") : source;
+    std::error_code error;
+    const bool archive = std::filesystem::is_regular_file(base, error);
+    const auto path = base / filename;
+    std::vector<uint8_t> buffer;
+    if (archive || (source.empty() && !std::filesystem::exists(path, error))) {
+        if (!zip.read(archive ? base : base / "aburner2.zip", filename, expected_length, buffer)) {
+            std::cerr << "romloader: cannot read " << filename << " from ROM ZIP" << std::endl;
+            return 1;
+        }
+    } else {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file || file.tellg() != static_cast<std::streamoff>(expected_length)) {
+            std::cerr << "romloader: missing or incorrect size: " << path << std::endl;
+            return 1;
+        }
+        buffer.resize(expected_length);
+        file.seekg(0);
+        if (!file.read(reinterpret_cast<char*>(buffer.data()), buffer.size())) return 1;
     }
-    if (static_cast<uint32_t>(size) != expected_length)
-    {
-        std::cerr << "romloader: " << filename << " is " << size
-                  << " bytes, expected " << expected_length << std::endl;
-        return 1;
-    }
-
-    std::FILE* f = std::fopen(path.c_str(), "rb");
-    std::vector<uint8_t> buffer(size);
-    if (std::fread(buffer.data(), 1, size, f) != static_cast<size_t>(size))
-    {
-        std::fclose(f);
-        std::cerr << "romloader: short read on " << filename << std::endl;
-        return 1;
-    }
-    std::fclose(f);
+    const auto size = expected_length;
 
     uint32_t actual_crc = crc32(buffer.data(), static_cast<uint32_t>(size));
     if (actual_crc != expected_crc)

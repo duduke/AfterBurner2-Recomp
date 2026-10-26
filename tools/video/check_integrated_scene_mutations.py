@@ -31,6 +31,8 @@ def main():
     args = parser.parse_args()
     destination = ROOT / "build/oracle/integrated-scene-mutations" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     inputs = destination / "inputs"
+    # Preserve the embedded ZIP reader at romloader.cpp's relative include path.
+    shutil.copytree(ROOT / "src/third_party/miniz", destination / "third_party/miniz")
     hardware = inputs / "hwvideo"
     hardware.mkdir(parents=True)
     for header in (ROOT / "src/main/hwvideo").glob("*.hpp"):

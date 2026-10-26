@@ -60,6 +60,28 @@ Repeated checks rerun executables without recompiling unchanged sources.
 `make clean-checks` removes only these check objects and executables when a
 fresh build is wanted. Existing game and oracle build rules remain separate.
 
+## ROM ZIP startup checks
+
+Source builds accept `--roms directory|set.zip`; the default source also reads
+`roms/aburner2.zip`. Interactive startup offers a ZIP picker if loading fails;
+`--frames` checks fail promptly instead. Successful picker paths are stored
+beside settings in a `.roms` sidecar. See [ROM setup](../roms/README.md).
+
+```sh
+python3 tools/workflow.py run test-romloader test-rom-picker -j 4
+python3 tools/workflow.py run verify-native-roms -j 4
+```
+
+The first two targets are ROM-free and included in `test`. The native check
+uses the user's existing extracted `roms/` to generate an ignored nested ZIP,
+then compares 240-frame final software images for directory, explicit ZIP,
+remembered ZIP and default ZIP startup. It also tests bounded missing-source
+failure. Fixtures, images and logs stay in `build/oracle/rom-zip-startup/`.
+The picker callback tests cover selection, cancel, error, quit and late replies;
+physical native dialogs still need a usable desktop. Snapshot mutation runners
+that compile a copied ROM loader must retain `src/third_party/miniz` at the
+loader's relative include path. No new external ZIP library is required.
+
 ## Integrated renderer checks
 
 The default source frontend shares primary road/tile layers at native partial
@@ -101,7 +123,7 @@ The optional OpenAL builder provides its library, source archive and notices.
 After committing the intended tree:
 
 ```sh
-python3 tools/package_macos.py v0.1.0-preview.4
+python3 tools/package_macos.py v0.1.0-preview.5
 ```
 
 Use a fresh version for later releases. The packager requires a clean working
@@ -249,24 +271,48 @@ logs, ROM images and captures remain under gitignored `build/`.
 ## Native settings menu
 
 Build with `make native-release` and run `./build/afterburner2-release`
-from the repository root. The initial menu offers Enter Arcade, Options and Quit.
-Enter Arcade resumes the cold board without hidden frames or automatic inputs,
+from the repository root. The initial menu offers Arcade, Practice, Shuffle,
+Settings and Quit. Arcade resumes the cold board without hidden frames or
+automatic inputs,
 so the original boot and attract sequence is displayed. Insert a coin and press
 Start to play (keyboard 5, then Enter; gamepad Back, then Start). Esc or F1 opens
 the menu during play. Use arrows and Enter/Space, or click a row; Left/Right
-changes an option. Esc returns from Options, then resumes the previous session.
+changes an option. Esc returns one page, restoring its selected row and scroll
+position, then resumes the previous session from the root. The pause menu offers
+Resume, Restart Run, Change Mode, Settings and Quit. Change Mode offers Arcade,
+Practice and Shuffle; launching a mode ends the current run. Restart Run retries
+the active Practice stage or Shuffle order, or restarts the Arcade board.
 Opening the menu pauses the board and audio and preserves a pre-existing pause.
 P still pauses/resumes and F5 restarts outside the menu.
 
-Options provides nearest-neighbour, smooth (SDL linear), integer nearest-neighbour
-and SDL Pixel Art scaling (available with SDL 3.4+), a separate sprite filter,
-desktop fullscreen and Off/FPS/Detailed statistics. Scaling preserves the native 320×224 aspect ratio;
+Settings groups the existing frontend options into short pages:
+
+| Page | Options |
+| --- | --- |
+| Display | Display Mode, Aspect Ratio, Output Scaling |
+| Graphics | Sprite Filter, HUD Style, Ground, Transparency submenu |
+| CRT and Shaders | CRT Mode, Scanlines, RGB Mask, Shader Preset |
+| Controls | Input Device, Button Bindings, Analog Settings, Input Monitor, Feedback |
+| Audio | Music/Effects Volume, Output Setup, Music Tracks, Track Volumes, Reset Volumes |
+| Arcade Settings | Lives/Credit, Difficulty, Ship Increase, Apply and Restart |
+| Diagnostics | Performance overlay |
+
+Controls and Audio appear when their frontend services are available. Feedback
+separates cue toggles and finite motor tests from the strength/device settings.
+Input Monitor displays raw and mapped controller axes; it does not perform an
+automatic calibration. Settings still save immediately through the existing
+preferences; Arcade Settings require Apply and Restart for the active board.
+
+Display provides nearest-neighbour, smooth (SDL linear), integer nearest-neighbour
+and SDL Pixel Art scaling (available with SDL 3.4+), plus desktop fullscreen.
+Graphics provides the separate sprite filter; Diagnostics offers Off/FPS/Detailed
+statistics. Original scaling preserves the native 320×224 aspect ratio;
 integer mode uses whole-number multiples. F11 toggles fullscreen and F3 cycles
 statistics during play. Detailed statistics show simulated and displayed FPS,
 wall time per displayed frame, CPU time per simulated frame, sprite filter/upload
 time and presentation time (including vsync wait). Values refresh once per second.
 
-The Sprites row selects Off (default), EPX 2x, Scale3x, 2xSaI, Super2xSaI or
+The Graphics → Sprite Filter row selects Off (default), EPX 2x, Scale3x, 2xSaI, Super2xSaI or
 ScaleFX 3x. These filter the visible hardware sprite plane after native zoom,
 then compose it over nearest-scaled road/tiles. Sprite-drawn scenery is included;
 foreground tile/text coverage and palette shadows remain native. Window scaling
@@ -276,14 +322,14 @@ unimplemented or approximate mode. The SaI pair uses standard names rather than
 the unrelated CrispSal/SmoothSal names. ScaleFX uses GPU compute on the native GPU path, with a CPU/software fallback.
 Use the detailed Filter timing to compare modes; backend and load affect performance.
 
-Video → HUD offers Original (default), Sharp 3x ROM-tile smoothing and Custom
+Graphics → HUD Style offers Original (default), Sharp 3x ROM-tile smoothing and Custom
 indexed PNG artwork. The replacement text plane uses output-resolution drawing
 and native palette/priority, centered at all three viewport widths. The window
 requests high pixel density; fullscreen uses the desktop resolution. See
 [HUD presentation](HUD_PRESENTATION.md) for atlas format, `--hud-atlas`, fallback
 and validation scope. Sprite-based instruments retain their native artwork.
 
-Video → CRT Mode offers Off (default), Subtle, Arcade and optional RetroArch. Scanlines and RGB Mask
+CRT and Shaders → CRT Mode offers Off (default), Subtle, Arcade and optional RetroArch. Scanlines and RGB Mask
 adjust independently in 5% steps. Presets reset both strengths; Off retains them.
 The cached effect covers the final game/HUD image and leaves frontend menus/stats
 readable. See [CRT display](CRT_DISPLAY.md) for pixel alignment, small-window
@@ -312,21 +358,21 @@ fall back to defaults; failed changes leave the previous selection and show a
 notice. ROM fonts are decoded at runtime for the menu and overlay, independently
 of the board's text RAM and palette. No extracted assets are checked in.
 
-The root **Practice** menu selects any runtime ROM stage, starts a fresh session
+The **Practice** menu (startup, or pause → Change Mode) selects any runtime ROM stage, starts a fresh session
 with normal lives/damage, and offers Return to Arcade. F5 retries the active
 Practice starting stage; cancelling stage browsing preserves that target.
 `--practice-stage 8` launches the same mode directly. Practice is unavailable
 while recording. See [Practice mode](PRACTICE_MODE.md) for directed-startup scope
 and validation.
 
-The separate **Shuffle** menu starts a continuous run through stages 1–22 once
+The **Shuffle** menu (startup, or pause → Change Mode) starts a continuous run through stages 1–22 once
 in random order, followed by the native stage-23 finale. F5 retries the same order, New Shuffle draws a new seed, and
 Return to Arcade restores the canonical board. `--shuffle` launches directly;
 `--shuffle-seed 12345` reproduces an order. See [Shuffle mode](SHUFFLE_MODE.md)
 for its explicit run-position and palette policy, commands and evidence.
 
 `--boot-to-flight`, `--stage`, `--practice-stage`, `--shuffle` and bounded `--frames` runs bypass the initial menu.
-`--menu-preview image.bmp` renders Options and exits for visual inspection.
+`--menu-preview image.bmp` renders Settings and exits for visual inspection.
 `--frame-preview image.bmp --frames count` saves the last presented bounded frame;
 use an ignored path under `build/oracle/` for any ROM-derived image.
 Use `python3 tools/workflow.py run test-native-settings test-sprite-filters verify-native-menu`
@@ -628,7 +674,7 @@ not reproduce a user's exact trajectory by itself.
 
 ### Experimental 16:9 preview
 
-Video → Viewport → 16:9 Preview selects 398×224 presentation with a centered
+Display → Aspect Ratio → 16:9 Preview selects 398×224 presentation with a centered
 native HUD/menu. Original is the default. Published sprites and wider road/tile
 samples are rendered from immutable partial-frame snapshots; gameplay stays
 native. Detached scenery retention, wider Sub projection and extra horizon
@@ -646,12 +692,62 @@ opaque/translucent policies. `verify-wide-scene` generates its ignored local
 fixture; CMake GPU checks also need that fixture first. Geometry/scene/stage checks are
 part of `verify-stage1`, both mutation groups of `oracle-test`. All old fixtures remain.
 Captures stay under `build/oracle/widescreen/`; never commit runtime ROM data.
+World-explosion retention has additional focused gates:
+
+```sh
+python3 tools/workflow.py run oracle-capture-wide-explosions
+python3 tools/workflow.py run verify-wide-world verify-wide-explosion-mutations verify-wide-visibility-mutations
+python3 tools/workflow.py run verify-wide-explosions-natural
+```
+
+Reuse the supplemental capture while its operands/probe remain unchanged.
+`verify-wide-world` retains both older world corpora and requires visible,
+hidden, retired, both horizontal edges, near-depth, below-screen, pause and
+animation advancement in the new independent ROM calls. `oracle-test` includes
+that gate and all new mutations. Natural checks replay the complete retained
+weapons recording through integrated/snapshot rendering at both widths; report
+the actual retained-explosion count rather than assuming it exercises recovery.
+Ground/air hit-effect retention uses the same comparison discipline:
+
+```sh
+python3 tools/workflow.py run oracle-capture-wide-hit-effects
+python3 tools/workflow.py run verify-wide-hit-effects verify-wide-hit-effect-mutations verify-wide-visibility-mutations
+python3 tools/workflow.py run verify-wide-hit-effects-natural
+```
+
+The helper gate retains `effects_directed.bin` and checks the supplemental
+ground/air corpus with separate per-family lifetime, animation, age, sway and
+ground-drift coverage requirements. Both the new gate and its mutations are in
+`oracle-test`; old captures/controls remain. The natural target reuses the
+complete weapons recording at both widths and reports ground and air retained
+descriptor observations separately. A zero observation count is not recovery
+coverage. Captures and logs stay ignored under `build/oracle/` and
+`build/workflow/`.
 `--profile` reports the added CPU scene cost as `wide_scene_ms`; compare Original
 and Wide with the same audio/device setup before attributing pacing changes.
 
+For player/enemy missile smoke and player damage/death emission retention:
+
+```sh
+python3 tools/workflow.py run oracle-capture-wide-trail-effects
+python3 tools/workflow.py run verify-wide-trail-effects verify-wide-trail-effect-mutations
+python3 tools/workflow.py run test verify-stage1 verify-wide-visibility-mutations
+python3 tools/workflow.py run verify-wide-trails-natural
+```
+
+The capture target retains both immediate-frontier and 2 ms delayed profiles.
+Only actual other-CPU writes to consumed inputs count as races. The delayed
+corpus has per-entry lifetime/branch gates; the frontier corpus and older
+missile, enemy-effect and companion recordings stay in the focused replay.
+The divisor mutation deliberately also uses the retained missile corpus's
+nonzero-Y operands. `oracle-test` includes the new comparisons/controls. The
+natural target replays complete weapons and continue recordings at both widths,
+reporting player/enemy/damage descriptor observations and native pool-reset
+entries. Observe the counts before claiming a path was exercised.
+
 ### 16:10 viewport
 
-macOS Preview 3 offers Video → Viewport → 16:10 Preview (358×224,
+macOS Preview 3 offers Display → Aspect Ratio → 16:10 Preview (358×224,
 19 additional columns on each side). The selector cycles Original → 16:9 →
 16:10 in either direction. Legacy `widescreen=1` preferences still select 16:9;
 new files additionally persist `viewport=original|16:9|16:10`.
@@ -702,7 +798,7 @@ new failures get separate frame/filter filenames.
 
 ### Optional original-art sprite transparency
 
-Options → Clouds, Trails, Explosions and Afterburner independently select Opaque
+Settings → Graphics → Transparency → Clouds, Trails, Explosions and Afterburner independently select Opaque
 or Translucent; all default to Opaque and persist in the existing settings file. These options
 work with Sprites Off or any scaler. Known original cloud art uses 160/255
 opacity, missile-trail art uses 112/255, explosions use 176/255 and player flame
@@ -721,10 +817,11 @@ whole-credit visuals and peak-load performance remain open.
 
 ### Native input remapping
 
-Use Options → Controls for keyboard, gamepad and joystick bindings. The SDL3
+Use Settings → Controls → Button Bindings for keyboard, gamepad and joystick
+bindings. Analog Settings holds dead zone, sensitivity and throttle mode. The SDL3
 gamepad database is embedded for offline deployment. Preferences live beside
 `settings.cfg` in `settings.cfg.inputs`; `--settings-file` also relocates them.
-Controls → Calibration is enabled after selecting a gamepad or joystick. It
+Controls → Input Monitor is enabled after selecting a gamepad or joystick. It
 displays bound stick/throttle values before and after dead zone and sensitivity,
 including full-axis throttle; unplugging the selected device shows a disconnect
 notice and returns Controls to Keyboard.
@@ -743,7 +840,7 @@ actual FM effects voice ownership. Shared audio changes still require `required`
 
 ### Optional ground horizon correction
 
-Options → Video → Ground offers Original (default) and Corrected. This removes
+Settings → Graphics → Ground offers Original (default) and Corrected. This removes
 misplaced ground fill on the sky side of the native horizon strip in eligible
 normal-road flight; other modes retain Original. It does not change gameplay or
 implement continuous 3D terrain. Focused checks:
@@ -773,7 +870,7 @@ python3 tools/workflow.py run capture-feedback -j 4
 4,200-frame native RGB/PCM/time comparison. `oracle-test` includes MAME cue
 witnesses, the retained attract-mode bus fixture and feedback mutations.
 Captures stay in ignored `build/oracle/`; never commit them. Physical acceptance
-is separate: test every exposed motor in Options → Controls → Feedback, then
+is separate: test every exposed motor in Settings → Controls → Feedback, then
 exercise gameplay, pause, focus loss, restart and unplug on each target OS.
 macOS Xbox Bluetooth body and both triggers are confirmed; Windows/Linux and
 simple-haptic fallback hardware remain open.

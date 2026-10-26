@@ -294,6 +294,8 @@ int main(int argc, char** argv) try {
         for (const auto seed : {0u, 1u, 0x51a9u, std::numeric_limits<uint32_t>::max()}) {
             const auto plan = Shuffle::generate(count, seed);
             Shuffle::validate(plan, count);
+            require(plan.stages.front() != 5 && plan.stages.front() != 13
+                    && plan.stages.front() != 23, "Shuffle starts with a scripted stage");
             require(plan.stages.back() == count,
                     "Shuffle moved the final ending sequence into gameplay");
             auto gameplay = std::vector<unsigned>(plan.stages.begin(), plan.stages.end() - 1);
@@ -304,6 +306,19 @@ int main(int argc, char** argv) try {
             require(plan.seed == seed && plan.stages == Shuffle::generate(count, seed).stages,
                     "Shuffle seed did not reproduce its complete permutation");
         }
+    std::array<bool, 24> openings{};
+    for (uint32_t seed = 0; seed < 4096; ++seed) {
+        const auto plan = Shuffle::generate(23, seed);
+        Shuffle::validate(plan, 23);
+        require(plan.stages.front() != 5 && plan.stages.front() != 13
+                && plan.stages.front() != 23, "Shuffle starts with a scripted stage");
+        openings[plan.stages.front()] = true;
+        require(plan.stages == Shuffle::generate(23, seed).stages,
+                "Shuffle opening restriction broke seed reproducibility");
+    }
+    for (unsigned stage = 1; stage <= 23; ++stage)
+        require(openings[stage] == (stage != 5 && stage != 13 && stage != 23),
+                "Shuffle opening restriction excluded a gameplay stage");
     require(Shuffle::generate(23, 1).stages != Shuffle::generate(23, 2).stages,
             "Different Shuffle seeds produced the same order");
     // Seeded output is a replay contract, independent of library shuffle APIs.

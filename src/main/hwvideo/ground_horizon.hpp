@@ -60,7 +60,11 @@ public:
         bool sky(unsigned x,unsigned y,int nx,int ny,bool fallback=false)const {
             // Require agreement wherever both silhouettes exist. This fills
             // visible sky beyond a clipped strip without cutting into terrain.
-            if(measured){const int rx=rows[y].direction(),cy=columns[x].direction();nx=rx?rx:fallback?nx:0;ny=cy?cy:fallback?ny:0;}
+            if(measured){const int rx=rows[y].direction(),cy=columns[x].direction();
+                // An inferred component must not veto an observed ordering on
+                // the other axis. Fall back only when neither axis is ordered.
+                if(rx||cy||!fallback){nx=rx;ny=cy;}
+            }
             const int xedge=nx>0?left[y]:right[y],yedge=ny>0?upper[x]:lower[x];
             const bool known_x=nx && xedge>=0,known_y=ny && yedge>=0;
             return (known_x||known_y) && (!known_x||(nx>0?int(x)<xedge:int(x)>xedge)) &&
@@ -77,20 +81,53 @@ public:
     // may also inherit observed native ground fill beyond the ground-facing edge.
     static unsigned correct(std::span<uint16_t> indices,std::span<const uint8_t> priority,
                             std::span<const uint8_t> road,unsigned top,unsigned bottom,
-                            int nx,int ny,const Profile& profile,int native_left=0) {
+                            int nx,int ny,const Profile& profile,int native_left=0,std::span<const uint16_t> palette={}) {
         const unsigned width=profile.upper.size();
         if(indices.size()!=width*224 || priority.size()!=indices.size() || road.size()!=0x1000 || top>bottom || bottom>=224)throw std::invalid_argument("Invalid ground correction clip");
+        if(!palette.empty()&&palette.size()!=8192)throw std::invalid_argument("Invalid ground palette");
         if(!nx && !ny)return 0;
         const bool extend_plane=native_left<0||native_left+int(width)>320;
-        // Project the observed strip envelope onto its ROM-derived normal.
+        // The displayed horizon may still be in the previous quadrant while
+        // the current roll has crossed an axis. Its ordered raster markers
+        // own the fallback direction for clipped rows/columns.
+        if(profile.measured&&extend_plane){
+            int dx=0,dy=0;
+            for(const auto& row:profile.rows)dx+=row.direction();
+            for(const auto& column:profile.columns)dy+=column.direction();
+            if(dx)nx=dx>0?std::max(1,std::abs(nx)):-std::max(1,std::abs(nx));
+            if(dy)ny=dy>0?std::max(1,std::abs(ny)):-std::max(1,std::abs(ny));
+        }
+        // Project the observed strip envelope onto the fallback normal.
         // Rows/columns with no strip intersection still belong to this plane.
         int plane_min=INT32_MAX,plane_max=INT32_MIN;
         if(extend_plane&&profile.measured)for(unsigned y=0;y<224;++y)if(profile.left[y]>=0){
             for(int x:{profile.left[y],profile.right[y]}){const int v=nx*x+ny*int(y);plane_min=std::min(plane_min,v);plane_max=std::max(plane_max,v);}}
-        const auto ground_side=[&](unsigned x,unsigned y){return profile.ground(x,y,nx,ny)||(plane_max!=INT32_MIN&&nx*int(x)+ny*int(y)>plane_max);};
+        const auto observed_sky=[&](unsigned x,unsigned y){return profile.sky(x,y,nx,ny,extend_plane);};
+        const auto sky_side=[&](unsigned x,unsigned y){return observed_sky(x,y)||(!profile.ground(x,y,nx,ny)&&extend_plane&&plane_min!=INT32_MAX&&nx*int(x)+ny*int(y)<plane_min);};
+        const auto ground_side=[&](unsigned x,unsigned y){return profile.ground(x,y,nx,ny)||(!observed_sky(x,y)&&plane_max!=INT32_MIN&&nx*int(x)+ny*int(y)>plane_max);};
+        const auto word=[&](unsigned i){return unsigned(road[2*i])<<8|road[2*i+1];};
+        // A flat-color field can lose every native ground pixel on a row as
+        // the road and horizon rotate at different frontiers. Borrow only an
+        // observed uniform ground pen with the identical road color control,
+        // within this palette/priority clip. Mixed fields retain row sampling.
+        struct Fill {unsigned color;int pen;};std::vector<Fill> fields;
+        if(extend_plane)for(unsigned y=top;y<bottom+1;++y){
+            if(word(y)&0xa00)continue;
+            const unsigned color=word(0x600+y);
+            int sample=-1;bool mixed=false;
+            for(int x=std::max(0,-native_left);x<std::min(int(width),320-native_left);++x){
+                const auto i=y*width+x;
+                if(priority[i]||indices[i]<0x1700||indices[i]>=0x1708)continue;
+                if(sample<0)sample=indices[i];
+                else if(sample!=indices[i]&&(palette.empty()||palette[sample]!=palette[indices[i]]))mixed=true;
+            }
+            if(sample<0)continue;
+            auto found=std::find_if(fields.begin(),fields.end(),[&](const Fill& f){return f.color==color;});
+            if(found==fields.end())fields.push_back({color,mixed?-1:sample});
+            else if(mixed||found->pen<0||(found->pen!=sample&&(palette.empty()||palette[found->pen]!=palette[sample])))found->pen=-1;
+        }
         unsigned changed=0;
         for(unsigned y=top;y<=bottom;++y){
-            const auto word=[&](unsigned i){return unsigned(road[2*i])<<8|road[2*i+1];};
             const auto data=word(y);if(data&0xa00)continue;
             const uint16_t sky=0x1720^((word(0x600+y)>>8)&15);
             // Extend the wide ground plane using an observed native-row index.
@@ -100,11 +137,15 @@ public:
             int left_ground=-1,right_ground=-1;
             if(extend_plane)for(int x=first;x<last;++x){const unsigned i=y*width+x;
                 if(!priority[i]&&indices[i]>=0x1700&&indices[i]<0x1708&&ground_side(x,y)){if(left_ground<0)left_ground=indices[i];right_ground=indices[i];}}
+            if(extend_plane&&(left_ground<0||right_ground<0)){
+                const auto fill=std::find_if(fields.begin(),fields.end(),[&](const Fill& f){return f.color==word(0x600+y);});
+                if(fill!=fields.end()&&fill->pen>=0){if(left_ground<0)left_ground=fill->pen;if(right_ground<0)right_ground=fill->pen;}
+            }
             for(unsigned x=0;x<width;++x){const auto i=y*width+x;const int original=int(x)+native_left;
                 // A clipped strip can lose one marker beyond the screen. Use
                 // its silhouette/ROM normal across the enhanced wide plane,
                 // including central holes exposed during inversion.
-                if(!priority[i] && indices[i]>=0x1700 && indices[i]<0x1708 && (profile.sky(x,y,nx,ny,extend_plane)||(extend_plane&&plane_min!=INT32_MAX&&nx*int(x)+ny*int(y)<plane_min))){indices[i]=sky;++changed;}
+                if(!priority[i] && indices[i]>=0x1700 && indices[i]<0x1708 && sky_side(x,y)){indices[i]=sky;++changed;}
                 else if(extend_plane&&!priority[i]&&indices[i]>=0x1720&&indices[i]<0x1730&&ground_side(x,y)){
                     const int ground=original<0?left_ground:right_ground;if(ground>=0){indices[i]=ground;++changed;}}
             }
@@ -120,7 +161,7 @@ public:
     unsigned apply(std::span<uint16_t> indices,std::span<const uint8_t> priority,
                    std::span<const uint8_t> road,uint8_t control,std::span<const uint8_t> bank,
                    std::span<const uint8_t> sprites,unsigned top,unsigned bottom,uint8_t angle,
-                   const EffectAssets& assets,unsigned width=320,int native_left=0,std::span<const int> anchors={})const {
+                   const EffectAssets& assets,unsigned width=320,int native_left=0,std::span<const int> anchors={},std::span<const uint16_t> palette={})const {
         if(bank.empty()||bank.size()%16||bank.size()>0x10000)throw std::invalid_argument("Invalid horizon sprite bank");
         if(control!=4)return 0;
         // This is a copy: the hardware's descriptor/word-7 feedback is untouched.
@@ -146,7 +187,7 @@ public:
             if(min_y<=max_y)for(unsigned y=min_y;y<=max_y;++y)for(unsigned x=0;x<width;++x)if(pens_scratch[y*width+x])cached_profile.pixel(x,y,pens_scratch[y*width+x]);
             cached_profile.measured=true;cache_valid=true;
         }
-        return correct(indices,priority,road,top,bottom,nx,ny,cached_profile,native_left);
+        return correct(indices,priority,road,top,bottom,nx,ny,cached_profile,native_left,palette);
     }
 };
 }

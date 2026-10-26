@@ -1,5 +1,8 @@
 #include "engine/game_session.hpp"
 #include "frontend/sprite_filter.hpp"
+#include "frontend/native_practice.hpp"
+#include "hwvideo/wide_scene.hpp"
+#include "horizon_side_reference.hpp"
 #include <fstream>
 #include <filesystem>
 #include <iostream>
@@ -43,5 +46,42 @@ int main()try {
     require(changed>10000&&visible_changes>1000&&left&&right&&saved,"ground roll coverage missing");
     enhanced.capture_ground_horizon(false);for(unsigned f=0;f<10;++f){original.advance({});enhanced.advance({});auto p=original.sprite_presentation(),q=enhanced.sprite_presentation();require(std::equal(p.background.begin(),p.background.end(),q.background.begin()),"ground disable retained correction");original.take_audio();enhanced.take_audio();}
     original.restart();enhanced.restart();enhanced.capture_ground_horizon(true);for(unsigned f=0;f<20;++f){original.advance({});enhanced.advance({});auto p=original.sprite_presentation(),q=enhanced.sprite_presentation();require(std::equal(p.background.begin(),p.background.end(),q.background.begin()),"ground correction changed cold boot");original.take_audio();enhanced.take_audio();}
+    // Directed stage entry is a presentation regression, not whole-credit
+    // progression acceptance. Preserve native RGB/PCM/time through the roll.
+    enhanced.capture_wide_scene(true);
+    Frontend::NativePractice original_practice,enhanced_practice;
+    original_practice.start(original,6,{255,255,221});
+    enhanced_practice.start(enhanced,6,{255,255,221});
+    std::vector<std::unique_ptr<Presentation::WideScene>> stage6_scenes,stage6_plain;
+    Presentation::EffectAssets side_assets({roms.maincpu.rom,roms.maincpu.length},{roms.subcpu.rom,roms.subcpu.length});
+    std::array<uint64_t,3> side_counts{};
+    for(unsigned width:{358u,398u}){stage6_scenes.push_back(std::make_unique<Presentation::WideScene>(roms,width));stage6_plain.push_back(std::make_unique<Presentation::WideScene>(roms,width));}
+    unsigned triangle_witnesses=0,quadrant_crossings=0;uint8_t previous_angle=0;
+    for(unsigned f=0;f<420;++f){GameControls c;c.throttle=1;if(f>=120)c.stick_x=((f-120)/120)%2?1:-1;
+        original.advance(c);enhanced.advance(c);auto a=original.frame(),b=enhanced.frame();
+        require(a.info.number==b.info.number&&a.info.time_ns==b.info.time_ns&&
+            std::equal(a.pixels.begin(),a.pixels.end(),b.pixels.begin(),[](auto p,auto q){return p.r==q.r&&p.g==q.g&&p.b==q.b;}),"stage 6 ground observer changed native RGB/time");
+        require(original.take_audio()==enhanced.take_audio(),"stage 6 ground observer changed native PCM");
+        const auto scene=enhanced.wide_scene();require(scene.ready&&!scene.clips.empty(),"stage 6 scene missing");
+        const auto angle=uint8_t(scene.clips.back().roll);if((angle/64)!=(previous_angle/64))++quadrant_crossings;previous_angle=angle;
+        for(unsigned index=0;index<stage6_scenes.size();++index){auto& renderer=stage6_scenes[index];renderer->render(scene.clips,scene.info.number,true);const auto v=renderer->view();
+            stage6_plain[index]->render(scene.clips,scene.info.number,false);const auto plain=stage6_plain[index]->view();
+            for(const auto& clip:scene.clips){try{auto counts=check_horizon_sides(clip,plain,v,family,side_assets);
+                for(unsigned side=0;side<3;++side)side_counts[side]+=counts[side];
+            }catch(const std::exception& e){throw std::runtime_error("frame="+std::to_string(f)+" width="+std::to_string(v.width)+" "+e.what());}}
+            if(f==264||f==296){const unsigned x=(f==264?350:20)-(398-v.width)/2,y=f==264?150:40;
+                require(x<v.width&&y<224,"stage 6 cloud witness outside viewport");
+                require(v.ground_indices[y*v.width+x]>=0x1700&&v.ground_indices[y*v.width+x]<0x1708,"stage 6 cloud retained a blue tear");
+            }
+            if(f==256||f==286){const unsigned x=(f==256?100:310)-(398-v.width)/2,y=f==256?110:50;
+                require(v.ground_indices[y*v.width+x]>=0x1720&&v.ground_indices[y*v.width+x]<0x1730,"stage 6 fast roll retained a white sky triangle");
+                ++triangle_witnesses;
+            }
+        }
+    }
+    require(side_counts[0]>10000&&side_counts[1]>10000,"stage 6 measured side coverage missing");
+    std::cout<<"Stage 6 measured sides: sky="<<side_counts[0]<<" ground="<<side_counts[1]<<" ground without uniform donor="<<side_counts[2]<<"\n";
+    require(triangle_witnesses==4&&quadrant_crossings>=4,"stage 6 fast-roll quadrant coverage missing");
+    std::cout<<"Stage 6 horizon: 420/420 native RGB/PCM/time frames identical, zero skipped; "<<triangle_witnesses<<" sky-triangle witnesses across 358/398 pixels; quadrant crossings="<<quadrant_crossings<<"\n";
     std::cout<<"Ground correction: 1560 native RGB/PCM/time frames identical, 0 skipped; "<<changed<<" background pixels ("<<visible_changes<<" visibly exposed) across "<<frames<<" frames; left/right="<<left<<'/'<<right<<"; "<<assets_checked<<" ROM asset/LOD selections; disable/restart passed; sample="<<sample_frame<<"; "<<std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<<" seconds\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

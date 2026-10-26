@@ -21,6 +21,28 @@ int main(int argc,char** argv){try{
 #else
  auto* r=SDL_CreateRenderer(w,"metal");require(r,"native Metal renderer");
 #endif
+#ifdef __APPLE__
+ // Source builds must discover build/deps beside the executable even when
+ // launched outside the checkout, without an environment override.
+ {
+  const auto original=std::filesystem::current_path();
+  const auto preset=std::filesystem::absolute("tests/fixtures/native_slang/reference.slangp");
+  const auto elsewhere=std::filesystem::absolute(output/"unrelated-cwd");
+  std::filesystem::create_directories(elsewhere);
+  auto* environment=SDL_GetEnvironment();
+  const char* override_path=SDL_GetEnvironmentVariable(environment,"AB2_LIBRASHADER");
+  const bool had_override=override_path!=nullptr;
+  const std::string saved_override=override_path?override_path:"";
+  auto restore=[&]{std::filesystem::current_path(original);if(had_override)SDL_SetEnvironmentVariable(environment,"AB2_LIBRASHADER",saved_override.c_str(),true);else SDL_UnsetEnvironmentVariable(environment,"AB2_LIBRASHADER");};
+  try {
+   require(SDL_UnsetEnvironmentVariable(environment,"AB2_LIBRASHADER"),"clear runtime override");std::filesystem::current_path(elsewhere);
+   Frontend::NativeSlang probe(r,w);const bool loaded=probe.load(preset.string());
+   require(loaded,"runtime discovered beside executable from unrelated working directory: "+probe.error());
+  }catch(...){restore();throw;}
+  restore();
+  printf("PASS runtime discovery from unrelated working directory without override\n");fflush(stdout);
+ }
+#endif
  {
  Frontend::NativeSlang shader(r,w);require(!shader.available(),"no implicit preset");
  require(!shader.load("missing.glslp"),"reject other formats");require(!shader.available(),"format error has no chain");
