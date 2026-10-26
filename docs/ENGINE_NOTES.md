@@ -13438,3 +13438,21 @@ whole-credit CPU/device/RGB/audio comparison, broader scene/controller coverage
 and sustained-load/platform acceptance are open. The earlier renderer
 acceptance and supplemental `full` results remain historical evidence at their
 recorded source checkpoint, not a claim that `full` was rerun for Preview 5.
+
+Preview 5 publication completed at source commit
+`e3056cdf2f4c7f3c928215b70416dfbf46a95d0b`. The post-whitespace-normalization
+release rebuild passes (34.03 s) at
+`build/workflow/20261026T040243.652566Z/`; miniz changes after the required
+run normalize line endings/trailing whitespace only. The independently extracted
+ZIP matches all 58 manifest hashes and its archived executable modes. Strict
+code signatures and bundled/system dependency paths pass. A 180-frame native
+launch from `/private/tmp` passes with Metal GPU filters, integrated 16:9,
+Corrected ground and OpenAL stereo HRTF, with zero reported underruns or recovery
+events. A sandboxed attempt could not enumerate displays; the native launch
+passes outside that sandbox. Smoke logs are under
+`build/releases/preview5-independent-smoke/`; no temporary ROM links remain.
+The uploaded ZIP was downloaded again and matches SHA-256
+`b6090a36a9cfd11ae87c65f926a852352780bdd4f666099a144a23c438bfd6e6`.
+The source archive contains ROM instructions/list only, with no ROM binaries
+or captures. The GitHub prerelease has the ZIP/checksum and three fresh
+promotional images; repository and itch.io access settings remain unchanged.
