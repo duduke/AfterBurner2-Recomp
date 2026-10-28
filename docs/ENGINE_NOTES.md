@@ -15686,3 +15686,16 @@ Focused macOS repair checks pass at build/workflow/20261028T151426.996952Z/:
 SDL-only recovery (3.47 s), baseline plus all six SDL recovery mutations
 (28.14 s), and OpenAL loopback/spatial recovery checks (4.82 s). The full
 consolidated-tree gates and package verification follow below when completed.
+
+### Consolidated prototype branch verification (2026-10-28)
+
+codex/custom-stage-prototype contains the latest Windows/main rendering/audio
+changes and the SDL starved-tail repair, while all prototype-only paths stay
+out of main. The clean consolidated branch passes
+build/workflow/20261028T151717.793881Z/: test (112.74 s), verify-custom-stages
+(288.01 s), verify-interactive-stage-sprites (171.93 s), and
+verify-interactive-sequences (86.65 s). The latter retains 1,808/1,808 identical
+native continuation RGB frames and 2,165/2,165 identical buffered presentation
+frames, zero skips, against the direct board (not independent MAME).
+All fixtures remain; no ROMs or captures enter Git. These branch checks do not
+replace the main-game macOS release validation recorded separately.
