@@ -14338,3 +14338,67 @@ to the pre-change output, SHA-256
 `c16632d16156236b8b3f646ff0ed2bd17df00e25e9c040500ac89bf28533183b`
 (`build/windows-openal-reserve-images.log`). No native frame/input skipping,
 instruction simplification or emulated sample-rate adjustment was introduced.
+
+### Compact Windows release refresh (2026-10-28)
+
+The user requested publication of the current changes and a runtime-only
+Windows download, accepting the previously documented experimental limits.
+Source commit `b4dc16a5feadb4473e2752ba5ea41d53e98fb23b` is pushed to `main`.
+The concise [Windows performance status](WINDOWS_PERFORMANCE.md) records the
+remaining FPS/audio defects and reproduction settings; no performance fix or
+whole-host acceptance is claimed.
+
+`tools/package_windows_runtime.py` produces separate runtime and source ZIPs.
+The runtime whitelist is one game EXE, ten DLLs, `Launch.cmd` and one combined
+`LICENSES.txt`: no regression executables, project sources, general docs,
+optional aircraft/preset packs, personal settings, captures or ROM data.
+Required notices remain; project, SDL/OpenAL and librashader covered source
+are supplied in the companion, including checksum-verified locked Rust
+dependency archives. The source companion contains the runtime manifest.
+
+The optional librashader binary imports DirectX 9 and Microsoft C++ runtimes
+even when the app uses Vulkan. The package therefore includes app-local
+`D3DX9_43.dll`, its compiler DLL and all three imported Microsoft C++ runtime
+DLLs, in addition to SDL3/OpenAL/LLVM C++ and unwind. DirectX comes from the
+Microsoft.DXSDK.D3DX 9.29.952.8 redistribution package with verified SHA-256
+`ead0906ae8a26c18a7525da7490127a2110f7c58f18293738283e30e97c6ea4b`.
+Microsoft DLL signatures validate. General Windows/driver DLLs remain OS
+dependencies; the unused winpthread DLL is not included.
+
+The runtime artifact is
+`AfterBurner2-v0.1.0-preview.5-Windows-x64-20261028-experimental.zip`,
+13,210,136 bytes, SHA-256
+`93a859b66b07ef0a97107dcc7a991f23808e89274d938c97339f4df8c8134757`.
+Its source companion is 121,225,405 bytes, SHA-256
+`c163bca613b5c8ef0cccc75d95ce3be9cc69300c4ce45170b231fe3977895a45`.
+Executable SHA-256 remains `712a6197…`. Both ZIPs and their separate SHA-256
+files are uploaded to the existing Preview 5 release without replacing older
+assets. The release body leads with the new runtime link and remaining
+performance/validation limitations, preserving the macOS release history.
+
+Independent fresh extraction passes all 13 payload hashes, x64 PE/DLL closure
+and direct loading of the entire shader dependency chain from that extracted
+folder. Arcade, Practice and Shuffle each complete 180 frames with a restricted
+PATH and unrelated working directory. Practice selects an external S-video
+preset while auto-discovering the bundled runtime; HRTF is actually active.
+These are bounded package checks, not sustained performance acceptance.
+GitHub's uploaded sizes and SHA-256 digests match all four assets. A fresh
+authenticated runtime download also matches; unauthenticated URLs return 404
+because the repository is private. Receipts and smoke logs remain under
+`build/windows-20261028-*`, `build/verify-compact-windows.log` and the independently
+extracted folder under `build/releases/`.
+
+The fresh release-candidate `required -j4` run is retained in
+`build/workflow/20261028T132052.589406Z/`: `test` passes in 219.78 seconds and
+`verify-stage1` passes in 1,279.22 seconds, including all 23 stages at 398/358
+columns and the retained integration comparisons. `oracle-test` then fails at
+`oracle-cpu-visibility` with `invalid CPU visibility capture` for the existing
+`build/oracle/caller.bin.visibility`; the concurrent IRQ4 service check also
+rejects `build/oracle/irq4_service.bin` with
+`invalid IRQ4 capture (regenerate with ROM operand reads)`.
+No capture is removed/replaced, no
+comparison is weakened and no complete oracle pass is claimed. Publishing
+remains the expressly authorized experimental distribution with these limits,
+not a closed release/fidelity milestone. The later verification commit changes
+only this evidence record; the runtime/source companion still identifies
+the exact application source commit `b4dc16a`.
