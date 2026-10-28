@@ -1,0 +1,13 @@
+Vulkan-Headers 1.4.341
+
+Copyright 2014-2026 The Khronos Group Inc.
+
+The Windows shader host includes Vulkan API declarations from vulkan.h,
+vulkan_core.h, vk_platform.h and vulkan_win32.h. These files in v1.4.341
+identify their license as Apache-2.0. See Apache-2.0.txt for the complete terms.
+No changes to the upstream headers are distributed by this project.
+
+Upstream: https://github.com/KhronosGroup/Vulkan-Headers/tree/v1.4.341
+License: https://github.com/KhronosGroup/Vulkan-Headers/blob/v1.4.341/LICENSE.md
+Retrieved 2026-10-26. The copyright above includes the 2014 start date in
+vk_platform.h and the 2015 start date in the other included headers.

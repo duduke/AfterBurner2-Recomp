@@ -12,9 +12,12 @@ e.g. by dumping a board they own.
 
 This project is architecturally and methodologically inspired by Chris
 White's Cannonball (https://github.com/djyt/cannonball), its CannonBall-SE
-fork by James Pearce, and the CannonBall DX fork by Endprodukt. No code from
-those projects is copied here; the license terms below apply only to the
-original code written for AfterBurner2-Recomp.
+fork by James Pearce, and the CannonBall DX fork by Endprodukt. Retained
+Cannonball-derived sound classes and CannonBall-SE modifications carry their
+upstream terms and attribution. See LICENSES/README.md and
+docs/THIRD-PARTY-NOTICES.md for the component inventory and retained notices.
+The license terms below apply only to original code written for
+AfterBurner2-Recomp; they do not replace third-party licenses.
 
 Redistribution and use of this code or any derivative works are permitted
 provided that the following conditions are met:

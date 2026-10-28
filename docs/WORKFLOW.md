@@ -172,8 +172,17 @@ cmake -S . -B build/win -G Ninja -DCMAKE_BUILD_TYPE=Release -DAB2_ENABLE_OPENAL=
   -DSDL3_DIR="$PWD/build/deps/SDL3-3.4.18/x86_64-w64-mingw32/lib/cmake/SDL3" \
   -DOpenAL_DIR="$PWD/build/deps/openal"
 cmake --build build/win --target afterburner2 cpu_continuation_regression cpu_continuation_thread_regression -j4
-python3 tools/package_windows.py v0.1.0-preview.2 --native-build build/win
+python3 tools/package_windows.py v0.1.0-preview.2 --native-build build/win \
+  --mingw-notice "$AB2_MINGW_NOTICE"
 ```
+
+Set `AB2_MINGW_NOTICE` to the complete MinGW-w64 runtime COPYING notice supplied
+by the compiler distribution (for example `COPYING.MinGW-w64-runtime.txt` in
+w64devkit, or the target's `share/mingw32/COPYING` in LLVM-MinGW). Native
+packaging rejects an omitted, empty, missing or symlinked notice before creating
+an artifact. The cross-build path extracts its notice from the pinned toolchain
+archive. Preserve additional notices required by a different compiler/runtime;
+the [license inventory](../LICENSES/README.md) records the supported paths.
 
 Alternatively, `tools/package_windows.py` packages the committed, clean
 `build/windows-cross` Release/LTO cross-build using LLVM-MinGW 20261006 / Clang

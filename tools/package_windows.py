@@ -10,7 +10,8 @@ import tarfile
 import zipfile
 
 from package_macos import (ROOT, AIRCRAFT_ASSETS, LIBRASHADER_NOTICES,
-                           checked_source, committed_source, run)
+                           checked_source, committed_source, run,
+                           require_notice, check_project_notices)
 
 
 SOURCES_CROSS = {
@@ -48,15 +49,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version")
     parser.add_argument("--native-build", type=Path, help="Package a native Windows x64 build directory (e.g. build/win)")
-    parser.add_argument("--mingw-notice", type=Path, help="Path to COPYING.MinGW-w64-runtime.txt for native builds")
+    parser.add_argument("--mingw-notice", type=Path, help="Required for native builds: the compiler's complete MinGW-w64 runtime COPYING notice")
     parser.add_argument("--toolchain", type=Path)
     parser.add_argument("--toolchain-archive", type=Path)
     parser.add_argument("--sdl-archive", type=Path)
     args = parser.parse_args()
     if not re.fullmatch(r"v[0-9][A-Za-z0-9.\-]*", args.version):
         parser.error("Use a version beginning with v and a digit")
+    if args.native_build:
+        if not args.mingw_notice:
+            parser.error("Native builds require --mingw-notice pointing to the compiler's complete MinGW-w64 runtime COPYING file")
+        require_notice(args.mingw_notice)
     if run("git", "status", "--porcelain", "--untracked-files=normal"):
         raise SystemExit("Commit the intended source tree before packaging")
+    check_project_notices()
     aircraft_assets = [(relative, committed_source(relative)) for relative in AIRCRAFT_ASSETS]
     shader_notices = [committed_source(relative) for relative in LIBRASHADER_NOTICES]
 
@@ -106,8 +112,7 @@ def main():
         if "clang" in compiler_desc.lower():
             shutil.copy2(compiler.parent.parent / "LICENSE.TXT", package / "Notices/LLVM.txt")
         shutil.copytree(ROOT / "build/deps/openal/share/licenses/openal-soft", package / "Notices/OpenAL-Soft")
-        if args.mingw_notice and args.mingw_notice.is_file():
-            shutil.copy2(args.mingw_notice, package / "Notices/MinGW-w64.txt")
+        shutil.copy2(args.mingw_notice, package / "Notices/MinGW-w64.txt")
         imports = {}
         for path in [*(package / filename for filename in binaries), *sorted(package.glob("*.dll"))]:
             report = run("objdump", "-p", str(path))

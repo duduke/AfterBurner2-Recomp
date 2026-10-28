@@ -16,8 +16,8 @@ Original remains the regression reference. See
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
 | 2 | [Widescreen](WIDESCREEN_PLAN.md) | Extend shared-renderer performance and controller/scene audits; retain snapshot comparisons and sustained 16:9/16:10 gates; ultrawide needs separate acceptance |
-| 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification |
-| 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility |
+| 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification; [object-based HRTF](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned), starting with missile flybys and positioned explosions |
+| 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility; [Android / Android TV port and real-device ADB testing](#android--android-tv-port-planned); [Linux x86-64 / ARM64 builds and remote testing](#linux-x86-64--arm64-builds-and-remote-testing-planned) |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
 | 6 | [Gameplay extensions](ENHANCEMENT_PLAN.md#gameplay-and-content) | Extend the Practice/Shuffle interfaces for additional arranged rules; verify object/state contracts before new stages, save states or multiplayer |
 
@@ -147,6 +147,13 @@ the decoder needs extending; in a data table it's expected.
 
 ## Current checkpoint (2026-10-24)
 
+Licensing maintenance (2026-10-26): the central
+[license inventory](../LICENSES/README.md) now retains dependency and legacy
+audio notices, Vulkan header terms and GCC runtime terms. Native Windows
+packaging requires its compiler's MinGW notice; both packagers check required
+central notices. This updates future packages, not published artifacts. See
+the [validation record](ENGINE_NOTES.md#license-inventory-and-packaging-notices-2026-10-26).
+
 Windows source update (2026-10-24): checked LLVM-MinGW ThinLTO builds and a
 native Vulkan RetroArch `.slangp` host are implemented. Practice/Shuffle,
 16:10, HUD/CRT, aircraft presentation, calibration and revised spatial audio
@@ -268,7 +275,7 @@ on `main`; the separate Three.js prototype remains on
 | Display and ground | Five GPU filters plus Off, four opacity controls, full-throttle-only flame translucency, optional ground correction, [high-DPI HUD preview](HUD_PRESENTATION.md) with Sharp 3x/custom indexed text tiles and [CRT display presets](CRT_DISPLAY.md) | Semantic sprite instruments, production replacement art, other backends, continuous terrain projection and sustained performance |
 | Widescreen | 398×224 and 358×224 previews in macOS Preview 3, detached scenery, queue/depth-drop recovery and horizon/water extensions; 23 directed slots per aspect preserve 22,540 counted native RGB/PCM/time frames | Broader controller/scene audit, ultrawide, other platforms and sustained load; gameplay object pools remain native |
 | Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes; all six native song contexts and natural fades observed | Replacement-file natural fade/listening acceptance |
-| Spatial audio | Chip-rate OpenAL Soft, headphone HRTF, 2.1/5.1 profiles, dry stereo music, reviewed routing and stall recovery; 117,509 exact MAME ownership observations and 104,452 unchanged native lifecycle frames; original Deluxe stereo wiring traced | Revised-cue listening, physical surround/unplug and Windows/Linux checks, end-to-end latency, ABII cabinet-revision evidence |
+| Spatial audio | Chip-rate OpenAL Soft, headphone HRTF, 2.1/5.1 profiles, dry stereo music, reviewed routing and stall recovery; 117,509 exact MAME ownership observations and 104,452 unchanged native lifecycle frames; original Deluxe stereo wiring traced | Revised-cue listening, physical surround/unplug and Windows/Linux checks, end-to-end latency, ABII cabinet-revision evidence; planned object-to-voice ownership and moving HRTF sources |
 | Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
 | Distribution | ROM-free macOS Preview 5 and runtime-verified Windows Preview 2 ZIPs with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS ad-hoc signed; Windows unsigned and awaiting the new features; Intel/older macOS and Linux packages remain open |
 
@@ -433,6 +440,101 @@ rejected controls. The complete retained instruction corpus passes
 The final arranged-MAME comparison matches all 100,000 frame observations,
 including every stage, ending, ranking and the later attract sequence. See
 [Shuffle evidence and finite coverage](ENGINE_NOTES.md#shuffle-mode-2026-10-23).
+
+## Object-based spatial audio (planned)
+
+Added 2026-10-26. Extend the fixed front/rear cockpit categories with opt-in
+moving HRTF sources. Start with missile flybys and positioned world explosions,
+then enemy weapon launches, player missiles and verified aircraft/rear threats;
+keep player propulsion anchored behind the listener. A chasing plane should
+sound from its actual rear bearing only after its relative position, chase
+state and sound ownership are verified. Continuous enemy engine audio requires
+an appropriate native voice or a separately specified optional added sound.
+
+The prerequisite is passive object-to-voice ownership through sound delivery
+and FM/PCM allocation, with per-family coordinate/lifecycle contracts and
+separate rendering of supported voices. Preserve native gameplay, sound timing
+and exported PCM; ambiguous ownership retains the existing fallback. This is
+future work, separate from current playback acceptance. See the ordered tasks,
+MAME/mutation gates and listening/performance requirements in the
+[spatial audio plan](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned).
+
+## Android / Android TV port (planned)
+
+Added 2026-10-26. Build on this Apple Silicon Mac using the shared C++/SDL3
+engine. First milestone: a ROM-free, controller-driven ARM64 APK with original
+graphics/audio and user ROM import, running on a real Android device. Android TV
+shares the engine and adds TV launcher integration and controller/remote menu
+navigation. Touch controls and richer presentation effects are later increments.
+No Android build or device acceptance is claimed yet.
+
+- [ ] Set up a working JDK, Android SDK/NDK, Gradle and ADB; pin toolchain and
+  dependency versions and document reproducible macOS build/install commands.
+- [ ] Add Android activity/manifest and native shared-library packaging through
+  SDL3/CMake; package required assets and notices without ROMs or captures.
+- [ ] Implement Android ROM import and persistent app storage, settings/NVRAM,
+  Back navigation, pause/resume, audio interruption and surface recreation.
+- [ ] Add Android TV launcher icon/banner and manifest support without requiring
+  a touchscreen. Verify startup, ROM import and all menus with controller/remote
+  navigation, plus gameplay mapping and controller disconnect/reconnect.
+- [ ] Validate Android rendering and audio backends. Measure the worker-thread
+  CPU continuation fallback; add an Android ARM64 cooperative backend if needed
+  for performance, preserving CPU/bus timing and the existing oracle contracts.
+- [ ] When the user provides ADB access to a real device, install and launch
+  builds, collect logs/screenshots and run repeatable startup, storage, lifecycle,
+  input and gameplay checks. Record device model, Android version, ABI, GPU,
+  build identity and exact test scope; phone and TV acceptance remain separate.
+- [ ] Run device-side deterministic replays against independent MAME references
+  for CPU/bus/device, RGB and audio observations. Follow the validation cadence
+  above, including full regression and retained mutations for shared execution
+  changes and the complete required/supplemental gates for acceptance milestones.
+- [ ] Measure sustained representative and peak-load gameplay on target hardware,
+  including frame pacing, thermal throttling and audio stability. Obtain user
+  checks of controller feel, perceived latency, listening quality and TV display
+  behavior; ADB checks alone do not close physical hardware acceptance.
+
+Record implementation and device evidence in ENGINE_NOTES as work proceeds.
+Lower-cost TV performance, optional shaders/spatial audio and broader device/ABI
+support remain unverified until measured on the corresponding hardware.
+
+## Linux x86-64 / ARM64 builds and remote testing (planned)
+
+Added 2026-10-26. Produce separate ROM-free Linux x86-64 and ARM64 packages
+using the shared C++/SDL3 engine. Support reproducible builds from this Apple
+Silicon Mac through a Linux VM/container and cross-toolchains or emulation, and
+native builds on user-provided remote Linux hosts. No Linux package or hardware
+acceptance is claimed yet.
+
+- [ ] Establish versioned build environments for both architectures, including
+  SDL3 and optional OpenAL Soft dependencies. Declare supported distributions
+  and minimum glibc/runtime requirements; document build and packaging commands.
+- [ ] Produce architecture-specific packages with required assets, dependency
+  notices, source/build identity and checksums; exclude ROMs and captures.
+- [ ] When the user provides SSH access, sync the intended source revision,
+  build and run regression/oracle checks with locally supplied ROMs and fixtures,
+  collect logs and retrieve packages. Keep ROMs/captures ignored and record host
+  architecture, distribution, compiler, dependencies and exact test scope.
+- [ ] Run native deterministic replays on both x86-64 and ARM64 against
+  independent MAME references for CPU/bus/device, RGB and audio observations.
+  Apply the validation cadence above, including full regression and retained
+  mutations for shared execution changes and complete required/supplemental
+  gates for acceptance milestones.
+- [ ] Validate Wayland/X11 startup, ROM picking, settings/NVRAM persistence,
+  fullscreen/resize, audio routing and controller disconnect/reconnect. Use an
+  accessible active desktop/GPU/audio session for graphical remote testing;
+  headless SSH checks alone do not establish desktop hardware acceptance.
+- [ ] Measure the worker-thread CPU continuation fallback on each architecture;
+  implement faster Linux continuation backends if needed without changing
+  CPU/bus timing. Validate GPU filters and extend the current Linux Slang stub
+  for optional shader support, recording supported backends and limitations.
+- [ ] Measure sustained representative and peak-load pacing and audio stability
+  on native hardware of both architectures. Obtain physical controller-feel,
+  perceived-latency and listening checks; VM, cross-build and emulated results
+  do not establish native hardware performance or acceptance.
+
+Record implementation and remote/native evidence in ENGINE_NOTES as work
+proceeds. Keep x86-64 and ARM64 acceptance separate, with explicit GPU, desktop
+session and hardware coverage limits.
 
 ## Phase overview
 

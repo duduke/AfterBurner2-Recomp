@@ -2115,4 +2115,9 @@ build/wide_ground_reference_regression: tests/wide_ground_reference_regression.c
 test-wide-ground-reference: build/wide_ground_reference_regression
 	./build/wide_ground_reference_regression
 test: test-wide-ground-reference
+
+test-license-notices:
+	python3 tests/test_license_notices.py
+test: test-license-notices
+.PHONY: test-license-notices
 .PHONY: test-wide-ground-reference

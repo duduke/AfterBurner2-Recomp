@@ -23,6 +23,27 @@ LIBRASHADER_NOTICES = (
     "src/third_party/librashader/NOTICE.md",
     "src/third_party/librashader/LICENSE.MPL-2.0",
 )
+PROJECT_NOTICES = (
+    "README.md", "Apache-2.0.txt", "Cannonball.txt", "CannonBall-SE.txt",
+    "MAME-Legacy.txt", "MAME-Audio.txt", "MAME-SegaPCM.txt", "YMFM.txt",
+    "YMFM-Timers.txt", "Vulkan-Headers.txt", "Z80.txt", "SDL3.txt",
+    "SDL_GameControllerDB.txt", "dr_flac.txt", "miniz.txt", "ScaleFX.txt",
+    "Snes9x.txt", "librashader-header.txt", "MPL-2.0.txt", "OpenAL-Soft.txt",
+    "OpenAL-BSD-3Clause.txt", "OpenAL-fmt.txt", "OpenAL-GSL.txt", "OpenAL-pffft.txt",
+    "GCC-GPL-3.0.txt", "GCC-Runtime-Library-Exception.txt", "GCC-Runtime.txt",
+)
+
+
+def require_notice(path):
+    if path is None or path.is_symlink() or not path.is_file() or not path.read_bytes().strip():
+        raise SystemExit(f"Required license notice must be a nonempty regular file: {path}")
+
+
+def check_project_notices():
+    for filename in PROJECT_NOTICES:
+        relative = f"LICENSES/{filename}"
+        require_notice(ROOT / relative)
+        committed_source(relative)
 
 
 def run(*args):
@@ -54,6 +75,7 @@ def main():
         parser.error("Use a version beginning with v and a digit")
     if run("git", "status", "--porcelain", "--untracked-files=normal"):
         raise SystemExit("Commit the intended source tree before packaging")
+    check_project_notices()
     aircraft_assets = [(relative, committed_source(relative)) for relative in AIRCRAFT_ASSETS]
     shader_notices = [committed_source(relative) for relative in LIBRASHADER_NOTICES]
 

@@ -5,6 +5,11 @@ cores and MAME-derived device algorithms. See each source header and the
 license files linked below for attribution. ROM data is supplied by the user
 and is not distributed.
 
+[LICENSES/README.md](../LICENSES/README.md) is the central inventory of license
+texts, source-header notices and platform-specific packaging requirements.
+Third-party terms apply to their respective components independently of the
+project's original-code license.
+
 ## macOS preview dependencies
 
 The macOS ZIP bundles dynamically linked SDL3 3.4.16 (zlib license) and OpenAL
@@ -20,7 +25,8 @@ The native Windows x64 ZIP bundles dynamically linked SDL3 3.4.18 (`SDL3.dll`,
 zlib license) and OpenAL Soft 1.25.2 (`OpenAL32.dll`, LGPL-2.0-or-later), built
 with w64devkit GCC 16.2.0 (`libstdc++`/`libgcc` linked statically). `Notices/`
 contains the SDL3, OpenAL Soft (including fmt/GSL/pffft) and MinGW-w64 runtime
-licenses; `Sources/` includes the complete project tree, SDL3 source archive and
+licenses, plus the GCC GPLv3 and Runtime Library Exception notices for the
+statically linked GCC runtimes; `Sources/` includes the complete project tree, SDL3 source archive and
 OpenAL Soft source archive. When built via the alternative macOS LLVM-MinGW
 cross-build path, the ZIP instead bundles SDL3 3.4.16 and LLVM 23.1.3
 `libc++.dll`/`libunwind.dll` alongside their upstream source archives. Microsoft
@@ -46,16 +52,40 @@ the live YMFM synthesis owner:
 
 - `src/main/hwaudio/ym2151.cpp` / `.hpp` — Yamaha YM2151 FM synthesis chip
   emulator. Original author: Jarek Burczynski, 1997-2002, distributed as
-  part of MAME (BSD-3-Clause). Carried into this project via Chris White's
+  part of historical MAME. Carried into this project via Chris White's
   Cannonball, which itself adapted it from MAME with only minor
   integration changes.
 - `src/main/hwaudio/segapcm.cpp` / `.hpp` — Sega 8-bit PCM sample-playback
-  chip emulator. Also MAME-derived (BSD-3-Clause), carried via Cannonball.
+  chip emulator. Also historical MAME-derived, carried via Cannonball.
 - `src/main/hwaudio/soundchip.cpp` / `.hpp` — a small abstract base class
   (buffer management shared by the above two), original to Chris White's
   Cannonball, not MAME-derived.
 
+Copyright Chris White and the Cannonball team. The YM2151 core retains
+copyright 1997–2002 Jarek Burczynski, optimizing ideas credited to Tatsuyuki
+Satoh, and copyright 2025 James Pearce for CannonBall-SE modifications.
 See each file's own header comment for its specific attribution.
+
+The complete [Cannonball terms](../LICENSES/Cannonball.txt), additional
+[CannonBall-SE terms](../LICENSES/CannonBall-SE.txt), and
+[historical MAME terms](../LICENSES/MAME-Legacy.txt) are retained. These legacy
+files must not be labeled BSD merely because modern MAME components use BSD.
+The historical MAME notice is from MAME 0.146; source/license retrieval
+references are in the central inventory. This is separate from the live YMFM
+and X-Board device implementations described above. Both build systems still
+compile the legacy classes, and the source archive includes them.
+
+## Vulkan headers (Windows)
+
+The native Vulkan shader host uses Khronos Vulkan-Headers, with 1.4.341 as the
+CMake fallback version. That version's `vulkan.h`, `vulkan_core.h`,
+`vk_platform.h` and `vulkan_win32.h` identify Apache-2.0 as their license.
+Copyright 2014–2026 The Khronos Group Inc. The complete
+[Apache license](../LICENSES/Apache-2.0.txt) and
+[header notice](../LICENSES/Vulkan-Headers.txt) are included in both package
+notice trees. Vulkan is loaded from the user's driver; no Vulkan loader or
+driver library is bundled. An SDK override must retain its own applicable
+notices if they differ from this recorded version.
 
 `src/third_party/z80.h` is Andre Weissflog's cycle-stepped Z80 core from
 https://github.com/floooh/chips (zlib/libpng license, copyright 2021).

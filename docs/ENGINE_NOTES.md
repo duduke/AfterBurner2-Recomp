@@ -13456,3 +13456,40 @@ The uploaded ZIP was downloaded again and matches SHA-256
 The source archive contains ROM instructions/list only, with no ROM binaries
 or captures. The GitHub prerelease has the ZIP/checksum and three fresh
 promotional images; repository and itch.io access settings remain unchanged.
+
+
+### License inventory and packaging notices (2026-10-26)
+
+`LICENSES/README.md` now inventories the included components, optional runtime,
+platform toolchains and notice provenance. Central verbatim copies cover SDL3,
+Z80, dr_flac, miniz, controller mappings, ScaleFX/Snes9x, librashader's header
+and MPL option, and OpenAL Soft's fmt/GSL/pffft notices. Added the complete
+Cannonball, CannonBall-SE and historical MAME notices for retained audio code,
+plus Vulkan-Headers 1.4.341's Apache terms and GCC's GPLv3/Runtime Library
+Exception texts. The original-code license no longer denies the retained
+Cannonball-derived code, and legacy sound files are no longer labeled BSD
+solely by association with modern MAME. Original source attribution remains.
+Upstream license whitespace is preserved through `.gitattributes`.
+
+Both packagers preflight the required central notices before producing an
+artifact and already copy the complete directory into `Notices/project/`.
+Native Windows packaging now requires a nonempty regular compiler-specific
+MinGW runtime COPYING input via `--mingw-notice`; missing, empty and symlinked
+inputs fail. The cross-build path retains its pinned archive extraction.
+The Windows workflow documents the required argument. LLVM and MinGW notices
+remain tied to the actual compiler distribution, and SDL/OpenAL packaging
+still retains the bundled versions' notices and source archives.
+
+Validation: `python3 tools/workflow.py run test` passes at
+`build/workflow/20261026T090525.628147Z/01-test.log`. The final focused
+`test-license-notices` passes all five tests at
+`build/workflow/20261026T090812.842174Z/01-test-license-notices.log`, including
+invalid-input rejection, central notice availability, local inventory links
+and exact agreement with vendored texts/header blocks. Independent comparison
+confirms all six SDL/OpenAL central license texts match members of the
+SHA-256-pinned source archives. New Cannonball/SE texts match fixed upstream
+revisions recorded in the inventory; historical MAME and Vulkan texts retain
+their upstream tags. Python compilation and `git diff --check` pass.
+No gameplay code, ROMs or captures changed. No artifact was rebuilt or
+published: packaging requires a clean committed source tree and release gates;
+existing published previews retain their original notices.

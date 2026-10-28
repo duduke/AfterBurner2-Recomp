@@ -1,7 +1,8 @@
 # OpenAL Soft cockpit audio
 
 **Status: experimental implementation shipped in the macOS preview.**
-Updated **2026-10-23** for
+Updated **2026-10-26** with the planned object-based HRTF work below. The
+implemented playback checkpoint is recorded for
 [macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
 Original SDL remains the
 default native PCM reference. The enhanced path changes playback, never the
@@ -84,6 +85,67 @@ Roof/lamp-box mounting supports a raised rear image, while exact HRTF angles
 and semantic effect placement remain presentation choices. The native reference
 stays stereo. This verifies the documented 420-5812 wiring; unchanged wiring
 in an After Burner II cabinet revision still needs primary evidence.
+
+## Object-based HRTF (planned)
+
+Added 2026-10-26. Extend the current fixed front/rear sound categories with
+moving sources tied to verified game objects. This is an opt-in presentation
+enhancement, not implemented or accepted by the existing cockpit audio tests.
+Original SDL/native PCM remains the regression reference.
+
+The engine has object activity, handler identity, screen positions, motion and
+depth information, plus verified passing and weapon/explosion sound producers.
+That supplies a starting point, not a uniform world-coordinate contract:
+record fields are reused across object families, and projected screen X/Y
+alone cannot establish a source's bearing behind the player. Verify coordinates,
+player-relative depth, elevation and lifecycle for each supported family from
+its ROM routines and independent MAME observations.
+
+The main missing link is ownership from the producing object through the main
+sound queue, Z80 allocation and physical FM/PCM voice. Current routing tracks
+sound categories, not a persistent object-to-voice association, and combines
+effects into category buses. Dynamic placement needs presentation-only ownership
+metadata and separately renderable voices for supported effects. Retain native
+trigger times, voice stealing, clocks and original stereo balance; do not assign
+an ambiguous voice to whichever object happens to be nearest.
+
+Suggested implementation order:
+
+| Order | Effect | Intended presentation and prerequisite |
+| --- | --- | --- |
+| 1 | Missile flybys | Move a verified missile sound beside and behind the listener along its path. Start with the existing `$6E/$6F` depth-crossing events; trace their producing object and audible duration before claiming a continuous approach/pass trajectory. |
+| 2 | World explosions | Place an explosion at its verified location instead of assigning every explosion to the rear. Distinguish world effects from player damage/crashes; evaluate elevation and restrained distance attenuation as explicit presentation choices. |
+| 3 | Enemy weapon launches | Place the existing launch sound at the firing object's verified bearing instead of the fixed front category; trace source/shooter ownership through weapon allocation. |
+| 4 | Player missiles | Start an owned sound near its verified launch point and move it forward with the projectile where its voice duration and ownership support that behavior. |
+| 5 | Aircraft and rear threats | Track verified aircraft bearings, including behind-left/right for an actual pursuer. Establish the aircraft's relative position and chase state; a passing missile event is not evidence of a persistent chasing plane. |
+| 6 | Player propulsion | Retain a stable rear cockpit anchor while external sources move independently; do not mistake a shared propulsion voice for an enemy engine. |
+
+A continuous pursuing-aircraft engine requires an appropriate verified native
+voice. If none exists, an added loop/sample is a separately specified optional
+enhancement with explicit asset provenance and lifecycle rules; do not invent
+native sound events or retrigger one-shots to imply a continuous engine.
+Music and existing neutral UI/radio cues retain their current stereo policy.
+Distance mapping, gain limits and any later Doppler treatment need explicit
+presentation policy; the current implementation has attenuation and Doppler off.
+
+- [ ] Verify per-family coordinate and lifecycle contracts, including offscreen
+  sources, player depth crossings, attachments and object-slot reuse.
+- [ ] Carry passive, timestamped object ownership through queue delivery,
+  sequencer allocation, overlapping commands and voice stealing. Invalidate
+  stale ownership on despawn/reuse, reset, restart and profile changes; retain
+  the existing category/stereo fallback when ownership is unknown.
+- [ ] Render supported voices separately with bounded source/queue costs and
+  smooth movement aligned to audio playback time. Define the listener frame
+  and camera/roll relationship explicitly; never feed presentation state back
+  into game execution or native sound-device state.
+- [ ] Add independent MAME ownership/trajectory fixtures and rejected mutations
+  for wrong source, side/depth, stale identity and timing. Preserve all retained
+  fixtures, mutations and native RGB/PCM/time comparisons; apply ROADMAP's
+  focused/full validation cadence to the actual changes and acceptance gate.
+- [ ] Exercise overlapping sources, pause/resume, clear/restart, voice stealing,
+  fallback and starvation; measure clipping, latency and sustained peak-load
+  cost. Obtain headphone listening checks for moving front/side/rear and
+  elevation cues, with separate physical speaker/platform acceptance.
 
 ## Interpolation and music
 

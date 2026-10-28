@@ -1,0 +1,21 @@
+GCC runtime libraries (native Windows builds using GCC)
+
+libgcc and libstdc++ are part of GCC.
+Copyright Free Software Foundation, Inc.
+
+GCC runtime library code is distributed under the GNU General Public License,
+version 3 or later, with the GCC Runtime Library Exception, version 3.1.
+The complete texts are retained in GCC-GPL-3.0.txt and
+GCC-Runtime-Library-Exception.txt. The exception text specifies its conditions.
+
+This notice applies to GCC runtime code, including when statically linked;
+it does not change the license of original AfterBurner2-Recomp code.
+LLVM-MinGW builds instead ship their toolchain's LLVM runtime notices.
+
+Upstream source and notices:
+https://gcc.gnu.org/
+https://github.com/gcc-mirror/gcc/tree/master/libgcc
+https://github.com/gcc-mirror/gcc/tree/master/libstdc++-v3
+https://github.com/gcc-mirror/gcc/blob/master/COPYING3
+https://github.com/gcc-mirror/gcc/blob/master/COPYING.RUNTIME
+Retrieved 2026-10-26.
