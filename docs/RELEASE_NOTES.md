@@ -1,10 +1,29 @@
 # Release notes
 
+## Unpublished macOS development refresh (2026-10-28)
+
+The local `v0.1.0-preview.6-20261028` package consolidates main through the
+28 October Windows work, including shared ground/sprite/HUD rendering, SDL
+audio recovery and frame pacing. macOS retains its Metal backend; the native
+Vulkan compositor remains Windows-specific. The integration also fixes a
+same-iteration SDL starvation/tail restart that could bypass the recovery reserve.
+
+The package includes the expanded original/dependency license inventory and
+notice preflight checks. Standalone custom landing/refueling stages live on
+`codex/custom-stage-prototype` and are excluded from this main-game build.
+Android, Linux and object-based HRTF entries remain plans.
+
+This is a local Apple Silicon/macOS 26+ development package, not a new published
+GitHub release. Its exact source and validation are recorded in Engine Notes
+and the package manifest. Existing Windows performance and validation limits
+remain documented below; this refresh does not close them.
+
 ## v0.1.0-preview.5 — ROM startup, menus and widescreen effects
 
 This refreshes the **Apple Silicon / macOS 26+** package at
 [GitHub Releases](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5).
-Windows remains on Preview 2; its newer source features await a refreshed package.
+An experimental Windows x64 Preview 5 package was added on 2026-10-27; see below
+for its validation scope and remaining limits.
 The release tag, package manifest and GitHub release identify the exact source
 commit and ZIP checksum.
 
@@ -38,8 +57,8 @@ with matching sources/notices. Binaries are **ad-hoc signed, not Developer ID
 signed or notarized**. Extract the complete ZIP and run `Launch.command`.
 Supply your own ROM directory or ZIP. ROMs, original Sega media, captures,
 preferences, personal soundtracks, external shader runtimes and shader packs
-are excluded. Windows Preview 2, Intel/older macOS and Linux packaging are
-unchanged; ultrawide remains unavailable.
+are excluded. Intel/older macOS and Linux packaging are unchanged; ultrawide
+remains unavailable.
 
 Widescreen, spatial audio, replacement artwork and sustained peak-load/platform
 coverage remain experimental. Full-game acceptance and continuous whole-credit
@@ -47,6 +66,51 @@ CPU/device/RGB/audio comparison remain open. The required final-source release
 gate is recorded in the
 [Preview 5 release record](ENGINE_NOTES.md#preview-5-release-2026-10-26);
 the GitHub release records independent extracted-package checks.
+
+### Windows refresh (2026-10-27)
+
+The unsigned Windows 10/11 x64 ZIP uses source commit `514c092` with checked
+ThinLTO, SDL3 3.4.18 and OpenAL Soft 1.25.2. It includes sources, notices,
+payload hashes and a separate checksum. Independently extracted Arcade,
+Practice and Shuffle launches, continuation tests, native shader integration
+and OpenAL HRTF checks pass. Complete Windows release gates were not closed;
+the GitHub release documents the unavailable instrumented MAME fixtures,
+standalone Unicode test-argument issue and Windows input-recording header bug.
+Input recordings from this package should not become validation fixtures.
+
+The original 27 October ZIP uses CPU sprite/scene composition with Slang.
+The 28 October compact refresh below includes the native Vulkan GPU compositor
+and shared HUD-raster optimization; measurements and validation are in
+the [source performance record](ENGINE_NOTES.md#native-vulkan-sprite-filters-and-shared-hud-raster-2026-10-27).
+
+### Compact Windows refresh (2026-10-28)
+
+The `Windows-x64-20261028-experimental` runtime ZIP includes the latest native
+Vulkan sprite compositor, shared HUD raster, ground/palette/decoder work,
+exact native ScaleFX capture reduction and removal of a redundant shader
+submission. Windows OpenAL uses an 80 ms startup/recovery reserve, adding
+55/30 ms over its previous thresholds. Native PCM and clocks are unchanged.
+
+Keep the complete runtime folder together and open `Launch.cmd`. It contains
+one game executable, SDL3/OpenAL/C++ runtimes, librashader 0.12.0 and its
+DirectX/Microsoft C++ dependency DLLs, plus one consolidated `LICENSES.txt`.
+Project/dependency sources and the manifest are in the separate matching source
+companion. No regression executables, general docs, ROMs, captures, personal
+settings, shader preset packs or optional aircraft assets are in the runtime ZIP.
+
+**Performance remains unresolved.** Fullscreen Stage 1 can dip to 53–56 FPS
+with audible gaps and synchronized 13-source OpenAL underruns; windowed dips
+are reported less often. The final two 3,600-frame runs average 59.72/59.50 FPS,
+with minimum rolling windows 55.92/53.39 and 1/3 underrun events. These finite
+runs do not establish smooth audio or locked native speed. See the
+[current issue/reproduction record](WINDOWS_PERFORMANCE.md).
+
+Scoped regression/Stage 1, all 23 stages at 16:9/16:10, renderer/shader and
+audio checks pass as recorded in Engine Notes. Complete Windows release/oracle
+acceptance remains open because of missing/invalid instrumented captures.
+The retained Windows recording-header issue also remains open; do not use
+recordings from this build as validation fixtures. The refresh is experimental
+under the user's documented acceptance of these release limitations.
 
 
 ## v0.1.0-preview.4 — Integrated primary renderer

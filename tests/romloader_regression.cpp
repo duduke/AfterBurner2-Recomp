@@ -1,10 +1,29 @@
 #include "romloader.hpp"
 #include <cstdlib>
 #include <iostream>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#include <filesystem>
+#endif
 
 int main(int argc, char** argv) {
     if (argc != 4) return 2;
+#ifdef _WIN32
+    // This standalone fixture has no SDL UTF-8 entrypoint. The narrow CRT argv
+    // loses filenames outside the active code page before the loader sees them.
+    int wide_count=0;
+    auto* wide_args=CommandLineToArgvW(GetCommandLineW(),&wide_count);
+    if(!wide_args || wide_count!=argc){if(wide_args)LocalFree(wide_args);return 2;}
+    const auto utf8=std::filesystem::path(wide_args[1]).u8string();
+    LocalFree(wide_args);
+    RomLoader::set_source(std::string(utf8.begin(),utf8.end()));
+#else
     RomLoader::set_source(argv[1]);
+#endif
     const bool success = std::string(argv[2]) == "pass";
     const unsigned stride = std::strtoul(argv[3], nullptr, 10);
     RomLoader region;

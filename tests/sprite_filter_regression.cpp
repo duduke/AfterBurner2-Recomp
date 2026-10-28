@@ -1,4 +1,5 @@
 #include "frontend/sprite_filter.hpp"
+#include "hwvideo/sprite_scene.hpp"
 #include <chrono>
 #include <iostream>
 #if defined(__clang__)
@@ -12,7 +13,32 @@
 void require(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 uint16_t rgb565(uint32_t p){return ((p>>8)&0xf800)|((p>>5)&0x07e0)|((p>>3)&31);}
 uint32_t argb(uint16_t p){return 0xff000000u|uint32_t(p&0xf800)<<8|uint32_t(p&0x07e0)<<5|uint32_t(p&31)<<3;}
-int main()try{
+int main(int argc,char** argv)try{
+ // Full linked lists are the independent reference for terminal compaction.
+ // Interleave pixels so accidental sharing/reuse of another head is visible.
+ unsigned compact_comparisons=0;size_t compact_size=0,full_size=0;
+ for(unsigned sequence=0;sequence<2401;++sequence){
+  std::vector<Presentation::Fragment> full,compact;
+  std::array<uint32_t,3> original_heads,compact_heads;original_heads.fill(UINT32_MAX);compact_heads.fill(UINT32_MAX);
+  unsigned kinds=sequence;
+  for(unsigned depth=0;depth<4;++depth){const unsigned kind=kinds%7;kinds/=7;
+   for(unsigned pixel=0;pixel<3;++pixel){
+    Presentation::Fragment f{0xff000000u|((depth+1)*0x192b37u)^(pixel*0x152713u),original_heads[pixel],kind,depth*3+pixel};
+    original_heads[pixel]=uint32_t(full.size());full.push_back(f);
+    Presentation::append_fragment(compact,compact_heads[pixel],f);
+   }
+  }
+  for(unsigned cloud:{0u,128u,255u})for(unsigned trail:{0u,128u,255u})for(unsigned explosion:{0u,128u,255u})for(unsigned flame:{0u,128u,255u})for(unsigned pixel=0;pixel<3;++pixel){
+   uint32_t a=0xffabcdef,b=a;
+   const auto expected=Presentation::foreground(full,original_heads[pixel],cloud,trail,&a,explosion,flame);
+   const auto actual=Presentation::foreground(compact,compact_heads[pixel],cloud,trail,&b,explosion,flame);
+   require(expected==actual&&a==b,"terminal fragment compaction changed opacity/ownership");++compact_comparisons;
+  }
+  compact_size+=compact.size();full_size+=full.size();
+ }
+ require(compact_size<full_size,"terminal fragment compaction retained all hidden fragments");
+ std::cout<<"Terminal fragments: "<<compact_comparisons<<" full-chain foreground/background comparisons identical\n";
+ if(argc==2&&std::string_view(argv[1])=="--fragments-only")return 0;
  using Frontend::SpriteFilter;Frontend::SpriteScaler scaler;
  const std::vector<uint32_t> background(9,0xff305070),empty(9,0);
  for(int f=0;f<Frontend::sprite_filter_count;++f){

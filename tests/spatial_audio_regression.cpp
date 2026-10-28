@@ -36,7 +36,12 @@ void synchronized_reprime(Frontend::AudioOutput& output,bool staggered=false){
         wait_for([&]{return output.status().underruns==before.underruns+12;},"staggered first source cohort did not drain");
         require(output.status().reprimes==before.reprimes,"partial source exhaustion stopped a live source");output.render_loopback(960);
     }
-    for(unsigned block=0;block<2;++block){output.submit(packet);const auto quiet=output.render_loopback(960);require(energy(quiet,0)+energy(quiet,1)<1e-12,"exhausted streams restarted before synchronized re-prime");}
+#ifdef _WIN32
+    constexpr unsigned quiet_blocks=3; // 60 ms must remain silent; 80 ms resumes.
+#else
+    constexpr unsigned quiet_blocks=2; // Retained 50 ms policy on other hosts.
+#endif
+    for(unsigned block=0;block<quiet_blocks;++block){output.submit(packet);const auto quiet=output.render_loopback(960);require(energy(quiet,0)+energy(quiet,1)<1e-12,"exhausted streams restarted before synchronized re-prime");}
     output.submit(packet);const auto resumed=output.render_loopback(960);require(energy(resumed,0)+energy(resumed,1)>.1,"synchronized re-prime failed to resume");
     const auto recovered=output.status();require(recovered.underruns==before.underruns+13&&recovered.reprimes==before.reprimes+1,"global starvation telemetry incorrect");
     for(unsigned block=0;block<50;++block){output.submit(packet);output.render_loopback(960);}
@@ -113,7 +118,17 @@ int main()try{
     require(output.status().peak_queued_packets==6&&output.status().peak_pending>=.75,"lifetime queue telemetry lost across reconfiguration");
     std::cout<<"Spatial audio: WAV conversion, HRTF/directions, dry BGM, chip-rate interpolation, underrun restart, queued pause/resume, six-packet backpressure/clear, live profiles/resampler and SDL failure recovery/retry passed\n";
 #else
+    require(!Frontend::sdl_recovery_ready(1000,true,true),"SDL starved tail bypassed recovery reserve");
+    require(Frontend::sdl_recovery_ready(1000,true,false),"SDL finite short tail cannot drain");
+    require(!Frontend::sdl_recovery_ready(3840,false,false),"SDL playback started before recovery buffer filled");
+    require(Frontend::sdl_recovery_ready(15360,false,false),"SDL primed output did not start");
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER,"dummy");
+    // Keep the physical dummy device at a different rate, so empty-input
+    // telemetry cannot accidentally pass by avoiding the SDL resampler.
+    require(SDL_InitSubSystem(SDL_INIT_AUDIO),"SDL dummy audio initialization failed");
+    SDL_AudioSpec device_spec{SDL_AUDIO_S16,2,44100};
+    struct DeviceOwner{SDL_AudioDeviceID id;~DeviceOwner(){SDL_CloseAudioDevice(id);SDL_QuitSubSystem(SDL_INIT_AUDIO);}} physical{SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&device_spec)};
+    require(physical.id&&SDL_GetAudioDeviceFormat(physical.id,&device_spec,nullptr)&&device_spec.freq==44100,"SDL resampling fixture device rate differs");
     const std::string folder="build/oracle/spatial-audio";std::filesystem::create_directories(folder);
     const std::string config=folder+"/sdl-only.output";Frontend::OutputSettings settings;settings.profile=Frontend::AudioProfile::headphones;
     require(Frontend::save_output_settings(config,settings),"save SDL fallback profile");Frontend::AudioOutput output(config);
@@ -125,6 +140,30 @@ int main()try{
     const auto before=output.status().configuration;settings.profile=Frontend::AudioProfile::original;output.configure(settings);
     wait_for([&]{return output.status().configuration>before;},"SDL-only profile switch timed out");
     require(output.status().ready&&output.status().text=="ORIGINAL SDL STEREO"&&output.status().packets==1,"SDL-only original profile/reconfiguration status");
+    const auto initial=output.status();
+    auto sdl_packet=[&]{Frontend::AudioPacket p;p.original.resize(1920,700);output.submit(std::move(p));}; // 20 ms
+    for(unsigned i=0;i<3;++i)sdl_packet();
+    wait_for([&]{return output.status().packets==initial.packets+3;},"SDL priming packets not accepted");
+    require(output.status().sdl_priming&&output.status().buffered>=.059,"SDL playback started before recovery buffer filled");
+    sdl_packet();wait_for([&]{return !output.status().sdl_priming;},"SDL primed output did not start");
+    require(output.status().underruns==initial.underruns,"SDL startup reported an underrun");
+    wait_for([&]{return output.status().underruns==initial.underruns+1;},"SDL software starvation was not counted");
+    // The playback owner publishes the counter before its end-of-iteration
+    // buffer/status snapshot. Observe that snapshot instead of racing it.
+    wait_for([&]{return output.status().sdl_priming;},"SDL starvation did not re-prime");
+    auto starved=output.status();require(starved.sdl_priming&&starved.reprimes==initial.reprimes+1,"SDL starvation did not re-prime");
+    SDL_Delay(35);require(output.status().underruns==starved.underruns,"SDL starvation counted repeatedly while empty");
+    for(unsigned i=0;i<3;++i)sdl_packet();
+    wait_for([&]{return output.status().packets==initial.packets+7;},"SDL recovery packets not accepted");
+    require(output.status().sdl_priming&&output.status().buffered>=.059,"SDL recovery resumed on a short packet");
+    sdl_packet();wait_for([&]{return !output.status().sdl_priming;},"SDL recovery did not restart");
+    output.pause(true);SDL_Delay(25);const auto frozen=output.status();SDL_Delay(30);
+    require(output.status().buffered==frozen.buffered&&output.status().underruns==starved.underruns,"SDL paused recovery consumed PCM or counted starvation");
+    output.clear();wait_for([&]{return output.status().buffered==0&&output.status().sdl_priming;},"SDL clear retained recovery state");
+    output.pause(false);SDL_Delay(20);require(output.status().underruns==starved.underruns,"SDL clear counted intentional silence as starvation");
+    sdl_packet();wait_for([&]{return output.status().underruns==starved.underruns+1;},"SDL finite short tail did not play and drain");
+    require(output.status().reprimes==starved.reprimes+1,"SDL finite tail recovery not reported");
+    std::cout<<"SDL recovery: startup priming, counted starvation, buffered restart, empty stability, pause/clear and finite tail passed\n";
     output.clear();std::cout<<"SDL-only playback: truthful HRTF fallback, queued pause/resume, native PCM and original profile switch passed\n";
 #endif
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

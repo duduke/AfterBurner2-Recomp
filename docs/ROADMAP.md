@@ -1,12 +1,14 @@
 # Roadmap
 
-Updated **2026-10-26**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
+Updated **2026-10-27**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
 refreshes Apple Silicon / macOS 26+ with ROM ZIP loading/picker, reorganized menus,
 native Metal filters with Slang presets, Shuffle gameplay openings, corrected
 rolling sky/cloud coverage and broader widescreen effect retention. It retains
 the integrated renderer, Practice/Shuffle, HUD/CRT, optional aircraft art,
 calibration and spatial audio. The
-[Windows 10/11 x64 download remains Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2).
+[Windows 10/11 x64 Preview 5 package](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
+has a compact 28 October experimental refresh with the Vulkan/HUD performance
+changes below; [Windows FPS/audio issues](WINDOWS_PERFORMANCE.md) remain open.
 Original remains the regression reference. See
 [release notes](RELEASE_NOTES.md#v010-preview5--rom-startup-menus-and-widescreen-effects).
 
@@ -147,6 +149,14 @@ the decoder needs extending; in a data table it's expected.
 
 ## Current checkpoint (2026-10-24)
 
+Integration update (2026-10-28): main consolidates the latest Windows rendering,
+audio and pacing work with local license/package maintenance and platform plans.
+Standalone custom-stage experiments are isolated on
+[codex/custom-stage-prototype](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/custom-stage-prototype),
+including their source, fixtures and instructions; they are excluded from the
+main-game macOS package. macOS validation also found and repaired an SDL
+starved-tail recovery race; see the new Engine Notes consolidation record.
+
 Current custom-stage direction (2026-10-26): the standalone prototype now owns
 landing/service/departure cycles and refueling objectives, with editable stage files,
 a metric camera, ROM materials and approach assistance. The earlier native-film
@@ -232,6 +242,41 @@ Windows NTSC shader follow-up removes immediate GPU waiting and redundant
 Off-mode sprite scaling. A bounded Original viewport/HUD run holds 59.64 fps
 after startup; busy 16:10 scenes still fall below target. See
 [NTSC measurements](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
+
+Windows source follow-up (2026-10-27): CMake builds retain native Vulkan GPU
+sprite/scene composition with Slang, including ScaleFX. The live primary
+renderer reuses the hardware sprite raster for detached HUD ownership. Matched
+S-video Stage 5 fullscreen tests with Sharp HUD and corrected ground average
+59.49 fps at 16:9 and 59.64 fps at 16:10, with identical final images. These
+optimizations are local source changes awaiting a Windows package refresh;
+sustained scene/GPU and whole-game acceptance remain open. See the
+[implementation and validation record](ENGINE_NOTES.md#native-vulkan-sprite-filters-and-shared-hud-raster-2026-10-27).
+
+Stage 1 takeoff follow-up retains compact horizon/geometry caches, bounded
+frame-time diagnostics and terminal-fragment reuse. Earlier Practice runs
+excluded takeoff; longer fullscreen runs still show dips. The connected-desktop
+follow-up adds bounded host catch-up and SDL starvation recovery; consistent
+full speed remains open. See the
+[takeoff investigation](ENGINE_NOTES.md#windows-stage-1-takeoff-frame-time-investigation-2026-10-27).
+
+The 28 October user capture confirms 53.29 fps and ten SDL starvation events.
+Reordered ground checks and exact native ScaleFX capture reduction preserve
+rendered pixels and reduce work. Four local runs average 59.64 fps, but brief
+dips and one 16:10 starvation remain; user confirmation and sustained acceptance
+are still open. See the
+[dropout investigation](ENGINE_NOTES.md#user-operated-windows-dropout-capture-2026-10-28).
+
+The subsequent administrator CPU/GPU capture reproduces roughly 54–58 fps
+during active play, with little CPU pacing headroom. The user now confirms
+audible dips with repeated synchronized OpenAL underruns, superseding the
+earlier smooth-HRTF report. Long graphics waits cluster around pause/focus
+transitions; fullscreen presentation alternatives tested worse. A passive
+unit-zoom sprite-decoder shortcut and removal of a redundant SDL Vulkan
+submission pass focused rendering, regression and stage checks. Windows
+OpenAL now uses an 80 ms startup/recovery reserve with passing output controls,
+but final normal runs still dip to 53–56 fps with 1/3 underrun events.
+Sustained FPS/audio acceptance remains open. See the
+[trace investigation](ENGINE_NOTES.md#administrator-cpugpu-trace-and-unit-zoom-decoder-2026-10-28).
 
 Primary renderer integration (2026-10-24): source builds now use the shared
 primary road/tile pass for widescreen and detached HUD/aircraft presentation.

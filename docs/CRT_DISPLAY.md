@@ -65,8 +65,10 @@ For an isolated preview:
 The application can switch between its normal SDL GPU renderer and the native
 Metal or Vulkan shader renderer while the game/menu session remains live. macOS
 shader mode runs the existing sprite-filter and scene-composition kernels on
-native Metal, including ScaleFX; Windows shader mode uses the CPU sprite-filter
-fallback. Loading and compilation can pause
+native Metal, including ScaleFX. CMake Windows source builds run the same
+kernels on native Vulkan; `--profile` reports `filters=vulkan-gpu` when active.
+The published Windows Preview 5 package still uses CPU composition in shader
+mode. Loading and compilation can pause
 presentation briefly. A failed replacement keeps the working preset/display;
 startup failure uses Off and reports the reason. Selecting an unsupported format
 or an SDR-incompatible HDR preset reports a readable error.
@@ -131,17 +133,21 @@ source work; explicit image barriers order output sampling on the shared queue.
 The completion fence is waited before command/chain/target reuse, rather than
 immediately after submission, so CPU work and presentation can overlap the
 external pass. There is no per-frame CPU readback. History clears in-place on Vulkan.
-This differs from SDL's GPU renderer running on Vulkan: the latter retains
-compute sprite filters for Off/Subtle/Arcade, while shader mode uses the existing
-CPU sprite filters. Frontend menus are drawn after the shader.
-CPU ScaleFX can be much slower here than the normal GPU implementation; the
-local combined ScaleFX/16:10/HD-aircraft smoke measured roughly 10–11 fps.
-Use Sprite Filter Off when measuring the external preset's own cost.
+Current CMake source builds also run sprite filtering and scene composition on
+this native Vulkan device. The existing six generated compute kernels retain
+all filters, priority protection, shadows and effect opacities. Private buffers
+and an SDL-wrapped storage image avoid CPU scaling and framebuffer readback;
+the source-target submission orders previous texture reads before reuse.
+If native compute initialization fails, the CPU path remains available.
+Frontend menus are drawn after the shader. Use Sprite Filter Off when measuring
+the external preset's own cost. These changes are awaiting a Windows package
+refresh; the published Preview 5 package retains the CPU shader-mode fallback.
 
 Explicit checks require a working Vulkan display and the optional runtime:
 
 ```powershell
 cmake --build build/windows-lto --target verify-native-slang-mutations verify-native-shader-main -j4
+cmake --build build/windows-lto --target verify-native-vulkan-sprite-mutations -j4
 ```
 
 The Windows authored reference covers channel mapping, raw microsecond timing,
@@ -157,13 +163,22 @@ choice as normal Windows Vulkan rendering. The separate built-in CRT GPU
 regression currently encounters an SDL 3.4.18 viewport assertion; software CRT
 checks pass, but that supplemental GPU gate remains open.
 
-The four-pass `ntsc/ntsc-320px-composite-scanline.slangp` follow-up removed
+The earlier four-pass `ntsc/ntsc-320px-composite-scanline.slangp` follow-up removed
 immediate host-side GPU waiting and redundant Off-mode CPU scaling. A 1,200-frame
 windowed Practice run holds 59.64 fps after startup with Original viewport/HUD
 and ground off. The same preset with 16:10/sharp HUD/ground still drops to
 approximately 53–55 fps in later busy scenes, where CPU scene reconstruction
 reaches 5.5 ms. Sprite Filter Off alone does not guarantee the frame budget.
 See [measurements and checks](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
+
+The 2026-10-27 source follow-up also reuses the hardware sprite raster for Sharp
+HUD ownership, removing a redundant CPU decode. With the unchanged four-pass
+`ntsc-320px-svideo-scanline.slangp`, Sharp HUD and corrected ground enabled,
+bounded 1,200-frame Stage 5 fullscreen runs average 59.49 fps at 16:9 and
+59.64 fps at 16:10. The corresponding older build averages 56.86 and 56.32 fps.
+Four old/new final image pairs match exactly, including ScaleFX. These finite
+measurements do not guarantee every scene or GPU; see the
+[native Vulkan and HUD reuse record](ENGINE_NOTES.md#native-vulkan-sprite-filters-and-shared-hud-raster-2026-10-27).
 
 Source builds and macOS Preview 4 use the integrated primary-renderer frontend by default;
 `--scene-renderer snapshot` selects the retained reconstruction reference.
@@ -210,6 +225,51 @@ compiler or runtime dependency is required. `--profile` reports
 time alone does not measure GPU completion or total presentation latency.
 
 ## Validation
+
+For a bounded Windows frame-time trace, set `AB2_FRAME_TIMINGS` to a CSV
+path before launching the game. The trace buffers up to 36,000 frames in
+memory and writes on normal exit. It records frame cadence, board and scene
+CPU phases, filter/shader submission, presentation, pacing and thread cycles.
+For example, from Command Prompt:
+
+```bat
+set AB2_FRAME_TIMINGS=%TEMP%\ab2-frame-times.csv
+build\Launch-SVideo-Widescreen.cmd --frames 1800 --profile
+set AB2_FRAME_TIMINGS=
+```
+
+Individual shader/present timings measure the host calls, including waits
+inside them; they do not separate GPU execution from driver work. Use normal
+Arcade takeoff when checking Stage 1 startup: Practice enters after takeoff.
+
+For CPU scheduling/stack diagnosis, the optional Windows
+[capture helper](../tools/windows/capture_cpu_stalls.ps1) runs in an administrator
+PowerShell session for a bounded 15–120 seconds (90 by default). It preserves
+an existing WPR recording, starts the standard CPU profile, and saves under
+`build/oracle/windows-cpu-stalls/`. Launch the game separately as the ordinary
+user while recording. The helper does not override Windows policy; this host
+refused CPU collection with `0xc5585011`. Tracing adds overhead and is separate
+from normal FPS acceptance measurements.
+
+For remaining fullscreen stalls, add `-IncludeGpu` to collect the standard GPU
+profile alongside CPU scheduling/stacks. With the game already running, use an
+administrator PowerShell, then return to the game during the bounded capture:
+
+```powershell
+& "C:\Users\duduk\Documents\dev\Afterburner2-Recomp-Windows\tools\windows\capture_cpu_stalls.ps1" -Seconds 60 -IncludeGpu
+```
+
+The helper saves `cpu-gpu.etl` inside its unique local capture directory and
+stops automatically. It does not launch the game elevated or change policy.
+
+If PowerShell execution policy blocks the helper, the same standard WPR
+profiles can be collected directly without changing that policy. In an
+administrator terminal, check `wpr -status` first and preserve any existing
+recording. With no recording active, run `wpr -start CPU -start GPU -filemode`,
+play for about 60 seconds, then use `wpr -stop` with a new absolute `.etl`
+output path. This manual alternative does not stop automatically. The
+28 October administrator capture succeeded through these direct commands;
+the earlier `0xc5585011` restriction applied to the agent's execution context.
 
 ```sh
 python3 tools/workflow.py run test-native-settings test-native-crt test-crt-mutations

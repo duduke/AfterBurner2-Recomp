@@ -71,11 +71,15 @@ public:
         unsigned origin() const { return (logical_width-320)/2; }
         std::span<const uint16_t> indices() const { return pixels; }
         std::span<const uint8_t> priorities() const { return priority; }
+        // Passive native scaler result for this render frontier. Empty until
+        // a native clip has been rendered; consumers use only that clip's rows.
+        std::span<const uint16_t> native_sprite_words() const { return sprite_raster; }
     private:
         friend class Screen;
         unsigned logical_width;
         std::vector<uint16_t> pixels;
         std::vector<uint8_t> priority;
+        std::vector<uint16_t> sprite_raster;
     };
     void render_integrated_partial(RGB888* native_output, ViewportLayers& viewport,
                                    int top, int bottom, bool display,

@@ -33,7 +33,9 @@ loading and a native picker, reorganized settings and run controls, native Metal
 sprite filters with Slang presets, cleaner rolling horizons and wider retention
 of smoke, explosions and player damage effects. Shuffle now starts on a gameplay
 stage. It retains Practice, 16:10/16:9, HUD/CRT, optional HD aircraft, calibration
-and spatial audio. The Windows x64 download remains Preview 2. See the
+and spatial audio. An experimental Windows x64 Preview 5 package is also available.
+Its Slang path uses CPU composition; native Vulkan GPU composition and HUD-raster
+reuse are newer source changes. See the
 [release notes](docs/RELEASE_NOTES.md) and [roadmap](docs/ROADMAP.md).
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
@@ -92,9 +94,9 @@ validation for both widths and ultrawide remain open. See the
 ## Build and play
 
 Download [macOS Preview 5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
-or [Windows Preview 2](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2)
+or [Windows Preview 5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
 and extract the complete ZIP. Put your own extracted ROM
-files in its `roms/` directory. macOS Preview 5 also accepts `aburner2.zip`
+files in its `roms/` directory. Preview 5 also accepts `aburner2.zip`
 there, or lets you select a ROM ZIP on startup. Sources, notices and SHA-256 files accompany
 the packages; ROMs, captures and personal settings are excluded.
 
@@ -104,12 +106,21 @@ sources and notices. The preview is ad-hoc signed and **not notarized**; macOS
 may require approval in Privacy & Security. Intel Macs are not included in this
 build. See the package's `START-HERE.txt` for setup.
 
-The **Windows 10/11 x64** package opens with `Launch.cmd`; keep `SDL3.dll` and
-`OpenAL32.dll` beside the EXE. Run `Check-Continuations.cmd` for the ROM-free
-fiber/worker checks, then `Launch.cmd --profile` for backend and timing output.
+The compact **Windows 10/11 x64** refresh dated **20261028** opens with
+`Launch.cmd`; keep all bundled DLLs beside the EXE. It includes librashader
+and its DirectX/Microsoft C++ dependencies. Shader preset packs remain separate.
+`Launch.cmd --profile` reports backend and timing output. Sources are a separate
+companion download; the runtime ZIP has no regression binaries or general docs,
+and consolidates required redistribution terms into `LICENSES.txt`.
 This unsigned package is built and runtime-verified on Windows x64 with Vulkan
 GPU sprite filters, original SDL stereo, replacement music and OpenAL Soft 1.25.2
 spatial audio (HRTF, 2.1 and 5.1 profiles).
+This refresh retains GPU sprite/scene composition with Slang and reuses the
+native sprite raster for Sharp HUD ownership. **Windows FPS/audio drops remain
+unresolved**, including 53–56 FPS dips and synchronized OpenAL starvation.
+See [current Windows performance issues](docs/WINDOWS_PERFORMANCE.md) and
+[shader setup](docs/CRT_DISPLAY.md#windows-vulkan). Windows OpenAL's 80 ms
+reserve adds buffering and does not establish glitch-free acceptance.
 
 Requirements: your ROM dump, SDL3 **3.4+**, a C++20 compiler, and either Make with
 `pkg-config sdl3` or CMake with the installed `SDL3::SDL3` package. Run from the
@@ -171,8 +182,8 @@ Set `SDL3_DIR`, `OpenAL_DIR`, and `AB2_VULKAN_INCLUDE_DIR` when these dependenci
 are outside CMake's search paths. CMake copies SDL/OpenAL and available
 LLVM-MinGW runtime DLLs beside the game. `AB2_REQUIRE_IPO=ON` fails configuration
 if LTO cannot actually compile and link. [Windows shader setup](docs/CRT_DISPLAY.md#windows-vulkan)
-includes validation commands. Current Windows source includes the macOS Preview 3
-features; the published Windows Preview 2 download is unchanged.
+includes validation commands and the scope of newer source-only optimizations.
+Windows Preview 5 includes the shared ROM startup, menu and widescreen features.
 
 Multi-configuration generators require `--config Release` at build time; their
 default build is Debug. Use a compiler that supports the engine requirements

@@ -34,6 +34,8 @@ void Screen::render_integrated_partial(RGB888* output, ViewportLayers& viewport,
     if(width!=320 || height!=224)
         throw std::invalid_argument("Integrated viewport requires a native 320x224 screen");
     render_partial_impl(output,top,bottom,display,sprite_bank,&viewport);
+    if(viewport.sprite_raster.empty())viewport.sprite_raster.assign(size_t(width)*height,0xffff);
+    std::copy(sprite_pixels.begin()+top*width,sprite_pixels.begin()+(bottom+1)*width,viewport.sprite_raster.begin()+top*width);
 }
 
 void Screen::render_partial_impl(RGB888* output, int top, int bottom, bool display,

@@ -1,4 +1,5 @@
 #include "hwvideo/ground_horizon.hpp"
+#include "ground_correction_reference.hpp"
 #include <iostream>
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
 int main()try {
@@ -151,5 +152,25 @@ int main()try {
     }
     reset();pixels[180*320]=0x1720;Presentation::GroundHorizon::correct(pixels,priority,road,0,223,0,128,flat);
     require(pixels[180*320]==0x1720,"wide ground extension changed original viewport policy");
-    std::cout<<"Ground correction: opposite/inverted planes, priority, native pattern, solid fills, palette and partial clips passed\n";
+    unsigned differential_cases=0;
+    for(unsigned width:{320u,358u,398u})for(unsigned pattern=0;pattern<16;++pattern){
+        Presentation::GroundHorizon::Profile profile(width);profile.measured=true;
+        for(unsigned x=0;x<width;++x){const unsigned edge=20+(x*(pattern%5+1)/3)%170;
+            profile.pixel(x,edge,pattern&1?14:1);profile.pixel(x,edge+10,pattern&1?1:14);}
+        std::vector<uint16_t> input(width*224),palette(8192);
+        std::vector<uint8_t> marks(input.size()),geometry(input.size());
+        uint32_t random=0x13572468+pattern;
+        for(unsigned i=0;i<input.size();++i){random=random*1664525+1013904223;
+            input[i]=(random&3)?uint16_t(0x1700+(random>>16)%8):uint16_t(0x1720+(random>>16)%16);marks[i]=(random>>24)%11==0?2:0;}
+        for(unsigned i=0;i<palette.size();++i)palette[i]=uint16_t(pattern&2?i:i/8);
+        for(unsigned y=0;y<224;++y){road[2*y]=y%19==0?0xa:0;road[2*y+1]=0;
+            road[2*(0x600+y)]=uint8_t(y%7);road[2*(0x600+y)+1]=uint8_t(y%3);}
+        const int nx=pattern&4?-57:57,ny=pattern&8?-113:113,left=-int((width-320)/2);
+        const unsigned top=pattern&2?13:0,bottom=pattern&2?190:223;
+        auto expected=input;const auto changed=TestReference::ground_correction(expected,marks,road,top,bottom,nx,ny,profile,left,palette);
+        for(bool cached:{false,true}){auto actual=input;
+            const auto count=Presentation::GroundHorizon::correct(actual,marks,road,top,bottom,nx,ny,profile,left,palette,cached?&geometry:nullptr);
+            require(actual==expected&&count==changed,"ground optimized correction differs from retained full-plane reference");++differential_cases;}
+    }
+    std::cout<<"Ground correction: opposite/inverted planes, priority, native pattern, solid fills, palette and partial clips passed; "<<differential_cases<<" full-plane reference comparisons identical\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

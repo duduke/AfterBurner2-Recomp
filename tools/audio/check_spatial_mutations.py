@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Retain real failing controls for the optional Soft playback path."""
 from pathlib import Path
+from datetime import datetime, timezone
 import os, subprocess, shutil
 root=Path(__file__).resolve().parents[2]
 os.chdir(root)
-folder=root/'build/oracle/spatial-audio/mutations';folder.mkdir(parents=True,exist_ok=True)
+folder=root/'build/oracle/spatial-audio/mutations'/datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ');folder.mkdir(parents=True,exist_ok=True)
 header=Path('src/main/frontend/audio_output.hpp')
 original=header.read_text()
 pkg=os.environ.copy();pkg['PKG_CONFIG_PATH']=str(root/'build/deps/openal/lib/pkgconfig')+':'+pkg.get('PKG_CONFIG_PATH','')
@@ -20,7 +21,7 @@ mutations=[
  ('hrtf-disabled','context=alcCreateContext(device,attrs.data());','for(auto& a:attrs)if(a==ALC_STEREO_HRTF_SOFT)a=ALC_STEREO_BASIC_SOFT;for(size_t i=0;i+1<attrs.size();++i)if(attrs[i]==ALC_HRTF_SOFT)attrs[i+1]=ALC_FALSE;context=alcCreateContext(device,attrs.data());',
   'HRTF was not actually enabled'),
  ('stereo-effects','stream.channels==1?AL_FORMAT_MONO16:AL_FORMAT_STEREO16','AL_FORMAT_STEREO16',
-  'front left localization reversed'),
+  ('front left localization reversed','front right localization reversed')),
  ('bgm-spatialized','if(direct)alSourcei(sources[i],AL_DIRECT_CHANNELS_SOFT,direct);','/* deliberate mutation: no direct music routing */',
   'stereo BGM was spatialized/remixed into opposite ear'),
  ('paused-queue-deadlock','packets.empty()||(is_paused&&!is_preview)','packets.empty()',
@@ -29,11 +30,14 @@ mutations=[
   'producer queue failed to apply backpressure'),
  ('playback-error-no-recovery','if(was_openal)recover_to_sdl(e.what());','if(was_openal){std::lock_guard lock(mutex);report.ready=false;}',
   'OpenAL playback failure did not recover'),
- ('immediate-starvation-restart','repriming?0.050:0.025','repriming?0.0:0.025',
+ ('immediate-starvation-restart','repriming?recovery_reserve:startup_reserve','repriming?0.0:startup_reserve',
   'exhausted streams restarted before synchronized re-prime'),
  ('same-poll-starvation-only','starved_sources+=underruns;','starved_sources=underruns;',
   'exhausted streams restarted before synchronized re-prime'),
 ]
+if os.name=='nt':
+    mutations.append(('short-windows-reserve','windows_openal_reserve=0.080','windows_openal_reserve=0.050',
+                      'exhausted streams restarted before synchronized re-prime'))
 for name,before,after,wanted in mutations:
     case=folder/name;(case/'frontend').mkdir(parents=True,exist_ok=True)
     if original.count(before)!=1:raise RuntimeError(f'{name}: ambiguous mutation')
@@ -44,7 +48,8 @@ for name,before,after,wanted in mutations:
     with (case/'run.log').open('w') as log:
         result=subprocess.run([str(exe)],stdout=log,stderr=subprocess.STDOUT,timeout=20)
     if result.returncode==0:raise RuntimeError(f'{name}: mutation accepted')
-    if wanted not in (case/'run.log').read_text().splitlines():raise RuntimeError(f'{name}: failed for unrelated reason; expected {wanted!r}')
+    expected=(wanted,) if isinstance(wanted,str) else wanted
+    if not any(message in (case/'run.log').read_text().splitlines() for message in expected):raise RuntimeError(f'{name}: failed for unrelated reason; expected {wanted!r}')
     print(f'Spatial mutation rejected: {name}')
 
 # Missing direct-channel support must fall back to SDL, preserving dry stereo.
