@@ -118,6 +118,10 @@ int main()try{
     require(output.status().peak_queued_packets==6&&output.status().peak_pending>=.75,"lifetime queue telemetry lost across reconfiguration");
     std::cout<<"Spatial audio: WAV conversion, HRTF/directions, dry BGM, chip-rate interpolation, underrun restart, queued pause/resume, six-packet backpressure/clear, live profiles/resampler and SDL failure recovery/retry passed\n";
 #else
+    require(!Frontend::sdl_recovery_ready(1000,true,true),"SDL starved tail bypassed recovery reserve");
+    require(Frontend::sdl_recovery_ready(1000,true,false),"SDL finite short tail cannot drain");
+    require(!Frontend::sdl_recovery_ready(3840,false,false),"SDL playback started before recovery buffer filled");
+    require(Frontend::sdl_recovery_ready(15360,false,false),"SDL primed output did not start");
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER,"dummy");
     // Keep the physical dummy device at a different rate, so empty-input
     // telemetry cannot accidentally pass by avoiding the SDL resampler.

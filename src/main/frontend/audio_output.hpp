@@ -77,6 +77,10 @@ inline WavPcm load_openal_wav(const std::string& path,bool music,int rate=0){
     WavPcm result{to.freq,to.channels,{}};result.samples.resize(n/2);std::memcpy(result.samples.data(),converted,n);return result;
 }
 
+// An idle resampler tail may finish a finite producer, but a tail observed
+// before a starvation transition cannot bypass the new recovery reserve.
+inline bool sdl_recovery_ready(int bytes,bool tail,bool starved){return bytes>=15360 || (tail&&!starved);}
+
 class AudioOutput {
 public:
     // Queue times cover software PCM only, excluding the output device's own
@@ -146,7 +150,8 @@ private:
         // Queue emptiness alone is not an underrun: the device may still
         // have prefetched audio. The callback records only unfulfilled reads.
         const bool unsupplied=sdl_unsupplied.exchange(false,std::memory_order_relaxed);
-        if(!suspended&&!preview&&!testing&&!sdl_priming&&unsupplied){
+        const bool starved=!suspended&&!preview&&!testing&&!sdl_priming&&unsupplied;
+        if(starved){
             sdl_play(false);sdl_priming=true;sdl_last_packet=0;sdl_has_packet=false;
             {std::lock_guard lock(mutex);++report.underruns;++report.reprimes;}
             SDL_Log("SDL playback request lacked source data; re-priming output");
@@ -154,7 +159,7 @@ private:
         // Build an 80 ms buffer for startup/recovery. Keep native samples in
         // order; neither the emulated clocks nor playback sample rate changes.
         // A finite short tail can still play after the producer becomes idle.
-        const bool play=!suspended&&(!sdl_priming||preview||testing||bytes>=15360||tail);
+        const bool play=!suspended&&(!sdl_priming||preview||testing||sdl_recovery_ready(bytes,tail,starved));
         if(play)sdl_priming=false;
         sdl_play(play);
         return bytes;

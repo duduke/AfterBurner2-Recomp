@@ -13,6 +13,7 @@ regression = (ROOT/'tests/spatial_audio_regression.cpp').read_text()
 flags = subprocess.run([os.environ.get('PKG_CONFIG', 'pkg-config'), '--cflags', '--libs', 'sdl3'],
                        capture_output=True, text=True, check=True).stdout
 mutations = {
+    'starved-tail-restart': ('tail&&!starved', 'tail', ('SDL starved tail bypassed recovery reserve',)),
     'ignored-playback-demand': ('if(additional>0)', 'if(false)', ('SDL software starvation was not counted',)),
     'premature-playback': ('bytes>=15360', 'bytes>=3840', ('SDL playback started before recovery buffer filled',)),
     'missing-starvation-counter': ('++report.underruns;++report.reprimes;', '++report.reprimes;', ('SDL software starvation was not counted',)),

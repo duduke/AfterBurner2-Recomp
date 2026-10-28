@@ -149,6 +149,14 @@ the decoder needs extending; in a data table it's expected.
 
 ## Current checkpoint (2026-10-24)
 
+Integration update (2026-10-28): main consolidates the latest Windows rendering,
+audio and pacing work with local license/package maintenance and platform plans.
+Standalone custom-stage experiments are isolated on
+[codex/custom-stage-prototype](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/custom-stage-prototype),
+including their source, fixtures and instructions; they are excluded from the
+main-game macOS package. macOS validation also found and repaired an SDL
+starved-tail recovery race; see the new Engine Notes consolidation record.
+
 Licensing maintenance (2026-10-26): the central
 [license inventory](../LICENSES/README.md) now retains dependency and legacy
 audio notices, Vulkan header terms and GCC runtime terms. Native Windows

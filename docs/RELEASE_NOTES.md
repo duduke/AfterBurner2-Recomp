@@ -1,5 +1,23 @@
 # Release notes
 
+## Unpublished macOS development refresh (2026-10-28)
+
+The local `v0.1.0-preview.6-20261028` package consolidates main through the
+28 October Windows work, including shared ground/sprite/HUD rendering, SDL
+audio recovery and frame pacing. macOS retains its Metal backend; the native
+Vulkan compositor remains Windows-specific. The integration also fixes a
+same-iteration SDL starvation/tail restart that could bypass the recovery reserve.
+
+The package includes the expanded original/dependency license inventory and
+notice preflight checks. Standalone custom landing/refueling stages live on
+`codex/custom-stage-prototype` and are excluded from this main-game build.
+Android, Linux and object-based HRTF entries remain plans.
+
+This is a local Apple Silicon/macOS 26+ development package, not a new published
+GitHub release. Its exact source and validation are recorded in Engine Notes
+and the package manifest. Existing Windows performance and validation limits
+remain documented below; this refresh does not close them.
+
 ## v0.1.0-preview.5 — ROM startup, menus and widescreen effects
 
 This refreshes the **Apple Silicon / macOS 26+** package at

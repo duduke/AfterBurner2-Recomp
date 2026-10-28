@@ -14439,3 +14439,37 @@ remains the expressly authorized experimental distribution with these limits,
 not a closed release/fidelity milestone. The later verification commit changes
 only this evidence record; the runtime/source companion still identifies
 the exact application source commit `b4dc16a`.
+
+
+## macOS/Windows consolidation and prototype branch split (2026-10-28)
+
+All local edited/new files were retained byte-for-byte in an ignored integration
+snapshot before splitting commits. Licensing/package-notice changes, platform
+and object-HRTF plans remain on main; the standalone custom-stage framework,
+legacy prototype, ROM presentation helpers, tests and related documentation are
+committed on codex/custom-stage-prototype. No ROMs, captures or local artifacts
+are tracked. Main merged the latest Windows commits through 1907a7a, preserving
+both sides of the append-only Engine Notes conflict. The other two preexisting
+local branches are already ancestors of main, with no additional unmerged work.
+
+The first macOS test run exposed a real SDL recovery edge case in the incoming
+Windows changes: an idle resampler tail is detected before starvation handling,
+then the stale tail flag can immediately restart playback despite entering the
+recovery/priming state. Under load this counts another starvation instead of
+holding for the reserve. The first failure is retained at
+build/workflow/20261028T150930.657291Z/01-test.log; the isolated baseline also
+passes at 20261028T151245.788050Z, confirming its timing-sensitive character.
+The repair makes a same-iteration starvation veto the finite-tail exemption
+while retaining queued native PCM, the reserve threshold and normal finite-tail
+playback. It does not change chip clocks, PCM, game timing or Windows OpenAL's
+platform-specific reserve policy.
+
+Deterministic policy cases cover simultaneous short tail/starvation, normal
+finite-tail drain, insufficient startup PCM and a filled reserve. A new retained
+starved-tail-restart mutation removes the veto and is rejected alongside all
+five prior SDL recovery faults. Playback/context ownership remains unchanged.
+
+Focused macOS repair checks pass at build/workflow/20261028T151426.996952Z/:
+SDL-only recovery (3.47 s), baseline plus all six SDL recovery mutations
+(28.14 s), and OpenAL loopback/spatial recovery checks (4.82 s). The full
+consolidated-tree gates and package verification follow below when completed.
