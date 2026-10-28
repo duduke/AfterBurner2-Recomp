@@ -8,6 +8,7 @@
 #include "hwvideo/screen.hpp"
 #include "roms.hpp"
 #include <algorithm>
+#include <chrono>
 #include <vector>
 
 namespace Presentation {
@@ -89,13 +90,22 @@ public:
         ready=std::all_of(seen.begin(),seen.end(),[](bool x){return x;});flatten();primary_frame_open=false;
     }
     View view()const{return {w,224,margin,background,sprites,heads,protection,fragments,ready,ground_indices,{hud_clips,hud_occlusion_pixels},{player_draws,player_visibility}};}
+    void profile_scene(bool enabled){profile_enabled=enabled;}
+    const std::array<double,4>& profile_counters()const{return profile_costs;}
 private:
+    using ProfileClock=std::chrono::steady_clock;
+    bool profile_enabled{};std::array<double,4> profile_costs{};
+    ProfileClock::time_point profile_stamp()const{return profile_enabled?ProfileClock::now():ProfileClock::time_point{};}
+    void profile_charge(unsigned phase,ProfileClock::time_point& started){
+        if(profile_enabled){const auto now=ProfileClock::now();profile_costs[phase]+=std::chrono::duration<double,std::milli>(now-started).count();started=now;}
+    }
     unsigned w,margin;HWRoad road;HWTiles tiles;HWPalette palette;
     EffectAssets assets;PlayerAircraftAssets player_assets;GroundHorizon ground;std::span<const uint8_t> sprite_rom;
     std::vector<uint16_t> ground_indices,indices,raw,text_indices=std::vector<uint16_t>(320*224);
     std::vector<uint8_t> priority,protection,text_priority=std::vector<uint8_t>(320*224),projected;
     std::vector<int> anchors;
     std::vector<uint32_t> background,sprites,row_heads,heads;
+    std::vector<uint32_t> palette_words=std::vector<uint32_t>(8192,0x10000),colors=std::vector<uint32_t>(16384,0xff000000);
     std::vector<Fragment> fragments;std::array<std::vector<Fragment>,224> row_fragments;
     std::vector<HudClip> hud_clips;
     std::vector<uint16_t> hud_raw;
@@ -110,6 +120,7 @@ private:
     bool primary_frame_open{};unsigned primary_options{};
     static uint32_t argb(RGB888 p){return 0xff000000|uint32_t(p.r)<<16|uint32_t(p.g)<<8|p.b;}
     void draw(const SceneClip& c,bool corrected,bool extend_visibility,bool original_hud,const SceneClip* prev=nullptr,const Screen::ViewportLayers* primary=nullptr){
+        auto phase_started=profile_stamp();
         projected.clear();anchors.clear();std::span<const uint8_t> bank=c.sprites;
         if(w>320&&extend_visibility&&!c.extended_sprites.empty()){
             projected.resize((c.extended_sprites.size()+1)*16);anchors.assign(c.extended_sprites.size()+1,INT32_MIN);
@@ -119,7 +130,7 @@ private:
         for(unsigned y=c.top;y<=c.bottom;++y){seen[y]=true;row_fragments[y].clear();
             std::fill(row_heads.begin()+y*w,row_heads.begin()+(y+1)*w,UINT32_MAX);}
         if(!c.display){for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){background[i]=0xff000000;sprites[i]=0;protection[i]=0;}
-            if(!original_hud)std::fill(hud_occlusion_pixels.begin()+c.top*320,hud_occlusion_pixels.begin()+(c.bottom+1)*320,2);return;}
+            if(!original_hud)std::fill(hud_occlusion_pixels.begin()+c.top*320,hud_occlusion_pixels.begin()+(c.bottom+1)*320,2);profile_charge(0,phase_started);return;}
         if(!primary && (c.tile_gen ? loaded_tile_gen!=c.tile_gen : (!prev || prev->tiles!=c.tiles))){
             for(unsigned i=0;i<c.tiles.size();++i)tiles.write_tile(i,c.tiles[i]);
             loaded_tile_gen=c.tile_gen;
@@ -127,19 +138,28 @@ private:
         for(unsigned i=0;i<c.text.size();++i)tiles.write_text(i,c.text[i]);
         tiles.load_initial_frame_registers(c.registers);
         if(c.palette_gen ? loaded_palette_gen!=c.palette_gen : (!prev || prev->palette!=c.palette)){
-            for(unsigned i=0;i<c.palette.size();++i)palette.write(i,c.palette[i]);
+            for(unsigned i=0;i<c.palette.size();++i)if(palette_words[i]!=c.palette[i]){
+                palette.write(i,c.palette[i]);palette_words[i]=c.palette[i];
+                colors[i]=argb(palette.pen(i));colors[i+palette.num_entries()]=argb(palette.pen(i+palette.num_entries()));
+            }
             loaded_palette_gen=c.palette_gen;
         }
         if(!original_hud){
             auto& hud=hud_clips.emplace_back();hud.top=c.top;hud.bottom=c.bottom;
             for(unsigned y=0;y<28;++y)std::copy_n(c.text.begin()+y*64+24,40,hud.entries.begin()+y*40);
-            for(unsigned i=0;i<64;++i){hud.colors[i]=argb(palette.pen(0x1c00+i));hud.colors[64+i]=argb(palette.pen(0x1c00+i+palette.num_entries()));}
-            std::fill(hud_raw.begin()+c.top*320,hud_raw.begin()+(c.bottom+1)*320,0xffff);
-            // Detached visibility must not change native text ownership. Decode
-            // the original bank separately, retaining only its top raster word.
-            decode(c.sprites,sprite_rom,c.top,c.bottom,assets,[&](unsigned x,unsigned y,uint16_t word,Effect){hud_raw[y*320+x]=word;});
+            for(unsigned i=0;i<64;++i){hud.colors[i]=colors[0x1c00+i];hud.colors[64+i]=colors[0x1c00+i+palette.num_entries()];}
+            std::span<const uint16_t> hud_words=hud_raw;
+            const auto native_words=primary?primary->native_sprite_words():std::span<const uint16_t>{};
+            if(native_words.size()==320*224)hud_words=native_words;
+            else {
+                // The snapshot reference still decodes the original bank.
+                // Live clips reuse the hardware scaler's native raster rather
+                // than decoding the same sprites a third time for HUD ownership.
+                std::fill(hud_raw.begin()+c.top*320,hud_raw.begin()+(c.bottom+1)*320,0xffff);
+                decode(c.sprites,sprite_rom,c.top,c.bottom,assets,[&](unsigned x,unsigned y,uint16_t word,Effect){hud_raw[y*320+x]=word;});
+            }
             for(unsigned y=c.top;y<=c.bottom;++y)for(unsigned x=0;x<320;++x){const unsigned i=y*320+x;
-                hud_occlusion_pixels[i]=hud_occlusion(hud.entries[(y/8)*40+x/8],hud_raw[i]);}
+                hud_occlusion_pixels[i]=hud_occlusion(hud.entries[(y/8)*40+x/8],hud_words[i]);}
         }
         if(!primary && (!prev || prev->road!=c.road || prev->road_control!=c.road_control)){
             for(unsigned i=0;i<0x800;++i)road.write16(2*i,uint16_t(c.road[2*i]<<8|c.road[2*i+1]));
@@ -169,7 +189,9 @@ private:
             std::fill(text_priority.begin()+c.top*320,text_priority.begin()+(c.bottom+1)*320,0);
             tiles.draw_text(text_indices.data(),text_priority.data(),320,224,-1,4,c.top,c.bottom);
         }
+        profile_charge(0,phase_started);
         if(corrected)ground.apply(indices,priority,c.road,c.road_control,bank,sprite_rom,c.top,c.bottom,uint8_t(c.roll),assets,w,-int(margin),anchors,c.palette);
+        profile_charge(1,phase_started);
         std::copy(indices.begin()+c.top*w,indices.begin()+(c.bottom+1)*w,ground_indices.begin()+c.top*w);
         const bool boost=full_throttle_flame(c.mode,c.throttle);
         if(player_enabled)bank=replace_player(bank,c.top,c.bottom,boost,original_hud);
@@ -178,16 +200,17 @@ private:
             if(kind==Effect::afterburner&&!boost)kind=Effect::opaque;
             const bool visible=(1<<((word>>12)&3))>priority[i];
             const unsigned pen=!visible?indices[i]:(word&0x400f)==0x400a?indices[i]+palette.num_entries():word&0xfff;
-            auto& row=row_fragments[y];row.push_back({argb(palette.pen(pen)),row_heads[i],uint32_t(!visible?Effect::background:(word&0x400f)==0x400a?Effect::shadow:kind),word});row_heads[i]=uint32_t(row.size()-1);
+            append_fragment(row_fragments[y],row_heads[i],{colors[pen],UINT32_MAX,uint32_t(!visible?Effect::background:(word&0x400f)==0x400a?Effect::shadow:kind),word});
         },-int(margin),int(w-margin)-1,anchors);
         for(unsigned i=c.top*w;i<(c.bottom+1)*w;++i){
-            background[i]=argb(palette.pen(indices[i]));const auto word=raw[i];
+            background[i]=colors[indices[i]];const auto word=raw[i];
             const bool visible=word!=0xffff&&(1<<((word>>12)&3))>priority[i];
             const bool shadow=visible&&(word&0x400f)==0x400a;
-            protection[i]=(!visible&&priority[i])||shadow;sprites[i]=visible&&!shadow?argb(palette.pen(word&0xfff)):0;
-            if(shadow){indices[i]+=palette.num_entries();background[i]=argb(palette.pen(indices[i]));}
+            protection[i]=(!visible&&priority[i])||shadow;sprites[i]=visible&&!shadow?colors[word&0xfff]:0;
+            if(shadow){indices[i]+=palette.num_entries();background[i]=colors[indices[i]];}
             else if(visible)indices[i]=word&0xfff;
         }
+        profile_charge(2,phase_started);
     }
     std::span<const uint8_t> replace_player(std::span<const uint8_t> bank,unsigned top,unsigned bottom,bool boost,bool original_hud){
         std::optional<PlayerAircraftDraw> candidate;unsigned selected=0,priority_mark=0;
@@ -240,6 +263,7 @@ private:
         return player_bank;
     }
     void flatten(){
+        auto phase_started=profile_stamp();
         std::copy(row_heads.begin(),row_heads.end(),heads.begin());
         size_t total=0;for(const auto& r:row_fragments)total+=r.size();
         fragments.resize(total);
@@ -251,6 +275,7 @@ private:
             if(base){auto* h=heads.data()+y*w;for(unsigned x=0;x<w;++x)if(h[x]!=UINT32_MAX)h[x]+=base;}
             base+=n;
         }
+        profile_charge(3,phase_started);
     }
 };
 }

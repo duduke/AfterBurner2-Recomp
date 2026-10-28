@@ -62,6 +62,13 @@ int main(int argc,char** argv)try {
         }
         const unsigned side=dx>0;auto corrected=background;
         correction.apply(corrected,priority,ram,control[1],bank,{roms.sprites.rom,roms.sprites.length},0,223,0,assets);
+        // Compare the compact cache with the independently decoded full bank,
+        // including transitions between different horizon descriptors.
+        for(unsigned x=0;x<320;++x){
+            require(correction.cached_profile.upper[x]==(top[x]==224?-1:top[x]),"ground compact cache upper differs");
+            require(correction.cached_profile.lower[x]==bottom[x],"ground compact cache lower differs");
+        }
+        require(correction.cached_profile.left==left&&correction.cached_profile.right==right,"ground compact cache rows differ");
         auto sprite=screen.sprite_words();unsigned visible_wedge=0;
         for(unsigned y=0;y<224;++y)for(unsigned x=0;x<320;++x){const auto i=y*320+x;
             const bool known_y=bottom[x]>=0 && column_direction[x];

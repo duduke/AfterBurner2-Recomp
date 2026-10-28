@@ -13456,3 +13456,885 @@ The uploaded ZIP was downloaded again and matches SHA-256
 The source archive contains ROM instructions/list only, with no ROM binaries
 or captures. The GitHub prerelease has the ZIP/checksum and three fresh
 promotional images; repository and itch.io access settings remain unchanged.
+
+## Windows S-video scanline performance investigation (2026-10-27)
+
+The user-reported `ntsc/ntsc-320px-svideo-scanline.slangp` slowdown is
+reproducible in Preview 5 at source `514c092`. Tests used the checksum-identical
+published Windows executable, the pinned librashader 0.12.0 DLL, the unchanged
+four-pass preset, Sprite Filter Off and the local 1920x1080 display. Temporary
+settings and full command/sample records are retained under
+`build/oracle/ntsc-svideo-perf/`; personal settings and shader sources were not
+changed. `comparison.json` records the executable hashes and commands.
+
+After excluding each first reporting interval, a 1,800-frame Practice-stage-1
+16:9 run averages 58.30 fps with S-video versus 59.16 with shaders off. A
+600-frame Stage 5 run averages 55.44 versus 57.86 fps. Frame samples, scenes and
+host load vary; these are finite observations, not isolated shader-GPU timings
+or guaranteed sustained rates. The shader path's CPU scene composition/upload
+and shader API submission together take roughly 2 ms per frame. The normal
+SDL GPU path submits its scene in roughly 0.3 ms. The emulated board and enhanced
+scene work already consume much of the 16.77 ms frame budget. Windows Slang
+still uses CPU sprite/scene composition even with Sprite Filter Off.
+
+A local candidate fused the unscaled scene fold/blend and short-circuited fully
+opaque contributions. It passed 16,384 CPU comparisons, 882 independent GPU
+comparisons / 157,452,162 pixels, two rejected faults and all three live shader
+integration viewport checks. Six old/new final image pairs at stages 1/5 and
+Original/16:9/16:10 were identical. However, the matched application timings did
+not show a consistent FPS improvement; the candidate was set aside. Its patch,
+executable, controls, images and logs remain under the ignored investigation
+directory. The application sources and `build/windows-lto/afterburner2.exe`
+were restored to the published version; no performance fix or release is claimed.
+The candidate's complete `test` attempt still stops at the previously recorded
+standalone ROM-loader Unicode-argv failure; log:
+`build/workflow/20261027T070626.229286Z/01-test.log`. This is not a complete
+regression or whole-host acceptance pass.
+
+Original viewport alone is insufficient with Sharp HUD: a 1,200-frame Stage 5
+run still averages 56.17 fps and reaches a 45.52 fps interval. Setting both
+viewport and HUD to Original, with corrected ground off, avoids the enhanced
+scene pass. With the exact same S-video preset, the subsequent 1,200-frame
+Stage 5 run averages 59.52 fps after its first interval; nineteen remaining
+intervals range from 58.38 to 59.64 fps, with zero reported audio underruns.
+This is a bounded workaround, not a guarantee for every scene or hardware.
+Logs: `build/ntsc-svideo-original-workaround.log` (Sharp HUD) and
+`build/ntsc-svideo-native-original-workaround.log` (Original HUD). The local
+`build/Launch-SVideo-Original.cmd` selects the original viewport/HUD using
+`build/svideo-original.cfg`, leaving the user's normal settings separate.
+The published ZIP and all previous fixtures remain unchanged.
+
+## Native Vulkan sprite filters and shared HUD raster (2026-10-27)
+
+The Windows/macOS Slang difference was real: macOS had native Metal compute
+sprite/scene filtering, while the Windows native Vulkan host still used CPU
+composition. CMake Windows entrypoints now use `NativeVulkanSpriteScaler` on
+SDL's existing Vulkan device and graphics queue. It runs the same six generated
+SPIR-V kernels as SDL GPU, including ScaleFX's intermediate passes, scene alpha,
+priority protection and shadow/background handling. No shader algorithms,
+preset files, native raster dimensions, game clocks or frame-pacing policy
+were changed. `--profile` reports `filters=vulkan-gpu` after initialization;
+initialization failure retains the existing CPU path. Portable Make's stub-host
+build retains its prior behavior.
+
+Private coherent upload/uniform buffers and an SDL-wrapped RGBA storage image
+avoid CPU sprite scaling and framebuffer readback. Image and compute barriers
+order writes before SDL samples the result. A fence protects command/buffer
+reuse. The production caller reuses Slang begin's source-target submission
+instead of submitting two redundant SDL batches. Standalone callers drain
+queued reads explicitly; both modes are covered by queued red/blue/green
+reuse/resize tests with no intervening readback. The initial externally wrapped
+image declares its actual undefined layout. Layer capacity grows geometrically
+rather than reallocating for every small increase in sprite fragments.
+
+The primary viewport also publishes a passive copy of the hardware scaler's
+native raw sprite words for the completed clip. Sharp/custom HUD ownership
+uses these words instead of decoding the original sprite bank again. The
+snapshot renderer keeps its separate decoder. The copy does not invoke the
+hardware scaler or write sprite feedback. Disabled/partial-row retention is
+checked against the unchanged native screen. Existing empty-bank clip fixtures
+are retained, alongside added synthetic priority-3 descriptors using runtime
+ROM graphics; 1,020 observed HUD-ownership witnesses pin the reuse path.
+
+The standalone Windows ROM-loader test now obtains its path from the UTF-16
+command line and converts it to the loader's UTF-8 contract, matching SDL's
+production entrypoint. This repairs the earlier test-only Unicode argv loss;
+all 48 directory/ZIP/negative fixture comparisons run, with no filename or
+failure case removed. The game's loader and ROM CRC policy are unchanged.
+
+### Matched fullscreen S-video measurements
+
+`build/oracle/native-vulkan-final-perf/comparison.json` retains commands,
+binary/image hashes and every sample. The old executable is the published
+Preview 5 build, SHA-256
+`073d8ea307231d16fc375eac687cee2e250fc4e313f64b81cda76106dd7a7219`.
+The optimized executable is SHA-256
+`0458652413c3d624122e3026bd9758bfce81c434843f88dc8500c1e8abd876c7`.
+Tests use the pinned Windows librashader 0.12.0 DLL and the unchanged four-pass
+`ntsc/ntsc-320px-svideo-scanline.slangp`, fullscreen 1920x1080, Sharp HUD,
+corrected ground and all four translucency settings enabled, without replacement
+aircraft. Controllers are disabled only in the benchmark child environment.
+Practice entry is directed; these are not natural whole-credit observations.
+Means exclude the first reporting interval and retain final capture overhead.
+
+| Directed case | Frames per build | Previous mean fps | Optimized mean fps |
+| --- | ---: | ---: | ---: |
+| Stage 1, 16:9, Sprite Filter Off | 600 | 59.70 | 59.64 |
+| Stage 5, 16:9, Sprite Filter Off | 1,200 | 56.86 | 59.49 |
+| Stage 5, 16:10, Sprite Filter Off | 1,200 | 56.32 | 59.64 |
+| Stage 1, 16:9, ScaleFX | 180 | 5.62 | 60.03 |
+
+All four final BMP pairs are byte-identical. Optimized samples report zero
+underruns. Stage 5 16:9 enhanced-scene CPU time falls from 3.78 to 2.85 ms;
+16:10 falls from 3.48 to 2.57 ms. In the short ScaleFX case, filter CPU
+submission falls from 164.13 to 0.16 ms, while shader submission/wait time rises
+from 1.27 to 2.47 ms as GPU work moves into that scope. These API timings are not
+isolated GPU execution measurements. The target is approximately 59.637 fps;
+catch-up and interval boundaries can produce means slightly above it. The
+optimized 16:9 Stage 5 run still has a 57.64 fps interval. Finite runs do not
+establish every scene, GPU, controller or sustained peak-load acceptance.
+
+### Validation evidence
+
+- `build/native-vulkan-sprites-sync-mutations.log` and its retained
+  `build/oracle/native-vulkan-sprite-mutations/20261027T074212.020823Z/` inputs:
+  882/882 CPU-reference comparisons, 157,452,162 pixels, zero skipped; all six
+  filters across seven dimensions and 21 patterns. Seven deliberate protection,
+  filter, effect-opacity and queued-read-order faults are rejected. Both queued
+  synchronization modes preserve earlier outputs through reuse and resize.
+- `build/native-vulkan-hud-reuse-checks.log`: all seven selected CTest checks
+  pass, including live/snapshot comparisons at 358/398/522, synthetic native
+  renderer and clip gates, all four retained renderer controls and all four
+  scene controls, including the new HUD-ownership control. The final expanded
+  clip/renderer fixtures also pass in `build/native-vulkan-clip-coverage-checks.log`:
+  60 clip cases and 80 renderer cases, zero skipped.
+- `build/native-vulkan-final-shader-{original,16-9,16-10}.log`: real frontend
+  shader selection, renderer replacement/rollback, live viewport changes and
+  paused native RGB/PCM/time preservation pass in all three modes.
+- `build/native-vulkan-unicode-check.log`: the unchanged directory/ZIP/negative
+  corpus passes through the corrected Windows test entrypoint.
+- The complete `test` target passes in 185.73 seconds at
+  `build/workflow/20261027T081149.414882Z/01-test.log`, including all retained
+  mutation gates. The same required-profile run records subsequent gates in
+  its `results.json`; only finished targets have results.
+
+The optimized local executable is launched by `build/Launch-SVideo-Widescreen.cmd`
+with the exact S-video preset and the user's normal display, audio and controller
+settings. The previously created Original-viewport workaround remains separate.
+The published Preview 5 ZIP is unchanged; these source changes await a package
+refresh. Whole-host oracle and sustained hardware coverage remain separate gates.
+
+The complete `verify-stage1` target subsequently passes in **1,361.94 seconds**
+at `build/workflow/20261027T081149.414882Z/02-verify-stage1.log`. It retains both
+23-stage sweeps: each width (358 and 398) compares 22,540 native RGB/PCM/time
+frames. The same required-profile attempt then stops in `oracle-test` after
+124.88 seconds on the existing invalid/unavailable CPU-visibility and IRQ4
+operand-read captures (`03-oracle-test.log`). No oracle fixture or comparison
+was removed or weakened; this is not a complete required-profile/whole-host
+acceptance pass. Compatible instrumented MAME captures remain necessary.
+
+The final entrypoint build is rechecked in
+`build/native-vulkan-ready-shader-{original,16-9,16-10}.log`, with all three
+live selection/rollback/viewport checks passing. The actual widescreen launcher
+also exits successfully after a bounded Stage 5 run in
+`build/native-vulkan-ready-launch.log`; it reports `filters=vulkan-gpu`, the
+active S-video shader and zero reported audio underruns. Benchmark diagnostics
+were disabled for byte-identical image comparisons; normal user settings are
+preserved by the interactive launcher. The portable Make validation executable
+is retained separately at `build/portable-validation/afterburner2.exe`.
+
+### Windows Stage 1 takeoff frame-time investigation (2026-10-27)
+
+The reported 56 fps fluctuations occur during normal Stage 1 takeoff with
+Sprite Filter Off or enabled. Earlier Practice measurements entered at frame
+1096 and did not cover takeoff. The new optional `AB2_FRAME_TIMINGS` CSV keeps
+samples in memory, capped at 36,000 frames, and writes only on exit. It separates
+board execution, scene setup/ground/sprites/flattening, filter and shader host
+calls, presentation, pacing and loop gaps, with Windows thread-cycle and
+processor observations. It does not measure separate GPU execution durations.
+
+The original 3,600-frame fullscreen 16:9 S-video trace is retained in
+`build/oracle/takeoff-dips/`. After 120 startup samples, mean work is 16.26 ms,
+95th percentile 18.73 ms: board 10.65 ms, corrected ground 1.72 ms, sprite
+scene 1.45 ms, shader host calls 1.49 ms. Takeoff frames 650–1095 average
+16.91 ms of work. These exceed the 16.77 ms arcade frame budget in busy
+intervals. The host is an Intel Xeon E3-1240 v3; core migration alone does not
+establish a cause for the stalls.
+
+Presentation follow-up changes:
+
+- Horizon cache keys retain only active horizon descriptors and their matched
+  anchors, preserving order and ignoring hardware feedback word 7. Moving
+  unrelated sprites no longer invalidate the horizon raster.
+- Ground donors are found by searching inward from each native edge and
+  stopping at the first eligible pen. The previous full-row traversal remains
+  represented by the independent ground reference tests.
+- Sky/ground classifications are cached lazily by horizon raster, viewport and
+  ROM normal. Road colors, palette, priority, donor selection and partial-clip
+  bounds remain live inputs. The uncached `correct` path remains available as
+  the differential reference.
+- Opaque, background and shadow fragments reuse their pixel's previous head
+  slot. Those types terminate traversal at every opacity setting. Translucent
+  chains remain intact for paused effect changes; different pixels own separate
+  chains. CPU/device timing, native feedback and gameplay are unchanged.
+
+Before geometry classification caching, two matched 1,800-frame runs per build
+in `build/oracle/takeoff-comparison/results.json` show average displayed FPS
+58.09/58.60 before and 58.99/59.38 after. Mean scene cost falls from
+3.55–3.59 ms to 3.36–3.41 ms; fragment flattening falls from 0.195–0.203 ms
+to 0.132–0.145 ms. Dips remain, including a 50.95 fps interval, so these results
+do **not** establish sustained full speed. The geometry-cache fullscreen rerun
+then exits with `SDL_Init failed: No displays available`; Windows reports the
+`WinDisc` disconnected display. Final GPU timing and image comparisons require
+an unlocked, connected desktop.
+
+The focused CMake run `build/takeoff-geometry-checks.log` passes sprite filters,
+ROM-free ground geometry, 115.96 seconds of native ground integration, and
+integrated scene clips. The sprite regression includes **583,443** full-chain
+foreground/background comparisons across all four-fragment effect sequences,
+three interleaved pixels and 81 opacity combinations. The ground integration
+compares compact raster bounds/order with an independently filtered full bank
+at 320/398 pixels, including shifted descriptor anchors and feedback changes;
+it compares cached correction with the uncached reference under changed road
+pens and priority. The initial fragment-mutation harness lacked the SaI shim
+include path; repaired rerun `build/takeoff-fragment-mutations.log` passes its
+baseline and rejects all three retained faults. Snapshots/logs are retained in
+`build/oracle/fragment-mutations/`.
+
+`ground_horizon_fixture` is blocked by missing `build/oracle/frames_rolls.bin`;
+its comparison and fixture coverage remain enabled. Complete required gates
+and the remaining focused mutation results are recorded below when available.
+
+All **24/24** retained ROM-free ground geometry faults are rejected in
+`build/takeoff-ground-mutations.log`. The next recorded-roll control stops on
+the missing roll fixture, so neither it nor the remaining fixture-dependent
+controls are accepted from this run. No controls were removed.
+
+Headless CPU composition comparisons pass at 240 rendered frames (takeoff)
+and 1,200 frames (later flight), fullscreen disabled, 16:9, Sharp HUD, corrected
+ground and all effects enabled, Sprite Filter Off. Both before/after BMP pairs
+are byte-identical (`build/takeoff-headless-images.log` and
+`build/oracle/takeoff-headless-images/`). The dummy/software renderer does not
+exercise Vulkan or the S-video shader. The current optimized CMake executable
+SHA-256 is `4cd9fef0ae7410b9455ffd5f56fa86c1914d05578d744052d13a735552ac1976`.
+
+The final-tree required-profile run is retained in
+`build/workflow/20261027T103424.143726Z/`: complete `test` passes in **282.00 s**,
+and complete `verify-stage1` passes in **1,767.14 s**, including both 23-stage
+sweeps with **22,540/22,540 native RGB/PCM/time frames per width** (358 and 398),
+zero reported skips. It also passes 881 live/snapshot comparisons per width at
+358/398/522 pixels and all four retained live-scene mutation controls. The
+cache-specific integration passes 28 raster/ordering/anchor/feedback checks
+and 420 Stage 6 frames across six quadrant crossings. These final-tree passes
+supersede earlier integration results for the changed presentation headers.
+
+The complete `oracle-test` attempt exits 2 after **141.67 s** on the existing
+invalid CPU-visibility and IRQ4 ROM-operand-read captures. Its full log is
+`03-oracle-test.log` in the same workflow directory. This is not a complete
+required-profile acceptance pass. The separate missing roll capture and the
+unavailable fullscreen GPU observations remain open; all comparisons and
+mutation definitions remain enabled.
+
+With compilation and regression jobs finished, a headless/software-renderer
+ABBA comparison replays 900 rendered frames from normal Arcade takeoff per
+run (`build/takeoff-cpu-timing.log`, full traces/settings/results in
+`build/oracle/takeoff-cpu-timing/`). For matched takeoff frames 631–1095,
+mean scene CPU time is **4.96/5.01 ms before versus 3.54/3.74 ms after**,
+a **25–29% reduction**. Corrected ground falls from **2.16/2.24 ms to
+1.09/1.15 ms**; fragment flattening falls from **0.367/0.382 ms to
+0.201/0.203 ms**. Corresponding board means are 14.22/14.94 ms before and
+13.73/14.82 ms after. Host scheduling varies, particularly late in the final
+reference run, so report the matched takeoff subsets rather than inferring
+fullscreen FPS from whole-run averages. These runs have no S-video shader or
+Vulkan device and do not establish that the reported 56 fps dips are resolved.
+The existing `build/Launch-SVideo-Widescreen.cmd` uses the updated CMake binary;
+the published Preview 5 download is unchanged. A connected/unlocked Windows
+desktop is still needed for the final fullscreen shader timing/image recheck.
+
+### Windows frame pacing and SDL audio recovery (2026-10-27)
+
+The connected Windows follow-up reproduces the reported problem beyond the
+S-video preset. Fullscreen 3,600-frame runs from normal Arcade takeoff retain
+GPU filtering in every case: Original + ScaleFX + S-video averages 59.60 fps
+but reaches 55.98 fps in a reporting interval; 16:9 + Off scaling/CRT averages
+59.51 with a 55.83 minimum; 16:10 + Off averages 59.35 with a 51.81 minimum.
+Logs/settings/CSV are retained in `build/oracle/windows-render-long/`. Short
+1,200-frame runs in `build/oracle/windows-render-paths/` mostly held target and
+did not establish sustained performance. Hardware is the Xeon E3-1240 v3 and
+Radeon RX 570. The temporary Above Normal process-priority experiment did not
+remove dips and is **not** part of the source changes.
+
+Further presentation changes cache packed ARGB palette pens (including separate
+shadow/highlight pens) only when their native palette words change. Horizon
+profiles prepare compact row/column orderings once per raster rebuild; the
+uncached reference remains available for direct comparison. The palette object,
+indices, priorities, native sprite feedback, CPU/device clocks and native PCM
+remain unchanged. All six fullscreen GPU BMP pairs match byte-for-byte at
+240/900 rendered frames: Original + ScaleFX + S-video, 16:9 + Off and
+16:10 + Off (`build/render-audio-followup-images.log`). The paired rendering
+snapshot is retained in the same ignored oracle directory; later changes only
+affect host pacing/audio ownership, not this renderer or preset.
+
+Two host-side bugs were found while investigating the accompanying sound
+stutter:
+
+1. The old main loop caps catch-up at four frame periods. Replay of a retained
+   long-run trace discards **120.61 ms** of wall-time debt, more than an 80 ms
+   audio buffer, even though mean CPU work is below the frame budget. A
+   16-frame bound retains that trace's ordinary stalls without discarded debt.
+   The new `FramePacing` helper retains this bounded debt while still polling
+   input, executing one native frame and presenting once on every iteration.
+   It neither skips/batches native frames nor changes emulated clock rates.
+2. Default SDL playback starts immediately and has no starvation counters or
+   re-priming. Earlier SDL `audio_underruns=0` reports therefore did not prove
+   unbroken playback. It now collects **80 ms** of native PCM before starting
+   or recovering, counts software starvation once, pauses until refilled, and
+   reports `audio_sdl_priming`. The final detector latches unfulfilled SDL
+   playback requests in its data-demand callback; an empty-queue snapshot alone
+   can be premature while the device still plays prefetched audio. The callback
+   only stores an atomic flag; recovery stays on the playback owner thread.
+   A finite producer's tail is flushed after 100 ms idle; native PCM is not
+   dropped, repeated or played at a changed sample rate. OpenAL's existing
+   25 ms initial / 50 ms recovery policy is unchanged.
+
+Focused validation:
+
+- `build/render-audio-followup-checks.log`: native ground integration (72.87 s),
+  all 60 clip cases, independent palette RGB/normal/effects checks and all
+  **six** retained live-scene faults pass. Prior four controls remain enabled;
+  two new faults prove cached normal/effects palette comparisons can fail.
+- `build/sdl-recovery-final-checks.log`, workflow
+  `20261027T153316.864577Z`: SDL-only recovery passes with native 48 kHz input
+  resampled to a held-open **44.1 kHz** dummy device. Startup, counted starvation,
+  refill, empty stability, pause/clear and finite tail are covered. All **four**
+  retained faults are rejected; snapshots in `build/oracle/sdl-recovery-mutations/`.
+- `build/frame-pacing-focused.log`, workflow `20261027T154426.346940Z`:
+  **4,000** comparisons against independent absolute deadlines pass for repeated
+  60/80/150 ms stalls and wait overshoot, with bounded suspension/reset. All
+  three faults are rejected, including the previous four-frame limit.
+
+The host-pacing build before the final demand-callback refinement is measured
+in `build/oracle/render-audio-paced-perf/`. Its counters still use the preliminary
+empty-queue detector and are not final hardware-underrun observations.
+Controlled 3,600-frame runs average 59.64 fps in all three configurations and
+report zero SDL starvation/re-prime events. Individual interval minima remain
+54.69 (Original ScaleFX S-video), 57.45 (16:9 Off) and 59.23 (16:10 Off).
+A run with normal device enumeration and copied personal audio/feedback
+settings is worse (59.26 average, 47.36 minimum, six software starvation events).
+The isolated factors in `build/oracle/render-audio-isolation/` do not consistently
+reproduce that outlier: saved audio/feedback with devices suppressed averages
+59.64, one starvation; devices enabled without saved audio/feedback averages
+59.61, zero starvations. Neither controller support nor personal settings are
+disabled by the shipped code. These are finite observations, **not** sustained
+full-speed/glitch-free acceptance.
+
+Windows Performance Recorder CPU collection is blocked by host policy
+`0xc5585011`, including outside the filesystem sandbox; no policy was changed
+and `wpr -status` confirms no recording left running. An ignored helper instead
+samples only this task's own test process, briefly suspending its main thread
+and immediately resuming it before storing each instruction pointer. Its
+1,200 samples (`build/oracle/game-thread-samples/`, `build/game-thread-profile.log`)
+show native CPU/sound execution and scene drawing among the dominant game
+functions, alongside waits/runtime/driver modules. Sampling perturbs timing and
+is not an FPS acceptance run. It does not establish a kernel/driver stall cause.
+Execution-order/CPU optimizations remain subject to the complete instrumented
+oracle gate; invalid/unavailable captures on this host are still not waived.
+
+Final validation and scope for this follow-up:
+
+- Initial required-profile attempt `build/workflow/20261027T161502.801585Z/`
+  stops on a stale HUD effects-palette mutation location after palette packing
+  moved to the cache. The same named fault was updated to corrupt the cached
+  effects pen; no control was removed. Focused rerun
+  `20261027T161930.963000Z` rejects all **10/10** HUD controls and the retained
+  native-HUD control.
+- Clean required-profile rerun `build/workflow/20261027T162115.219802Z/` passes
+  `test` (**211.83 s**) and complete `verify-stage1` (**1,526.76 s**), including
+  both 23-stage 22,540-frame sweeps. `oracle-test` exits 2 after **140.95 s** on
+  the existing invalid CPU-visibility/IRQ4 operand-read captures.
+- A final **audio-owner-only** refinement replaces empty-queue polling with
+  SDL's actual data-demand callback. Merely empty software queues can coexist
+  with prefetched device audio; the final callback avoids premature re-priming.
+  It also tracks producer presence explicitly so SDL timestamp zero is valid.
+  Full final-tree `test` passes (**283.25 s**) in workflow
+  `20261027T165438.675925Z`, with **five** rejected SDL faults, including a
+  disabled-demand-observer fault. The affected `verify-music-presentation`
+  target passes again (**165.19 s**): 1,800/1,800 native RGB/PCM frames and
+  1,448,641 stem frames, plus pause/restart/capture toggles.
+- The unchanged renderer/core checks reuse the complete Stage 1 run above;
+  its generated native-object dependencies identify music presentation as the
+  Stage 1 target affected by `audio_output.hpp`, and it was rerun. This is
+  scoped result reuse, not a new complete required-profile acceptance pass.
+- Final CMake SDL/OpenAL/music/audio-game checks pass all **5/5** fixture/test
+  entries in **49.21 s** (`build/sdl-demand-native-checks.log`). This explicitly
+  exercises the OpenAL-enabled CMake build as well as SDL-only operation; the
+  portable Make configuration on this host is SDL-only.
+- Earlier live S-video selection/rollback/pause/viewport tests pass at all
+  three viewports in `build/render-audio-shader-{original,16-9,16-10}.log`.
+  The final callback build's repeat is blocked at SDL initialization by
+  `No displays available`; Windows again reports `WinDisc`. The bounded final
+  launcher smoke exits 0 using dummy video/audio and software fallback
+  (`build/sdl-demand-final-launch-smoke.log`). It is not a GPU/FPS/audio-hardware
+  acceptance run; its deliberately slower software path triggers and recovers
+  from genuine missing-data callbacks.
+
+The current CMake executable SHA-256 is
+`da1ddd76aaa85590d1884e4b24d86c8323cfde8728dcba9d11c962296dd4be75`.
+The existing S-video launcher uses this binary; the published Preview 5 ZIP is
+unchanged. `build/profile_sdl_demand_normal.py` is prepared to repeat the three
+reported configurations with normal device enumeration, copied user audio/
+feedback settings and the FPS overlay, without `--profile` title/log updates.
+That final hardware run remains pending a connected/unlocked desktop. No claim
+is made that the remaining 56 fps intervals or hardware sound glitches are
+eliminated.
+
+The optional `tools/windows/capture_cpu_stalls.ps1` is syntax-checked and its
+commands/paths inspected. It requests an administrator session, refuses to
+start over an existing WPR recording, uses only the standard bounded CPU
+profile, and stops/saves its own capture without launching the game elevated
+or overriding policy. Actual recording remains unverified on this host because
+of the WPR policy error. All captures, sampler binaries and benchmark data stay
+under ignored `build/`; no ROM/capture data is added to source control.
+
+### Connected Windows retest: FPS dips remain (2026-10-28)
+
+The user reran `build/Launch-SVideo-Widescreen.cmd` and still observes FPS
+dips accompanied by sound dropouts. The launcher executable remains SHA-256
+`da1ddd76aaa85590d1884e4b24d86c8323cfde8728dcba9d11c962296dd4be75`;
+there is no newer performance fix or published package in this retest.
+
+With the desktop connected at 1920x1080, the prepared normal-launch benchmark
+completed all three 3,600-frame runs. It retains normal device enumeration,
+copies the saved audio/feedback/input settings, enables the FPS overlay and
+omits `--profile` title/log updates. Buffered frame CSV and logs are retained
+in `build/oracle/sdl-demand-normal-perf/`.
+
+| Configuration | Mean FPS after 120 frames | Slowest rolling 60-frame FPS | Longest frame | SDL missing-demand episodes |
+| --- | ---: | ---: | ---: | ---: |
+| Original, ScaleFX, S-video | 59.63 | 53.68 | 88.45 ms | 0 |
+| 16:9, sprite filter/CRT Off | 59.64 | 56.07 | 47.72 ms | 0 |
+| 16:10, sprite filter/CRT Off | 59.63 | 54.95 | 46.20 ms | 0 |
+
+Rolling 60-frame minima differ from the earlier one-second reporting buckets
+and must not be compared as the same metric. These runs reproduce visual
+stalls but do not reproduce a counted SDL source starvation; zero such events
+does not prove the physical audio device played without glitches. Original
+ScaleFX's longest frame includes 52.14 ms in the measured board/feedback
+section and 30.29 ms in shader submission; another frame spends 27.41 ms in
+presentation. The timings alone do not identify the responsible CPU function
+or establish a driver cause.
+
+An isolated main-thread affinity experiment (CPU 2 only, other threads retain
+their usual affinity) is retained in `build/oracle/sdl-demand-affinity-perf/`.
+It worsens Original ScaleFX to a 47.84 rolling minimum with two SDL demand
+starvations and 16:9 to 47.30 with three; 16:10 reaches 55.02 with zero.
+Affinity is not added to the application or ordinary launcher. Windows again
+refuses `wpr -start CPU -start Audio -filemode` with `0xc5585011`, explicitly
+reporting failure to enable the profiling policy. No policy override was made;
+`wpr -status` confirms no recording.
+
+`build/Launch-SVideo-Diagnostics.cmd` and its syntax-checked local Python
+helper launch the same application with the same settings and save buffered
+frame timings, stdout/stderr, executable hash and initial settings copies in
+a unique ignored `build/oracle/manual-performance/` directory. Closing the game
+flushes the timing CSV. A user-operated session with an audible dropout is
+still needed to connect that observation to the application-side counters.
+The user-reported audio issue and sustained-performance acceptance remain open.
+
+The previously blocked final-build live shader integration now passes at
+Original, 16:9 and 16:10 (`build/sdl-demand-shader-*.log`): real GPU/Vulkan
+switching, failed-preset rollback and paused native RGB/PCM/time comparisons
+pass with zero skips. These functional checks do not establish frame-rate or
+physical audio acceptance. No executable sources changed during this retest;
+the earlier regression results retain their recorded scope.
+
+### User-operated Windows dropout capture (2026-10-28)
+
+The local diagnostic session `build/oracle/manual-performance/20261028T073603Z/`
+uses executable `da1ddd76aaa85590d1884e4b24d86c8323cfde8728dcba9d11c962296dd4be75`
+with fullscreen 16:9, ScaleFX, Sharp HUD, corrected ground, S-video and the
+saved Original SDL audio profile. Its 1,902 active frames average 58.41 fps;
+the slowest rolling 60-frame window is **53.29 fps**. The log records **10**
+actual SDL missing-source-demand/re-prime episodes, unlike the unattended
+normal-launch runs above. These event lines have no frame timestamps, so the
+capture establishes co-occurrence rather than exact event/frame alignment.
+
+One 89.50 ms frame includes 61.25 ms in shader submission and 10.10 ms in
+presentation. Sustained load also matters: frames 1400–1902 average **17.71 ms**
+of work against the 16.77 ms native period. Their board/feedback section
+averages 10.89 ms, scene work 3.82 ms and shader work 2.56 ms. Within scene work,
+ground averages 1.66 ms and sprite composition 1.79 ms. An 80 ms recovery
+buffer cannot compensate indefinitely for sustained production below playback
+rate; increasing that buffer alone would not resolve this capture's cause.
+
+The next passive-renderer change indexes `EffectAssets` ranges by ROM bank and
+256-word address page. Buckets retain original range order, exact address and
+pitch checks, palette restrictions and trail rules. Numeric range indices
+preserve ordinary object-copy semantics; there are no pointers into another
+catalog and no mutable lookup state. The original linear lookup remains for
+differential tests, alongside the independent ROM-family checks. The expanded
+test compares **12,664,832** address/bank/pitch/palette and copied-catalog cases.
+Three new faults target a missing last page, wrong bank and ignored pitch;
+the seven existing effect/throttle faults remain enabled.
+
+A concurrent build/regression attempt (`20261028T074327.299934Z`) exposed an
+existing asynchronous SDL test observation race: the playback owner publishes
+its starvation counter before its end-of-iteration priming-status snapshot.
+The regression now waits for that snapshot within its existing bounded wait,
+then retains the exact counter/re-prime assertion and all fault coverage.
+Production audio behavior is unchanged by this test repair.
+
+Validation of the address-page lookup:
+
+- Workflow `20261028T074703.542668Z` passes `test` (218.58 s), all **10/10**
+  effect-asset controls (65.75 s), `verify-ground-horizon` (146.62 s including
+  rebuild; 68.56 s execution) and `verify-integrated-scene` (169.70 s).
+- Ground retains 1,560 native RGB/PCM/time frames, 420 Stage 6 native frames,
+  28 full-bank/compact/anchor/cache comparisons and all 4,096 ROM asset/LOD
+  selections. Integrated rendering retains **881/881** native RGB/PCM/time and
+  enhanced-plane comparisons at each of widths 358, 398 and 522, zero skipped.
+- The SDL observation-wait repair was made while that workflow ran. Its
+  affected checks are therefore rerun explicitly on the final test source in
+  workflow `20261028T075747.490003Z`: `test-spatial-audio` passes (9.08 s), then
+  the baseline and all **five** SDL recovery faults pass (33.84 s). Other
+  regression inputs are unchanged; this is scoped reuse, not a fresh complete
+  final-source required-profile acceptance pass.
+- The CMake game and live shader integration binaries rebuild with the same
+  release options. The new game executable is SHA-256
+  `35ce22865ea7b31ab812d50d1648acc5e13b99e69c88ea08091d7a5da47461b5`.
+  The saved before-build and initial headers remain under
+  `build/oracle/manual-followup/`. Published Preview 5 is unchanged.
+
+The address-page candidate was subsequently **reverted** after live A/B
+measurements failed to show useful frame-time improvement. Matched 3,600-frame
+16:9 + ScaleFX + S-video runs average 59.28 before / 59.33 after, with six SDL
+starvations each; mean work is 16.36 / 16.42 ms and slowest rolling windows
+51.82 / 52.30 fps. Scripted Stage 6 runs average 59.55 / 59.58 fps, with mean
+work 16.24 / 16.28 ms. Those finite differences do not establish a performance
+gain. Logs/CSVs remain in `build/oracle/manual-followup-ab/` and
+`build/oracle/manual-followup-stage6-ab/`; the candidate executable, header,
+tests and mutation script are archived in the ignored
+`build/oracle/manual-followup/effect-index-experiment/` directory. Production
+source and the ordinary launcher executable are restored to the previous
+`da1ddd76...` build. The bounded SDL test-observation repair remains. Its focused
+checks pass as recorded above. No claim is made that this experiment fixes the
+user's dropouts.
+
+#### Ground-correction short-circuit follow-up
+
+The user confirms the manual capture kept the same 16:9 / ScaleFX / S-video
+settings throughout. An ignored diagnostic program generates 100 rolling
+scene snapshots from the native session and renders them ten times. Its
+ground-only counters show **202.95 ms** raster rebuilding versus **1,796.68 ms**
+correction across 1,000 frames (980 raster rebuilds). This identifies the
+per-pixel correction as the larger ground cost, rather than cache rebuilding.
+The snapshot path has additional setup work; these isolated timings are not
+whole-application FPS measurements.
+
+The retained production optimization only reorders pure Boolean checks in
+`GroundHorizon::correct`: extension/plane bounds and the projected coordinate
+are checked before asking the profile for an otherwise unnecessary ground/sky
+classification. The conditions, palette/donor choices, output indices and
+native clocks remain identical. The same isolated rolling sequence measures
+**1,173.64 ms** correction (1.17 ms/frame), versus 1.80 ms/frame before. A
+further donor-search precheck measures 1,179.60 ms and is discarded. Neither
+diagnostic instrumentation nor the donor precheck is added to production.
+
+`tests/ground_correction_reference.hpp` retains the old correction algorithm
+and evaluation order. The ROM-free regression compares complete output planes
+and changed counts in **96** mixed-fill/priority/palette/partial-clip cases,
+including cached/uncached classification at widths 320, 358 and 398. The
+existing 28 native full-bank/anchor comparisons now use this retained reference
+too. The two corner-overwrite mutation anchors are updated to remove the same
+guards at their new positions; every earlier ground control remains present.
+
+The current CMake game SHA-256 is
+`fc5ccfe0df6956bc194bd8418a1895e985349c6ffb78ee51f514c0736feadf8c`.
+The existing S-video and diagnostic launchers use this binary. The complete
+1920x1080 Stage 6 / 300-frame / 16:9 / ScaleFX / S-video before/after BMPs match
+byte-for-byte (`build/ground-guard-images.log`); FPS text is disabled for the
+image comparison. Sustained timing/audio acceptance is measured separately.
+
+Final ground validation is retained in workflow `20261028T082016.659522Z`:
+complete `test` passes (238.64 s), `verify-ground-horizon` passes (1,560 native
+frames plus 420 Stage 6 frames and 28 retained-reference comparisons), and
+`verify-integrated-scene` passes at 358/398/522 (881 frames each, zero skips).
+The ground target's 3,142.09 s wall time includes a long interruption during
+linking; its native execution reports 67.60 s and is not a performance gate.
+All **24** ROM-free ground mutations are rejected. The remaining recorded-roll
+mutation gate still fails on `retained roll capture format differs` because
+`build/oracle/frames_rolls.bin` is unavailable. No capture or control is removed.
+
+The first live ground-only A/B improves the measured 16:9 ScaleFX/S-video run
+from 16.58 to 15.85 ms mean work and 11 to three SDL starvations, while brief
+dips remain. Its scripted Stage 6 runs retain one starvation each. Results
+are in `build/oracle/ground-guard-ab/` and `ground-guard-stage6-ab/`; these
+observations do not establish a complete fix.
+
+#### Exact native ScaleFX capture reduction
+
+Slang's source target is the viewport's native width by 224 rows. ScaleFX's
+3x output is reduced to that grid before the external shader runs. The centre
+subpixel in the upstream ScaleFX final pass selects the original centre pixel.
+Actual native Vulkan tests confirm that exact 3:1 nearest/pixel-art reduction
+matches native Off composition, including fragment alpha, priority and borders.
+The expanded GPU regression passes **1,176/1,176**, **167,610,366 pixels**, zero
+skips (`build/native-capture-centers.log`). All seven retained native Vulkan
+faults still fail; a new half-pixel capture offset also fails the new centre
+comparison: **8/8** rejected (`build/native-capture-mutations.log`).
+
+The Windows main loop therefore requests native composition for ScaleFX only
+when an actual Slang capture is active, the render/source widths match and
+sampling is nearest/integer/pixel-art. Linear sampling, differing widths and
+ordinary display rendering retain the selected filter. Settings are unchanged.
+The cache key includes the effective composed filter, so a paused capture/
+fallback transition cannot reuse a native-sized texture as enlarged output.
+This removes four analysis dispatches and the unused 3x output for this exact
+capture; it does not change the external preset, parameters or native samples.
+
+The live shader integration now retains the three existing Off-filter runs
+and adds ScaleFX runs at Original, 16:9 and 16:10. All **six** pass with the
+user's S-video preset: real GPU/Vulkan switching, queued chooser, failed-preset
+rollback, all live viewport changes and unchanged paused native RGB/PCM/time,
+zero skips (`build/native-capture-ui-*.log`). The final 1920x1080 Stage 6
+ScaleFX/S-video output remains byte-identical to the original baseline
+(`build/native-capture-images.log`, SHA-256
+`c16632d16156236b8b3f646ff0ed2bd17df00e25e9c040500ac89bf28533183b`).
+
+The final executable SHA-256 is
+`eb3a729bfc90bfed7de46d6335ed5c5672563e658c97deac9ca7d9c927ab9eb9`.
+Both local launchers use it. Four 3,600-frame normal-device runs with saved
+audio/feedback settings and FPS overlay, without `--profile`, are retained in
+`build/oracle/native-capture-normal-perf/`:
+
+| Configuration | Mean FPS after 120 frames | Slowest rolling 60-frame FPS | Mean work | SDL starvation episodes |
+| --- | ---: | ---: | ---: | ---: |
+| 16:9, ScaleFX, S-video | 59.64 | 55.92 | 15.02 ms | 0 |
+| Original, ScaleFX, S-video | 59.64 | 55.60 | 13.91 ms | 0 |
+| 16:9, sprite filter/CRT Off | 59.64 | 57.57 | 13.81 ms | 0 |
+| 16:10, sprite filter/CRT Off | 59.64 | 52.59 | 13.75 ms | 1 |
+
+The 16:10 outlier reaches 75.50 ms with normal thread-cycle consumption and
+about 13 ms accounted for by measured board/scene/filter/presentation phases;
+the trace does not identify the remaining wait. Another frame spends 30.46 ms
+in presentation. No kernel/driver attribution is established. The reduced
+rendering costs and zero source starvations in the three other finite runs
+are improvements, **not** locked full-speed or glitch-free acceptance. The
+user-operated confirmation on this final build remains open. Full required
+acceptance and the unchanged unavailable/invalid MAME captures remain open;
+the frontend-only capture optimization is covered by the expanded GPU, live
+main-loop and complete-image checks, with scoped reuse of the preceding core
+regressions. No updated release ZIP is uploaded.
+
+### Fullscreen/windowed timing follow-up (2026-10-28)
+
+The user reports remaining FPS dips are more frequent fullscreen and confirms
+the current Headphones HRTF audio stays smooth during them. Saved output
+settings now select profile 1 / OpenAL HRTF, whereas the earlier user-operated
+capture used Original SDL profile 0. The current tests preserve the HRTF
+setting and its audio policy. SDL-only counters are not treated as complete
+audio evidence: postprocessing also counts the OpenAL events from each log.
+
+Alternating 3,600-frame fullscreen/windowed 16:9 ScaleFX/S-video runs are in
+`build/oracle/fullscreen-windowed-compare/`. Fullscreen averages 59.44/59.64 fps
+with slowest rolling windows 52.07/55.86; windowed averages 58.95/59.64 with
+36.70/57.64 minima. Mean work is 15.12/15.04 ms fullscreen and 16.93/14.95 ms
+windowed. The repeated runs do not isolate a deterministic fullscreen-only
+cost. OpenAL event counts are 4/1 fullscreen and 12/0 windowed; these software
+events do not contradict the user's direct report of smooth audible output.
+
+An ignored experimental main executable adds buffered event/input, music mix,
+prepare, shader begin, draw and overlay timings plus presentation overrides.
+It uses the same CMake compiler/options/core objects and does not replace the
+launcher executable. Build inputs/commands and results stay under
+`build/oracle/fullscreen-present-probe/` and `present-mode-zones/`.
+The renderer reports supported Vulkan modes 0/2/3 (Immediate/FIFO/FIFO Relaxed).
+The pinned [SDL 3.4.18 Vulkan backend](https://raw.githubusercontent.com/libsdl-org/SDL/release-3.4.18/src/render/vulkan/SDL_render_vulkan.c)
+maps renderer VSync 0 to preferred Immediate, -1 to FIFO Relaxed when available,
+and 1 to FIFO. Actual requested values and drawable sizes are logged.
+
+| Experimental case | Average FPS | Slowest rolling 60-frame FPS | Mean present call |
+| --- | ---: | ---: | ---: |
+| Fullscreen, VSync 0 | 58.87 | 38.66 | 0.29 ms |
+| Fullscreen, adaptive -1 | 32.23 | 30.71 | 12.89 ms |
+| Fullscreen, FIFO 1 | 31.92 | 22.14 | 11.71 ms |
+| Borderless window, 1920x1079, VSync 0 | 59.27 | 40.59 | 0.30 ms |
+| Window, 1194x672, VSync 0 | 59.64 | 55.65 | 0.28 ms |
+
+Adaptive/FIFO and the borderless experiment are rejected as performance fixes.
+Input and overlay phases remain small; long frames accumulate delays across
+board/scene execution and shader begin/draw. For example, one 105.50 ms frame
+contains 54.82 ms board, 13.08 ms shader begin and 30.63 ms draw with 73.56
+million main-thread cycles. These counters locate elapsed waits but do not
+identify kernel/driver scheduling or establish a specific external cause.
+An ordinary read-only current-job query reports CPU-rate-control flags zero;
+this is not a complete scheduling diagnosis.
+
+CPU+GPU WPR capture again fails with `0xc5585011` (failure to enable profiling
+policy), including the escalated execution request. This is a Windows tool
+error, not an automatic approval-review rejection. `wpr -status` confirms no
+recording left running and no policy override was attempted. The existing
+administrator helper now accepts `-IncludeGpu` for a bounded CPU+GPU capture;
+its PowerShell AST parses without errors, and the arguments/profile names and
+saved paths are inspected. Actual elevated collection remains unverified.
+
+No game/render/audio implementation changes are shipped in this follow-up.
+The launcher remains SHA-256
+`eb3a729bfc90bfed7de46d6335ed5c5672563e658c97deac9ca7d9c927ab9eb9`.
+Only the capture helper and diagnostics documentation change; existing engine
+evidence retains its recorded scope. Remaining FPS stability needs the
+administrator scheduling/GPU trace. The user's current audio observation is
+recorded separately from full platform/whole-game acceptance.
+
+### Administrator CPU/GPU trace and unit-zoom decoder (2026-10-28)
+
+The user completed direct administrator WPR CPU/GPU collection after PowerShell
+policy blocked the helper script. No execution policy was changed. The retained
+`build/oracle/windows-cpu-stalls/fullscreen-manual.etl` contains 70.397 seconds,
+22,856,156 events and zero lost events. Local TraceEvent 3.2.8 indexes it;
+scripts, decoded tables and local symbol mappings remain under `build/`.
+The recorded game's image size and CodeView GUID match the existing `eb3a729b…`
+launcher executable. This is the actual user-operated capture, not an
+unattended substitute. The user's latest report confirms audible dips with
+repeated `OpenAL stream underrun: 13 sources` synchronized re-primes. This
+supersedes the earlier report of smooth Headphones HRTF output.
+
+Outgoing switch stacks must use TraceEvent `BlockingStack()`, not `CallStack()`
+on CSwitch (the latter represents the incoming thread). The corrected extraction
+resolves all 6,721 main-thread switch stacks. Roughly the first 18 and last
+seven seconds contain the paused branch's `SDL_Delay(10)`; disassembly verifies
+its return at main image RVA `0x1484c`. Exclude those sections from gameplay
+CPU conclusions. The longest graphics waits (65–110 ms) cluster around these
+pause/focus transitions. Active 5-second Present windows mostly run at
+54–58 fps; main-loop pacing accounts for only 314 of 48,118 main-thread CPU
+samples across the trace. Ready-to-run delays total roughly 53 ms across the
+whole recording. The evidence supports exhausted CPU frame headroom during
+play; it does not establish a graphics-driver root cause. Native CPU/audio
+execution, passive scene drawing and hardware sprite/tile rendering are hot
+paths. Windows fiber stacks lose the main root, so native-call inclusive
+totals cannot simply be added together.
+
+Kernel module ranges identify most recorded DPC/ISR time as `dxgkrnl.sys`,
+but active-play overlap with the game main thread's scheduled CPU intervals is
+only about 67 ms over 45 seconds (nested interrupt intervals may overlap).
+This does not support blaming prolonged main-thread interrupt stalls for the
+sustained deficit. No affinity, priority, driver or audio-latency changes are
+introduced from this trace.
+
+The passive `Presentation::decode` now specializes horizontal zoom 512: each
+source pen advances exactly one destination pixel and its accumulator stays
+zero across words. Empty words advance eight pixels; all eight pens, including
+the pen after the seventh-pen terminator, retain the original ordering,
+transparency and clipping. Other zoom values retain the general traversal.
+This does not change hardware sprite feedback, CPU scheduling or native PCM.
+The independent pre-change accumulator decoder is retained in
+`tests/sprite_decode_reference.hpp`. The ROM-free differential fixture compares
+12,000 ordered emission streams / 11,688,456 pixels (2,445,845 unit-zoom), with
+zero skips and unchanged input descriptors. It covers neighboring zoom values,
+directions, vertical stepping, wrapping, empty words and native/wide clips.
+All eight retained deliberate faults are rejected; the passing baseline and
+mutant sources/logs are under
+`build/oracle/sprite-decode-mutations/20261028T123028.096038Z/` and workflow
+`build/workflow/20261028T123021.237235Z/`.
+
+The ignored rolling-flight probe compares the same 100 snapshots ten times at
+398 columns. Its horizon raster cost drops from approximately 0.20 to 0.11–0.13
+ms/frame. Three alternating whole-scene pairs vary substantially: combined
+scene cost differences are +0.47, +0.11 and -0.19 ms/frame (positive means saved).
+This is modest headroom, not proof of sustained 60 fps or resolved audio.
+The probe's sparse checksum is not correctness evidence; the complete ordered
+pixel comparison supplies that separate check.
+
+Active-only extraction (`active-samples.tsv`, 18–63 seconds) records 44,224
+main-thread samples. Shader end is the first app frame for 3,555 samples;
+many enter SDL's `VULKAN_InvalidateCachedState` through `SDL_FlushRenderer`.
+The pinned [SDL render frontend](https://github.com/libsdl-org/SDL/blob/release-3.4.18/src/render/SDL_render.c)
+already flushes queued commands in `SDL_SetRenderTarget`; the
+[Vulkan target change](https://github.com/libsdl-org/SDL/blob/release-3.4.18/src/render/vulkan/SDL_render_vulkan.c)
+records the image transition and issues a batch. Explicit `SDL_FlushRenderer`
+immediately before unbinding submits a separate batch with a queue-idle wait.
+The Windows shader end path removes that redundant explicit flush, retaining
+the target unbind, image layout transition, shared-queue ordering and existing
+resource fences. Other external-compute flush sites are unchanged.
+
+The live Vulkan shader baseline passes with visible reference output, saved
+renderer state, cached frames, raw timing units, resize through 4K, transactional
+fallback/recovery and temporal history/reset. All three existing negative
+controls remain rejected, zero skips, in
+`build/oracle/slang-vulkan-mutations/20261028T124024.074392Z/` and
+`build/slang-unbind-mutations.log`.
+
+The rebuilt executable is SHA-256
+`ac5cca3ea2205b345a21a37abaf74a93eee88246ba2341c264362cbcb8dd675d`.
+All six live main-loop runs pass with the user's S-video preset at Original,
+16:9 and 16:10, each with None and ScaleFX x3: queued chooser, failed-preset
+rollback, live viewport switches and unchanged paused native RGB/PCM/time,
+zero skips (`build/slang-unbind-ui-*.log`). Before/after complete 1920x1080
+Stage 6 ScaleFX/S-video BMPs are byte-identical, SHA-256
+`c16632d16156236b8b3f646ff0ed2bd17df00e25e9c040500ac89bf28533183b`
+(`build/oracle/slang-unbind-images/`, `build/slang-unbind-images.log`).
+The broader `test` suite passes in 233.08 seconds and `verify-stage1` passes in
+1,383.38 seconds in `build/workflow/20261028T123122.016767Z/`. The latter includes
+22,540 unchanged native RGB/PCM/time frames at each of 398 and 358 columns
+across all 23 stages, plus the retained session, Practice/Shuffle, ground,
+music/feedback, HUD/aircraft and integrated-scene checks (881 exact frames at
+each of 358/398/522). Normal device performance comparisons follow separately
+from the CPU-heavy regression workload. Complete `required`/oracle acceptance
+remains open with the previously documented unavailable/invalid captures; no
+release package is refreshed or uploaded by this increment.
+
+Alternating 3,600-frame normal fullscreen runs (before/after/after/before)
+with saved Headphones HRTF, 16:9, ScaleFX x3, S-video and the FPS overlay are
+retained in `build/oracle/slang-unbind-ab/`. The two pre-removal runs average
+59.52/59.39 fps, with 51.06/52.19 minimum rolling 60-frame windows and 8/9
+OpenAL underrun events. Post-removal runs average 59.60/59.59, minima
+55.20/54.72 and 3/4 underrun events. Mean work across the pairs falls from
+16.54 to 15.83 ms and measured shader time from 1.50 to 1.39 ms. Other host
+costs vary, so the whole work difference is not attributed exclusively to one
+call. The render change helps within these finite runs but does not eliminate
+FPS or audio dips.
+
+### Windows OpenAL reserve after measured starvation (2026-10-28)
+
+The remaining 55–58 ms frames can drain OpenAL's former 25 ms startup / 50 ms
+recovery queue. Windows OpenAL now collects 80 ms at startup and synchronized
+recovery, matching SDL's existing reserve. This explicitly adds 55 ms startup
+buffering and 30 ms after an underrun. Other platforms retain 25/50 ms. Sparse
+source restarts remain immediate, queue backpressure stays bounded, and native
+PCM/device clocks and frame pacing are unchanged. This can protect against
+short stalls while the main loop catches up; it cannot fix a sustained producer
+deficit. The previous render-only executable (`ac5cca3e…`) is retained as
+`build/oracle/manual-followup/before-openal-reserve.exe`.
+
+The final executable is SHA-256
+`712a6197d01181a9da27aa1d0e1eb65226c8eccc966181b76947fb5e9db4df8c`.
+The OpenAL-enabled CMake regression passes actual HRTF/localization, dry BGM,
+native-rate resampling, synchronized and staggered 13-source re-prime,
+pause/backpressure/clear, profile changes and failure recovery/retry. Its
+60-second loopback run renders 2,880,000 sample frames without new underruns
+or clipping (software queue peaks at 200.234 ms; this offline sample-time test
+does not measure hardware latency). The SDL-only regression also passes.
+Logs are `build/windows-openal-reserve-{regression,sdl}.log`.
+
+All nine prior OpenAL faults remain rejected and the added Windows 50 ms
+reserve fault is rejected, plus both capability/disconnect fallback controls
+pass (`build/windows-openal-reserve-mutations-final.log`). The mono-as-stereo
+fault fails the right-ear localization assertion on this Windows OpenAL build
+rather than the left-ear assertion; the harness now accepts either exact
+front-ear assertion while retaining both production comparisons. Mutation
+directories now have unique timestamps so earlier inputs/logs survive.
+The retained local Windows adapter uses the exact test and mutation bodies,
+substituting SDK include/link paths for pkg-config and longer process timeouts;
+it does not use optional skips or weaken assertions. The first failed harness
+attempt is retained separately.
+
+The preceding `test`/`verify-stage1` results apply to the renderer changes and
+unchanged native CPU/audio/scene sources. The subsequent change is limited to
+Windows host playback buffering and its tests; the OpenAL/SDL regression and
+all output faults above validate that increment separately. Final normal-device
+FPS/audio and complete-image checks follow; whole-host/full required acceptance
+is not inferred from this scoped evidence.
+
+The final two normal fullscreen 3,600-frame runs, after other test work stops,
+are retained in `build/oracle/windows-openal-reserve-normal/`. They preserve
+saved Headphones HRTF, 16:9, ScaleFX x3, S-video and the FPS overlay:
+
+| Run | Mean FPS after 120 frames | Slowest rolling 60-frame FPS | Mean work | Longest frame | OpenAL underrun events |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A | 59.72 | 55.92 | 15.46 ms | 47.90 ms | 1 |
+| B | 59.50 | 53.39 | 15.80 ms | 68.98 ms | 3 |
+
+Both logs confirm actual OpenAL stereo HRTF and synchronized 13-source
+exhaustion; these are not just SDL-only counters. Startup/after-frame-120
+timing scope differs from the whole-run underrun counts, so individual events
+are not assigned to specific CSV frames. SDL starvation counts are zero.
+The larger reserve does not eliminate the observed problem; differences
+between these finite runs do not establish a reliable audio improvement.
+Stable FPS/audio remains unresolved. The existing local launchers use this
+final executable; no new trace or user retest is claimed as proof.
+
+The complete final 1920x1080 Stage 6 ScaleFX/S-video BMP remains byte-identical
+to the pre-change output, SHA-256
+`c16632d16156236b8b3f646ff0ed2bd17df00e25e9c040500ac89bf28533183b`
+(`build/windows-openal-reserve-images.log`). No native frame/input skipping,
+instruction simplification or emulated sample-rate adjustment was introduced.

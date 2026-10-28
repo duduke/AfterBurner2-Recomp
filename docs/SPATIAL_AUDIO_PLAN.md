@@ -127,8 +127,36 @@ SDL subsystem initialization/teardown stays on the main thread. Bounded queues
 apply backpressure outside board execution. Pause, restart, device/profile
 changes and shutdown stop/clear the appropriate playback state. Unsupported
 output leaves the game running. Global starvation re-primes streams together;
-isolated source restarts remain immediate. The initial startup threshold stays
-25 ms; synchronized recovery uses 50 ms.
+isolated source restarts remain immediate. Windows OpenAL now collects 80 ms
+at startup and synchronized recovery, matching the SDL reserve and protecting
+against the measured short frame stalls. This adds 55 ms of startup buffering
+and 30 ms after starvation compared with the former 25/50 ms policy. Other
+platforms retain 25 ms startup and 50 ms synchronized recovery. Native PCM and
+emulated timing are unchanged; the reserve cannot fix sustained underproduction.
+
+The default SDL path now primes 80 ms of native stereo PCM before starting and
+re-primes after its usable output is exhausted. It counts software starvation
+in `audio_underruns`/`audio_reprimes`; `audio_sdl_priming` reports the refill
+state. These counters do not measure the output device's own buffer or prove
+that hardware playback was glitch-free. Earlier zero SDL counters lacked this
+starvation instrumentation. An atomic latch records SDL's actual unfulfilled
+playback data requests; the playback owner handles recovery outside the audio
+callback. Queue emptiness alone does not trigger recovery: the device may
+still be playing prefetched audio. Resampling is covered by the SDL tests.
+A finite short tail is flushed after 100 ms without producer data. No native
+PCM is discarded, repeated or clocked at a different rate by this policy.
+
+Host pacing retains a bounded 16-frame catch-up budget. The previous four-frame
+cap could discard ordinary driver delays and permanently reduce PCM supply
+relative to device playback. Every simulated frame still polls input and is
+presented individually. Suspension catch-up stays bounded; native CPU/device
+clocks and the native sample stream remain unchanged.
+
+Focused checks are available through:
+
+```sh
+python3 tools/workflow.py run test-frame-pacing test-frame-pacing-mutations test-spatial-sdl-only test-sdl-recovery-mutations
+```
 
 ## Preview 1 release checkpoint (2026-10-15)
 

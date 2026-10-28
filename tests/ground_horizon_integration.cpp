@@ -3,6 +3,7 @@
 #include "frontend/native_practice.hpp"
 #include "hwvideo/wide_scene.hpp"
 #include "horizon_side_reference.hpp"
+#include "ground_correction_reference.hpp"
 #include <fstream>
 #include <filesystem>
 #include <iostream>
@@ -57,12 +58,55 @@ int main()try {
     std::array<uint64_t,3> side_counts{};
     for(unsigned width:{358u,398u}){stage6_scenes.push_back(std::make_unique<Presentation::WideScene>(roms,width));stage6_plain.push_back(std::make_unique<Presentation::WideScene>(roms,width));}
     unsigned triangle_witnesses=0,quadrant_crossings=0;uint8_t previous_angle=0;
+    unsigned cache_cases=0;
     for(unsigned f=0;f<420;++f){GameControls c;c.throttle=1;if(f>=120)c.stick_x=((f-120)/120)%2?1:-1;
         original.advance(c);enhanced.advance(c);auto a=original.frame(),b=enhanced.frame();
         require(a.info.number==b.info.number&&a.info.time_ns==b.info.time_ns&&
             std::equal(a.pixels.begin(),a.pixels.end(),b.pixels.begin(),[](auto p,auto q){return p.r==q.r&&p.g==q.g&&p.b==q.b;}),"stage 6 ground observer changed native RGB/time");
         require(original.take_audio()==enhanced.take_audio(),"stage 6 ground observer changed native PCM");
         const auto scene=enhanced.wide_scene();require(scene.ready&&!scene.clips.empty(),"stage 6 scene missing");
+        if(f%30==0)for(const auto& clip:scene.clips)for(unsigned width:{320u,398u}){
+            auto bank=clip.sprites;std::vector<int> anchors;
+            if(width==398){anchors.resize(bank.size()/16);for(unsigned i=0;i<anchors.size();++i)anchors[i]=int((i*37+f)%398)-39;}
+            unsigned selected=0;
+            for(unsigned slot=0;slot<bank.size()/16;++slot){
+                std::array<uint16_t,8>d{};for(unsigned i=0;i<8;++i)d[i]=uint16_t(bank[slot*16+2*i])<<8|bank[slot*16+2*i+1];
+                if(d[0]&0x8000)break;
+                if(!(d[0]&0x5000)&&family.matches(d))++selected;
+                else bank[slot*16]|=0x50;
+            }
+            if(!selected)continue;
+            std::vector<uint8_t> pens(width*224),marks(width*224);
+            std::vector<uint16_t> indices(width*224,0x1700);
+            const int left=-int((width-320)/2);
+            Presentation::decode(bank,{roms.sprites.rom,roms.sprites.length},0,223,side_assets,
+                [&](int x,unsigned y,uint16_t word,auto){pens[y*width+unsigned(x-left)]=word&15;},left,left+int(width)-1,anchors);
+            Presentation::GroundHorizon::Profile expected(width);
+            for(unsigned y=0;y<224;++y)for(unsigned x=0;x<width;++x)if(pens[y*width+x])expected.pixel(x,y,pens[y*width+x]);
+            expected.measured=true;
+            auto reference=indices;const auto normal=family.normal(uint8_t(clip.roll));
+            TestReference::ground_correction(reference,marks,clip.road,clip.top,clip.bottom,normal[0],normal[1],expected,left,clip.palette);
+            family.apply(indices,marks,clip.road,4,clip.sprites,{roms.sprites.rom,roms.sprites.length},clip.top,clip.bottom,uint8_t(clip.roll),side_assets,width,left,anchors,clip.palette);
+            require(indices==reference,"ground cached classification differs from full bank uncached correction");
+            const auto& actual=family.cached_profile;
+            require(actual.upper==expected.upper&&actual.lower==expected.lower&&actual.left==expected.left&&actual.right==expected.right,"ground compact cache differs from full bank raster/anchors");
+            for(unsigned y=0;y<224;++y)require(actual.rows[y].direction()==expected.rows[y].direction(),"ground compact cache row ordering differs");
+            for(unsigned x=0;x<width;++x)require(actual.columns[x].direction()==expected.columns[x].direction(),"ground compact cache column ordering differs");
+            const auto key=family.cached_horizon;const auto key_anchors=family.cached_anchors;
+            // Unrelated sprite animation and hardware feedback must reuse the
+            // same horizon-only key; the source bank remains the native bank.
+            auto changed=clip.sprites;
+            for(unsigned slot=0;slot<changed.size()/16;++slot){
+                if(changed[slot*16]&0x80)break;
+                changed[slot*16+14]^=0x5a;changed[slot*16+15]^=0xa5;
+            }
+            for(unsigned i=0;i<indices.size();++i){indices[i]=uint16_t(0x1700+i%8);marks[i]=i%13==0?2:0;}
+            reference=indices;
+            TestReference::ground_correction(reference,marks,clip.road,clip.top,clip.bottom,normal[0],normal[1],expected,left,clip.palette);
+            family.apply(indices,marks,clip.road,4,changed,{roms.sprites.rom,roms.sprites.length},clip.top,clip.bottom,uint8_t(clip.roll),side_assets,width,left,anchors,clip.palette);
+            require(indices==reference,"ground geometry cache retained road fill/priority state");
+            require(family.cached_horizon==key&&family.cached_anchors==key_anchors,"ground feedback invalidated compact cache key");++cache_cases;
+        }
         const auto angle=uint8_t(scene.clips.back().roll);if((angle/64)!=(previous_angle/64))++quadrant_crossings;previous_angle=angle;
         for(unsigned index=0;index<stage6_scenes.size();++index){auto& renderer=stage6_scenes[index];renderer->render(scene.clips,scene.info.number,true);const auto v=renderer->view();
             stage6_plain[index]->render(scene.clips,scene.info.number,false);const auto plain=stage6_plain[index]->view();
@@ -80,6 +124,8 @@ int main()try {
         }
     }
     require(side_counts[0]>10000&&side_counts[1]>10000,"stage 6 measured side coverage missing");
+    require(cache_cases>=20,"ground compact cache coverage missing");
+    std::cout<<"Ground compact cache: "<<cache_cases<<" full-bank raster/ordering/anchor and feedback comparisons passed\n";
     std::cout<<"Stage 6 measured sides: sky="<<side_counts[0]<<" ground="<<side_counts[1]<<" ground without uniform donor="<<side_counts[2]<<"\n";
     require(triangle_witnesses==4&&quadrant_crossings>=4,"stage 6 fast-roll quadrant coverage missing");
     std::cout<<"Stage 6 horizon: 420/420 native RGB/PCM/time frames identical, zero skipped; "<<triangle_witnesses<<" sky-triangle witnesses across 358/398 pixels; quadrant crossings="<<quadrant_crossings<<"\n";

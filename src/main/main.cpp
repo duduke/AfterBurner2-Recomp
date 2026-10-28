@@ -34,9 +34,12 @@
 #include "frontend/native_crt.hpp"
 #include "frontend/native_slang.hpp"
 #include "frontend/native_metal_sprite_filter.hpp"
+#include "frontend/native_vulkan_sprite_filter.hpp"
 #include "frontend/native_player_aircraft.hpp"
 #include "frontend/controller_database.hpp"
 #include "frontend/native_rom_picker.hpp"
+#include "frontend/frame_timings.hpp"
+#include "frontend/frame_pacing.hpp"
 
 namespace
 {
@@ -259,17 +262,6 @@ int main(int argc, char** argv)try
 #else
         SDL_SetRenderVSync(renderer,1);
 #endif
-        if(profile) {
-            int vsync=0;SDL_GetRenderVSync(renderer,&vsync);
-            std::cout<<"Native renderer: "<<SDL_GetRendererName(renderer)
-                <<" backend="<<(gpu_device?SDL_GetGPUDeviceDriver(gpu_device):SDL_GetRendererName(renderer))
-                <<" continuation="<<XBoardCpuContinuation::backend_name()
-                <<" filters="<<(gpu_device?"gpu":
-#ifdef __APPLE__
-                    native_shader_backend?"metal-gpu":
-#endif
-                    "cpu")<<" SDL="<<SDL_GetVersion()<<" vsync="<<vsync<<'\n';
-        }
         return true;
     };
     std::string shader_status;
@@ -351,10 +343,14 @@ int main(int argc, char** argv)try
     std::unique_ptr<Frontend::GPUSpriteScaler> gpu_scaler;
 #ifdef __APPLE__
     std::unique_ptr<Frontend::NativeMetalSpriteScaler> metal_scaler;
+#elif defined(AB2_NATIVE_VULKAN_SPRITES)
+    std::unique_ptr<Frontend::NativeVulkanSpriteScaler> vulkan_scaler;
 #endif
     const auto accelerated_sprites=[&] {
 #ifdef __APPLE__
         if(metal_scaler)return true;
+#elif defined(AB2_NATIVE_VULKAN_SPRITES)
+        if(vulkan_scaler)return true;
 #endif
         return bool(gpu_scaler);
     };
@@ -362,12 +358,32 @@ int main(int argc, char** argv)try
         if(gpu_device)gpu_scaler=std::make_unique<Frontend::GPUSpriteScaler>(renderer);
 #ifdef __APPLE__
         else if(native_shader_backend)metal_scaler=std::make_unique<Frontend::NativeMetalSpriteScaler>(renderer);
+#elif defined(AB2_NATIVE_VULKAN_SPRITES)
+        else if(native_shader_backend) {
+            try {vulkan_scaler=std::make_unique<Frontend::NativeVulkanSpriteScaler>(renderer);}
+            catch(const std::exception& error) {std::cerr<<"Native Vulkan sprite filters unavailable: "<<error.what()<<"; using CPU composition.\n";}
+        }
 #endif
+        if(profile) {
+            int vsync=0;SDL_GetRenderVSync(renderer,&vsync);
+            std::cout<<"Native renderer: "<<SDL_GetRendererName(renderer)
+                <<" backend="<<(gpu_device?SDL_GetGPUDeviceDriver(gpu_device):SDL_GetRendererName(renderer))
+                <<" continuation="<<XBoardCpuContinuation::backend_name()
+                <<" filters="<<(gpu_device?"gpu":
+#ifdef __APPLE__
+                    metal_scaler?"metal-gpu":
+#elif defined(AB2_NATIVE_VULKAN_SPRITES)
+                    vulkan_scaler?"vulkan-gpu":
+#endif
+                    "cpu")<<" SDL="<<SDL_GetVersion()<<" vsync="<<vsync<<'\n';
+        }
     };
     const auto release_sprite_scalers=[&] {
         gpu_scaler.reset();
 #ifdef __APPLE__
         metal_scaler.reset();
+#elif defined(AB2_NATIVE_VULKAN_SPRITES)
+        vulkan_scaler.reset();
 #endif
     };
     create_sprite_scaler();
@@ -376,6 +392,7 @@ int main(int argc, char** argv)try
     SDL_Texture* sprite_texture=nullptr;
     unsigned sprite_texture_factor=0;
     uint64_t last_sprite_frame=UINT64_MAX;
+    auto last_sprite_filter=Frontend::SpriteFilter::none;
     const auto configure_sprite_texture=[&](const Frontend::Settings& value) {
         const bool detached=Frontend::is_wide(value)||value.hud!=Frontend::Hud::original||aircraft_renderer->available();
         if(detached && (!wide_renderer || wide_renderer->view().width!=Frontend::viewport_width(value)))
@@ -539,10 +556,16 @@ int main(int argc, char** argv)try
     double profile_core=0, profile_present=0, profile_filter=0, profile_scene=0, profile_crt=0;
     unsigned filter_frames=0;
     Frontend::Performance performance;
-    double accumulated_seconds = 0.0;
+    Frontend::FrameTimings frame_timings(SDL_getenv("AB2_FRAME_TIMINGS"),frame_limit);
+    const auto timing_phases=[&] {
+        Frontend::FrameTimings::Phases phases{profile_core,profile_scene,profile_filter,profile_crt,profile_present};
+        if(wide_renderer)std::copy(wide_renderer->profile_counters().begin(),wide_renderer->profile_counters().end(),phases.begin()+5);
+        return phases;
+    };
+    Frontend::FramePacing pacing(tick_seconds);
     bool running = true;
     auto reset_pacing=[&] {
-        accumulated_seconds=0; previous_counter=SDL_GetPerformanceCounter();
+        pacing.reset(); previous_counter=SDL_GetPerformanceCounter();
         profile_start=previous_counter;profile_frames=profile_displays=0;profile_core=profile_present=0;
         performance={};last_sprite_frame=UINT64_MAX;profile_filter=0;profile_scene=0;profile_crt=0;filter_frames=0;
     };
@@ -663,6 +686,8 @@ int main(int argc, char** argv)try
     if(shuffle_start){const auto plan=Shuffle::generate(game.stage_count(),shuffle_seed?*shuffle_seed:std::random_device{}());restart_board(0,false,&plan);}
     while (running)
     {
+        if(frame_timings.enabled())frame_timings.begin(timing_phases());
+        if(wide_renderer)wide_renderer->profile_scene(frame_timings.enabled());
         music_player->poll();music_player->update_preview();
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -736,7 +761,7 @@ int main(int argc, char** argv)try
         // presented immediately, then paced to the exact frame period.
         if (!game.paused())
         {
-            const bool measure=profile || menu->settings.stats!=Frontend::Stats::off;
+            const bool measure=profile || frame_timings.enabled() || menu->settings.stats!=Frontend::Stats::off;
             const auto core_start=measure ? SDL_GetPerformanceCounter() : 0;
             const double scene_before=primary_scene_ms;
             advance(input);
@@ -785,30 +810,44 @@ int main(int argc, char** argv)try
         }
         if(!shader_cached) {
             if(composed) {
-                const auto factor=Frontend::sprite_factor(menu->settings.sprites);
+                auto sprite_filter=menu->settings.sprites;
+#ifdef AB2_NATIVE_VULKAN_SPRITES
+                // Slang takes native rows. Exact 3:1 point/pixel-art reduction
+                // samples ScaleFX's unchanged centre subpixel, so its four
+                // analysis passes and expanded output cannot affect this input.
+                if(vulkan_scaler && shader_capture && render_width==Frontend::viewport_width(menu->settings) &&
+                    menu->settings.scaling!=Frontend::Scaling::linear && sprite_filter==Frontend::SpriteFilter::scalefx)
+                    sprite_filter=Frontend::SpriteFilter::none;
+#endif
+                const auto factor=Frontend::sprite_factor(sprite_filter);
                 if(!accelerated_sprites() && (!sprite_texture || sprite_texture_factor!=factor))
                     throw std::runtime_error("Sprite texture configuration lost");
-                if(last_sprite_frame!=game.info().number) {
+                if(last_sprite_frame!=game.info().number || last_sprite_filter!=sprite_filter) {
                     const auto filter_start=SDL_GetPerformanceCounter();
 
                     const unsigned cloud_alpha=menu->settings.clouds?160:255,trail_alpha=menu->settings.trails?112:255,explosion_alpha=menu->settings.explosions?Presentation::explosion_opacity:255,afterburner_alpha=menu->settings.afterburner?Presentation::afterburner_opacity:255;
                     if(gpu_scaler) {
-                        sprite_texture=gpu_scaler->compose(planes.background,planes.sprites,render_width,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha);
+                        sprite_texture=gpu_scaler->compose(planes.background,planes.sprites,render_width,SCREEN_HEIGHT,sprite_filter,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha);
                         if(!Frontend::apply_texture_settings(sprite_texture,menu->settings))throw std::runtime_error(SDL_GetError());
 #ifdef __APPLE__
                     } else if(metal_scaler) {
-                        sprite_texture=metal_scaler->compose(planes.background,planes.sprites,render_width,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha);
+                        sprite_texture=metal_scaler->compose(planes.background,planes.sprites,render_width,SCREEN_HEIGHT,sprite_filter,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha);
+                        if(!Frontend::apply_texture_settings(sprite_texture,menu->settings))throw std::runtime_error(SDL_GetError());
+#elif defined(AB2_NATIVE_VULKAN_SPRITES)
+                    } else if(vulkan_scaler) {
+                        sprite_texture=vulkan_scaler->compose(planes.background,planes.sprites,render_width,SCREEN_HEIGHT,sprite_filter,planes.protected_pixels,scene.heads,scene.fragments,cloud_alpha,trail_alpha,explosion_alpha,afterburner_alpha,shader_capture);
                         if(!Frontend::apply_texture_settings(sprite_texture,menu->settings))throw std::runtime_error(SDL_GetError());
 #endif
                     } else {
                         auto foreground=planes.sprites,background=planes.background;
                         if(scene.ready){effect_background.assign(planes.background.begin(),planes.background.end());effect_pixels.resize(planes.sprites.size());for(size_t i=0;i<effect_pixels.size();++i)effect_pixels[i]=Presentation::foreground(scene.fragments,scene.heads[i],cloud_alpha,trail_alpha,&effect_background[i],explosion_alpha,afterburner_alpha);foreground=effect_pixels;background=effect_background;}
-                        const auto pixels=sprite_scaler.compose(background,foreground,render_width,SCREEN_HEIGHT,menu->settings.sprites,planes.protected_pixels);
+                        const auto pixels=sprite_scaler.compose(background,foreground,render_width,SCREEN_HEIGHT,sprite_filter,planes.protected_pixels);
                         if(!SDL_UpdateTexture(sprite_texture,nullptr,pixels.data(),render_width*factor*4))throw std::runtime_error(SDL_GetError());
                     }
                     profile_filter+=(SDL_GetPerformanceCounter()-filter_start)*1000.0/counter_frequency;
                     ++filter_frames;
                     last_sprite_frame=game.info().number;
+                    last_sprite_filter=sprite_filter;
                 }
                 SDL_RenderTexture(renderer,sprite_texture,nullptr,nullptr);
             } else {SDL_FRect center{float((Frontend::viewport_width(menu->settings)-SCREEN_WIDTH)/2),0,float(SCREEN_WIDTH),float(SCREEN_HEIGHT)};SDL_RenderTexture(renderer, texture, nullptr, &center);}
@@ -861,18 +900,18 @@ int main(int argc, char** argv)try
             {
                 uint64_t counter = present_end;
                 // Bound catch-up after a suspended window or debugger pause.
-                accumulated_seconds = std::min(tick_seconds * 4.0, accumulated_seconds + (counter - previous_counter) / counter_frequency);
+                pacing.elapsed((counter - previous_counter) / counter_frequency);
                 previous_counter = counter;
-                if (accumulated_seconds < tick_seconds)
+                if (pacing.delay()>0)
                 {
                     for (;;)
                     {
                         counter = SDL_GetPerformanceCounter();
                         const double elapsed = (counter - previous_counter) / counter_frequency;
-                        const double remaining = tick_seconds - (accumulated_seconds + elapsed);
+                        const double remaining = pacing.delay(elapsed);
                         if (remaining <= 0.0)
                         {
-                            accumulated_seconds += elapsed;
+                            pacing.waited(elapsed);
                             previous_counter = counter;
                             break;
                         }
@@ -880,8 +919,9 @@ int main(int argc, char** argv)try
                             SDL_Delay(1);
                     }
                 }
-                accumulated_seconds -= tick_seconds;
+                pacing.presented();
             }
+            if(frame_timings.enabled())frame_timings.finish(game.info().number,game.paused(),present_end,previous_counter,timing_phases());
             const auto now=previous_counter;
             const double seconds=(now-profile_start)/counter_frequency;
             if(seconds>=1.0) {
@@ -909,6 +949,7 @@ int main(int argc, char** argv)try
                              <<" audio_peak_buffer_ms="<<audio.peak_buffered*1000
                              <<" audio_peak_pending_ms="<<audio.peak_pending*1000
                              <<" audio_underruns="<<audio.underruns
+                             <<" audio_sdl_priming="<<audio.sdl_priming
                              <<" audio_reprimes="<<audio.reprimes
                              <<" audio_recoveries="<<audio.recoveries<<'\n';
                 }

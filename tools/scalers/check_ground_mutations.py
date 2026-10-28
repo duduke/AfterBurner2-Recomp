@@ -6,8 +6,8 @@ root=Path(__file__).resolve().parents[2]
 source=(root/'src/main/hwvideo/ground_horizon.hpp').read_text()
 mutations={
  'inferred axis vetoes measured sky':('if(rx||cy||!fallback)','if(!fallback)'),
- 'corner overwrites measured terrain':('!profile.ground(x,y,nx,ny)&&extend_plane','extend_plane'),
- 'corner overwrites measured sky':('!observed_sky(x,y)&&plane_max','plane_max'),
+ 'corner overwrites measured terrain':('<plane_min&&!profile.ground(x,y,nx,ny)','<plane_min'),
+ 'corner overwrites measured sky':('>plane_max&&!observed_sky(x,y)','>plane_max'),
  'missing flat-field donor':('if(fill!=fields.end()&&fill->pen>=0)','if(false&&fill!=fields.end()&&fill->pen>=0)'),
  'mixed flat-field palette':('palette[sample]!=palette[indices[i]]','false'),
  'wrong flat-field control':('f.color==word(0x600+y)','true'),

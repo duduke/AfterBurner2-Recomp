@@ -21,6 +21,18 @@ MUTATIONS = (
      "hud_clips.clear();player_draws.clear();player_visibility.clear();ready=false;",
      "hud_clips.clear();player_draws.clear();player_visibility.clear();ready=true;",
      "partial primary scene published early"),
+    ("lost-native-hud-occlusion",
+     "hud_words=native_words;",
+     "hud_words=hud_raw;",
+     "primary clip HUD occlusion differs"),
+    ("stale-cached-palette",
+     "colors[i]=argb(palette.pen(i));",
+     "colors[i]=0xff000000;",
+     "primary clip background differs"),
+    ("lost-cached-effects-palette",
+     "colors[i+palette.num_entries()]=argb(palette.pen(i+palette.num_entries()));",
+     "colors[i+palette.num_entries()]=colors[i];",
+     "primary clip HUD palette differs"),
 )
 
 

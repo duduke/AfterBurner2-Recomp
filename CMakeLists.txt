@@ -50,7 +50,11 @@ elseif(WIN32)
   find_path(AB2_VULKAN_INCLUDE_DIR vulkan/vulkan.h
     HINTS "$ENV{VULKAN_SDK}/Include" "${CMAKE_SOURCE_DIR}/build/deps/Vulkan-Headers-1.4.341/include"
     REQUIRED)
-  add_library(ab2_slang STATIC src/main/frontend/native_slang_vulkan.cpp)
+  add_library(ab2_slang STATIC src/main/frontend/native_slang_vulkan.cpp src/main/frontend/native_vulkan_sprite_filter.cpp)
+  # Only native Windows entrypoints use this compositor. Portable Make builds
+  # retain their existing stub host and do not link the Vulkan implementation.
+  set_property(SOURCE src/main/main.cpp tests/native_shader_main_integration.cpp
+    APPEND PROPERTY COMPILE_DEFINITIONS AB2_NATIVE_VULKAN_SPRITES)
   target_include_directories(ab2_slang PRIVATE "${AB2_VULKAN_INCLUDE_DIR}")
 else()
   add_library(ab2_slang STATIC src/main/frontend/native_slang_stub.cpp)
@@ -146,12 +150,18 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_executable(frame_pacing_regression tests/frame_pacing_regression.cpp)
+    target_include_directories(frame_pacing_regression PRIVATE src/main)
+    add_test(NAME frame_pacing_regression COMMAND frame_pacing_regression)
     add_executable(native_rom_picker_regression tests/native_rom_picker_regression.cpp)
     target_include_directories(native_rom_picker_regression PRIVATE src/main)
     target_link_libraries(native_rom_picker_regression PRIVATE SDL3::SDL3)
     add_test(NAME native_rom_picker COMMAND native_rom_picker_regression)
     add_executable(romloader_regression tests/romloader_regression.cpp src/main/romloader.cpp)
     target_include_directories(romloader_regression PRIVATE src/main)
+    if(WIN32)
+      target_link_libraries(romloader_regression PRIVATE shell32)
+    endif()
     add_test(NAME romloader_zip COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_SOURCE_DIR}/tests/test_romloader_zip.py $<TARGET_FILE:romloader_regression>)
     add_executable(video_clip_regression tests/video_clip_regression.cpp src/main/hwvideo/hwroad.cpp src/main/hwvideo/hwtiles.cpp)
@@ -179,6 +189,9 @@ if(BUILD_TESTING)
     add_executable(sprite_filter_regression tests/sprite_filter_regression.cpp)
     target_include_directories(sprite_filter_regression PRIVATE src/main tests/scalers_reference)
     add_test(NAME sprite_filter_regression COMMAND sprite_filter_regression)
+    add_test(NAME fragment_mutations COMMAND ${CMAKE_COMMAND} -E env
+        "CXX=${CMAKE_CXX_COMPILER}" ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tools/scalers/check_fragment_mutations.py)
     add_executable(native_music_regression tests/native_music_regression.cpp src/main/frontend/music_decoder.cpp src/third_party/ymfm/ymfm_opm.cpp)
     target_include_directories(native_music_regression PRIVATE src/main)
     target_link_libraries(native_music_regression PRIVATE SDL3::SDL3 Threads::Threads)
@@ -247,6 +260,14 @@ if(BUILD_TESTING)
           COMMAND ${Python3_EXECUTABLE} tools/video/check_native_slang_mutations.py
           DEPENDS verify-native-slang WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
       elseif(WIN32)
+        add_executable(native_vulkan_sprite_filter_regression tests/gpu_sprite_filter_regression.cpp)
+        target_compile_definitions(native_vulkan_sprite_filter_regression PRIVATE AB2_NATIVE_VULKAN_SPRITES)
+        target_link_libraries(native_vulkan_sprite_filter_regression PRIVATE ab2_slang)
+        add_custom_target(verify-native-vulkan-sprite-filters COMMAND native_vulkan_sprite_filter_regression
+            DEPENDS native_vulkan_sprite_filter_regression WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        add_custom_target(verify-native-vulkan-sprite-mutations
+            COMMAND ${Python3_EXECUTABLE} tools/scalers/check_native_vulkan_mutations.py --build-dir ${CMAKE_BINARY_DIR}
+            DEPENDS verify-native-vulkan-sprite-filters WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
         add_custom_target(verify-native-slang-mutations
           COMMAND ${Python3_EXECUTABLE} tools/video/check_native_slang_vulkan_mutations.py --build-dir ${CMAKE_BINARY_DIR}
           DEPENDS verify-native-slang WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -788,6 +809,9 @@ if(BUILD_TESTING AND STAGE1_ROM_TESTS)
           COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy $<TARGET_FILE:native_shader_main_integration> tests/fixtures/native_slang/reference.slangp "" original
           COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy $<TARGET_FILE:native_shader_main_integration> tests/fixtures/native_slang/reference.slangp "" 16:9
           COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy $<TARGET_FILE:native_shader_main_integration> tests/fixtures/native_slang/reference.slangp "" 16:10
+          COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy $<TARGET_FILE:native_shader_main_integration> tests/fixtures/native_slang/reference.slangp "" original scalefx
+          COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy $<TARGET_FILE:native_shader_main_integration> tests/fixtures/native_slang/reference.slangp "" 16:9 scalefx
+          COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy $<TARGET_FILE:native_shader_main_integration> tests/fixtures/native_slang/reference.slangp "" 16:10 scalefx
           DEPENDS native_shader_main_integration WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} VERBATIM)
     endif()
     add_test(NAME native_menu_integration COMMAND native_menu_integration)
@@ -857,6 +881,9 @@ endif()
 
 if(BUILD_TESTING)
     add_executable(ground_horizon_regression tests/ground_horizon_regression.cpp)
+    add_executable(sprite_decode_regression tests/sprite_decode_regression.cpp)
+    target_include_directories(sprite_decode_regression PRIVATE src/main)
+    add_test(NAME sprite_decode_regression COMMAND sprite_decode_regression)
     target_include_directories(ground_horizon_regression PRIVATE src/main)
     add_test(NAME ground_horizon_regression COMMAND ground_horizon_regression)
 endif()
@@ -952,6 +979,14 @@ if(BUILD_TESTING)
         add_test(NAME wide_gpu_regression COMMAND wide_gpu_regression)
         set_tests_properties(wide_gpu_regression PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endif()
+endif()
+
+if(BUILD_TESTING)
+  add_executable(spatial_audio_sdl_regression tests/spatial_audio_regression.cpp)
+  target_include_directories(spatial_audio_sdl_regression PRIVATE src/main)
+  target_link_libraries(spatial_audio_sdl_regression PRIVATE SDL3::SDL3 Threads::Threads)
+  add_test(NAME spatial_audio_sdl_regression COMMAND spatial_audio_sdl_regression)
+  set_tests_properties(spatial_audio_sdl_regression PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 if(BUILD_TESTING AND AB2_OPENAL_TARGET)

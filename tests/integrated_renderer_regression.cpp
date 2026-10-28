@@ -44,6 +44,7 @@ int main()try{
         tiles.latch_frame_registers();
         Screen reference(320,224,palette,road,sprites,tiles),integrated(320,224,palette,road,sprites,tiles);
         Screen::ViewportLayers viewport(logical_width);
+        require(viewport.native_sprite_words().empty(),"unrendered primary viewport exposed a native sprite raster");
         std::vector<RGB888> expected(320*224,{11,22,33}),actual=expected;
         std::vector<uint16_t> layers(logical_width*224,0);
         std::vector<uint8_t> priority(layers.size(),0);
@@ -85,6 +86,8 @@ int main()try{
             require(std::memcmp(expected.data(),actual.data(),actual.size()*sizeof(RGB888))==0,"integrated native RGB differs");
             require(expected_bank==actual_bank,"native sprite feedback differs");
             require(std::equal(reference.sprite_words().begin(),reference.sprite_words().end(),integrated.sprite_words().begin()),"native sprite raster differs");
+            require(viewport.native_sprite_words().size()==reference.sprite_words().size() &&
+                std::equal(reference.sprite_words().begin(),reference.sprite_words().end(),viewport.native_sprite_words().begin()),"shared native sprite raster differs or changed other clip rows");
             if(display)feedback_witnesses+=actual_bank!=before;
             else require(actual_bank==before,"disabled display changed sprite feedback");
             reference_underlay(top,bottom,display);

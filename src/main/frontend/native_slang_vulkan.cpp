@@ -254,10 +254,12 @@ bool NativeSlang::end(uint64_t frame,double fps,double delta_us,bool clear_histo
     auto& p=*impl;if(!p.capturing){p.message="No Slang source frame is active";return false;}
     bool success=false;
     try {
-        checked(SDL_FlushRenderer(p.renderer),"Flush Slang source");
         // SDL 3.4's native Vulkan target unbind transitions to shader-read,
-        // submits the source commands, and waits for its batch. Both hosts use
-        // the same graphics queue; no image copies or CPU readback are needed.
+        // flushes and submits the source commands, and waits for its batch.
+        // A preceding SDL_FlushRenderer submits a separate batch and adds a
+        // redundant queue-idle wait. Keep drawing and the transition together.
+        // SDL and Slang use the same graphics queue; no image copies or CPU
+        // readback are needed.
         checked(SDL_SetRenderTarget(p.renderer,nullptr),"Submit Slang source");
         frame_vk_opt_t opt{};opt.version=api_version;opt.frame_direction=1;opt.clear_history=clear_history||p.clear_next;
         opt.total_subframes=1;opt.current_subframe=1;opt.aspect_ratio=float(p.logical_width)/224.f;
