@@ -1,0 +1,19 @@
+{
+  "$schema": "stage.schema.json",
+  "version": 1,
+  "name": "JUNGLE RUNWAY / TAKEOFF",
+  "objective": "takeoff",
+  "environment": "jungle",
+  "length": 2200,
+  "width": 45,
+  "start_distance": 0,
+  "start_height": 0,
+  "speed": 0,
+  "glideslope": 0.06,
+  "tanker_span": 50,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true
+  },
+  "layers": []
+}

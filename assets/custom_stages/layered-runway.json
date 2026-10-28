@@ -1,0 +1,75 @@
+{
+  "$schema": "stage.schema.json",
+  "version": 1,
+  "name": "LAYERED CUSTOM RUNWAY",
+  "objective": "landing",
+  "environment": "runway",
+  "length": 2200,
+  "width": 45,
+  "start_distance": 1400,
+  "start_height": 88,
+  "speed": 80,
+  "glideslope": 0.06,
+  "tanker_span": 50,
+  "seamless_takeoff": true,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true
+  },
+  "layers": [
+    {
+      "name": "distant clouds",
+      "order": 20,
+      "space": "screen",
+      "elements": [
+        {
+          "type": "rectangle",
+          "x": 105,
+          "y": 95,
+          "width": 150,
+          "height": 8,
+          "color": [
+            247,
+            225,
+            241,
+            90
+          ]
+        },
+        {
+          "type": "rectangle",
+          "x": 680,
+          "y": 105,
+          "width": 120,
+          "height": 6,
+          "color": [
+            221,
+            239,
+            251,
+            110
+          ]
+        }
+      ]
+    },
+    {
+      "name": "custom approach marker",
+      "order": 250,
+      "space": "world",
+      "elements": [
+        {
+          "type": "rectangle",
+          "x": -3,
+          "y": 8,
+          "z": 1100,
+          "width": 6,
+          "height": 2,
+          "color": [
+            29,
+            219,
+            177,
+            150
+          ]
+        }
+      ]
+    }
+  ]
+}

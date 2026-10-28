@@ -1,0 +1,20 @@
+{
+  "$schema": "stage.schema.json",
+  "version": 1,
+  "name": "JUNGLE RUNWAY / LANDING",
+  "objective": "landing",
+  "environment": "jungle",
+  "length": 2200,
+  "width": 45,
+  "start_distance": 1400,
+  "start_height": 88,
+  "speed": 80,
+  "glideslope": 0.06,
+  "tanker_span": 50,
+  "seamless_takeoff": true,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true
+  },
+  "layers": []
+}

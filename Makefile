@@ -2121,3 +2121,56 @@ test-license-notices:
 test: test-license-notices
 .PHONY: test-license-notices
 .PHONY: test-wide-ground-reference
+
+# Standalone enhancement experiment; optional ROM art/native continuation.
+build/interactive-stages-legacy: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tools/interactive_stages.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+-include build/native_obj/tools/interactive_stages.d
+interactive-stages: build/interactive-stages
+	./build/interactive-stages
+build/interactive_stages_regression: tests/interactive_stages_regression.cpp src/main/frontend/interactive_stages.hpp src/main/engine/game_controls.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
+test-interactive-stages: build/interactive_stages_regression
+	./build/interactive_stages_regression
+verify-interactive-stages: build/interactive-stages-legacy test-interactive-stages
+	python3 tests/test_interactive_stages_cli.py build/interactive-stages-legacy
+verify-interactive-stage-sprites: verify-interactive-stages
+	python3 tests/test_interactive_stage_sprites.py build/interactive-stages-legacy
+test: test-interactive-stages
+.PHONY: interactive-stages test-interactive-stages verify-interactive-stages verify-interactive-stage-sprites
+
+build/interactive_sequence_probe: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tools/interactive_sequence_probe.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
+-include build/native_obj/tools/interactive_sequence_probe.d
+build/interactive_sequence_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/interactive_sequence_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@
+-include build/native_obj/tests/interactive_sequence_integration.d
+verify-interactive-sequences: build/interactive_sequence_integration
+	./build/interactive_sequence_integration
+.PHONY: verify-interactive-sequences
+
+# Authored custom-stage framework; legacy native film checks remain above.
+build/interactive-stages: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tools/custom_stages.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+-include build/native_obj/tools/custom_stages.d
+build/custom_stage_regression: tests/custom_stage_regression.cpp src/main/frontend/custom_stage_variants.hpp src/main/engine/stage_catalog.hpp src/main/frontend/custom_stage_shadow.hpp src/main/frontend/custom_stage_tire_sound.hpp src/main/frontend/custom_stage_atmosphere.hpp src/main/frontend/custom_stage_json.hpp src/main/frontend/custom_stage_layers.hpp src/main/frontend/custom_stage.hpp src/main/frontend/custom_runway_art.hpp src/main/frontend/custom_stage_scenery.hpp src/main/frontend/custom_stage_guidance.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
+test-custom-stages: build/custom_stage_regression
+	./build/custom_stage_regression
+test: test-custom-stages
+.PHONY: test-custom-stages
+verify-custom-stages: build/interactive-stages test-custom-stages verify-custom-stage-art
+	python3 tests/test_custom_stages_cli.py build/interactive-stages --roms
+	python3 tests/test_custom_stage_bands.py
+	python3 tests/test_custom_stage_scene.py build/interactive-stages
+	python3 tests/test_custom_stage_variants.py build/interactive-stages
+.PHONY: verify-custom-stages
+
+# Isolated ROM-art presentation gate; captures stay ignored under build/oracle.
+build/custom_stage_art: tests/custom_stage_art.cpp src/main/frontend/interactive_stage_sprites.hpp src/main/frontend/custom_stage_view.hpp src/main/frontend/custom_stage.hpp src/main/frontend/custom_stage_atmosphere.hpp src/main/frontend/custom_stage_guidance.hpp build/native_obj/src/main/roms.o build/native_obj/src/main/romloader.o build/native_obj/src/main/hwvideo/hwsprites.o build/native_obj/src/main/hwvideo/hwpalette.o
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -MP -MF build/custom_stage_art.d $< build/native_obj/src/main/roms.o build/native_obj/src/main/romloader.o build/native_obj/src/main/hwvideo/hwsprites.o build/native_obj/src/main/hwvideo/hwpalette.o -o $@ $(LIBS)
+-include build/custom_stage_art.d
+verify-custom-stage-art: build/custom_stage_art
+	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/custom_stage_art
+.PHONY: verify-custom-stage-art

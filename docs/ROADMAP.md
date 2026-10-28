@@ -147,6 +147,71 @@ the decoder needs extending; in a data table it's expected.
 
 ## Current checkpoint (2026-10-24)
 
+Current custom-stage direction (2026-10-26): the standalone prototype now owns
+landing/service/departure cycles and refueling objectives, with editable stage files,
+a metric camera, ROM materials and approach assistance. The earlier native-film
+prototype and all its checks remain under `build/interactive-stages-legacy`.
+Runway stages now retain the original road artwork and native scenery sprites;
+the carrier keeps its original deck without a land-runway overlay. Widescreen
+references now inform dense orange-tree/palm fields, animated carrier waves,
+night refueling and resolution-scaled road bands. Successful landings now continue
+through ROM-vehicle ground service and a full-throttle departure; physical
+probe docking and ILS/diamond guidance replace the earlier proximity/HUD rules.
+Landing ILS bars now slide independently around a fixed center ring, following
+the supplied Ace Combat screenshot; each bar independently thickens when centered.
+The velocity marker stays separate. Tanker diamonds reserve a visible gap until
+physical capture, then lock together throughout automatic rearming.
+Ground and tanker servicing now reload missiles only. Tire smoke and live audio
+accompany touchdown/departure; the tanker now randomly cycles through all six
+native tanker sky/ground/scenery variants, with matched palettes and optional
+JSON pinning or a reproducible CLI seed. The carrier retains its classic saturated colors and native
+wave appearance, with a short, connected JSON-colored horizon blend.
+ROM wheel-smoke sprites and all five aircraft pitch poses now follow landing
+braking/input on every surface, with synthesized tire chirp and friction.
+A soft aircraft shadow now follows altitude and clips to the runway/deck.
+Tanker flight now has pitch animation and no escort aircraft. Its docking frame
+stays independent of discrete aircraft poses; pitch displacement matches landing
+and gentle left banks retain consistent mirroring. Takeoff exhaust retains the
+native takeoff geometry with subtle brightness pulsing, removing clock-driven
+shape jumps. Its ROM hose
+uses the original rear-right hatch offsets and meets an opaque player canopy
+pixel as diamond alignment acquires physical capture. Large translucent clouds
+now fill all custom-stage skies, with a JSON toggle. Original arcade HUD widgets
+and ROM-font text now replace the external debug panels. Instructions and live
+metric/missile readings sit inside the playfield; HUD snapshots retain native
+widget entries/palettes while custom JSON can hide the built-in HUD.
+See [custom-stage instructions](INTERACTIVE_STAGES.md). This authored extension
+does not change the ordered arcade acceptance tasks below.
+Custom-stage presets now load versioned JSON with a published schema. A separate
+RGBA compositor accepts dynamic layer/element lists, full-color external images
+and repeated tile grids without X-Board layer, sprite-pool or palette limits.
+
+Earlier interactive-stage experiment (2026-10-26), retained as legacy: a standalone native
+[refueling / landing practice prototype](INTERACTIVE_STAGES_LEGACY.md), with ROM-free fallback, now
+offers authored pitch/bank/throttle challenges, docking transfer, flare and
+landing outcomes, pause, retry and challenge switching. The user selected
+standalone practice first. Its isolated native continuation does not change
+normal-run arcade progression or close transition/fidelity acceptance.
+Model and bounded SDL evidence are recorded in
+[ENGINE_NOTES](ENGINE_NOTES.md#standalone-interactive-stages-prototype-2026-10-26).
+The prototype now uses reversed aircraft pitch controls: Down/pull back raises
+the nose; Up/push forward lowers it.
+Carrier practice also has a wider touchdown envelope and a low-height flare
+assist, following the user's request for more forgiving landings.
+The standalone prototype now dresses both challenges with runtime-decoded
+original aircraft, tanker and carrier art when local ROMs are available;
+`--no-sprites` retains the ROM-free geometric presentation.
+Landing choices now include both original runway variants (Stage 5 autumn and
+Stage 13 jungle). Touchdown continues through native rollout/rearming, pauses
+at a full-throttle prompt, then completes native departure. Carrier practice
+adds an arranged service wait before its original takeoff. Tanker wing spacing
+and left/right mirroring now follow the native requests. See the same evidence
+record for exact comparison scope and remaining main-game integration work.
+The runway prompt now holds the last unlit native frame and releases buffered
+burner/departure frames on full throttle. ROM-rendered approach scenery and
+detached native aircraft poses share the continuation viewport, replacing the
+geometric-to-native scene switch; the ROM-free fallback remains available.
+
 Licensing maintenance (2026-10-26): the central
 [license inventory](../LICENSES/README.md) now retains dependency and legacy
 audio notices, Vulkan header terms and GCC runtime terms. Native Windows

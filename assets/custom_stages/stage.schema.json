@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afterburner2-recomp.local/custom-stage.schema.json",
+  "title": "After Burner custom stage (version 1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objective": {
+      "enum": [
+        "landing",
+        "takeoff",
+        "refuel"
+      ]
+    },
+    "environment": {
+      "enum": [
+        "carrier",
+        "runway",
+        "jungle",
+        "sea"
+      ]
+    },
+    "seamless_takeoff": {
+      "type": "boolean"
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rom_environment": {
+          "type": "boolean"
+        },
+        "ocean": {
+          "$ref": "#/$defs/ocean"
+        },
+        "player_shadow": {
+          "type": "boolean"
+        },
+        "tanker_variant": {
+          "oneOf": [
+            {
+              "const": "random"
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            }
+          ]
+        },
+        "clouds": {
+          "type": "boolean"
+        },
+        "hud": {
+          "type": "boolean"
+        }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/layer"
+      }
+    },
+    "length": {
+      "type": "number",
+      "minimum": 250,
+      "maximum": 10000
+    },
+    "width": {
+      "type": "number",
+      "minimum": 20,
+      "maximum": 200
+    },
+    "start_distance": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "start_height": {
+      "type": "number",
+      "minimum": -50,
+      "maximum": 2000
+    },
+    "speed": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 250
+    },
+    "glideslope": {
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 0.2
+    },
+    "tanker_span": {
+      "type": "number",
+      "minimum": 20,
+      "maximum": 100
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "environment": {
+            "const": "sea"
+          }
+        },
+        "required": [
+          "environment"
+        ]
+      },
+      "then": {
+        "properties": {
+          "objective": {
+            "const": "refuel"
+          }
+        },
+        "required": [
+          "objective"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "rectangle",
+            "image"
+          ]
+        },
+        "asset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "color": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        },
+        "repeat": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "image"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "asset"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "asset"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "elements"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "order": {
+          "type": "number"
+        },
+        "space": {
+          "enum": [
+            "screen",
+            "world"
+          ]
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/element"
+          }
+        }
+      }
+    },
+    "ocean": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sky": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        },
+        "haze": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        },
+        "water": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        }
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@
 | Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |
 | Select a starting stage or retry Practice | [Stage Select / Practice](PRACTICE_MODE.md) |
 | Shuffle stages while keeping stage 23 last | [Shuffle mode](SHUFFLE_MODE.md) |
+| Try standalone interactive refueling or carrier landing | [Interactive stages prototype](INTERACTIVE_STAGES.md) |
 | Configure sharp or custom HUD text | [HUD presentation](HUD_PRESENTATION.md) |
 | Configure CRT effects or external RetroArch presets | [CRT display](CRT_DISPLAY.md) |
 | Try or author the HD player-aircraft pack | [Player-aircraft prototype](SPRITE_REPLACEMENT.md) |

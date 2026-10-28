@@ -19,6 +19,17 @@ public:
         while(h.frames<end){h.step();h.deliver();}
     }
     const std::vector<RGB888>& pixels()const{return state->host.pixels;}
+    // Read-only road/sky export for authored-stage materials. This excludes
+    // tilemaps, text and sprites and never advances or mutates the board.
+    std::vector<uint32_t> terrain_material()const{
+        std::vector<uint16_t> indices(320*224);
+        state->road.render_background(indices.data(),320,224);
+        state->road.render_foreground(indices.data(),320,224);
+        std::vector<uint32_t> out;out.reserve(indices.size());
+        for(auto pen:indices){const auto c=state->palette.pen(pen&0x1fff);
+            out.push_back(0xff000000u|(unsigned(c.r)<<16)|(unsigned(c.g)<<8)|c.b);}
+        return out;
+    }
     std::vector<int16_t> take_audio(){auto out=std::move(state->audio);state->audio.clear();return out;}
     void capture_cockpit(bool enabled){if(enabled&&!capture_music_)throw std::runtime_error("cockpit export requires music capture");capture_cockpit_=enabled;if(enabled&&!state->sound.audio.spatial)state->sound.enable_cockpit({rom->soundcpu.rom,rom->soundcpu.length},{rom->maincpu.rom,rom->maincpu.length});if(!enabled)state->sound.disable_cockpit();}
     struct AudioPresentation {

@@ -101,7 +101,7 @@ backlog sections; new encounter systems also require content and balance work.
 | Optional 60 Hz gameplay updates | 4/5 | Adapt movement, acceleration, timers, firing, spawning, rounding and collision order; preserve original logic/display cadence as default |
 | Procedural environments and formations | 4/5 | Mission/art/behavior interfaces: night/searchlight/flak, sea-skimming naval assault, urban trenches, severe weather, varied entry angles/hazards and optional run mutators |
 | Special stages | 4/5 | New content and encounter systems: airborne fortress, ICBM interception, fleet flagship, megacity dash and typhoon interception |
-| Interactive landing/refueling | 4/5 | Verified transitions plus explicit optional pitch/bank/throttle docking or touch-and-go rules; current arcade sequences remain intact |
+| Interactive landing/refueling | 4/5 remaining | [Standalone native prototype](INTERACTIVE_STAGES.md) offers tanker docking, carrier and both runway variants, native landing/rearm/departure continuation and a full-throttle prompt, plus ROM-free fallback. Main-game integration still requires verified transitions and explicit result/return policy; current arcade sequences remain intact |
 | Local two-player wingman mode | 4/5 | Second player, camera/dual HUD, targeting, collisions, scoring, liveries, competitive statistics and optional friendly fire |
 | Networked co-op / rollback | 5/5 | Local multiplayer plus deterministic snapshots, synchronization, prediction and recovery |
 

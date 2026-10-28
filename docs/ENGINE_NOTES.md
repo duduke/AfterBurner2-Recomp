@@ -13493,3 +13493,1216 @@ their upstream tags. Python compilation and `git diff --check` pass.
 No gameplay code, ROMs or captures changed. No artifact was rebuilt or
 published: packaging requires a clean committed source tree and release gates;
 existing published previews retain their original notices.
+
+## Standalone interactive stages prototype (2026-10-26)
+
+The user selected standalone practice before normal-run integration.
+`frontend/interactive_stages.hpp` contains authored, deterministic 60 Hz
+enhancement rules for tanker rendezvous/docking and carrier approach/flare.
+`tools/interactive_stages.cpp` is a separate SDL executable with original
+geometric placeholder art, live alignment/speed/height/transfer guidance,
+briefings, success/failure/bolter outcomes, keyboard/gamepad control, pause,
+retry and switching. It reuses the existing input adapter and controller
+database. It neither constructs a GameSession nor accesses the translated
+board, ROM data, native score/lives, audio or recordings. Its constants are
+prototype choices, not inferred arcade behavior. See
+[usage and exact rules](INTERACTIVE_STAGES.md).
+
+Focused final model and executable checks pass at
+`build/workflow/20261026T092323.717947Z/01-verify-interactive-stages.log`.
+Input-only analog and quantized digital controllers complete both challenges.
+Other retained cases cover contact loss/reacquisition, overshoot, timeout,
+unflared/off-deck touchdown, bolter, deterministic replay, reset and invalid
+axis rejection. The actual SDL executable completes two 1,500-frame explicit
+demo runs, writes both 1152x720 BMPs, leaves an unstarted briefing frozen and
+rejects seven invalid CLI cases. No skips. Headless bounded runs ignore focus
+loss so SDL's dummy driver cannot pause them before execution; ordinary live
+practice pauses on focus loss and requires explicit resume.
+
+The complete ROM-free `test` profile passes on the final executable/model/test
+sources at `build/workflow/20261026T092432.184329Z/01-test.log` (91.98 seconds),
+including the retained regression/mutation coverage. No shared CPU, generator, scheduler,
+device, bus, game-session or native-sequence implementation changed, so no
+new literal-port oracle or Stage 1 integration gate is claimed or required
+for this standalone experiment.
+
+An actual macOS desktop-driver run also completes 500 bounded landing demo
+frames at prototype time 8.33333 seconds. Its approach image
+`build/oracle/interactive-stages/landing-approach.png` was inspected for layout,
+carrier/aircraft geometry, guidance and HUD readability. The ordinary sandbox
+cannot enumerate macOS displays; this bounded window check was run with the
+approved desktop permission. A subsequent unbounded interactive launch opens
+the practice briefing. Computer Use cannot bind this unbundled executable,
+so UI key-event automation and physical controller feel remain unverified;
+model input checks do not substitute for those checks. No ROM assets or
+generated images are tracked. Audio, main-menu integration, native transition
+observation and automatic normal-run interruption remain future work.
+
+Pitch-control follow-up (2026-10-26): the user requested reversed controls.
+The prototype now negates only physical stick Y at its input boundary:
+Down/pull back raises the nose and Up/push forward lowers it. Bank, throttle,
+the shared NativeInput adapter, native gameplay controls and model-positive
+nose-up semantics retain their previous behavior. The briefing, footer and
+usage table describe the new directions. Regression assertions exercise the
+actual boundary mapping and resulting opposite height/pitch changes, including
+preservation of horizontal/throttle/button inputs. The complete `test` pass
+is at `build/workflow/20261026T093907.789632Z/01-test.log` (87.20 seconds).
+The rebuilt executable's model/demo/CLI/screenshot checks also pass at
+`build/workflow/20261026T093907.789632Z/02-verify-interactive-stages.log`
+(34.53 seconds). The updated live prototype was relaunched; physical-device
+feel remains for the user to assess.
+
+Carrier-forgiveness follow-up (2026-10-26): the user requested easier landing.
+The authored carrier-only touchdown envelope expands from 6 to 12 units either
+side of centerline, 70–105 to 60–120 U/S, bank 0.25 to 0.5, descent 3 to 5 U/S
+and minimum nose-up pitch 0.15 to 0.05. The landing area extends from range
+0..-180 to +25..-260, including a small early-touchdown grace zone. The
+low-altitude slow-speed failure threshold changes from 65 to 58 U/S.
+Below height 12 with positive pitch, flare assist bounds descent to at least
+2.5 U/S: holding back can settle onto the deck rather than inadvertently
+climbing into a bolter. The normal pitch/speed dynamics outside that assist,
+reversed physical pitch mapping and refueling rules are retained.
+
+Briefing/guidance and the exact-rule documentation describe the new behavior.
+The model regression retains earlier analog/digital and negative cases and
+adds an input-only neutral-approach/full-back flare success. Directed authored
+policy cases accept combined offset/high-speed/moderate-bank/early touchdown
+and later-deck touchdown, while rejecting clear lateral misses, excessive
+speed and excessive bank. These are enhancement-policy checks, not MAME
+fixtures or an arcade fidelity claim.
+The complete ROM-free `test` suite passes on the final model/test sources at
+`build/workflow/20261026T094800.131769Z/01-test.log` (89.26 seconds), retaining
+all existing regression and mutation checks.
+The rebuilt model/demo/CLI/screenshot gate also passes at
+`build/workflow/20261026T094800.131769Z/02-verify-interactive-stages.log`
+(34.23 seconds). The updated live executable was launched directly into the
+carrier briefing for user testing; physical handling acceptance stays open.
+
+Original-sprite presentation follow-up (2026-10-26): the user requested the
+game's sprites in the standalone prototype. `InteractiveStageSprites` now
+loads the user's existing set through `Roms`/`RomLoader` and caches five
+transparent SDL textures using the unchanged `HWSprites` renderer and
+`HWPalette` DAC. Player neutral/gentle-bank roots come from main `$28C94`
+(neutral pitch index 2) and the initialized `$F2` colors from `$13F42/$2BF60`.
+Carrier hull `$19C70`/palette `$6F` is identified by `$108AC`. Tanker fuselage
+`$1D770`/palette `$46` and its mirrored wing pair `$1D780`/palette `$70` are
+identified by `$16892..$16910`. Static colors come from `$13B1C/$2EDF4`.
+No ROM bytes or exported pictures are added to source. Only the existing ROM
+loader, palette and sprite-renderer implementation files are additionally
+linked into the prototype; their sources are unchanged.
+
+Local `roms/` or its ZIP is detected automatically; `--roms` accepts an explicit
+directory/ZIP, and `--no-sprites` selects the retained ROM-free geometry.
+Detected/explicit invalid sets fail clearly. The full set is currently loaded
+although only main/sub/sprite regions are consumed. Texture ownership is
+scoped inside renderer lifetime, and decoded art remains valid after temporary
+ROM storage is released. Nearest filtering preserves the sprite pixels.
+Challenge input/rules remain independent of all art. The small player bank
+rotation, tanker assembly spacing, positions and scale are authored scene
+choices; native pitch/exhaust animation, dynamic palette/shadow behavior and
+camera/projection are not reproduced. The carrier uses its native hull view;
+reticle/hose guide, background and HUD are still prototype geometry.
+
+The complete ROM-free `test` suite passes at
+`build/workflow/20261026T095647.905397Z/01-test.log` (87.98 seconds).
+`verify-sprite-extraction` passes **2,931/2,931** unscaled pen comparisons,
+zero skipped, with all four retained nibble/end-marker/pitch/bank mutations
+rejected, at `02-verify-sprite-extraction.log` in the same workflow directory.
+This independently checks the reused decode path, not native sequence fidelity.
+
+Both refuel (frame 450, contact) and landing (frame 500, approach) ROM-sprite
+images were visually inspected under ignored `build/oracle/interactive-stages/`.
+The real macOS desktop driver also completes the 500-frame landing demo at
+prototype time 8.33333 seconds; its inspected image is
+`landing-sprites-desktop.png`. This requires the existing approved desktop
+permission because the ordinary sandbox cannot enumerate macOS displays.
+No new literal ROM port, board mutation or native sequence hook is introduced.
+The final `verify-interactive-stage-sprites` gate passes at
+`build/workflow/20261026T095647.905397Z/03-verify-interactive-stage-sprites.log`
+(68.09 seconds). It retains both complete 1,500-frame ROM-free demo successes,
+frozen briefing and seven invalid CLI cases, then completes both sprite demos,
+checks changes in the aircraft scene area rather than the header alone and
+rejects missing-ROM/conflicting-option inputs. Generated pictures remain
+ignored. The sprite-backed carrier briefing was relaunched for user testing.
+
+Runway/continuation/tanker follow-up (2026-10-26): the user's four notes are
+implemented in the standalone prototype. Tab/Y now cycles refuel, carrier,
+Stage 5 autumn runway and Stage 13 jungle runway; CLI names are `refuel`,
+`landing`, `runway` and `runway-jungle`. Successful touchdown enters rollout
+rather than a success modal. The revised `InteractiveStage` model retains a
+ROM-free rollout/rearm/full-throttle/takeoff fallback, with its previous
+approach tolerances and reversed pitch mapping intact.
+
+`InteractiveSequencePlayer` is a narrow, engine-owned isolated `XBoardGame`
+adapter. It boots through existing physical coin/start inputs; runways use the
+existing directed Practice stage entry. A passive scan finds the active
+`$1122E` owner at its state-4 ground pose (`$11428`), without assuming a pool
+slot or changing sequence RAM. After interactive touchdown it executes the
+original instructions for rollout, service vehicles, reload and departure.
+It witnesses `$9100` pending ammunition and waits for both pending and `$90FF`
+active to clear, then holds the board until throttle reaches 95%. This is an
+explicit enhancement pause; native departure resumes on full throttle. The
+native 16.768 ms frame interval is accumulated separately from the 60 Hz
+approach model, and native audio is drained without playback. A short scene
+fade introduces native RGB; native HUD bands are cropped for the standalone
+arranged missile count and power prompt. Reset/switch discard the isolated
+owner; main-game progression and the existing board/CPU/device implementations
+are unchanged.
+
+Carrier preparation stops its original startup just before deck arrival.
+That ROM sequence has no carrier servicing animation, so this variant adds
+an explicitly authored four-native-frame-per-missile service wait using the
+ROM's ammunition maximum before the prompt and original carrier takeoff.
+The arranged carrier count is UI state; it does not patch native ammunition.
+This does not claim an original carrier reload scene. Without ROMs, the
+fallback's 1.5-second rollout, 15-missile/s rearm and three-second takeoff are
+authored placeholders. Directed startup retains fresh first-stage history,
+not complete natural-credit state.
+
+Tanker composition was wrong in three ways: horizontal spacing, vertical
+spacing and which side was mirrored. Main `$167CE..$16846` projects the wings
+from +/-`$208` in X and +`$50` world Y; `$1690C` flips the left part only.
+Normalized placement is approximately +/-130 source pixels and +20 Y rather
+than +/-90/+5. Read-only Stage 3 discovery observes body flags `$812F` at
+(-5,-64), right wing `$812F` at (302,-16) and left `$A12F` at (-312,-16),
+confirming sign, separation and vertical offset. The corrected composite was
+visually compared with the original board's Stage 3 tanker image. The retained
+discovery tool `interactive_sequence_probe` writes metadata and PPMs beneath
+`build/oracle/`; it is not an independent MAME oracle.
+
+The new native-wrapper gate passes at
+`build/workflow/20261026T102122.296339Z/01-verify-interactive-sequences.log`
+(86.92 seconds): **2,396/2,396 native RGB frames identical, zero skipped**
+against separate direct-board executions. All three surfaces witness rollout,
+rearm, ready and takeoff, hold their exact frame/image identity through 120
+partial-throttle calls and complete departure after full throttle. This is a
+wrapper differential, not fresh independent MAME evidence. Existing model
+cases are retained, with both new runway variants and explicit post-rearm
+power-gate checks added.
+
+Complete local `test` passes at `02-test.log` in that directory (84.19 seconds).
+Complete `verify-stage1` passes at `03-verify-stage1.log` (554.20 seconds),
+including its retained integration, wide-stage, presentation/audio/lifecycle
+checks; the dummy-display shader check reports its expected unavailable Metal
+backend and uses the normal display fallback. The unchanged-decoder gate at
+`04-verify-sprite-extraction.log` passes **2,931/2,931**, zero skipped, retaining
+all four rejected nibble/end-marker/pitch/bank controls. No full `oracle-test`,
+release, whole-credit or physical-controller acceptance is claimed for this
+local enhancement increment.
+
+The first four-choice executable gate passes at `05-verify-interactive-stage-sprites.log`
+in that workflow directory (223.21 seconds): four ROM-free demo completions,
+four ROM-backed completions, four scene-area image changes, all previous CLI
+negative cases, missing-ROM/conflicting-option rejection and a held, fully
+rearmed runway prompt. The final HUD crop was then adjusted to native rows
+28..187 and retested separately; that earlier executable log does not cover
+the final crop. Core/model/native-wrapper sources are unchanged across that
+presentation adjustment, so their scoped passes above remain applicable.
+
+An actual macOS desktop-driver run of the rebuilt final source reaches the
+runway's ready phase after 1,500 prototype frames with 100/100 missiles and
+holds there. `build/oracle/interactive-stages/runway-prompt-desktop.png` was
+inspected for the full-throttle message, native animation scene and removal of
+duplicate native HUD bands. The earlier review image
+`tanker-fixed-review.png` confirms the corrected wing joins/orientation against
+`probe3/150.png`. Physical button/controller feel remains for the user to
+assess; Computer Use cannot bind this unbundled SDL executable.
+The final-source executable gate passes at
+`build/workflow/20261026T104016.349538Z/01-verify-interactive-stage-sprites.log`
+(224.05 seconds), retaining all four choices and the held takeoff-prompt case.
+The rebuilt discovery tool is recorded at `02-build_interactive_sequence_probe.log`
+(29.87 seconds); direct CLI checks reject malformed stages and destinations
+outside `build/oracle` before generating images. Python compilation, new-file
+whitespace/newline checks and `git diff --check` pass. The final runway briefing
+was opened for user testing. No ROM/capture files are tracked or committed.
+
+Pre-burner prompt and continuous ROM scenery follow-up (2026-10-26): the user
+correctly reported that the prior takeoff prompt appeared after automatic
+afterburner had already started. The ROM overlaps its last reload ticks with
+that flame animation, so waiting only for `$9100/$90FF` was too late visually.
+The new passive descriptor observation checks active, published palette-$80
+exhaust entries (assigned by `$122BA`) at the actual native layer frontier,
+before composition. An initial instruction-only `$122E6` probe missed the
+register-only producer phase; the new test rejected that attempt at
+`build/workflow/20261026T124954.671431Z/01-verify-interactive-sequences.log`.
+The published-descriptor observation replaces it; no CPU probe or shared
+execution implementation is changed.
+
+On the first burner frame the presentation retains its last unlit native RGB
+image, then queues every subsequent original frame while the real native reload
+finishes. The ready prompt therefore shows an unlit aircraft at full ammunition.
+Neutral/partial throttle cannot expose the queued burner frames. Full throttle
+replays the queue in order at the native frame interval, then continues the
+live original board. This retimes presentation only: native instructions,
+ammunition, source frame pixels and bus/device state are not patched. The queue
+is bounded to 600 RGB frames and is not a save state. Carrier practice keeps
+its existing pre-departure service wait; its source startup already waits
+before its departure flames.
+
+`InteractiveSceneCapture` now supplies native approach scenery and a detached
+aircraft plane from the same partial-render frontiers. A separate `HWSprites`
+instance renders copied descriptors, preserving original road/tile priority,
+palette and scenery sprites without native player/exhaust duplication. It
+admits the ROM-selected player pitch/bank roots from both `$28C94` (16-byte
+bank records) and `$16B9E` (four-byte bank records), plus native Sub-ROM LODs.
+Tanker/hose roots come from `$16892..$16910` and `$166CE`'s nineteen records;
+the refueling backdrop removes that compound while retaining original wingmen.
+This also removes the duplicate rolled native player/hose visible during the
+first scenery review. No ROM pictures/tables are embedded in source.
+
+All four challenges capture their ROM scenery at preparation. Up to 256
+approach snapshots are retained in memory. Authored distance selects the
+native scene; adjacent background images blend and aircraft bounds interpolate
+with control offsets/rotation. The camera crop, sprite scale and palette
+sources remain consistent across approach, touchdown and departure. Scenery
+capture stops after preparation, while the lightweight exhaust observation
+remains active. SDL uploads immutable frames only when source identity changes.
+The geometric version remains the explicit ROM-free fallback. These authored
+presentation choices are not a new arcade flight/camera fidelity claim.
+
+The initial engine-wrapper/scenery gate, before the parked-camera refinement below, passes at
+`build/workflow/20261026T130851.719907Z/01-verify-interactive-sequences.log`
+(98.67 seconds): **2,396/2,396 underlying native RGB frames identical**, plus
+**2,753/2,753 continuation image buffers identical** to their recorded direct-
+board source frames before frontend crop/fade, zero skipped. All three landing surfaces complete rollout,
+reload, a 120-call partial-throttle hold and departure; both runway variants
+require a nonempty burner queue and reject any burner presentation before full
+power. The scenery check preserves over 80% of the original scene pixels while
+detaching a nonempty aircraft plane. This is a direct-board differential,
+not independent MAME evidence. The companion prototype build passes at
+`02-build_interactive-stages.log` (37.53 seconds).
+
+Fresh complete ROM-free `test` passes at
+`build/workflow/20261026T131434.036235Z/01-test.log` (98.14 seconds).
+Fresh unchanged-decoder validation at `02-verify-sprite-extraction.log` passes
+**2,931/2,931** frames, zero skipped, with all four retained controls rejected.
+The first end-to-end four-choice executable run passes at
+`03-verify-interactive-stage-sprites.log` (145.07 seconds), including four
+ROM-free completions, four 2,400-frame ROM-backed completions, scene-image
+changes and a 100/100 ready prompt with `burner_visible=0`. The final on-screen header
+scene-label cleanup is rechecked separately below. Native-wrapper/model sources
+are unchanged by that final presentation adjustment.
+
+Original-board Stage 1 evidence is reused from
+`build/workflow/20261026T102122.296339Z/03-verify-stage1.log` (554.20 seconds):
+its test sources, transitive board/device/decoder sources, fixtures, compiler
+options and capture instrumentation are unchanged. The new isolated scene and
+presentation consumer is covered by the fresh native-wrapper and executable
+checks above; this is not a new whole-host or full-oracle acceptance pass.
+No shared port, scheduler, device, bus or original main application changed.
+
+Final visual review exposed an additional handoff problem: state 4's gear pose
+still uses the aerial approach camera, even when its object Y reaches `$F0`.
+The preparation boundary now uses `$114B2..$114C4`'s explicit state-8 parked/
+service countdown. The approach tape therefore includes the native descent
+and ground arrival, so its endpoint joins the service/departure scene without
+the previous aerial-to-ground change after the prototype declared touchdown.
+Snapshots are sampled every two native frames, with the exact final pose also
+retained; the 256-shot cap and frontend interpolation remain in place.
+
+The final-source native-wrapper gate passes at
+`build/workflow/20261026T133246.814435Z/01-verify-interactive-sequences.log`
+(88.69 seconds): **1,808/1,808 underlying native frames** and **2,165/2,165
+continuation image buffers** identical to direct-board source frames, zero
+skipped. These comparison windows begin at the later parked handoff; the
+earlier aerial/landing interval is now part of the ROM-rendered approach tape.
+No retained oracle fixture, mutation or earlier log was removed. This is not
+a claim of unchanged comparison-window coverage or fresh MAME acceptance.
+
+The final executable gate passes at `02-verify-interactive-stage-sprites.log`
+in that directory (168.44 seconds), retaining all four ROM-free and ROM-backed
+completions and the fully rearmed, unlit prompt hold. The earlier on-screen
+header-label cleanup also passed at
+`build/workflow/20261026T132347.783015Z/01-verify-interactive-stage-sprites.log`
+(180.52 seconds). Fresh `test`/decoder results and the explicitly scoped reuse
+of unchanged Stage 1 dependencies above remain applicable.
+Final-source native-window review at 600 approach frames is retained as
+`build/oracle/interactive-stages/runway-seamless-approach-desktop.png`: the
+runway/scenery and detached native aircraft now reach the ground-view endpoint
+before the handoff. The final executable gate's fully rearmed, visibly unlit
+prompt is `runway-full-throttle-prompt-final.png` in the same directory. The
+earlier aerial-camera and pre-burner review images are retained as historical
+diagnostics. Final source/object timestamps were checked, Python compilation
+and new-file whitespace/newline checks pass, and `git diff --check` passes.
+Runway practice was reopened with the final build. No ROM/capture is tracked,
+no release/commit was made, and physical-controller feel remains unverified.
+
+## Authored custom-stage framework (2026-10-26)
+
+The user's revised direction supersedes native-film continuation as the primary
+prototype. `tools/custom_stages.cpp` now builds `build/interactive-stages`;
+`tools/interactive_stages.cpp` remains `build/interactive-stages-legacy` with its
+original CLI, ROM-art and native-continuation checks. No fixture or mutation was
+removed. The main arcade executable's stage transitions and flight rules are
+unchanged.
+
+`frontend/custom_stage.hpp` owns a fixed-60-Hz authored model and strict stage
+configuration reader. Seven presets/examples cover carrier/autumn/jungle
+landings, their independent departures and tanker refueling. Landing continues
+through braking to a full stop and never starts a departure. Takeoff starts cold,
+waits for full power, accelerates and needs pullback to rotate. The ready prompt
+changes to the build-speed message in the same tick that exhaust becomes enabled.
+Pitch inversion remains at the input boundary. Carrier landing allows 14 meters
+of lateral error, five meters/second of descent, and low-height flare assistance.
+Defaults are editable prototype proportions, not assertions about real aircraft.
+
+`StageCamera` projects common metric world coordinates. An 18-meter fighter
+span at 55 meters behind the camera and focal length 480 produces approximately
+158 logical pixels; a 50-meter tanker assembly scales by its depth instead of
+clamping to the previous oversized billboard. Runways are 2200 by 45 meters;
+the carrier deck is 300 by 70. Deck/pavement meshes, runway markings, HUD,
+camera and kinematics are authored, while original F14/carrier/tanker/crew,
+exhaust, apparatus and road materials are decoded from the user's local ROMs.
+This remains 2.5D; the carrier hull uses the original single rear-view image.
+
+`InteractiveStageSprites` opts into additional custom-stage art explicitly;
+legacy callers retain their previous constructor behavior. Main `$1686A`
+selects the deployed apparatus from nineteen eight-byte records at `$166CE`:
+entry 9's Sub frame is `$1D820`, palette `$8C`. It includes the actual hose and
+nozzle. The apparatus, fuselage and both mirrored wings use one depth scale.
+Its lower tip is aligned to the model's basket contact point. Exhaust uses the
+first five `$12416` records and palette `$80`, with the ROM's attachment offsets.
+Ground crew use the runway object's `$12A1A` frame source at their own human scale.
+
+A temporary original board prepares each environment once. The new const
+`XBoardGame::terrain_material()` renders only HWRoad background/foreground and
+resolves its palette into a separate image: no sprite, tilemap or HUD pixels and
+no board advancement. The board is discarded before custom simulation. Aerial
+sky and parked runway ground are sampled separately because the airborne road
+view can contain only sky. Stage 5/13 ground colors and Stage 1 sea are retained;
+custom perspective rows use those materials. Early experiments sampling the
+composited layer accidentally repeated HUD text; early aerial-only sampling also
+produced a sky-colored runway landscape. Both were corrected before final review.
+No native approach films or continuation frame queues drive custom gameplay.
+
+Approach assistance is optional (H / gamepad X): a cross at the desired glide
+angle, lateral/height correction box, winged flight-path deviation circle and
+height-error ladder. Tanker contact also has a projected basket marker. The HUD
+uses prototype graphics and does not copy another game's art.
+
+Custom authoring uses strict `key=value` `.stage` files under
+`assets/custom_stages/`, with finite/bounded numbers, duplicate/unknown rejection,
+objective/environment checks and R/F5 reload. Fixed-frame CLI rendering draws the
+final requested frame only; simulation still advances exactly one 1/60-second
+tick per requested frame. Live rendering/pacing is unchanged. Local screenshots
+and logs remain in ignored `build/oracle/custom-stages/`; no ROM data is packaged.
+
+Validation: `build/workflow/20261026T145346.147949Z/02-test.log` passes the complete
+regression/mutation suite (90.18 s). `03-verify-interactive-sequences.log` passes
+three retained surfaces (90.18 s), including 1808/1808 raw RGB and 2165/2165
+buffered presentations, zero skips. The direct-board comparison now also checks
+that material export is stable, advances no frames, leaves native RGB unchanged
+and excludes native actors/HUD. This is direct-board evidence, not independent
+MAME. The initial custom executable gate passed at `01-verify-custom-stages.log`
+(156.38 s); final presentation refinements are rechecked in
+`build/oracle/custom-stages/final-cli.log`. These cover seven ROM-free completed
+demos, seven ROM-versus-geometric in-flight image comparisons, a cold carrier
+full-power hold, custom-file completion, eight invalid stage files, CLI rejection
+and missing ROM handling. Final integration result is recorded below.
+
+Fresh integration validation passes at
+`build/workflow/20261026T145346.147949Z/04-verify-stage1.log` (511.74 s), including
+all retained directed-stage/ratio, terrain, input, audio, attract, feedback and
+native center-frame comparisons and their existing mutation gates. The unchanged
+sprite decoder's earlier independent MAME extraction baseline remains
+2931/2931 matching, zero skips (`20261026T131434.036235Z/02-verify-sprite-extraction.log`);
+this change does not alter that decoder, DAC, ROM inputs or extraction tooling.
+No new full-oracle, release, whole-credit or acceptance-milestone claim is made.
+
+Manual final scene review covers runway flare, carrier approach, deployed tanker
+apparatus/nozzle and takeoff exhaust. Representative final captures are
+`build/oracle/custom-stages/runway-near-final.png`, `carrier-final.png` and
+`refuel-final.png`. The updated interactive executable was opened on runway
+landing. Stage files and usage are documented in `docs/INTERACTIVE_STAGES.md`.
+
+Final command gates pass at `build/workflow/20261026T150831.079515Z/`:
+`01-verify-custom-stages.log` (54.67 s) checks the final executable, all seven
+objectives/art comparisons, cold departure and retained invalid-input fixtures;
+`02-verify-interactive-stages.log` (97.44 s) rebuilds the renamed legacy binary
+and retains its four completed SDL demos, screenshots, frozen briefing and seven
+CLI rejections, plus its full analog/digital model suite. `git diff --check`
+and stage/example/legacy command-link inspection also pass. Full native RGB,
+regression/mutation and stage-one evidence above applies to the unchanged final
+shared core; subsequent refinements affected only custom rendering and docs.
+
+## Original custom-stage runway and scenery restoration (2026-10-26)
+
+The user identified missing scenery and the generated runway covering the
+carrier. Both were presentation omissions in the new custom-stage renderer.
+ROM mode now samples the original parked HWRoad pavement, edges and stripe
+pixels into `CustomRunwayArt`; no replacement markings or pavement colors are
+painted. Each source row is deprojected between the native runway edges into a
+reusable strip. The custom metric camera projects it by scanline. An initial
+quad implementation bent stripes along affine triangle diagonals; scanline
+projection removes that distortion. ROM-free fallback geometry remains explicit.
+
+Carrier rendering has a separate branch: only the complete original `$19C70`
+image supplies deck, markings, bridge, parked jets and hull. No land-runway
+texture, pavement polygon or added runway markings run in this branch. The
+close camera follows the original image's stern-to-bow deck rows so landing
+rollout and independent takeoff keep the F14 over the native deck rather than
+in front of its hull. This is authored 2.5D camera positioning, not a new port.
+
+During each environment's temporary native startup, Main `$8AF2` scenery objects
+supply their actual Sub-frame pointers, palette selectors and flip flags. Up to
+24 distinct frame/palette pairs per environment are decoded by the existing
+hardware decoder and palette DAC. Original rocks, trees, structures, towers and
+vehicles are placed alongside the runway with distance scaling and depth order.
+Positions and repetition are authored custom-stage scenery; native event/CPU
+behavior is unchanged. Main `$7650`'s observed `$1E7E0`/palette `$CC` flyby
+artwork supplies airborne sea scenery; land objects are excluded from water.
+`--no-scenery` supports paired visual comparisons without changing HUD or physics.
+The discovery tool now additionally records original frame/palette/handler
+metadata and sprite-free terrain PPMs in its ignored output folder.
+
+Local discovery evidence: `build/oracle/custom-scenery-probe-5.log`,
+`custom-scenery-probe-13.log` and their matching directories. These are directed
+original-board observations, not independent MAME captures. Original source
+frame previews and final scene captures remain under
+`build/oracle/custom-stages/`. No ROM-derived imagery or ROM bytes are checked in.
+
+Validation adds original-row/color provenance and blank-frontier rejection to
+`test-custom-stages`. The executable gate retains every previous case and adds
+seven scenery-on/off pixel comparisons, actual scenery draw counts, original
+runway-use checks, carrier/runway separation and rejection of the old generated
+gray pavement in ROM scenes. Its scenery comparison includes the upper world
+viewport: the first lower-only region missed takeoff flyby aircraft above it,
+which correctly triggered a failing gate before the region was extended. The
+original lower-world artwork comparisons are retained unchanged.
+
+`build/workflow/20261026T164246.429378Z/01-test.log` passes the complete regression
+and retained mutation suite (91.89 s). Native CPU/bus/device, HWRoad/HWSprites/
+HWPalette, game-session execution, ROM inputs, build options and original-game
+rendering are unchanged. The complete stage-one pass at
+`build/workflow/20261026T145346.147949Z/04-verify-stage1.log` (511.74 s), and the
+independent 2931/2931 sprite-pen extraction baseline recorded above, are reused
+only for those unchanged dependencies. They are not presented as new runs or
+whole-game/release acceptance. Final custom/legacy presentation results follow.
+
+Final presentation gates pass at `build/workflow/20261026T164618.446452Z/`:
+`01-verify-custom-stages.log` (104.43 s) retains seven completions and all
+previous authoring/input cases, and passes original-runway/carrier isolation
+plus seven visible scenery-on/off comparisons. `02-verify-interactive-stage-sprites.log`
+(171.73 s) rebuilds and checks the retained legacy asset path: all four original
+SDL demos, all four ROM-backed demos/artwork changes, cold reload-complete hold,
+missing-ROM rejection and option rejection pass. No cases were removed.
+
+`build/oracle/custom-stages/carrier-overlay-rejection.log` proves the added
+pavement detector rejects the saved bad carrier image (7567 generated-gray
+pixels) and accepts the corrected scene (zero). Final manual captures include
+`runway-original-final.png`, `carrier-deck-final.png` (cold departure, F14 on
+the original deck), and `landing-original-final.png` (rollout; no runway overlay).
+The corrected native executable was opened on runway practice. Current guide
+links and `git diff --check` pass. Later carrier camera refinements changed no
+shared-core or model dependencies of the recorded full regression pass.
+
+## Widescreen look and custom scenery coverage (2026-10-26)
+
+Compared the custom stages visually with retained widescreen Stage 5/13 landing
+and Stage 3 refueling PPMs (`stage-5-210.ppm`, `stage-13-210.ppm`,
+`stage-3-210-358.ppm`) and `widescreen/edge-carrier-final.png`. The references have
+orange broadleaf/palm corridors reaching both edges, packed foam patches around
+the hull, and a black refueling backdrop. Copies for inspection and new local
+captures are under ignored `build/oracle/custom-stage-wide-look/`.
+
+`CustomSceneryField` now creates world-anchored cells over the whole visible
+frustum, including the wide edges. It uses native `$1DAA0`/palette `$12` orange
+trees and `$140F0`/`$14140`, palette `$D6`, palm clusters. The former 24-entry
+custom catalog cap is removed. Native object, descriptor and depth-bucket limits
+do not constrain these cached SDL instances. There are no land trees on water
+or across the runway clearance corridor. Frustum/subpixel culling remains.
+
+Water reuses the exact seven-frame Main `$3F918/$3F91C` table already consumed
+by `WideVisibility::extend_water`, with the observed native `$23` palette. Patches
+are smaller than the first trial, compressed with ground perspective, animated
+and drawn behind the complete original carrier. An early upright-billboard trial
+looked like high surf; flattening and resizing restored surface foam. Native
+water frames are excluded from generic land props, removing leftover blue water
+patches from the runway landscape. A representative frame draws about 4000 trees
+or 2500 wave sprites, rather than exhausting the arcade's sprite capacity.
+
+Runway material preparation now retains the original parked sunset/green sky,
+not the earlier transition's cyan sky. Refueling loads Stage 3 and waits for its
+original state-3 palette frontier. Its actor colors are read through the existing
+read-only layer callback and decoded with the native distance-palette table at
+`$16B8A`; the refuel pose comes from `$16B9E`. Small native fighter wingmen replace
+the sea flyby formation there. No native RAM, palette or timing is modified.
+
+Background and original-runway rendering now advance in three logical rows,
+from the existing 392-to-160 scene scaling, instead of generating one-pixel road
+bands. The original artwork/pavement/markings and independent custom stage rules
+are retained. Raster scaling follows the SDL logical viewport at higher output
+resolutions. Carrier deck/runway isolation remains covered.
+
+New layout checks cover beyond-256 instance fields, left/right coverage, runway
+clearance and stable world cells during camera movement. Existing executable
+cases now require more than 256 actual tree/wave draws for each applicable stage.
+`test_custom_stage_bands.py` independently examines saved background pixels;
+`band-pixels.log` records a minimum 38-pixel color run in the sampled corrected
+sea image and rejects the retained thin-band image (minimum 1 pixel). This check
+is part of future `verify-custom-stages` runs. All previous fixtures/cases remain.
+
+Final executable/model checks pass at
+`build/workflow/20261026T181847.659427Z/01-verify-custom-stages.log` (107.67 s).
+The complete regression/mutation suite passes at `02-test.log` (88.73 s).
+The legacy executable rebuild passes at `03-build_interactive-stages-legacy.log`
+(33.87 s). The added band-pixel check is separately recorded in
+`build/oracle/custom-stage-wide-look/band-pixels.log`; it was added to the target
+recipe after that executable run and run independently against its final image.
+Native CPU/bus/device, original-game rendering, HWRoad/HWSprites/HWPalette,
+compiler settings, ROMs and independent comparison fixtures are unchanged. The
+previous complete stage-one and independent sprite-pen baselines retain only
+that unchanged-core scope; no fresh full-oracle or release acceptance is claimed.
+
+Focused legacy compatibility also passes: the rebuilt legacy refueling demo's
+2400-frame BMP is byte-identical to the retained prior ROM-demo image. See
+`build/oracle/custom-stage-wide-look/legacy-pixel-comparison.log` and
+`legacy-refuel-default.log`. This pins the shared decoder/draw helper's default
+presentation while custom-only vertical wave scaling and live refueling colors
+are enabled separately. The updated prototype was reopened on autumn runway.
+Documentation links, Python syntax and `git diff --check` pass.
+
+## Connected custom landing/service/departure and guidance revision (2026-10-26)
+
+The user's latest twelve-point revision changes the earlier independent-stage
+plan: landing entries now continue through rollout, ground service and takeoff.
+Standalone departure entries remain for practice. `seamless_takeoff=false` retains
+the earlier landing-only behavior and its regression case; default/examples use
+true. The custom scene/model owns the whole cycle without starting or cutting
+to a native cinematic. A stable `surface_offset` prevents the former potential
+180/55-meter scene jump when switching from landing to departure coordinates.
+Carrier service is followed by a smooth deck-crew return to the catapult position,
+keeping enough deck for an authored takeoff based on the arcade startup pose.
+
+Ground service uses the ROM vehicle/crew art selected by `$12540/$1262E` and
+`$12A2A`: the fuel truck/jeep arrive, a hose connects, fuel and missiles increase,
+and the vehicles clear before full power is accepted. The service interval and
+vehicle paths are authored for this prototype, not a new literal ROM port.
+The chaser reads all three original frame/palette records at `$130C0` (autumn
+motorcycle) or `$130D8` (jungle car), selected by native `$13090`. It follows the
+landing/departure ground run. Carrier ground service shows deck crew and its
+fuel connection. Full throttle held through service cannot trigger early exhaust:
+release once, then reapply after the ready prompt. All three landing entries
+have a corresponding connected departure; the three standalone presets remain.
+
+Tanker apparatus remains the original `$166CE` deployed frame, palette `$8C`.
+The upper flap is now composited after the tanker body, over the aft-right
+fuselage rather than hidden behind it or placed over an engine pod. Its last
+opaque source pixel defines the nozzle tip. The physical player probe extends
+12 meters forward, 1.8 right and 0.3 up from the authored aircraft datum. Both
+rendering and capture use that exact world point; capture requires distance
+<=0.45 meters, matched speed and modest attitude. Coupling aligns/holds the
+connection for four seconds; large inputs disconnect it. Fuel transfer cannot
+complete at the old 14–24-meter floating proximity window. A visible metal probe
+joins the F14 to the nozzle. Final transfer screenshots report zero projected
+probe/nozzle error, with the upper hatch visible on the rear-right fuselage.
+
+Afterburner images still use the five native `$12416` frames. The previous
+per-frame Y offsets (1/7/12/17/25) were incorrectly treated as free center offsets,
+which made the flame bob. The loader now records each image's opaque attachment
+point and the aircraft engine hot spots. `anchored_stage_image` transforms both
+through the same scale, mirror and bank rotation, fixing the flame root at each
+engine for every frame. Ground/initial-departure poses use original `$10140`.
+
+`CustomStageGuidance` separates ILS guidance from aircraft attitude: the moving
+cross gives angular localizer/glideslope correction; the winged circle projects
+actual lateral/vertical velocity. Approach gates project the glideslope corridor,
+with a flare reference near the surface. Refueling instead has the requested
+large tanker diamond and an inner diamond growing with closure/alignment. The
+provided thumbnail reference was viewed in the browser; Reddit blocked the
+landing image with a humanity challenge, so that aid follows the user's explicit
+ILS/velocity-vector description. No challenge bypass or borrowed HUD bitmap was
+used.
+
+Carrier sea now has a pale cyan-to-white horizon band and horizontal wave
+patches with no random mirror or rotation. Vertical compression and a small
+raster-height floor prevent the earlier tall/rotating-looking wave figures.
+Jungle fields use the upright palm family only; tilted native palm props are
+excluded from the sparse layout. Ground environments no longer draw any
+sky aircraft; refueling retains its right-side fighter wingmen. Original static
+non-tree props come from the parked native `$8AF2` object snapshot, preserving
+signed X/depth coordinates under one common 16-units-per-meter conversion.
+The invented side-forcing and three repeated prop copies are removed. Extra
+forest/wave field placement remains an authored custom-stage addition.
+
+Validation adds complete three-environment service/departure timelines, smooth
+surface coordinates, refueled cold holds, held-throttle release gating, physical
+docking/rejection of the old distant window, ILS error signs/velocity alignment,
+diamond closure and transformed flame-root invariance. Existing cases remain,
+including the optional landing-only case. The executable gate additionally checks
+all three serviced ready poses (100% fuel, 100 missiles, no burner), a mid-service
+ROM image, successful physically connected transfer, five exhaust frame images,
+no landing sky traffic, carrier/runway isolation and original scenery/artwork.
+
+The complete regression/mutation suite passes at
+`build/workflow/20261026T190632.884279Z/02-test.log` (84.90 s). Final extended
+executable checks pass at `build/workflow/20261026T191708.860910Z/01-verify-custom-stages.log`
+(196.21 s), followed by the legacy rebuild at `02-build_interactive-stages-legacy.log`
+(32.26 s). The rebuilt legacy refuel image is byte-identical to the retained
+reference; see `custom-stage-wide-look/revised-legacy-pixels.log`.
+
+The final aft-right flap placement refinement was rebuilt separately at
+`custom-stage-wide-look/final-port-build.log` and replayed in
+`final-physical-refuel.log`/`.png`: coupled=1, 100% transfer and projected
+probe/nozzle error=0. It changes only custom tanker attachment coordinates.
+`revision-band-gradient-check.log` independently verifies 36 distinct horizon
+colors and rejects the retained one-pixel-band fault image. Manual review also
+covers ground-service vehicles/hose, cold carrier launch pose and changing
+exhaust frames in `attached-flame-130.png`/`attached-flame-146.png`.
+
+All native CPU/bus/device code, HWRoad/HWSprites/HWPalette, normal arcade stage
+logic, ROM inputs and compiler options remain unchanged. Earlier full stage-one
+and independent sprite-extraction evidence is reused only for those unchanged
+core dependencies, not as fresh whole-game/release acceptance. The prototype
+uses authored service timing, camera and docking rules with native artwork.
+
+
+## Custom-stage independent ILS bars (2026-10-26)
+
+The attached Ace Combat landing screenshot clarifies the custom HUD: a vertical
+localizer bar moves sideways and a horizontal glideslope bar moves vertically,
+with long capped arms around a fixed center ring. Replaced the short moving
+cross and approach rectangles accordingly. Both bars center on the ring at
+zero approach error; camera pitch does not move this datum. The separate
+winged flight-path marker still follows actual velocity. This is authored
+prototype presentation, with no change to arcade execution or ROM assets.
+
+Regression cases cover independent axes, both error directions, centered
+approach, off-scale bounds and camera-pitch independence. The focused suite
+and native build pass at `build/workflow/20261026T195655.262924Z/`. ROM-backed
+carrier/runway and high-approach captures were inspected under
+`build/oracle/custom-stage-wide-look/ils-independent-*.png` and
+`ils-high-approach.png`; these ignored captures remain local.
+
+The complete `test` regression/mutation target passes at
+`build/workflow/20261026T195736.657361Z/01-test.log` (95.95 s), including
+the additional opposite-direction and saturation assertions. `git diff --check`
+also passes. Earlier arcade/MAME evidence applies only to unchanged core
+dependencies; no new whole-game acceptance is claimed for this HUD change.
+
+
+## Custom stages: missiles-only service, smoke, audio and native backdrop (2026-10-26)
+
+Ground service keeps crew/rearming transport and the full-throttle departure,
+but removes fuel transfer, the fuel hose and the fuel-truck instance. Tanker
+contact also reloads missiles rather than fuel, consistent with the original
+RELOAD WEAPONS presentation. Fuel stays constant. The existing physical
+probe/nozzle and capture tolerances remain in use. Ground reloads still take
+the authored six-second loading interval inside the ten-second crew sequence;
+tanker loading takes four connected seconds and retains partial ammunition.
+
+Native discovery replays of Stages 9 and 18 were retained under
+`build/oracle/custom-stage-revision/native-stage{9,18}/`, with discovery logs
+in `custom-stage-wide-look/native-stage{9,18}.log`. Stage 9 provides the daytime
+tanker, pale sky, snowy ground and forest reference. The custom stage now
+extracts its settled palette and scenery instead of Stage 3's black night sky.
+Additional ground instances fill the wide view; the backdrop horizon sits
+below the aircraft and docking area. These placements remain authored.
+
+The road-only material excludes the original horizon SPRITE gradient. Main
+$10E6E and GroundHorizon identify palette E8 (pen 1 sky, pen 14 ground).
+The loader retains that live palette at the carrier snapshot; its brightest
+native gradient color drives the smooth blend ABOVE the horizon. A native
+pre-sprite column at x=16, outside HUD text, supplies the sky fill. The tanker
+uses the native E8 ground color for its snow surface, avoiding road-only seam
+artifacts. Road-band thickness and horizontal carrier waves are retained.
+
+Wheel contact resets the rollout clock. Two sets of alpha-faded radial smoke
+puffs expand and drift aft during braking; they are authored procedural
+presentation and do not change native sprite decoding or arcade execution.
+
+`CustomStageAudio` uses the existing standalone ArcadeAudio runtime for native
+ROM music ($91, MusicRouting), missile reload ($9B, Main $16CF4) and launch
+($EF, Main $104D2). The engine bed and tire friction are explicitly authored
+procedural audio. Playback is 48 kHz stereo, freezes/clears on pause, resets on
+retry, and supports M/--mute. Offline --frames checks skip playback;
+--audio-wav records deterministic PCM for tests. Captures remain ignored.
+
+Validation: complete regression/mutation target `test` passes at
+`build/workflow/20261026T201513.040464Z/01-test.log` (90.04 s). The final
+native build passes at `build/workflow/20261026T202157.022325Z/` (36.01 s),
+and the full custom-stage gate passes at
+`build/workflow/20261026T202324.520007Z/01-verify-custom-stages.log`
+(189.16 s). It retains all seven completions and prior cases and adds
+missiles-only service assertions, visible touchdown smoke, native forest
+coverage, decoded ROM audio energy, 50 ground reload cues, one touchdown and
+one launch cue, plus exact stereo WAV duration.
+
+Inspected images include `custom-stage-wide-look/rearm-smoke-final.png`,
+`rearm-stage9-accepted.png` and `rearm-gradient-accepted.png`. Pixel checks
+verify 25 gradient colors, monotonic shading with no raster gaps and immediate
+sea below the gradient. They reject the retained detached/striped gradient
+(`rearm-gradient-negative.log`) and original one-pixel-band fixture
+(`rearm-gradient-check.log`). Earlier verification runs were interrupted for
+the gradient repair; the final gate above completes cleanly. Audio capture
+`rearm-audio.wav` has 1,840,000 stereo frames at 48 kHz, peak 5333 and RMS
+653.3; the native audio device opened in the live prototype. Physical listening
+quality remains a user check. `git diff --check` passes.
+
+Native CPU/bus/device, sprite/road/tile compositors, sound-board runtime and
+ROMs were not changed. Earlier stage-one evidence
+`build/workflow/20261026T145346.147949Z/04-verify-stage1.log` and sprite
+extraction evidence `build/workflow/20261026T131434.036235Z/02-verify-sprite-extraction.log`
+are reused only for those unchanged core dependencies, not as fresh acceptance
+of the custom authored scenes.
+
+The retained legacy executable also rebuilds cleanly at
+`build/workflow/20261026T202650.053053Z/01-build_interactive-stages-legacy.log`
+(35.19 s). A fresh 2400-frame native-art refuel demo is byte-identical to the
+previous retained BMP; see `custom-stage-wide-look/rearm-legacy-comparison.log`.
+
+
+## JSON custom stages and modern scene compositor (2026-10-26)
+
+Supersedes the prototype's earlier key/value authoring format. All seven
+bundled presets are version-1 JSON documents and are now the source used by
+--stage/default startup, not just examples beside C++ defaults. --stage-file
+loads arbitrary JSON; R/F5 rereads it. The strict standalone parser rejects
+duplicate keys, bad types, nonfinite/invalid numbers, trailing data, malformed
+UTF-8 and invalid Unicode escapes. stage.schema.json describes the format;
+layered-runway.json demonstrates screen/world layers over the existing scene.
+Historical .stage inputs remain represented as a rejected-format test.
+
+CustomStageScene submits direct SDL geometry and full RGBA32 textures. Its
+layer/element vectors and repeated tile grids do not use Main/Sub object
+pools, native priority bits, indexed palette entries, tile codes, ROM LODs
+or the ROM frame decoder's image-size limits. Native artwork is an optional
+asset provider, not the custom scene's allocation/format contract. There is
+no fixed scene layer/sprite/tile count; memory, frame time, numeric precision
+and the host GPU's capabilities remain practical limits. Color is 8-bit per
+RGBA channel with alpha blending, not an indexed arcade palette.
+
+Layers have stable numeric ordering, screen/world positions, tint, alpha and
+rotation. PNG (SDL 3.4+) / BMP assets resolve relative to the JSON file.
+Element repeat counts describe tile grids, with visible-cell/subpixel culling
+before iteration. Built-in environment, guidance, aircraft/effects and HUD
+are composition landmarks; fractional numeric orders also work between them.
+presentation.rom_environment=false replaces the stock background and scenery
+with custom layers while retaining the practice objective and player. Flight
+physics validation ranges are independent of rendering capacity.
+
+No arcade execution, native decoder, compositor, sound runtime or ROM data
+was changed. Existing fixture and mutation coverage is retained, with the
+authoring rejection cases migrated to JSON and extended for syntax/version
+and rendering-resource validation. The new direct-render check uses 40
+layers, 600 explicit sprites, 4800 image tiles and a 1024-pixel true-color PNG,
+and independently checks alpha/order, color diversity and HUD-boundary
+placement in captured RGB. Generated images remain under build/oracle.
+
+Validation: `test` passes at
+`build/workflow/20261026T203709.532611Z/01-test.log` (93.95 s). The final
+`verify-custom-stages` passes at the same run's
+`02-verify-custom-stages.log` (225.06 s), including the native build, all
+retained CLI/ROM cases, JSON rejection cases and modern scene RGB checks.
+The stock carrier's JSON-driven image is byte-identical to its pre-migration
+reference; see `build/oracle/custom-stage-json/carrier-preserved-comparison.log`.
+The extra layered example also completes via the JSON CLI. `git diff --check`
+passes. C++ preset helpers remain only as model-test fixtures; the executable
+loads its active presets from disk. The JSON Schema is provided for editors;
+the C++ loader performs the runtime validation without an external dependency.
+
+Earlier full native stage-one and sprite-decoder evidence remains scoped to
+unchanged arcade dependencies; this renderer/parser work is isolated to the
+standalone custom-stage target and does not claim new whole-game acceptance.
+
+
+## Custom landing polish: ROM smoke, pitch poses and ocean haze (2026-10-26)
+
+Read-only ROM inspection is retained in build/oracle/landing-polish/main.bin
+and the two landing disassembly text files. Main $119A2 creates the paired
+wheel clouds; $11A1E selects Sub frame $164B0 / palette $EF and $11A38 grows
+the cloud with its zoom table. The custom renderer now uses that original
+silhouette at both main wheels for carrier, autumn and jungle landings,
+neutralizes its source tint to gray, and composites expanding/fading alpha
+instances. This supersedes the procedural radial smoke geometry. Placement,
+color treatment and duration are authored custom-stage presentation.
+
+The inspected landing path emits command $EE at $112D6/$112DA before the
+touchdown cloud sequence and $EF at $11500/$11502 for departure. No dedicated
+tire-squeal command was identified in the wheel-cloud routine. Rather than
+labeling an unverified command as a brake effect, CustomStageTireSound adds an
+authored, attack-smoothed rubber spin-up chirp with descending resonance and
+speed-dependent filtered friction through the existing audio mixer.
+
+Main $99E4/$9A0A selects pitch/bank frames through $28C94. All five pitch
+rows and six bank magnitudes are cached from the ROM; normalized authored
+pitch maps to those five rows. The old gear-proximity branch had overridden
+all airborne pitch, which explains the static landing pose. Gear proximity
+now leaves the airborne selection active; only a grounded aircraft retains
+its ground pose. Each selected image supplies its own exhaust attachment
+anchors, preserving the prior afterburner fix. Legacy player drawing is
+unchanged.
+
+The carrier no longer forces the ROM's white/electric-blue palette boundary.
+CustomStageOcean interpolates a desaturated sky through one shared horizon
+haze color into deeper foreground water; presentation.ocean in the carrier
+JSON files exposes sky/haze/water RGB triples. Native wave sprites retain
+horizontal animation, with deep-blue fill keyed transparent and distance-
+faded/tinted foam. This modern RGBA treatment is authored and has no effect
+on the normal arcade render or optional external JSON layers.
+
+The new ROM-backed verify-custom-stage-art gate independently compares wheel
+regions with/without smoke on all three surfaces, verifies neutral translucent
+cloud output, checks pitch response near gear-down height, and captures five
+distinct ROM pitch images. A pure model/audio check covers silent reset,
+non-clipping tire attack/decay and sky/sea continuity. The background pixel
+gate retains runway road-band thickness and the old thin-band fault fixture,
+while checking a continuous ocean gradient instead of imposing road bands
+on this smooth modern water surface. All earlier CLI cases remain retained.
+
+Validation: the complete `test` target passes at
+`build/workflow/20261026T210250.369675Z/01-test.log` (89.42 s), followed by
+the final `verify-custom-stages` at `02-verify-custom-stages.log` (203.28 s).
+That gate includes the new ROM-art checks, all seven completions, all three
+touchdown smoke captures, audio/WAV checks, five attached exhaust frames,
+strict JSON colors and the existing modern 40-layer/600-sprite/4800-tile checks.
+The original-focused art gate also passes independently at
+`build/workflow/20261026T205952.916131Z/01-verify-custom-stage-art.log`.
+
+Reviewed approach and touchdown images are retained in
+`build/oracle/landing-polish/carrier-approach-final.png`,
+`carrier-braking-final.png`, `runway-braking-final.png`, and the five pitch
+images from the art gate. The tire waveform unit check verifies attack/decay
+and safe amplitude; listening quality remains a user check. The new horizon
+has 24 distinct sky-gradient colors and 195 ocean-gradient colors in the
+measured column, with shared sky/sea haze and retained runway band checks.
+`atmosphere-pixels.log` also rejects the retained thin-band control, while
+`old-gradient-rejected.log` rejects the earlier striped/detached horizon.
+All captures/ROM data remain ignored. `git diff --check` passes.
+
+The normal arcade CPU/bus/device, native renderer and sound runtime are
+unchanged. Earlier native stage-one and extraction evidence applies only
+to those unchanged dependencies; the new presentation is an authored optional
+prototype, not new MAME/whole-game acceptance.
+
+The retained legacy prototype rebuilds at
+`build/workflow/20261026T210810.480396Z/01-build_interactive-stages-legacy.log`
+(35.39 s). Its fresh 2400-frame ROM-art refuel BMP remains byte-identical to
+the prior reference; see `landing-polish/legacy-comparison.log`.
+
+
+## Custom guidance feedback and tanker latch (2026-10-26)
+
+ILS localizer and glideslope bars now independently thicken from one to three
+logical pixels, including their end caps, inside a three-pixel centering
+window. Position/velocity guidance geometry remains unchanged. The header
+explains the bold state. Matching one axis does not bold the other axis.
+
+The tanker diamond aid formerly looked coincident before the physical probe
+reached the nozzle, and strong inputs could immediately break captured contact.
+The inner diamond now retains an eight-pixel visible gap until the existing
+0.45-meter physical capture, matched speed and attitude conditions succeed.
+Capture snaps the probe into its established contact geometry, locks both
+diamond centers/radii into one bold green outline and automatically rearms
+for four seconds. Stick/throttle commands are ignored during the latch;
+R/retry resets it. Fuel remains unchanged. Near-contact speed/attitude errors
+now prompt speed matching and level wings; the briefing states the correct
+12-meter probe spacing instead of the obsolete 14–24-meter proximity window.
+
+New regression cases retain the earlier no-distant-transfer check and add
+full-control disturbance through a complete latched reload, fixed physical
+contact, monotonic ammunition, reset and pre-capture visual-gap checks.
+The ROM-art gate compares bar thickness in captured pixels for both-centered
+and one-axis-only cases. It also compares the entire tanker world rectangle
+before/after 30 ticks of strong controls during captured rearming with the
+environment disabled, requiring identical foreground pixels so background
+motion cannot mask diamond/aircraft drift under the latch.
+
+This supersedes the earlier custom-stage break-contact behavior only. The
+normal arcade stage/sound/physics code and ROM assets are unchanged.
+
+Validation: focused model checks pass at
+`build/workflow/20261026T211307.683275Z/01-test-custom-stages.log`; final
+UI build and independent pixel/art checks pass at
+`build/workflow/20261026T211645.783259Z/` (36.27 s / 4.02 s). The complete
+`test` target passes at `build/workflow/20261026T211811.349799Z/01-test.log`
+(93.35 s), and its final `02-verify-custom-stages.log` passes (205.09 s),
+retaining every existing case and the new axis/lock checks.
+
+Native-art captures `landing-polish/ils-bold-rom.png` and
+`tanker-lock-rom.png` were inspected. The latter is in contact phase at tick
+1250 with coupled=1, probe/nozzle pixel error=0 and 64/100 missiles; fuel remains unchanged. Bare-background captures `ils-weight-0/1/2.bmp`
+and `tanker-locked/held.bmp` retain the independent pixel comparisons.
+`git diff --check` passes. Earlier MAME/native evidence remains limited to
+unchanged arcade dependencies; no new whole-game acceptance is claimed.
+
+
+## Restore classic carrier look with connected horizon blending (2026-10-26)
+
+The user prefers the earlier arcade presentation. Both carrier JSON presets
+again use bright cyan sky and saturated blue foreground water. The sky stays
+flat through its upper 60%, then transitions to a pale horizon; the sea
+transitions from that same color through its first 17%, then stays at the
+classic foreground blue. This retains the older broad color fields while
+fixing the disconnected/hard sky-water boundary and raster gaps.
+
+Native wave frames again decode with their original RGB/opaque blue fill,
+without the muted tint or foreground alpha reduction. Only their distant
+edge fades through a short band, avoiding blue sprite patches cutting across
+the horizon blend. Wave geometry/orientation, original carrier/deck art,
+landing controls, pitch poses, smoke, audio and ILS/tanker feedback are retained.
+
+The model check pins the flat upper sky and classic foreground alongside the
+shared horizon color. Pixel checks verify exact stock sky/sea colors, a
+smooth 46-color transition and existing runway-band coverage. The retained
+one-pixel-band fixture still fails its negative control. The restored look
+was reviewed in `build/oracle/landing-polish/classic-carrier.png` and the
+background-only `classic-horizon.png`. This is optional authored presentation;
+normal arcade rendering and ROM/CPU/device logic are unchanged.
+
+Validation: focused model/build passes at
+`build/workflow/20261026T212504.217547Z/` (2.84 s / 37.18 s), followed by
+the complete `test` target at
+`build/workflow/20261026T212627.386963Z/01-test.log` (93.16 s) and final
+`02-verify-custom-stages.log` (205.25 s). All retained objective, ROM-art,
+smoke/pitch/audio, ILS weight/lock, strict JSON and modern-layer cases pass.
+`git diff --check` passes. Earlier MAME evidence remains scoped to unchanged
+arcade dependencies, not fresh whole-game acceptance.
+
+
+## Projected player shadow for custom landings (2026-10-26)
+
+The custom renderer now projects a soft translucent F-14 silhouette onto the
+runway or carrier surface. The mask is a separate linear-filtered RGBA copy
+of Sub $10140 / player palette $F2, so the visible aircraft retains its native
+nearest-neighbor art. The small native helper frame initially investigated
+was unsuitable for an aircraft-shaped projection and is not used. No shadow
+behavior is ported or inferred into the normal arcade simulation.
+
+CustomStageShadow defines authored sunlight offsets in world X/depth,
+perspective footprint reduction, height-dependent opacity/softness and slight
+bank foreshortening. A normalized nine-tap kernel softens the black alpha
+mask. Its textured polygon is clipped against the perspective runway/deck
+receiver with interpolated UVs, before drawing crew/player/landing smoke.
+This prevents the footprint from spilling outside the modeled surface or
+appearing in the sky/sea before the aircraft reaches it. Air tanker stages
+skip it. presentation.player_shadow in JSON defaults true and can disable
+the effect; bundled non-tanker presets explicitly enable it.
+
+The model check covers contact versus airborne footprint/opacity/softness and
+receiver clipping with preserved UVs. ROM-art tests compare on/off captures
+for autumn, jungle and carrier surfaces, require only darkening in the
+receiver region, and verify absence before the carrier surface and during
+air refueling. Existing CLI smoke checks also require the shadow on all
+three landing surfaces, and strict JSON rejects a nonboolean shadow setting.
+Reviewed native-art captures are retained as
+`build/oracle/landing-polish/runway-shadow-final.png` and
+`carrier-shadow-final.png`, with on/off art fixtures `1/2/3-shadow-*.bmp`.
+Normal arcade CPU/device/rendering, ROMs and stage physics remain unchanged.
+
+Validation: focused model/build/art checks pass at
+`build/workflow/20261026T214245.879969Z/` (2.98 s / 35.76 s / 4.06 s).
+The full `test` target passes at
+`build/workflow/20261026T214613.461336Z/01-test.log` (94.71 s), followed by
+the final `02-verify-custom-stages.log` (204.40 s). All retained stage,
+smoke/pitch/audio, classic horizon, ILS/tanker latch and modern JSON/layer
+cases remain passing, along with the new shadow geometry and pixel cases.
+`git diff --check` passes. Earlier MAME evidence remains restricted to
+unchanged arcade dependencies; this is not new whole-game acceptance.
+
+## Random native tanker backdrops for custom stages (2026-10-27)
+
+The custom tanker scene now selects complete native sky/ground/scenery sets
+from ROM stage slots 3, 9, 11, 16, 19 and 21. The catalog is discovered at
+runtime through StageCatalog metadata and event programs: Main $DEE4/$DEFC/$DF0A
+handles command 0, subselector 4 by setting the actual refueling flag. No ROM
+bytes or captures are included in source. A shuffled bag visits each eligible
+variant before starting another cycle and avoids consecutive repeats across
+cycles. The choice remains fixed throughout an attempt; retry/completion Enter
+and a new tanker entry select again. presentation.tanker_variant accepts random
+or a fixed original tanker stage number, and --seed reproduces random choices.
+
+Each choice boots the corresponding native sequence to settled refuel state 3,
+collecting its scenery frames, native placements, sky/ground palette and player
+palette together. The previous material and scenery cache are invalidated as a
+unit, preventing scenery/palette mixtures when switching. The authored camera,
+dense scenery extension, physical nozzle docking and missile rearming remain.
+Normal arcade execution/rendering and the legacy prototype are unchanged.
+
+Native reference replays and rendered variants remain under ignored
+build/oracle/tanker-variants, with the existing native-stage9 reference reused.
+Reviewed variants include night, lavender/blue-green and bright autumn scenes.
+The stage 11 probe obtained the settled tanker reference, then encountered the
+existing unported Main $14D38 caller during later combat; this does not affect
+asset loading, which stops at settled refueling, or constitute combat acceptance.
+
+Model checks cover five complete shuffled cycles, no adjacent repeats,
+same-seed replay and fixed selection/rejection. Art checks verify scenery-cache
+replacement. The native CLI fixture checks all six distinct sky, ground/scenery
+and scene images, successful physical docking with unchanged fuel, identical
+same-seed pixels and rejection of a non-tanker slot. Existing CLI comparison
+fixtures use a fixed seed so paired images use the same backdrop. All previous
+fixtures and negative controls are retained.
+
+Validation: focused model/build and ROM-art checks pass at
+build/workflow/20261026T215836.456971Z and 20261026T220102.420582Z.
+The full test target passes at
+build/workflow/20261026T220246.313875Z/01-test.log (92.29 s), followed by
+02-verify-custom-stages.log (255.07 s), including all six native variants.
+Python compilation and git diff --check pass. Prior MAME captures remain scoped
+to unchanged arcade dependencies; no fresh whole-game acceptance is claimed.
+
+## Tanker contact/pitch corrections and custom sky clouds (2026-10-27)
+
+Compared the original Stage 9 settled refueling capture
+build/oracle/custom-stage-revision/native-stage9/300.png with the custom scene.
+Main $16848..$1688C derives apparatus X from $16766 and Y from entry 9 of
+$166CE, with four multiplier units per source pixel. The deployed hose now
+reads those offsets at runtime instead of the authored (20,58) placement that
+left its flap/hose too low. Body/wing assembly zoom remains shared. The hose
+is composited in front of the player after capture, matching the connected
+original look; no extra long metal probe or contact ring is drawn.
+
+The custom metric probe datum remains at the same physical capture range.
+Its projection is calibrated to the selected ROM aircraft's first opaque
+centerline canopy/nose pixel, with one source pixel of overlap. Averaging the
+two highest tail-fin pixels was investigated and rejected: their midpoint is
+empty sky, which reproduced a visible gap despite a zero coordinate error.
+Art checks now independently require the contact point to cover a rendered
+opaque aircraft pixel. Diamond acquisition shares the model's aligned predicate,
+with the approaching inner diamond growing nearly to the outer outline instead
+of retaining an eight-pixel gap. Capture continues to hold the aircraft and
+connection throughout four-second missile-only servicing.
+
+Removed the custom escort-aircraft instances from tanker skies. The player now
+uses all five runtime $28C94 pitch rows and their bank records during tanker
+flight; the old refueling override and the incorrect grounded test on a negative
+basket-height error no longer freeze its pose. Tanker pitch textures have a
+separate cache with the settled sequence's native player palette, leaving
+landing palettes independent when cycling between stages.
+
+CustomStageClouds generates a soft full-RGBA cloud texture and composites four
+large translucent masses behind aircraft and scenery in every custom sequence.
+Camera position/pitch affects their placement; dark tanker skies dim them.
+They remain stable through an automatic servicing hold. presentation.clouds is
+a schema-checked JSON boolean defaulting true; --no-scenery also hides clouds
+for independent terrain comparisons. This is authored optional presentation,
+without native layer/sprite/palette restrictions or changes to arcade execution.
+
+Focused art tests cover all seven clouded skies, independent translucent pixel
+compositing, tanker pitch selection with negative basket-height error, contact
+on actual opaque aircraft art, hatch offsets and connected nozzle error. All
+previous ILS, smoke, shadow, five-pitch and held-input capture fixtures remain.
+The six native variant checks now also require zero extra sky aircraft and
+four cloud masses. Captures remain ignored under build/oracle/landing-polish.
+
+Both connection endpoints are now actual opaque source-pixel centers: the hose
+uses an opaque pixel on its final visible row, rather than an averaged edge
+outside that row. Independent rendered-pixel tests cover the aircraft anchor
+and nozzle endpoint. The endpoint fixture samples the containing framebuffer
+pixel (floor), avoiding rounding across its lower edge. A separate palette
+replacement fixture confirms tanker live colors do not change landing poses.
+
+Validation: the full test target passes at
+build/workflow/20261026T222437.772853Z/02-test.log (92.11 s), including all
+retained HUD/player mutations. Final verify-custom-stages passes at
+build/workflow/20261026T222839.713779Z/01-verify-custom-stages.log (284.09 s),
+covering the rebuilt renderer, opaque contact endpoints, palette isolation,
+all seven objectives, audio, horizon/band checks, JSON layers and six native
+backdrops with deterministic seeded replay. Focused final art checks also pass
+at build/workflow/20261026T222821.268659Z/01-verify-custom-stage-art.log.
+Reviewed final native scene: build/oracle/landing-polish/tanker-corrected-native.png.
+Python compilation and git diff --check pass. Core CPU/device/arcade renderer
+sources are unchanged by this work; prior MAME evidence is reused only for those
+unchanged dependencies, not presented as fresh whole-game acceptance.
+The updated native tanker prototype was reopened for interactive review.
+
+## Stable tanker attitude and takeoff exhaust (2026-10-27)
+
+The tanker renderer previously calibrated the docking frame to the current
+pitch/bank sprite's canopy pixel on every draw. Crossing a discrete ROM frame
+boundary therefore shifted the entire tanker/hose assembly. The player also
+moved down with positive pitch, opposite to the landing renderer's smooth
+screen displacement. The metric docking frame now uses the neutral aircraft
+datum, independently of the displayed pose; the player uses the same -12-pixel
+pitch displacement as landing. Visible nozzle error still measures the current
+aircraft pose, and capture still levels and locks it to the nozzle. Model
+physics, timing, tolerances and landing ILS behavior are unchanged.
+
+Gentle left banks had a second threshold mismatch: native bank pose 1 begins
+near magnitude 0.1, but mirroring waited until 0.18. The selected native bank
+pose now determines mirroring for both the fighter and its canopy anchor.
+Flame orientation mirrors with the aircraft too, as do its engine anchors.
+
+The prior custom exhaust code cycled the first five $12416 records every four
+ticks, causing large plume-shape changes despite a held aircraft pose. The
+original takeoff setup at Main $11318 writes a fixed byte offset (20) into the
+exhaust selector; $12308/$1230C adds that selector to $12416. Existing native
+runway probes also retain Sub $1E010 under handler $122DA during takeoff
+(build/oracle/custom-scenery-probe-5.log and custom-scenery-probe-13.log).
+The custom renderer now reads that native takeoff selector at runtime and
+retains the chosen plume geometry. A restrained authored brightness pulse
+provides motion without translating the plume or changing its footprint.
+Per-pose opaque engine anchors, common scale and bank transforms are retained.
+This is an optional custom-stage presentation fix, not a new arcade port.
+
+New independent pixel checks first rejected the prior tanker pose coupling
+(build/workflow/20261027T054350.996877Z/01-verify-custom-stage-art.log), then
+rejected the old time-cycled exhaust after the tanker repair
+(20261027T054403.967787Z/01-verify-custom-stage-art.log). The passing checks cover
+tiny attitude changes across pose/left-bank boundaries, twenty fixed-pose ground
+exhaust frames, and both airborne bank directions. All previous five pitch,
+nozzle-contact, ILS/lock, clouds, smoke and shadow fixtures remain. Generated
+before/after pictures and flame snapshots stay under ignored build/oracle.
+
+Validation: focused art/build passed at
+build/workflow/20261027T054438.254562Z/ (4.72 s / 34.24 s). Final checks at
+build/workflow/20261027T054551.195556Z/ pass: 01-verify-custom-stage-art.log
+(4.86 s), 02-test.log (91.82 s), and 03-verify-custom-stages.log (284.67 s),
+including the final rebuilt renderer and retained ROM-art/CLI/scene/variant gates.
+Reviewed fixed-pose plume image: build/oracle/landing-polish/steady-flame-0.png.
+The updated tanker prototype was reopened for interactive review.
+git diff --check passes. Arcade CPU/device/rendering sources are unchanged by
+this repair; earlier native/MAME references are reused only for those unchanged
+dependencies, without claiming fresh whole-game acceptance.
+
+## Original HUD widgets and ROM font inside custom playfields (2026-10-27)
+
+CustomStageHud now decodes the original 512 planar text tiles, caches a font
+atlas and a full-color eight-palette widget atlas, and places them freely in
+the authored scene. Font pen 7 retains the black outline/counters; other ink
+pens accept the prompt color, with nearest-neighbor sampling. The glyph test
+independently decodes the ROM's A tile and checks all 64 rendered cell centers,
+including lowercase-to-uppercase handling. The ROM slash and minus tiles have
+zero foreground pixels, so metric labels use MPS and ABOVE/BELOW or CLIMB/DESCENT
+instead of losing units or sign information. No font bytes are embedded in code.
+
+At the settled asset-loading frontier, the existing temporary native board
+supplies visible 40x28 entries from Main text RAM $0D0000 (native column offset
+24), plus the live $1C00 text palette colors already delivered to the layer
+callback. SCORE/HIT surrounds, speed ruler, STAGE lettering and missile icons
+therefore retain the original tile entries and palettes. Constructor defaults
+read ROM palettes for isolated art previews without native execution. The
+native board is still destroyed after asset loading; no arcade state or HUD
+sequencer controls the custom simulation.
+
+The authored layout now puts all text and widgets inside the existing
+(40,78)-(920,470) playfield. The outside debug title, metric panel and control
+footer are removed. Briefing, paused/completion feedback, control hints and live
+instructions use the game font. ILS/diamond geometry and camera/world coordinates
+are retained, with concise guidance above and phase prompts below the aircraft.
+Score/hits stay zero in these combat-free challenges; preset numbering, missile
+symbols/count, speed fill and metric readings bind to the custom model. A
+continuous fill replaces repeated pointer fragments under the original speed
+ruler. presentation.hud is a strict schema-checked boolean, default true; custom
+layers at order 1000 and above retain their above-HUD drawing contract.
+
+ROM-art checks cover original font pixels, all seven in-playfield HUD layouts,
+empty outer borders and missile-icon changes during rearming. Guidance-only
+held-input checks explicitly hide the changing HUD so world motion cannot be
+confused with live counter/progress updates. All prior smoke/shadow, cloud,
+nozzle, pitch/bank/exhaust and palette-isolation fixtures remain. CLI cases
+require game-font/native-widget diagnostics for every ROM-backed preset and
+reject a nonboolean HUD setting. Captures remain ignored under build/oracle.
+
+Validation: final focused art/build/full checks pass at
+build/workflow/20261027T060539.167078Z/: 01-verify-custom-stage-art.log
+(4.98 s), 02-build_interactive-stages.log (39.05 s), 03-test.log (101.32 s),
+and 04-verify-custom-stages.log (256.61 s). The retained HUD/player mutation
+checks, complete custom objectives, native art, horizon/bands, modern JSON layers
+and all six seeded tanker variants remain passing. Reviewed final captures:
+build/oracle/landing-polish/hud-runway-final.png and hud-carrier-final.png.
+The updated runway prototype was opened for interactive review. Python syntax
+checks and git diff --check pass. No arcade CPU/device/renderer source is
+changed by this HUD work; prior MAME evidence remains scoped to unchanged
+arcade dependencies rather than fresh whole-game acceptance.
