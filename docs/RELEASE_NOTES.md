@@ -2,7 +2,7 @@
 
 ## Unpublished macOS development refresh (2026-10-28)
 
-The local `v0.1.0-preview.6-20261028.1` package consolidates main through the
+The local `v0.1.0-preview.6-20261028.2` package consolidates main through the
 28 October Windows work, including shared ground/sprite/HUD rendering, SDL
 audio recovery and frame pacing. macOS retains its Metal backend; the native
 Vulkan compositor remains Windows-specific. The integration also fixes a

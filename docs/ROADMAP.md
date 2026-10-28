@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated **2026-10-27**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
+Updated **2026-10-28**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
 refreshes Apple Silicon / macOS 26+ with ROM ZIP loading/picker, reorganized menus,
 native Metal filters with Slang presets, Shuffle gameplay openings, corrected
 rolling sky/cloud coverage and broader widescreen effect retention. It retains
