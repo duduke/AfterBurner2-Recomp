@@ -14562,3 +14562,59 @@ both geometry baselines and 18/18 semantic rejections, zero skipped. Every
 original control is retained. Other mutation harnesses referencing the changed
 sprite/ground/wide renderer sources were reviewed against their completed
 focused/baseline results. A complete oracle rerun remains required.
+
+### Consolidated macOS development package (2026-10-28)
+
+The unpublished local package v0.1.0-preview.6-20261028.2 is built from
+58895b9253d424fb8d095c33f1e1c40dde849f9f. Its production sources remain identical
+to the tested a2d6950 runtime; later commits strengthen the ground, exhaust and
+wide-edge fixtures and update documentation. The ZIP's SHA-256 is
+4491909c477d5440f007bfd0757fcb7db28cae5a831f7ccfe9cc24ca1c9ed8a7.
+The complete source archive includes those fixture repairs. Earlier candidate
+packages and audit receipts remain retained. No release tag or public GitHub
+release was created.
+
+Independent audit passes at
+build/integration/20261028/macos-final2-audit.json: all 82 payload files,
+source archive versus the exact commit, file hashes, dependency sources/notices,
+arm64/macOS 26 minimum, relocated libraries and ad-hoc signatures. Finite
+240-frame Metal/OpenAL launches pass for Arcade (10.917 s), Practice stage 8
+(12.762 s), and Shuffle seed 0 with replacement aircraft (8.517 s), from an
+unrelated working directory. Temporary ROM links were removed; the extracted
+payload and original ZIP remain unchanged. No ROMs, captures or local settings
+are packaged. This is bounded launch evidence, not sustained hardware/latency
+or whole-credit acceptance. The complete integration oracle gate is recorded
+separately when it finishes.
+
+### Completed macOS/Windows integration gate (2026-10-28)
+
+The complete oracle-test passes (exit 0, 4,331.54 s) at
+build/workflow/20261028T163243.885954Z/01-oracle-test.log, including every
+retained fixture/mutation and the strengthened ground/exhaust/wide-edge checks.
+All 216 executed CPU mutation controls are rejected.
+Whole-host native and 358/398-wide comparisons and their negative controls pass;
+the final video reference is 300/300 pixel-identical, zero over-limit frames;
+detached projection checks 120,320 MAME descriptors. Existing concurrency skips
+are retained and reported, including 2/1,200 sub-sprite passes and 263/1,200
+records in the original mixed-writer scenery fixture. These skips are not newly
+waived or counted as comparisons; the separate 2,000- and 1,200-record scenery
+fixtures are entirely identical with zero skips. This does not close the open
+continuous whole-credit acceptance work.
+
+The complete test and verify-stage1 passes at
+build/workflow/20261028T155016.588656Z/ (88.48 s / 431.09 s) remain applicable:
+subsequent changes touch only oracle fixtures/helpers and documentation, not
+their prerequisites or the production runtime. Stage1 retains all 23 stages
+and both 16:9/16:10 paths. Native Metal checks at
+build/workflow/20261028T153024.263534Z/03-verify-native-metal-sprite-mutations.log
+retain 882/882 identical filter cases, 157,452,162 pixels, zero skips and all
+6/6 faults rejected. The final package's finite Metal/OpenAL audit is above.
+
+Prototype-only source, authoring JSON/schema, fixtures and docs remain on
+codex/custom-stage-prototype, outside main and its package. Its complete test,
+custom-stage, ROM-sprite and native-sequence checks pass at
+build/workflow/20261028T151717.793881Z/ (112.74 s / 288.01 s / 171.93 s /
+86.65 s). The later main changes merged back into that branch are oracle
+fixture/helper repairs and documentation; prototype behavior and shared runtime
+remain unchanged from the verified integration. The original local-file backup,
+all failed attempts, fixtures and mutations remain retained under ignored build/.

@@ -156,6 +156,11 @@ Standalone custom-stage experiments are isolated on
 including their source, fixtures and instructions; they are excluded from the
 main-game macOS package. macOS validation also found and repaired an SDL
 starved-tail recovery race; see the new Engine Notes consolidation record.
+The completed macOS integration passes test, verify-stage1, the full oracle-test
+and native Metal checks. The unpublished local macOS .2 package passes independent
+payload/source/signature checks and finite Arcade/Practice/Shuffle Metal/OpenAL
+launches. Exact source, checksum, logs and retained skip/acceptance scope are in
+Engine Notes; existing Windows performance and whole-credit limits remain open.
 
 Licensing maintenance (2026-10-26): the central
 [license inventory](../LICENSES/README.md) now retains dependency and legacy
