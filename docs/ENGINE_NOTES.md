@@ -14513,3 +14513,33 @@ build/workflow/20261028T154816.881529Z/02-verify-ground-mutations.log (75.49 s):
 and the new empty-row negative control. The correction is confined to the
 fixture's representation conversion; the release executable sources are
 unchanged from a2d6950.
+
+### Exhaust mutation coverage across decoder zoom paths (2026-10-28)
+
+The fresh main gate passes test (88.48 s), native-release (0.77 s) and complete
+verify-stage1 (431.09 s) at build/workflow/20261028T155016.588656Z/. The entire
+oracle attempt then reports one surviving fault: the retained opaque-exhaust
+mutation changed only the scaled accumulator emission, while its actual-exhaust
+fixture used unit horizontal zoom and therefore the new Windows fast path.
+The completed attempt exits 2 after 1,251.20 s; it is not reported as a pass.
+
+The actual ROM exhaust fixture now decodes six horizontal zooms (256, 511, 512,
+513, 768 and 1024), requires nonempty output for each and verifies every emitted
+pixel's effect classification on both paths. The original scaled-emission
+mutation is retained and is now rejected; a separate unit-zoom emission mutation
+covers the new path. All original palette/throttle/crash/debris controls remain.
+The baseline still checks 220 exhaust frame selections, 55 opaque aircraft
+selections and all 64 LOD entries, with 1,040 whole-flame pixels across the six
+zoom cases. This strengthens test coverage without changing renderer/game/PCM
+sources, captures or any expected native pixel result.
+
+The unchanged test/Stage1/native Metal results remain scoped evidence. The
+changed effect-assets test is only an oracle/native-menu dependency, not a
+Stage1/test prerequisite. A complete oracle rerun follows; no focused effect
+pass substitutes for it. The final package will include this strengthened
+fixture in its committed source archive; earlier candidates remain retained.
+
+Focused effect baseline/mutations pass at
+build/workflow/20261028T162133.980705Z/ (3.48 s / 22.94 s), with both emission
+paths and all eight retained effect faults checked. git diff --check and Python
+syntax checks pass.
