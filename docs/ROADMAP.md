@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated **2026-10-27**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
+Updated **2026-10-28**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
 refreshes Apple Silicon / macOS 26+ with ROM ZIP loading/picker, reorganized menus,
 native Metal filters with Slang presets, Shuffle gameplay openings, corrected
 rolling sky/cloud coverage and broader widescreen effect retention. It retains
@@ -156,6 +156,11 @@ Standalone custom-stage experiments are isolated on
 including their source, fixtures and instructions; they are excluded from the
 main-game macOS package. macOS validation also found and repaired an SDL
 starved-tail recovery race; see the new Engine Notes consolidation record.
+The completed macOS integration passes test, verify-stage1, the full oracle-test
+and native Metal checks. The unpublished local macOS .2 package passes independent
+payload/source/signature checks and finite Arcade/Practice/Shuffle Metal/OpenAL
+launches. Exact source, checksum, logs and retained skip/acceptance scope are in
+Engine Notes; existing Windows performance and whole-credit limits remain open.
 
 Current custom-stage direction (2026-10-26): the standalone prototype now owns
 landing/service/departure cycles and refueling objectives, with editable stage files,

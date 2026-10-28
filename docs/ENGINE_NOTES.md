@@ -15699,3 +15699,147 @@ native continuation RGB frames and 2,165/2,165 identical buffered presentation
 frames, zero skips, against the direct board (not independent MAME).
 All fixtures remain; no ROMs or captures enter Git. These branch checks do not
 replace the main-game macOS release validation recorded separately.
+
+### Compact horizon fixture sentinel repair (2026-10-28)
+
+The first consolidated main run passes test (91.52 s), native-release (41.79 s),
+native Metal validation (37.22 s; 882/882 comparisons and 157,452,162 pixels,
+zero skips, all six mutations rejected), and complete verify-stage1 (466.39 s).
+All 23 directed stages pass at both 398/358 columns with native RGB/PCM/time
+unchanged. Logs: build/workflow/20261028T153024.263534Z/. The oracle attempt then
+finds an inconsistent empty-row comparison in the new Windows compact-cache
+fixture. It is stopped after that recorded failure rather than accepting a
+partial pass; its original log and all input captures remain.
+
+The independent full raster initializes an absent row's left minimum to width
+320, but GroundHorizon::Profile initializes it to -1. The assertion normalized
+the analogous column-height sentinel already, but compared left-row arrays
+without normalization. The fixture now maps only the empty width sentinel to
+-1 and checks every left/right bound, including absent rows. Real populated
+geometry and all visible MAME RGB/sky/terrain comparisons are unchanged.
+The synthetic regression explicitly checks empty row/column contracts; a new
+retained mutation turns an empty row into a real edge and must be rejected.
+No renderer, game/PCM code, captures or comparison coverage are removed.
+
+The exact recorded fixture now passes 160/160 original MAME RGB frames,
+zero skipped, with 159 enhanced witnesses, both actual roll sides (29/30),
+58,471 visible wedge pixels removed and 2,643,597 terrain pixels preserved
+(build/workflow/20261028T154816.881529Z/01-verify-ground-fixture.log).
+The candidate macOS package at source a2d6950 also passed independent payload,
+source, signature and dependency audit plus Arcade/Practice/Shuffle Metal/OpenAL
+smokes. Its strict audit allowlist was updated only for the exact committed
+miniz notice (the retained older Preview 4 harness predates that notice).
+A final .1 package will include this fixture repair in its source archive;
+the prior candidate and both audit receipts are preserved, not overwritten.
+
+All focused ground checks pass at
+build/workflow/20261028T154816.881529Z/02-verify-ground-mutations.log (75.49 s):
+96 full-plane references, all retained geometry/recorded-witness/donor controls
+and the new empty-row negative control. The correction is confined to the
+fixture's representation conversion; the release executable sources are
+unchanged from a2d6950.
+
+### Exhaust mutation coverage across decoder zoom paths (2026-10-28)
+
+The fresh main gate passes test (88.48 s), native-release (0.77 s) and complete
+verify-stage1 (431.09 s) at build/workflow/20261028T155016.588656Z/. The entire
+oracle attempt then reports one surviving fault: the retained opaque-exhaust
+mutation changed only the scaled accumulator emission, while its actual-exhaust
+fixture used unit horizontal zoom and therefore the new Windows fast path.
+The completed attempt exits 2 after 1,251.20 s; it is not reported as a pass.
+
+The actual ROM exhaust fixture now decodes six horizontal zooms (256, 511, 512,
+513, 768 and 1024), requires nonempty output for each and verifies every emitted
+pixel's effect classification on both paths. The original scaled-emission
+mutation is retained and is now rejected; a separate unit-zoom emission mutation
+covers the new path. All original palette/throttle/crash/debris controls remain.
+The baseline still checks 220 exhaust frame selections, 55 opaque aircraft
+selections and all 64 LOD entries, with 1,040 whole-flame pixels across the six
+zoom cases. This strengthens test coverage without changing renderer/game/PCM
+sources, captures or any expected native pixel result.
+
+The unchanged test/Stage1/native Metal results remain scoped evidence. The
+changed effect-assets test is only an oracle/native-menu dependency, not a
+Stage1/test prerequisite. A complete oracle rerun follows; no focused effect
+pass substitutes for it. The final package will include this strengthened
+fixture in its committed source archive; earlier candidates remain retained.
+
+Focused effect baseline/mutations pass at
+build/workflow/20261028T162133.980705Z/ (3.48 s / 22.94 s), with both emission
+paths and all eight retained effect faults checked. git diff --check and Python
+syntax checks pass.
+
+### Wide-edge mutation anchor update (2026-10-28)
+
+The next full oracle attempt is stopped after verify-wide-mutations reports
+sprite-edge: mutation anchor changed (416.24 s; retained log at
+build/workflow/20261028T162300.726185Z/01-oracle-test.log). The new decoder has
+two identical signed clipping predicates, one for unit zoom and one for scaled
+emission; the retained mutation had asserted exactly one. Its expected count
+is now two, and it narrows both paths to the original viewport. The same
+independent wide-edge disappearance witness and both viewport widths remain.
+All nine mutation anchors were preflighted before rerunning. No production or
+pixel expectation changes are made.
+
+verify-wide-mutations passes at
+build/workflow/20261028T163103.408963Z/01-verify-wide-mutations.log (62.74 s):
+both geometry baselines and 18/18 semantic rejections, zero skipped. Every
+original control is retained. Other mutation harnesses referencing the changed
+sprite/ground/wide renderer sources were reviewed against their completed
+focused/baseline results. A complete oracle rerun remains required.
+
+### Consolidated macOS development package (2026-10-28)
+
+The unpublished local package v0.1.0-preview.6-20261028.2 is built from
+58895b9253d424fb8d095c33f1e1c40dde849f9f. Its production sources remain identical
+to the tested a2d6950 runtime; later commits strengthen the ground, exhaust and
+wide-edge fixtures and update documentation. The ZIP's SHA-256 is
+4491909c477d5440f007bfd0757fcb7db28cae5a831f7ccfe9cc24ca1c9ed8a7.
+The complete source archive includes those fixture repairs. Earlier candidate
+packages and audit receipts remain retained. No release tag or public GitHub
+release was created.
+
+Independent audit passes at
+build/integration/20261028/macos-final2-audit.json: all 82 payload files,
+source archive versus the exact commit, file hashes, dependency sources/notices,
+arm64/macOS 26 minimum, relocated libraries and ad-hoc signatures. Finite
+240-frame Metal/OpenAL launches pass for Arcade (10.917 s), Practice stage 8
+(12.762 s), and Shuffle seed 0 with replacement aircraft (8.517 s), from an
+unrelated working directory. Temporary ROM links were removed; the extracted
+payload and original ZIP remain unchanged. No ROMs, captures or local settings
+are packaged. This is bounded launch evidence, not sustained hardware/latency
+or whole-credit acceptance. The complete integration oracle gate is recorded
+separately when it finishes.
+
+### Completed macOS/Windows integration gate (2026-10-28)
+
+The complete oracle-test passes (exit 0, 4,331.54 s) at
+build/workflow/20261028T163243.885954Z/01-oracle-test.log, including every
+retained fixture/mutation and the strengthened ground/exhaust/wide-edge checks.
+All 216 executed CPU mutation controls are rejected.
+Whole-host native and 358/398-wide comparisons and their negative controls pass;
+the final video reference is 300/300 pixel-identical, zero over-limit frames;
+detached projection checks 120,320 MAME descriptors. Existing concurrency skips
+are retained and reported, including 2/1,200 sub-sprite passes and 263/1,200
+records in the original mixed-writer scenery fixture. These skips are not newly
+waived or counted as comparisons; the separate 2,000- and 1,200-record scenery
+fixtures are entirely identical with zero skips. This does not close the open
+continuous whole-credit acceptance work.
+
+The complete test and verify-stage1 passes at
+build/workflow/20261028T155016.588656Z/ (88.48 s / 431.09 s) remain applicable:
+subsequent changes touch only oracle fixtures/helpers and documentation, not
+their prerequisites or the production runtime. Stage1 retains all 23 stages
+and both 16:9/16:10 paths. Native Metal checks at
+build/workflow/20261028T153024.263534Z/03-verify-native-metal-sprite-mutations.log
+retain 882/882 identical filter cases, 157,452,162 pixels, zero skips and all
+6/6 faults rejected. The final package's finite Metal/OpenAL audit is above.
+
+Prototype-only source, authoring JSON/schema, fixtures and docs remain on
+codex/custom-stage-prototype, outside main and its package. Its complete test,
+custom-stage, ROM-sprite and native-sequence checks pass at
+build/workflow/20261028T151717.793881Z/ (112.74 s / 288.01 s / 171.93 s /
+86.65 s). The later main changes merged back into that branch are oracle
+fixture/helper repairs and documentation; prototype behavior and shared runtime
+remain unchanged from the verified integration. The original local-file backup,
+all failed attempts, fixtures and mutations remain retained under ignored build/.

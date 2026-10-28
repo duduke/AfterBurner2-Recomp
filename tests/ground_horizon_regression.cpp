@@ -14,6 +14,9 @@ int main()try {
     require(horizon.normal(64)==std::array<int,2>{127,0},"ground right ROM orientation differs");
     require(horizon.normal(128)==std::array<int,2>{0,-127},"ground inverted ROM orientation differs");
     require(horizon.normal(192)==std::array<int,2>{-128,0},"ground left ROM orientation differs");
+    Presentation::GroundHorizon::Profile empty;
+    for(unsigned y=0;y<224;++y)require(empty.left[y]==-1&&empty.right[y]==-1,"ground empty-row sentinel differs");
+    for(unsigned x=0;x<320;++x)require(empty.upper[x]==-1&&empty.lower[x]==-1,"ground empty-column sentinel differs");
     Presentation::GroundHorizon::Profile flat;std::fill(flat.upper.begin(),flat.upper.end(),100);std::fill(flat.lower.begin(),flat.lower.end(),100);
     Presentation::GroundHorizon::correct(pixels,priority,road,0,223,horizon.normal(0)[0],horizon.normal(0)[1],flat);
     require(pixels[99*320]==0x1720 && pixels[100*320]==0x1700 && pixels[223*320]==0x1700,"ground level sky/sea classification differs");

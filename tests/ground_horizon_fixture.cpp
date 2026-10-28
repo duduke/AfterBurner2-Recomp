@@ -68,7 +68,13 @@ int main(int argc,char** argv)try {
             require(correction.cached_profile.upper[x]==(top[x]==224?-1:top[x]),"ground compact cache upper differs");
             require(correction.cached_profile.lower[x]==bottom[x],"ground compact cache lower differs");
         }
-        require(correction.cached_profile.left==left&&correction.cached_profile.right==right,"ground compact cache rows differ");
+        for(unsigned y=0;y<224;++y){
+            // The full-raster scan initializes an empty row's minimum to the
+            // width, while Profile uses -1. Normalize only that empty sentinel,
+            // just as the upper-column comparison above normalizes height.
+            require(correction.cached_profile.left[y]==(left[y]==320?-1:left[y])&&
+                    correction.cached_profile.right[y]==right[y],"ground compact cache rows differ");
+        }
         auto sprite=screen.sprite_words();unsigned visible_wedge=0;
         for(unsigned y=0;y<224;++y)for(unsigned x=0;x<320;++x){const auto i=y*320+x;
             const bool known_y=bottom[x]>=0 && column_direction[x];

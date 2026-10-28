@@ -47,9 +47,15 @@ int main() try {
     put(0,0x100|(word(sub,exhaust_frame+4)&0xe00));put(2,word(sub,exhaust_frame+6));
     const auto pitch=word(sub,exhaust_frame+8);put(4,190|((pitch&0x7f)<<9));put(6,0x200);put(8,0xe200|((pitch&0x80)?0x1000:0));put(10,word(sub,exhaust_frame+2));put(12,0x80);put(16,0x8000);
     unsigned pixels=0;
-    Presentation::decode(list,std::span(roms.sprites.rom,roms.sprites.length),0,223,assets,[&](unsigned,unsigned,uint16_t,Presentation::Effect kind){require(kind==Presentation::Effect::afterburner,"exhaust pixel classification differs");++pixels;});
+    // Exercise both the unit-zoom fast path and the scaled accumulator path.
+    // A fast path must not make an existing scaled-emission fault invisible.
+    for(unsigned zoom:{256u,511u,512u,513u,768u,1024u}){
+        put(8,0xe000|zoom|((pitch&0x80)?0x1000:0));unsigned at_zoom=0;
+        Presentation::decode(list,std::span(roms.sprites.rom,roms.sprites.length),0,223,assets,[&](unsigned,unsigned,uint16_t,Presentation::Effect kind){require(kind==Presentation::Effect::afterburner,"exhaust pixel classification differs");++at_zoom;});
+        require(at_zoom>0,"exhaust zoom-path coverage missing");pixels+=at_zoom;
+    }
     require(pixels && exhaust==220 && aircraft==55,"exhaust/aircraft coverage missing");
-    std::cout<<"Actual exhaust: "<<exhaust<<" frame selections, "<<aircraft<<" opaque aircraft selections, "<<pixels<<" whole-flame pixels checked.\n";
+    std::cout<<"Actual exhaust: "<<exhaust<<" frame selections, "<<aircraft<<" opaque aircraft selections, "<<pixels<<" whole-flame pixels checked across six unit/scaled zoom cases.\n";
     for(unsigned mode:{1u,13u,16u,20u})for(unsigned throttle:{0u,0x80u,0xc0u,0xfcu,0xfdu,0xffu,0xffffu})
         require(Presentation::full_throttle_flame(mode,throttle)==(mode==16 && (throttle==0xfd || throttle==0xff)),"full-throttle flame predicate differs");
     require(fire && debris && target,"effect assets lack fire/debris/target coverage");
