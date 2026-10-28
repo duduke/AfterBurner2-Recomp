@@ -1,6 +1,7 @@
 #pragma once
 #include <SDL3/SDL.h>
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
@@ -81,7 +82,7 @@ public:
     // Queue times cover software PCM only, excluding the output device's own
     // mix buffer and hardware latency. Counters survive live reconfiguration.
     struct Status {
-        bool openal{},ready{},hrtf{};
+        bool openal{},ready{},hrtf{},sdl_priming{};
         uint64_t packets{},underruns{},reprimes{},recoveries{},configuration{};
         double buffered{},peak_buffered{},pending{},peak_pending{};
         size_t queued_packets{},peak_queued_packets{};
@@ -124,6 +125,40 @@ private:
     OutputSettings desired;Status report;std::deque<AudioPacket> packets;
     bool stopping{},reconfigure{},clear_requested{},paused{},previewing{},test_requested{};
     SDL_AudioStream* sdl{};
+    bool sdl_priming=true,sdl_playing{},sdl_has_packet{};
+    std::atomic<bool> sdl_unsupplied{false};
+    static void SDLCALL sdl_demand(void* userdata,SDL_AudioStream*,int additional,int){
+        if(additional>0)static_cast<AudioOutput*>(userdata)->sdl_unsupplied.store(true,std::memory_order_relaxed);
+    }
+    uint64_t sdl_last_packet{};
+    void sdl_play(bool play){
+        if(play==sdl_playing)return;
+        if(!(play?SDL_ResumeAudioStreamDevice(sdl):SDL_PauseAudioStreamDevice(sdl)))throw std::runtime_error(SDL_GetError());
+        sdl_playing=play;
+    }
+    int update_sdl(bool suspended,bool preview,bool testing){
+        const int bytes=SDL_GetAudioStreamQueued(sdl);
+        if(bytes<0)throw std::runtime_error(SDL_GetError());
+        // Flush only a finite/idle producer's resampler tail. This does not
+        // inject or discard native PCM, and is never needed during steady play.
+        const bool tail=sdl_has_packet&&bytes>0&&SDL_GetTicks()-sdl_last_packet>=100;
+        if(tail){if(!SDL_FlushAudioStream(sdl))throw std::runtime_error(SDL_GetError());sdl_last_packet=0;sdl_has_packet=false;}
+        // Queue emptiness alone is not an underrun: the device may still
+        // have prefetched audio. The callback records only unfulfilled reads.
+        const bool unsupplied=sdl_unsupplied.exchange(false,std::memory_order_relaxed);
+        if(!suspended&&!preview&&!testing&&!sdl_priming&&unsupplied){
+            sdl_play(false);sdl_priming=true;sdl_last_packet=0;sdl_has_packet=false;
+            {std::lock_guard lock(mutex);++report.underruns;++report.reprimes;}
+            SDL_Log("SDL playback request lacked source data; re-priming output");
+        }
+        // Build an 80 ms buffer for startup/recovery. Keep native samples in
+        // order; neither the emulated clocks nor playback sample rate changes.
+        // A finite short tail can still play after the producer becomes idle.
+        const bool play=!suspended&&(!sdl_priming||preview||testing||bytes>=15360||tail);
+        if(play)sdl_priming=false;
+        sdl_play(play);
+        return bytes;
+    }
     static double packet_seconds(const AudioPacket& packet){
         double seconds=packet.original.size()/96000.0;
         for(const auto& stream:packet.streams)if(stream.rate>0&&stream.channels>0)seconds=std::max(seconds,double(stream.pcm.size())/stream.channels/stream.rate);
@@ -135,7 +170,7 @@ private:
         info.peak_buffered=report.peak_buffered;info.peak_pending=report.peak_pending;info.peak_queued_packets=report.peak_queued_packets;
         report=std::move(info);
     }
-    void record_buffered(double seconds){std::lock_guard lock(mutex);report.buffered=seconds;report.peak_buffered=std::max(report.peak_buffered,seconds);}
+    void record_buffered(double seconds){std::lock_guard lock(mutex);report.buffered=seconds;report.peak_buffered=std::max(report.peak_buffered,seconds);report.sdl_priming=sdl&&sdl_priming;}
 #ifdef AB2_OPENAL
     ALCdevice* device{};ALCcontext* context{};std::array<ALuint,13> sources{};
     struct Queued {ALuint buffer;double seconds;};std::array<std::deque<Queued>,13> queued;
@@ -155,7 +190,7 @@ private:
         check();
         // A stalled producer can drain every synchronized stream. Restarting
         // each next 10/20 ms packet immediately repeats the underrun; collect
-        // 50 ms together before resuming. A sparse source finishing while
+        // a synchronized reserve before resuming. A sparse source finishing while
         // other sources still run, or a single one-shot, restarts immediately.
         // Native chip and 48 kHz streams can stop in neighboring mixer quanta.
         // Retain the cohort across reap polls until new producer PCM arrives.
@@ -219,7 +254,16 @@ private:
             alSourceQueueBuffers(sources[i],1,&b);queued[i].push_back({b,double(stream.pcm.size())/stream.channels/stream.rate});
         }check();
         if(!started){
-            if((loopback&&!repriming) || latency()>=(repriming?0.050:0.025)){
+#ifdef _WIN32
+            // Match SDL's 80 ms reserve on this host. The measured Windows
+            // frame stalls can exhaust the former 25/50 ms startup/recovery
+            // queues even when subsequent frames repay the pacing debt.
+            constexpr double windows_openal_reserve=0.080;
+            constexpr double startup_reserve=windows_openal_reserve,recovery_reserve=windows_openal_reserve;
+#else
+            constexpr double startup_reserve=0.025,recovery_reserve=0.050;
+#endif
+            if((loopback&&!repriming) || latency()>=(repriming?recovery_reserve:startup_reserve)){
                 std::array<ALuint,13> active{};unsigned n=0;
                 for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty())active[n++]=sources[i];
                 if(n){alSourcePlayv(int(n),active.data());started=true;repriming=false;}
@@ -243,14 +287,15 @@ private:
         if(context){try{clear_al();}catch(...){}alDeleteSources(int(sources.size()),sources.data());alcMakeContextCurrent(nullptr);alcDestroyContext(context);context=nullptr;sources.fill(0);for(auto& q:queued)q.clear();}if(device){alcCloseDevice(device);device=nullptr;}
 #endif
         if(sdl){SDL_DestroyAudioStream(sdl);sdl=nullptr;}
+        sdl_priming=true;sdl_playing=false;sdl_last_packet=0;sdl_has_packet=false;sdl_unsupplied.store(false,std::memory_order_relaxed);
     }
     void open(const OutputSettings& s){close();Status info;
 #ifdef AB2_OPENAL
         if(s.profile!=AudioProfile::original){try{open_al(s,info);publish_open(std::move(info));return;}catch(const std::exception& e){SDL_Log("OpenAL unavailable: %s; using SDL",e.what());auto devs=std::move(info.devices);info=Status{};info.devices=std::move(devs);info.text=std::string("SDL FALLBACK: ")+e.what();close();}}
 #endif
         if(!audio_initialized){info.text="AUDIO UNAVAILABLE";}else{
-            SDL_AudioSpec spec{SDL_AUDIO_S16,2,48000};SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES,"1024");sdl=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,nullptr,nullptr);
-            info.ready=sdl&&SDL_ResumeAudioStreamDevice(sdl);if(!info.ready){if(sdl)SDL_DestroyAudioStream(sdl);sdl=nullptr;info.text="SDL AUDIO UNAVAILABLE";}else if(info.text.empty())info.text=s.profile==AudioProfile::original?"ORIGINAL SDL STEREO":"OPENAL NOT BUILT - SDL FALLBACK";
+            SDL_AudioSpec spec{SDL_AUDIO_S16,2,48000};SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES,"1024");sdl=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,sdl_demand,this);
+            info.ready=sdl&&SDL_PauseAudioStreamDevice(sdl);info.sdl_priming=info.ready;if(!info.ready){if(sdl)SDL_DestroyAudioStream(sdl);sdl=nullptr;info.text="SDL AUDIO UNAVAILABLE";}else if(info.text.empty())info.text=s.profile==AudioProfile::original?"ORIGINAL SDL STEREO":"OPENAL NOT BUILT - SDL FALLBACK";
         }publish_open(std::move(info));
     }
     void recover_to_sdl(const std::string& reason){
@@ -267,7 +312,7 @@ private:
 #ifdef AB2_OPENAL
         if(context){clear_al();queue_al(p);return;}
 #endif
-        if(sdl){SDL_ClearAudioStream(sdl);SDL_ResumeAudioStreamDevice(sdl);SDL_PutAudioStreamData(sdl,p.original.data(),int(p.original.size()*2));}
+        if(sdl){SDL_ClearAudioStream(sdl);SDL_PutAudioStreamData(sdl,p.original.data(),int(p.original.size()*2));sdl_priming=false;sdl_last_packet=SDL_GetTicks();sdl_has_packet=true;sdl_play(true);}
         SDL_Log("Speaker test: front left, front right, rear left, rear right");
     }
     void run(){
@@ -281,7 +326,7 @@ private:
                 reset=std::exchange(reconfigure,false);if(reset)s=desired;clear_now=std::exchange(clear_requested,false);test_now=std::exchange(test_requested,false);is_paused=paused;is_preview=previewing;
             }
             if(reset)open(s);
-            if(clear_now){test_until=0;if(sdl)SDL_ClearAudioStream(sdl);
+            if(clear_now){test_until=0;if(sdl){sdl_play(false);SDL_ClearAudioStream(sdl);sdl_priming=true;sdl_last_packet=0;sdl_has_packet=false;sdl_unsupplied.store(false,std::memory_order_relaxed);}
 #ifdef AB2_OPENAL
                 clear_al();
 #endif
@@ -300,7 +345,7 @@ private:
                 }
             }
 #endif
-            if(sdl){if(is_paused&&!is_preview&&!testing)SDL_PauseAudioStreamDevice(sdl);else SDL_ResumeAudioStreamDevice(sdl);const auto n=SDL_GetAudioStreamQueued(sdl);if(n<0)throw std::runtime_error(SDL_GetError());full=n>48000*4/10;}
+            if(sdl){const auto n=update_sdl(is_paused&&!is_preview&&!testing,is_preview,testing);full=n>48000*4/10;}
             double buffered=0;
 #ifdef AB2_OPENAL
             if(context)buffered=latency();
@@ -313,7 +358,10 @@ private:
 #ifdef AB2_OPENAL
                     if(context)queue_al(packet);
 #endif
-                    if(sdl&&!packet.original.empty()&&!SDL_PutAudioStreamData(sdl,packet.original.data(),int(packet.original.size()*2)))throw std::runtime_error(SDL_GetError());
+                    if(sdl&&!packet.original.empty()){
+                        if(!SDL_PutAudioStreamData(sdl,packet.original.data(),int(packet.original.size()*2)))throw std::runtime_error(SDL_GetError());
+                        sdl_last_packet=SDL_GetTicks();sdl_has_packet=true;
+                    }
                     double fresh=0;
 #ifdef AB2_OPENAL
                     if(context)fresh=latency();

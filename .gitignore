@@ -5,6 +5,7 @@ cmake-build-*/
 *.o
 *.d
 afterburner2
+/afterburner2.exe
 
 # Original arcade ROM data (copyrighted, not redistributable)
 roms/*.zip

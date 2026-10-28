@@ -1723,11 +1723,14 @@ oracle-integrated-video-mutations: oracle-integrated-video
 oracle-test: oracle-integrated-video-mutations
 .PHONY: oracle-integrated-video oracle-integrated-video-mutations
 
-build/sprite_filter_regression: tests/sprite_filter_regression.cpp src/main/frontend/sprite_filter.hpp src/main/frontend/native_settings.hpp $(wildcard src/main/frontend/scalers/*) $(wildcard tests/scalers_reference/*)
+build/sprite_filter_regression: tests/sprite_filter_regression.cpp src/main/hwvideo/sprite_scene.hpp src/main/frontend/sprite_filter.hpp src/main/frontend/native_settings.hpp $(wildcard src/main/frontend/scalers/*) $(wildcard tests/scalers_reference/*)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main -Itests/scalers_reference $< -o $@
 test-sprite-filters: build/sprite_filter_regression
 	./build/sprite_filter_regression
+test-fragment-mutations:
+	python3 tools/scalers/check_fragment_mutations.py
+test: test-fragment-mutations
 test: test-sprite-filters
 # Supplemental comparison to the original five GLSL passes (macOS/OpenGL).
 build/check_scalefx_reference: tools/scalers/check_scalefx_reference.cpp src/main/frontend/sprite_filter.hpp $(wildcard src/main/frontend/scalers/*)
@@ -1803,6 +1806,17 @@ verify-stage1: verify-music-presentation
 .PHONY: oracle-capture-music-routing oracle-music-mutations
 
 # Passive ROM asset classification and full-throttle presentation policy.
+build/sprite_decode_regression: tests/sprite_decode_regression.cpp tests/sprite_decode_reference.hpp src/main/hwvideo/sprite_scene.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
+test-sprite-decode: build/sprite_decode_regression
+	./build/sprite_decode_regression
+test: test-sprite-decode
+verify-sprite-decode-mutations: test-sprite-decode
+	python3 tools/scalers/check_sprite_decode_mutations.py
+oracle-test: verify-sprite-decode-mutations
+.PHONY: test-sprite-decode verify-sprite-decode-mutations
+
 build/effect_assets_integration: tests/effect_assets_integration.cpp src/main/hwvideo/sprite_scene.hpp src/main/roms.hpp src/main/romloader.hpp src/main/roms.cpp src/main/romloader.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/effect_assets_integration.cpp src/main/roms.cpp src/main/romloader.cpp -o $@
@@ -1816,7 +1830,7 @@ oracle-test: verify-effect-asset-mutations
 .PHONY: verify-effect-asset-mutations
 
 
-build/ground_horizon_regression: tests/ground_horizon_regression.cpp src/main/hwvideo/ground_horizon.hpp src/main/hwvideo/sprite_scene.hpp
+build/ground_horizon_regression: tests/ground_horizon_regression.cpp tests/ground_correction_reference.hpp src/main/hwvideo/ground_horizon.hpp src/main/hwvideo/sprite_scene.hpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
 test-ground-horizon: build/ground_horizon_regression
@@ -1909,6 +1923,20 @@ build/spatial_audio_sdl_regression: tests/spatial_audio_regression.cpp src/main/
 test-spatial-sdl-only: build/spatial_audio_sdl_regression
 	./build/spatial_audio_sdl_regression
 test: test-spatial-sdl-only
+build/frame_pacing_regression: tests/frame_pacing_regression.cpp src/main/frontend/frame_pacing.hpp
+	$(CXX) $(CXXFLAGS) -Isrc/main $< -o $@
+test-frame-pacing: build/frame_pacing_regression
+	./build/frame_pacing_regression
+test: test-frame-pacing
+test-frame-pacing-mutations:
+	python3 tools/video/check_frame_pacing_mutations.py
+test: test-frame-pacing-mutations
+.PHONY: test-frame-pacing-mutations
+.PHONY: test-frame-pacing
+test-sdl-recovery-mutations:
+	python3 tools/audio/check_sdl_recovery_mutations.py
+test: test-sdl-recovery-mutations
+.PHONY: test-sdl-recovery-mutations
 .PHONY: test-spatial-sdl-only
 
 build/oracle_spatial_routing: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/oracle_spatial_routing.cpp $(filter-out src/main/main.cpp,$(SRCS))))
@@ -2087,7 +2115,7 @@ verify-integrated-lifecycle-358 verify-integrated-lifecycle-398: build/wide_life
 # ROM-free ZIP fixtures retain invalid archive/CRC/size/interleave coverage.
 build/romloader_regression: tests/romloader_regression.cpp src/main/romloader.cpp src/main/romloader.hpp $(wildcard src/third_party/miniz/*)
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/romloader_regression.cpp src/main/romloader.cpp -o $@
+	$(CXX) $(CXXFLAGS) -Isrc/main tests/romloader_regression.cpp src/main/romloader.cpp -o $@ $(if $(filter Windows_NT,$(OS)),-lshell32)
 
 test-romloader: build/romloader_regression
 	python3 tests/test_romloader_zip.py build/romloader_regression

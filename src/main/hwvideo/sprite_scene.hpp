@@ -17,6 +17,15 @@ inline bool full_throttle_flame(uint16_t mode,uint16_t throttle) {
     return mode==0x10 && int16_t(throttle)>=0xfd;
 }
 struct Fragment {uint32_t color{},previous=UINT32_MAX,kind{},raw{};};
+// Each pixel owns its chain exclusively. A terminal fragment hides every
+// earlier fragment for all effect-opacity settings, including paused changes.
+inline void append_fragment(std::vector<Fragment>& row,uint32_t& head,Fragment fragment){
+    if(head!=UINT32_MAX&&(fragment.kind==0||fragment.kind==3||fragment.kind==4)){
+        fragment.previous=UINT32_MAX;row[head]=fragment;
+    }else{
+        fragment.previous=head;head=uint32_t(row.size());row.push_back(fragment);
+    }
+}
 // Classification is asset-based. Cloud silhouettes were inspected from ROM
 // frame records $16500/$16550; $28C64 supplies player trail art and enemy
 // $14EC8 uses the same $164B0 record. LOD offsets come from sub $9E4.
@@ -107,6 +116,18 @@ void decode(std::span<const uint8_t> bank,std::span<const uint8_t> rom,unsigned 
                 const size_t offset=unsigned(address)*4;
                 uint32_t word=uint32_t(bank_rom[offset])|uint32_t(bank_rom[offset+1])<<8|uint32_t(bank_rom[offset+2])<<16|uint32_t(bank_rom[offset+3])<<24;
                 address=uint16_t(address+(flip?-1:1));
+                if(hz==512){
+                    // Unit horizontal zoom emits exactly one pixel per pen;
+                    // its accumulator remains zero across every source word.
+                    if(!word){x+=xd*8;continue;}
+                    bool last=false;
+                    for(unsigned k=0;k<8;++k){const unsigned pen=(word>>(flip?k*4:(7-k)*4))&15;if(k==6)last=pen==15;
+                        if(pen!=0&&pen!=15&&x>=clip_left&&x<=clip_right)emit(x,unsigned(y),uint16_t(flags|pen),kind);
+                        x+=xd;
+                    }
+                    if(last)break;
+                    continue;
+                }
                 if(!word){while(acc<4096){x+=xd;acc+=hz;}acc-=4096;continue;}
                 bool last=false;
                 for(unsigned k=0;k<8;++k){const unsigned pen=(word>>(flip?k*4:(7-k)*4))&15;if(k==6)last=pen==15;

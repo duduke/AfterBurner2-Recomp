@@ -199,8 +199,10 @@ bool observed_present(SDL_Renderer* renderer) {
 
 int main(int argc,char** argv)try {
     SDL_SetMainReady();
-    require_shader(argc>=2 && argc<=4,"Usage: native_shader_main_integration preset.slangp [runtime-library [original|16:9|16:10]]");
-    const std::string viewport=argc==4?argv[3]:"16:10";
+    require_shader(argc>=2 && argc<=5,"Usage: native_shader_main_integration preset.slangp [runtime-library [original|16:9|16:10 [none|scalefx]]]");
+    const std::string viewport=argc>=4?argv[3]:"16:10";
+    const std::string filter=argc==5?argv[4]:"none";
+    require_shader(filter=="none"||filter=="scalefx","Invalid shader integration sprite filter");
     require_shader(viewport=="original"||viewport=="16:9"||viewport=="16:10","Invalid shader integration viewport");
     shader_test.initial_viewport=viewport=="original"?Frontend::Viewport::original:viewport=="16:9"?Frontend::Viewport::wide16_9:Frontend::Viewport::wide16_10;
     shader_test.valid=std::filesystem::absolute(argv[1]).string();
@@ -210,7 +212,7 @@ int main(int argc,char** argv)try {
     shader_test.config=(directory/"settings.cfg").string();
     shader_test.invalid=std::filesystem::absolute(directory/"invalid.slangp").string();
     {std::ofstream file(shader_test.invalid);file<<"shaders = 1\nshader0 = \"missing/shader.slang\"\n";}
-    {std::ofstream file(shader_test.config);file<<"AB2SETTINGS1\nviewport="<<viewport<<"\nhud=sharp\nsprites=none\nground=1\nclouds=1\ntrails=1\nexplosions=1\nafterburner=1\n";}
+    {std::ofstream file(shader_test.config);file<<"AB2SETTINGS1\nviewport="<<viewport<<"\nhud=sharp\nscaling=pixel-art\nsprites="<<filter<<"\nground=1\nclouds=1\ntrails=1\nexplosions=1\nafterburner=1\n";}
     std::vector<std::string> arguments{"shader-main","--boot-to-flight","--settings-file",shader_test.config};
     if(argc>=3){arguments.push_back("--shader-runtime");arguments.emplace_back(argv[2]);}
     std::vector<char*> pointers;for(auto& argument:arguments)pointers.push_back(argument.data());
@@ -224,6 +226,6 @@ int main(int argc,char** argv)try {
     require_shader(!timeout,"Shader main integration timed out");
     require_shader(shader_test.failure.empty(),shader_test.failure);
     require_shader(status==0 && shader_test.step==ShaderMainState::Step::finished,"Shader main integration did not finish every transition");
-    std::cout<<"Native shader main viewport="<<viewport<<": real GPU -> "<<shader_renderer_name<<" -> GPU, queued chooser, failed-preset GPU rollback, accepted settings and all three live viewport switches; paused native RGB/PCM/time identical, 0 skipped.\n";
+    std::cout<<"Native shader main viewport="<<viewport<<" sprites="<<filter<<": real GPU -> "<<shader_renderer_name<<" -> GPU, queued chooser, failed-preset GPU rollback, accepted settings and all three live viewport switches; paused native RGB/PCM/time identical, 0 skipped.\n";
     return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}

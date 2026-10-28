@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Create a minimal runtime ZIP and a separate matching source companion."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tarfile
+import zipfile
+
+from package_windows import SOURCES_NATIVE, SYSTEM_DLLS
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def command(*args):
+    return subprocess.check_output(args, cwd=ROOT, text=True).strip()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('version')
+    parser.add_argument('--label', required=True)
+    parser.add_argument('--build', type=Path, required=True)
+    parser.add_argument('--msvc-redist', type=Path, required=True)
+    args = parser.parse_args()
+    if not all(re.fullmatch(r'[A-Za-z0-9.\-]+', x) for x in (args.version, args.label)):
+        parser.error('Invalid artifact version/label')
+    if command('git', 'status', '--porcelain'):
+        raise SystemExit('Commit the intended source before packaging')
+    build = args.build.resolve()
+    cache = (build/'CMakeCache.txt').read_text()
+    if 'CMAKE_BUILD_TYPE:STRING=Release' not in cache or 'AB2_ENABLE_OPENAL:BOOL=ON' not in cache:
+        raise SystemExit('Expected Release with OpenAL')
+    deps = ROOT/'build/deps'
+    compiler = Path(re.search(r'^CMAKE_CXX_COMPILER:(?:FILEPATH|STRING)=(.+)$', cache, re.M)[1])
+    dx = deps/'microsoft.dxsdk.d3dx-9.29.952.8'
+    if digest(deps/'microsoft.dxsdk.d3dx.9.29.952.8.nupkg') != 'ead0906ae8a26c18a7525da7490127a2110f7c58f18293738283e30e97c6ea4b':
+        raise SystemExit('D3DX package checksum mismatch')
+    source = deps/'librashader-v0.12.0-source.tar.gz'
+    if digest(source) != '4bf8cf2489d00848dcabbf2163204093776082da4217d5a5db45e4cbf335cedf':
+        raise SystemExit('librashader source checksum mismatch')
+    name = f'AfterBurner2-{args.version}-Windows-x64-{args.label}-experimental'
+    output = ROOT/'build/releases'
+    package = output/name
+    package.mkdir()  # Preserve every previous artifact.
+    binaries = {n: build/n for n in ('afterburner2.exe','SDL3.dll','OpenAL32.dll','libc++.dll','libunwind.dll')}
+    binaries['librashader.dll'] = deps/'librashader-windows/librashader.dll'
+    for n in ('MSVCP140.dll','VCRUNTIME140.dll','VCRUNTIME140_1.dll'):
+        binaries[n] = args.msvc_redist/n
+    for n in ('D3DX9_43.dll','D3DCompiler_43.dll'):
+        binaries[n] = dx/'build/native/release/bin/x64'/n
+    for name_, original in binaries.items():
+        shutil.copy2(original, package/name_)
+    (package/'Launch.cmd').write_bytes(b'@echo off\r\ncd /d "%~dp0"\r\n"%~dp0afterburner2.exe" %*\r\n')
+    notices = []
+    def notice(label, text):
+        notices.append('\n\n=== '+label+' ===\n'+text)
+    def file_notice(path):
+        notice(path.name, path.read_text(encoding='utf-8-sig', errors='replace'))
+    file_notice(ROOT/'LICENSE.txt')
+    for path in sorted((ROOT/'LICENSES').glob('*')):
+        file_notice(path)
+    for relative in ('src/main/frontend/scalers/SNES9X-LICENSE.txt',
+                     'src/third_party/dr_flac/LICENSE', 'src/third_party/miniz/LICENSE',
+                     'src/main/frontend/controllerdb/LICENSE',
+                     'src/third_party/librashader/LICENSE.MPL-2.0'):
+        file_notice(ROOT/relative)
+    for relative in ('src/main/frontend/scalers/scalefx.hpp','src/third_party/librashader/librashader.h'):
+        text = (ROOT/relative).read_text()
+        notice(relative, re.search(r'/\*.*?\*/',text,re.S)[0])
+    z80 = (ROOT/'src/third_party/z80.h').read_text()
+    notice('Z80', z80[z80.index('/*\n    zlib/libpng license'):z80.index('*/',z80.index('/*\n    zlib/libpng license'))+2])
+    with zipfile.ZipFile(deps/'SDL3-3.4.18-mingw.zip') as archive:
+        license_name = next(n for n in archive.namelist() if n.endswith('/share/licenses/SDL3/LICENSE.txt') and '/x86_64-' in n)
+        notice('SDL3', archive.read(license_name).decode())
+    for path in sorted((deps/'openal/share/licenses/openal-soft').glob('*')):
+        file_notice(path)
+    file_notice(compiler.parent.parent/'LICENSE.TXT')
+    for n in ('COPYING.MinGW-w64-runtime.txt','COPYING.winpthreads.txt'):
+        file_notice(compiler.parent.parent/'x86_64-w64-mingw32/share/mingw32'/n)
+    for n in ('LICENSE.txt','NOTICE.md'):
+        file_notice(dx/n)
+    file_notice(deps/'Visual-C-Runtime-2015-2022-License.txt')
+    file_notice(deps/'librashader-dependency-NOTICES.txt')
+    notice('librashader source', 'Runtime licensed under MPL-2.0. Matching covered source and locked dependency sources are supplied in the source companion on the same release.\nhttps://github.com/SnowflakePowered/librashader/tree/librashader-v0.12.0')
+    (package/'LICENSES.txt').write_text('Redistribution licenses and notices. No game ROMs are included.\n'+''.join(notices),encoding='utf-8')
+    allowed_os = SYSTEM_DLLS | {'bcryptprimitives.dll','d3dcompiler_47.dll','ntdll.dll','combase.dll','d3d9.dll','d3dcompiler_43.dll','d3dx9_43.dll'}
+    names = {n.lower() for n in binaries}
+    imports = {}
+    for n in binaries:
+        report = command(str(compiler.parent/'llvm-objdump.exe'),'-p',str(package/n))
+        if 'file format coff-x86-64' not in report and 'file format pei-x86-64' not in report:
+            raise SystemExit('Not an x64 PE: '+n)
+        imports[n] = re.findall(r'^\s*DLL Name:\s*(\S+)',report,re.M)
+        for dependency in imports[n]:
+            lower = dependency.lower()
+            if lower not in names and lower not in allowed_os and not lower.startswith(('api-ms-win-','ext-ms-win-')):
+                raise SystemExit(f'Unbundled dependency {n}: {dependency}')
+    if sorted(p.name for p in package.iterdir()) != sorted([*binaries,'Launch.cmd','LICENSES.txt']):
+        raise SystemExit('Unexpected runtime payload')
+    manifest = {'commit':command('git','rev-parse','HEAD'),'executable_sha256':digest(package/'afterburner2.exe'),
+                'imports':imports,'sha256':{p.name:digest(p) for p in package.iterdir()},
+                'limits':'Experimental Windows build: FPS/audio drops persist; full oracle/release acceptance remains open.'}
+    (output/(name+'.manifest.json')).write_text(json.dumps(manifest,indent=2)+'\n')
+    companion = output/(name+'-sources')
+    companion.mkdir()
+    command('git','archive','--format=tar.gz','--prefix=AfterBurner2/',
+            '--output='+str(companion/'AfterBurner2-source.tar.gz'),'HEAD')
+    for filename, expected in SOURCES_NATIVE.items():
+        path = deps/filename
+        if digest(path) != expected:
+            raise SystemExit('Dependency source mismatch: '+filename)
+        shutil.copy2(path,companion/filename)
+    shutil.copy2(source,companion/source.name)
+    shutil.copy2(package/'LICENSES.txt',companion/'LICENSES.txt')
+    shutil.copy2(output/(name+'.manifest.json'),companion/'manifest.json')
+    crates = json.loads((deps/'librashader-locked-crates.json').read_text())
+    (companion/'Rust-crates').mkdir()
+    for filename, expected in crates.items():
+        path = deps/'librashader-locked-crates'/filename
+        if digest(path) != expected:
+            raise SystemExit('Locked crate source mismatch: '+filename)
+        shutil.copy2(path,companion/'Rust-crates'/filename)
+    # Archive whitelist and git archive prevent ROMs, captures and local settings.
+    with tarfile.open(companion/'AfterBurner2-source.tar.gz') as archive:
+        for entry in archive:
+            relative = entry.name.removeprefix('AfterBurner2/')
+            if relative.startswith(('build/','soundtrack/')) or (relative.startswith('roms/') and entry.isfile() and relative not in ('roms/README.md','roms/roms.txt')):
+                raise SystemExit('Unexpected project source payload: '+relative)
+    for folder in (package,companion):
+        destination = output/(folder.name+'.zip')
+        with zipfile.ZipFile(destination,'x',zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(folder.rglob('*')):
+                if path.is_file():
+                    archive.write(path,path.relative_to(output).as_posix())
+        destination.with_suffix('.zip.sha256').write_text(digest(destination)+'  '+destination.name+'\n')
+        print(destination.name,destination.stat().st_size,digest(destination),flush=True)
+
+
+if __name__ == '__main__':
+    main()
