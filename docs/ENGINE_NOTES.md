@@ -14473,3 +14473,43 @@ Focused macOS repair checks pass at build/workflow/20261028T151426.996952Z/:
 SDL-only recovery (3.47 s), baseline plus all six SDL recovery mutations
 (28.14 s), and OpenAL loopback/spatial recovery checks (4.82 s). The full
 consolidated-tree gates and package verification follow below when completed.
+
+
+### Compact horizon fixture sentinel repair (2026-10-28)
+
+The first consolidated main run passes test (91.52 s), native-release (41.79 s),
+native Metal validation (37.22 s; 882/882 comparisons and 157,452,162 pixels,
+zero skips, all six mutations rejected), and complete verify-stage1 (466.39 s).
+All 23 directed stages pass at both 398/358 columns with native RGB/PCM/time
+unchanged. Logs: build/workflow/20261028T153024.263534Z/. The oracle attempt then
+finds an inconsistent empty-row comparison in the new Windows compact-cache
+fixture. It is stopped after that recorded failure rather than accepting a
+partial pass; its original log and all input captures remain.
+
+The independent full raster initializes an absent row's left minimum to width
+320, but GroundHorizon::Profile initializes it to -1. The assertion normalized
+the analogous column-height sentinel already, but compared left-row arrays
+without normalization. The fixture now maps only the empty width sentinel to
+-1 and checks every left/right bound, including absent rows. Real populated
+geometry and all visible MAME RGB/sky/terrain comparisons are unchanged.
+The synthetic regression explicitly checks empty row/column contracts; a new
+retained mutation turns an empty row into a real edge and must be rejected.
+No renderer, game/PCM code, captures or comparison coverage are removed.
+
+The exact recorded fixture now passes 160/160 original MAME RGB frames,
+zero skipped, with 159 enhanced witnesses, both actual roll sides (29/30),
+58,471 visible wedge pixels removed and 2,643,597 terrain pixels preserved
+(build/workflow/20261028T154816.881529Z/01-verify-ground-fixture.log).
+The candidate macOS package at source a2d6950 also passed independent payload,
+source, signature and dependency audit plus Arcade/Practice/Shuffle Metal/OpenAL
+smokes. Its strict audit allowlist was updated only for the exact committed
+miniz notice (the retained older Preview 4 harness predates that notice).
+A final .1 package will include this fixture repair in its source archive;
+the prior candidate and both audit receipts are preserved, not overwritten.
+
+All focused ground checks pass at
+build/workflow/20261028T154816.881529Z/02-verify-ground-mutations.log (75.49 s):
+96 full-plane references, all retained geometry/recorded-witness/donor controls
+and the new empty-row negative control. The correction is confined to the
+fixture's representation conversion; the release executable sources are
+unchanged from a2d6950.

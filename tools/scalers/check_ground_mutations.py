@@ -5,6 +5,7 @@ import os,subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
 source=(root/'src/main/hwvideo/ground_horizon.hpp').read_text()
 mutations={
+ 'empty row becomes a real edge':('left.fill(-1);right.fill(-1);','left.fill(0);right.fill(-1);'),
  'inferred axis vetoes measured sky':('if(rx||cy||!fallback)','if(!fallback)'),
  'corner overwrites measured terrain':('<plane_min&&!profile.ground(x,y,nx,ny)','<plane_min'),
  'corner overwrites measured sky':('>plane_max&&!observed_sky(x,y)','>plane_max'),
