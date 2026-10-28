@@ -14543,3 +14543,22 @@ Focused effect baseline/mutations pass at
 build/workflow/20261028T162133.980705Z/ (3.48 s / 22.94 s), with both emission
 paths and all eight retained effect faults checked. git diff --check and Python
 syntax checks pass.
+
+### Wide-edge mutation anchor update (2026-10-28)
+
+The next full oracle attempt is stopped after verify-wide-mutations reports
+sprite-edge: mutation anchor changed (416.24 s; retained log at
+build/workflow/20261028T162300.726185Z/01-oracle-test.log). The new decoder has
+two identical signed clipping predicates, one for unit zoom and one for scaled
+emission; the retained mutation had asserted exactly one. Its expected count
+is now two, and it narrows both paths to the original viewport. The same
+independent wide-edge disappearance witness and both viewport widths remain.
+All nine mutation anchors were preflighted before rerunning. No production or
+pixel expectation changes are made.
+
+verify-wide-mutations passes at
+build/workflow/20261028T163103.408963Z/01-verify-wide-mutations.log (62.74 s):
+both geometry baselines and 18/18 semantic rejections, zero skipped. Every
+original control is retained. Other mutation harnesses referencing the changed
+sprite/ground/wide renderer sources were reviewed against their completed
+focused/baseline results. A complete oracle rerun remains required.

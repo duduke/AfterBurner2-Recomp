@@ -16,7 +16,7 @@ MUTATIONS = [
     ('wrapped-anchor', 'sprite_scene.hpp', 'xs=anchors[slot];', 'xs=xs;',
      'native-hidden sprite projection did not recover both wide edges', 1),
     ('sprite-edge', 'sprite_scene.hpp', 'x>=clip_left&&x<=clip_right', 'x>=0&&x<=319',
-     'sprite disappeared at a native edge instead of a wide edge', 1),
+     'sprite disappeared at a native edge instead of a wide edge', 2),  # unit and scaled decoder paths
     ('road-origin', 'hwroad.cpp', ') & 0xfff) + native_left;', ') & 0xfff);',
      'wide road origin changed the native center', 2),
     ('tile-origin', 'hwtiles.cpp', 'static_cast<uint32_t>(x + native_left)', 'static_cast<uint32_t>(x)',
