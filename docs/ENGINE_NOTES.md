@@ -14618,3 +14618,45 @@ build/workflow/20261028T151717.793881Z/ (112.74 s / 288.01 s / 171.93 s /
 fixture/helper repairs and documentation; prototype behavior and shared runtime
 remain unchanged from the verified integration. The original local-file backup,
 all failed attempts, fixtures and mutations remain retained under ignored build/.
+
+
+## Build and test artifact pruning (2026-10-28)
+
+The build/test reference audit found no unused regression or oracle C++ test
+source to remove. Schedule Lua outputs that appear unreferenced by filename are
+still generated and checked through `generate_input_schedule.py`; retain them.
+All fixtures, mutations, comparison gates and test/capture prerequisites remain.
+
+`clean-checks` previously named only seven executables. It now derives the
+regression, integration and fixture-helper program paths from test source
+basenames, including Objective-C++, and lists alternate backend output names.
+`clean-oracles` removes oracle programs and their dedicated object tree;
+`clean-native` separately removes shared native objects and the release binary.
+These commands preserve captures, mutations, logs, dependency installations,
+packages and local recovery tooling. An isolated cleanup smoke removed all 103
+listed program paths and three object trees while preserving eight protected
+sentinels. Make database comparison confirms unchanged prerequisites for
+`test`, `verify-stage1`, `oracle-test` and `oracle-capture`.
+
+Local pruning removed 589 rebuildable files (150,883,287 bytes): obsolete
+branch-only/temporary executables and object/dependency files in ten older
+single-purpose CMake trees. Their configuration and evidence remain. All 26,372
+existing oracle files retained their sizes and nanosecond modification times.
+The ignored manifests and cleanup checks are in
+`build/cleanup/20261028-prune-{plan,result}.json`,
+`build/cleanup/20261028-target-audit.txt` and
+`build/cleanup/20261028-cleanup-smoke.txt`. The large retained capture corpus
+is deliberately preserved; earlier APFS clones can make `du` overstate unique
+physical storage. This maintenance changes no compiler options, game execution,
+oracle instrumentation or acceptance scope.
+
+Validation: `python3 tools/workflow.py run quick -j 4` passes on the cleanup
+source tree at `build/workflow/20261028T194101.100553Z/`: `test` in 92.40 s and
+complete `verify-stage1` in 588.14 s, including all 23 directed stages at both
+358/398 widths. Cleanup dry runs, the isolated removal/preservation smoke,
+expanded target/source inventory, documentation command/anchor checks and
+`git diff --check` pass. The full `oracle-test` was not rerun: this maintenance
+changes only cleanup recipes and documentation, with every oracle gate,
+compiler option, fixture and execution/comparison implementation retained.
+These checks do not claim whole-host acceptance.
+

@@ -137,11 +137,30 @@ test: build/engine_regression build/mainbus_regression build/xboard_timeline_reg
 	./build/cpu_continuation_regression
 	./build/sound_cpu_regression
 
+# Test programs follow their source basename. Derive the cleanup lists so new
+# regressions/integration checks do not accumulate outside clean-checks.
+# These are exact file paths: never glob build/oracle/ or mutation directories.
+CHECK_PROGRAMS = $(addprefix build/,$(notdir $(basename $(filter-out tests/oracle_%.cpp,$(wildcard tests/*.cpp tests/*.mm)))))
+# Alternate backends reuse another test source, so list their output names too.
+CHECK_PROGRAMS += build/cpu_continuation_thread_regression build/spatial_audio_sdl_regression build/native_metal_sprite_filter_regression
+ORACLE_PROGRAMS = $(addprefix build/,$(notdir $(basename $(wildcard tests/oracle_*.cpp))))
+ORACLE_PROGRAMS += build/oracle_native_release_recovery build/oracle_world_visibility
+
 clean-checks:
 	rm -rf build/check_obj
-	rm -f build/engine_regression build/mainbus_regression build/xboard_timeline_regression build/xboard_irq_lines_regression build/cpu_continuation_regression build/sound_cpu_regression build/stage1_integration
+	rm -f $(CHECK_PROGRAMS)
 
-.PHONY: test clean-checks FORCE_CHECK_CONFIG FORCE_CHECK_REBUILD
+# Native objects are shared with the game; retain them here. Removing only the
+# oracle-specific objects/programs preserves captures, mutations and evidence.
+clean-oracles:
+	rm -rf build/oracle_obj
+	rm -f $(ORACLE_PROGRAMS)
+
+clean-native:
+	rm -rf build/native_obj
+	rm -f build/afterburner2-release
+
+.PHONY: test clean-checks clean-oracles clean-native FORCE_CHECK_CONFIG FORCE_CHECK_REBUILD
 
 # Optional visual check; requires the user's ROMs in roms/.
 render-scene:

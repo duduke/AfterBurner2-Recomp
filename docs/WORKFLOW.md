@@ -57,8 +57,16 @@ coverage to reduce wall time.
 `build/check_obj/`. Compiler dependency files cover transitive headers and
 generated includes; changing compiler/options invalidates these objects.
 Repeated checks rerun executables without recompiling unchanged sources.
-`make clean-checks` removes only these check objects and executables when a
-fresh build is wanted. Existing game and oracle build rules remain separate.
+`make clean-checks` removes shared check objects and all top-level regression,
+fixture-helper and integration executables named after `tests/*.cpp` / `tests/*.mm`, plus alternate backend
+variants, excluding `oracle_*` programs. `make clean-oracles` removes oracle executables and
+`build/oracle_obj/`; it preserves the native objects shared with the game.
+`make clean-native` removes those native objects and `build/afterburner2-release`.
+`make clean` removes the default game's objects and executable. Run these only
+when a fresh build is wanted; ordinary checks retain incremental compilation.
+All four commands preserve `build/oracle/`, mutation directories, dependency
+installations, packages, validation logs and local recovery tools. CMake build
+trees have their own `cmake --build build/<tree> --target clean` command.
 
 ## ROM ZIP startup checks
 

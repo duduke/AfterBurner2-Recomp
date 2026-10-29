@@ -149,6 +149,11 @@ the decoder needs extending; in a data table it's expected.
 
 ## Current checkpoint (2026-10-24)
 
+Build/test maintenance (2026-10-28): removed stale compiled experiment outputs,
+expanded regression cleanup and added separate oracle/native cleanup commands.
+All test sources, fixtures, mutations and acceptance tasks remain retained; see
+[the pruning record](ENGINE_NOTES.md#build-and-test-artifact-pruning-2026-10-28).
+
 Integration update (2026-10-28): main consolidates the latest Windows rendering,
 audio and pacing work with local license/package maintenance and platform plans.
 Standalone custom-stage experiments are isolated on
