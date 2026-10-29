@@ -151,9 +151,11 @@ the decoder needs extending; in a data table it's expected.
 
 macOS packaging cleanup (2026-10-29): runtime packaging now moves project and
 dependency sources to a matching `-sources.zip` companion, links developer docs
-at the source commit and consolidates notice texts into one file. Both ZIPs
-must be distributed together. Existing releases are unchanged; see the
-[packaging record](ENGINE_NOTES.md#macos-runtime-package-cleanup-2026-10-29).
+at the source commit and consolidates notice texts into one file. The dated
+runtime and checksum are published on Preview 5; source companions are retained
+locally, with exact project/dependency source links in the release notes.
+Earlier assets are retained; see the
+[release record](ENGINE_NOTES.md#compact-macos-release-refresh-2026-10-29).
 
 Build/test maintenance (2026-10-28): removed stale compiled experiment outputs,
 expanded regression cleanup and added separate oracle/native cleanup commands.

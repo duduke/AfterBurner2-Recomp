@@ -14686,3 +14686,45 @@ new committed-source release. Python syntax and `git diff --check` pass.
 Game execution, compiler settings and oracle instrumentation are unchanged;
 the complete release gate and finite gameplay launches were not rerun. No new
 release artifact or publication is claimed, and prior packages remain retained.
+
+### Compact macOS release refresh (2026-10-29)
+
+The existing Preview 5 release now carries the dated
+`AfterBurner2-v0.1.0-preview.5-20261029-macOS-arm64.zip` runtime (4,557,574 bytes)
+and checksum. Its matching `-sources.zip` (21,132,174 bytes) and checksum are
+retained locally; the user requested removal of these two source-companion
+assets from the public release. Release notes instead link the exact project
+source commit and pinned upstream SDL/OpenAL sources. Source
+commit: `c4a09d0c25bc54eceade57f27f4dcec5a53439e1`. Runtime SHA-256:
+`6d72f304c044b50deb460a7ead0b28ccb76e014b9d39d5a40f12b3e884adf81d`.
+Source companion SHA-256:
+`60e64f8da8c858b8115650ad038676770b0222b9e268a25ba2186e019168a7ce`.
+All earlier macOS/Windows assets are retained. GitHub's asset digests and sizes
+matched all four initially uploaded files; the runtime and checksum remain
+unchanged after source-companion removal. Earlier asset digests are unchanged.
+
+The executable and both bundled libraries are byte-identical to the independently
+audited 28 October development package. Gameplay/oracle sources, compiler options,
+independent fixtures and comparison instrumentation are unchanged. Under the
+roadmap's evidence-reuse rule, reuse the complete `oracle-test` pass at
+`build/workflow/20261028T163243.885954Z/01-oracle-test.log` (4,331.54 s), including
+every retained mutation and its reported concurrency skips. Today's redundant
+oracle rerun was deliberately interrupted after the user questioned unnecessary
+revalidation; its exit 130 is not a fresh oracle pass or a waived comparison.
+Fresh `test` (91.00 s) and complete `verify-stage1` (495.37 s) pass at
+`build/workflow/20261029T095936.688333Z/`; `native-release` passes at
+`build/workflow/20261029T105253.090922Z/`. The reuse receipt is retained at
+`build/release-macos-20261029/validation-reuse.json`.
+
+Independent extracted-package audit passes at
+`build/release-macos-20261029/audit-final.json`: all 14 payload files, companion
+allowlist and source equality with the exact commit, upstream archives/notices,
+checksums, executable modes, arm64/macOS 26 minimum, dependency paths and strict
+ad-hoc signatures. Three 240-frame physical-output Metal/OpenAL HRTF launches
+pass: Arcade in 10.352 s, Practice stage 8 in 13.076 s, and Shuffle seed 0 with
+replacement aircraft in 8.593 s. All report zero underruns; temporary ROM links
+were removed and payload bytes remain unchanged. Earlier physical-output checks
+stalled alongside Apple's `afplay`; the user-approved macOS audio-service restart
+restored output before the final audit. Failed attempts and a separate null-output
+diagnostic remain retained. These finite checks do not close sustained performance,
+controller/latency or continuous whole-credit acceptance.

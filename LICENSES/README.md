@@ -7,8 +7,10 @@ license files remain intact. See `docs/THIRD-PARTY-NOTICES.md` in the source
 tree for component usage and attribution. macOS runtime packages consolidate
 these texts and bundled dependency notices in `THIRD-PARTY-NOTICES.txt`, storing
 identical texts once. Their matching `-sources.zip` companion contains the
-complete project tree and dependency source archives and must be distributed
-alongside the runtime. The Windows packager retains `Notices/project/` and
+complete project tree and dependency source archives and is retained locally.
+The macOS release notes link the exact project commit and pinned dependency
+sources; the source companion is not a public release asset. The Windows
+packager retains `Notices/project/` and
 its source archives; see `docs/WORKFLOW.md` for each packaging path.
 
 | Component | License / notice in this directory |

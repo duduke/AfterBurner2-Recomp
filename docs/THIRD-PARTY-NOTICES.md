@@ -17,7 +17,9 @@ Soft 1.25.2. `THIRD-PARTY-NOTICES.txt` consolidates their licenses and the
 linked-code notices without duplicate texts or complete source headers.
 The matching `-sources.zip` companion contains the complete project source at
 the manifest's commit plus the pinned upstream SDL/OpenAL source archives.
-Distribute both ZIPs together. No Homebrew installation is
+The companion is retained locally; current macOS release notes link the exact
+project source and pinned upstream dependency sources instead of publishing
+the source-companion asset. No Homebrew installation is
 needed to run that package. The shared libraries remain replaceable by
 ABI-compatible local builds. See the [release workflow](WORKFLOW.md#macos-preview-release).
 

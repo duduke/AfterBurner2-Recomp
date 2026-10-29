@@ -157,8 +157,10 @@ executable permissions, signatures and dependency paths, then launch from a
 different working directory with temporary settings and user-provided ROMs.
 Check a bounded Metal launch and OpenAL output; remove all temporary ROM links
 from the extracted smoke copy. Check the companion's manifest/archive hashes
-and exact project commit too. Upload both original ZIPs and both checksums
-together; always distribute the matching source companion with the runtime.
+and exact project commit too. Retain both ZIPs and checksums locally. The current
+macOS release publishes the runtime ZIP and checksum, with release-note links to
+the exact project source commit and pinned upstream dependency sources; the
+user requested that its source companion not remain a public release asset.
 Release notes must name the exact commit, minimum OS/architecture, validation
 scope, missing ROMs, signing status and remaining preview limitations.
 
