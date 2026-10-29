@@ -14660,3 +14660,29 @@ changes only cleanup recipes and documentation, with every oracle gate,
 compiler option, fixture and execution/comparison implementation retained.
 These checks do not claim whole-host acceptance.
 
+### macOS runtime package cleanup (2026-10-29)
+
+`tools/package_macos.py` now creates a runtime ZIP and matching `-sources.zip`
+companion. Project/dependency source archives and the complete developer docs
+remain in the companion; the runtime keeps launch/ROM instructions, required
+assets, libraries, `LICENSE.txt` and a consolidated `THIRD-PARTY-NOTICES.txt`.
+All central notice texts and the actual bundled SDL/OpenAL notices are retained
+verbatim, with byte-identical texts stored once. Full source headers are no
+longer copied as notice files. The launch guide points to docs at the manifest's
+commit and names the source companion, which must accompany runtime distribution.
+Both ZIPs have manifests and checksums; existing artifacts are never replaced.
+
+Validation: `python3 tools/workflow.py run test -j 4` passes in 94.19 s at
+`build/workflow/20261029T091836.424729Z/`. The isolated assembly smoke and its log
+are retained at `build/package-cleanup-check/verify.py` and `verify.log`.
+It uses temporary package roots, the existing native binary/dependencies and
+real native path rewriting/signature tools, stubbing only the fixture's clean
+working-tree query. It verifies runtime/source separation, every central and
+bundled dependency notice text, ZIP integrity, manifest/checksum hashes,
+executable permissions, native signatures/dependency paths and overwrite refusal.
+The runtime smoke ZIP is 4,557,460 bytes; the source companion is 21,129,022 bytes.
+Its project archive is the current HEAD, so this is assembly validation, not a
+new committed-source release. Python syntax and `git diff --check` pass.
+Game execution, compiler settings and oracle instrumentation are unchanged;
+the complete release gate and finite gameplay launches were not rerun. No new
+release artifact or publication is claimed, and prior packages remain retained.

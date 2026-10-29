@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package a committed arm64 build; never copy local ROMs or preferences."""
+"""Package a committed arm64 runtime and matching source companion ZIP."""
 import argparse
 import hashlib
 import json
@@ -67,6 +67,37 @@ def committed_source(relative):
     return source
 
 
+def write_notices(package, sdl_license):
+    # Keep every notice, but do not ship source headers or duplicate texts in
+    # several directories. The original files also remain in the source ZIP.
+    notices = [(f"LICENSES/{name}", (ROOT / "LICENSES" / name).read_bytes())
+               for name in PROJECT_NOTICES]
+    notices.append(("Bundled SDL3 LICENSE.txt", sdl_license))
+    openal_notices = ROOT / "build/deps/openal/share/licenses/openal-soft"
+    for name in ("LGPL.txt", "BSD-3Clause.txt", "pffft.txt", "fmt.txt", "gsl.txt"):
+        source = openal_notices / name
+        require_notice(source)
+        notices.append((f"Bundled OpenAL Soft {name}", source.read_bytes()))
+    grouped = {}
+    for label, content in notices:
+        grouped.setdefault(content, []).append(label)
+    with (package / "THIRD-PARTY-NOTICES.txt").open("wb") as output:
+        for content, labels in grouped.items():
+            output.write(("\n===== " + "; ".join(labels) + " =====\n\n").encode())
+            output.write(content)
+            output.write(b"\n")
+
+
+def write_zip(folder, output):
+    destination = output / f"{folder.name}.zip"
+    with zipfile.ZipFile(destination, "x", zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(folder.rglob("*")):
+            archive.write(path, path.relative_to(output))
+    digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+    destination.with_suffix(".zip.sha256").write_text(f"{digest}  {destination.name}\n")
+    return destination, digest
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", help="Release tag, e.g. v0.1.0-preview.1")
@@ -77,7 +108,6 @@ def main():
         raise SystemExit("Commit the intended source tree before packaging")
     check_project_notices()
     aircraft_assets = [(relative, committed_source(relative)) for relative in AIRCRAFT_ASSETS]
-    shader_notices = [committed_source(relative) for relative in LIBRASHADER_NOTICES]
 
     binary = ROOT / "build/afterburner2-release"
     if "arm64" not in run("file", str(binary)):
@@ -103,8 +133,13 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     name = f"AfterBurner2-{args.version}-macOS-arm64"
     package = output / name
+    sources = output / f"{name}-sources"
+    for folder in (package, sources):
+        if folder.exists() or (output / f"{folder.name}.zip").exists():
+            raise SystemExit(f"Artifact already exists: {folder}")
     package.mkdir()  # Refuse to replace an existing artifact.
-    for directory in ("lib", "roms", "soundtrack", "Sources", "Notices"):
+    sources.mkdir()
+    for directory in ("lib", "roms", "soundtrack"):
         (package / directory).mkdir()
     app = package / "afterburner2"
     shutil.copy2(binary, app)
@@ -130,32 +165,16 @@ def main():
         run("codesign", "--force", "--sign", "-", str(target))
         run("codesign", "--verify", "--strict", str(target))
 
-    for relative in ("README.md", "roms/README.md", "roms/roms.txt", "LICENSE.txt"):
+    for relative in ("roms/README.md", "roms/roms.txt", "LICENSE.txt"):
         shutil.copy2(ROOT / relative, package / relative)
-    shutil.copytree(ROOT / "LICENSES", package / "Notices/project")
-    shutil.copytree(ROOT / "docs", package / "docs")
+    write_notices(package, sdl_license)
     for relative, source in aircraft_assets:
         target = package / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    shader_notice_dir = package / "Notices/librashader"
-    shader_notice_dir.mkdir()
-    for source in shader_notices:
-        shutil.copy2(source, shader_notice_dir / source.name)
-    (package / "Notices/SDL3.txt").write_bytes(sdl_license)
-    for source, dest in [
-        (ROOT / "src/main/frontend/scalers/SNES9X-LICENSE.txt", "Snes9x.txt"),
-        (ROOT / "src/main/frontend/scalers/scalefx.hpp", "ScaleFX.hpp"),
-        (ROOT / "src/third_party/z80.h", "z80.h"),
-        (ROOT / "src/third_party/dr_flac/LICENSE", "dr_flac.txt"),
-        (ROOT / "src/third_party/miniz/LICENSE", "miniz.txt"),
-        (ROOT / "src/main/frontend/controllerdb/LICENSE", "SDL_GameControllerDB.txt"),
-    ]:
-        shutil.copy2(source, package / "Notices" / dest)
-    shutil.copytree(ROOT / "build/deps/openal/share/licenses/openal-soft", package / "Notices/OpenAL-Soft")
     for archive in archives:
-        shutil.copy2(archive, package / "Sources" / archive.name)
-    source_archive = package / "Sources/AfterBurner2-source.tar.gz"
+        shutil.copy2(archive, sources / archive.name)
+    source_archive = sources / "AfterBurner2-source.tar.gz"
     run("git", "archive", "--format=tar.gz", "--prefix=AfterBurner2/", f"--output={source_archive}", "HEAD")
     with tarfile.open(source_archive) as archive:
         for entry in archive.getmembers():
@@ -164,6 +183,8 @@ def main():
             relative = entry.name.removeprefix("AfterBurner2/")
             if relative.startswith(("build/", "soundtrack/")) or (relative.startswith("roms/") and relative not in ("roms/README.md", "roms/roms.txt")):
                 raise SystemExit(f"Unexpected source payload: {relative}")
+    commit = run("git", "rev-parse", "HEAD")
+    docs_url = f"https://github.com/duduke/AfterBurner2-Recomp/blob/{commit}/docs/"
     launcher = package / "Launch.command"
     launcher.write_text('#!/bin/sh\nset -eu\ncd -- "$(dirname -- "$0")"\nexec ./afterburner2 "$@"\n')
     launcher.chmod(0o755)
@@ -178,8 +199,8 @@ def main():
         "Practice selects a stage for a fresh run; F5 retries that Practice stage.\n"
         "Shuffle arranges gameplay stages 1-22 once each and keeps stage 23 last.\n"
         "F5 restarts the same Shuffle order; New Shuffle creates another order.\n"
-        "Return to Arcade starts a fresh original board. See docs/PRACTICE_MODE.md\n"
-        "and docs/SHUFFLE_MODE.md for details.\n"
+        "Return to Arcade starts a fresh original board. See PRACTICE_MODE.md\n"
+        "and SHUFFLE_MODE.md at the documentation URL below for details.\n"
         "Escape opens the pause menu; Settings > Display > Aspect Ratio offers\n"
         "16:10 and 16:9 previews. Restart Run and Change Mode are on the pause menu.\n"
         "These viewports and detached HUD/aircraft use the integrated renderer by default.\n"
@@ -188,37 +209,40 @@ def main():
         "Settings > Graphics > Ground > Corrected enables horizon correction.\n"
         "Settings > CRT and Shaders includes built-in Off / Subtle / Arcade modes.\n"
         "RetroArch Slang presets need a separately installed optional runtime\n"
-        "and shader pack; neither is bundled. See docs/CRT_DISPLAY.md for setup.\n"
+        "and shader pack; neither is bundled. See CRT_DISPLAY.md online for setup.\n"
         "The optional neutral/gentle-bank aircraft prototype is in assets/player-aircraft/;\n"
-        "see docs/SPRITE_REPLACEMENT.md for its command-line option and limits.\n"
+        "see SPRITE_REPLACEMENT.md online for its command-line option and limits.\n"
         "Custom WAV/FLAC music belongs in soundtrack/. Preferences use SDL's\n"
         "Application Support directory and are not included in this download.\n\n"
         "The executable/libraries are ad-hoc signed, not Developer ID signed or\n"
         "notarized. macOS may require approval in System Settings > Privacy & Security.\n"
-        "This is an experimental build; see README.md and docs/ROADMAP.md for limits.\n"
+        "This is an experimental build; see ROADMAP.md online for limits.\n"
         "No ROMs, Sega graphics/audio, captures or personal settings are included.\n"
-        "Complete project and bundled library sources are in Sources/; notices\n"
-        "are in Notices/ and LICENSE.txt. Shared libraries can be replaced locally\n"
+        f"Documentation: {docs_url}\n"
+        f"Complete project and bundled library sources: {sources.name}.zip\n"
+        "Distribute that matching companion alongside this runtime ZIP.\n"
+        "Notices are in THIRD-PARTY-NOTICES.txt and LICENSE.txt; license inventory\n"
+        "paths refer to files in the source companion. Shared libraries can be replaced locally\n"
         "with ABI-compatible builds (re-sign changed binaries as necessary).\n"
     )
     files = {str(p.relative_to(package)): hashlib.sha256(p.read_bytes()).hexdigest()
              for p in sorted(package.rglob("*")) if p.is_file()}
     (package / "manifest.json").write_text(json.dumps({
-        "version": args.version, "commit": run("git", "rev-parse", "HEAD"),
+        "version": args.version, "commit": commit,
+        "sources": f"{sources.name}.zip",
         "architecture": "arm64", "minimum_macos": "26.0",
         "libraries": {"SDL3": "3.4.16", "OpenAL Soft": "1.25.2"},
         "sha256": files,
     }, indent=2) + "\n")
-    destination = output / f"{name}.zip"
-    if destination.exists():
-        raise SystemExit(f"Artifact already exists: {destination}")
-    with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(package.rglob("*")):
-            archive.write(path, path.relative_to(output))
-    digest = hashlib.sha256(destination.read_bytes()).hexdigest()
-    destination.with_suffix(".zip.sha256").write_text(f"{digest}  {destination.name}\n")
-    print(destination.relative_to(ROOT))
-    print(f"SHA256 {digest}")
+    source_files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in sorted(sources.iterdir())}
+    (sources / "manifest.json").write_text(json.dumps({
+        "version": args.version, "commit": commit, "sha256": source_files,
+    }, indent=2) + "\n")
+    for folder in (sources, package):
+        destination, digest = write_zip(folder, output)
+        print(destination.relative_to(ROOT))
+        print(f"SHA256 {digest}")
 
 
 if __name__ == "__main__":

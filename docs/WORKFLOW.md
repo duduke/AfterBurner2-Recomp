@@ -138,8 +138,14 @@ Use a fresh version for later releases. The packager requires a clean working
 tree, verifies the pinned dependency source hashes and refuses to overwrite an
 existing package. It creates an allowlisted folder and ZIP under ignored
 `build/releases/`, rewrites library paths, removes build-machine search paths,
-ad-hoc signs the binaries and records source commit/file hashes. Project and
-dependency sources are included. ROMs, captures, soundtracks and preferences
+ad-hoc signs the binaries and records source commit/file hashes. It creates a
+runtime ZIP and a matching `-sources.zip` companion, each with a SHA-256 file
+and manifest. The companion contains the complete committed project tree
+(including developer docs) and pinned SDL/OpenAL source archives. The runtime
+keeps the launch/ROM instructions, assets and one `THIRD-PARTY-NOTICES.txt`,
+with identical notice texts stored once, alongside `LICENSE.txt`. Its launch
+guide links to documentation at the exact source commit. ROMs, captures,
+soundtracks and preferences
 are excluded. Keep the shared libraries replaceable for local compatible builds.
 The package also copies the four allowlisted player-aircraft pack files into
 `assets/player-aircraft/` and includes the librashader header notices. The
@@ -150,7 +156,9 @@ Before uploading, extract the ZIP into a separate folder. Verify its SHA-256,
 executable permissions, signatures and dependency paths, then launch from a
 different working directory with temporary settings and user-provided ROMs.
 Check a bounded Metal launch and OpenAL output; remove all temporary ROM links
-from the extracted smoke copy. Upload only the original ZIP and checksum.
+from the extracted smoke copy. Check the companion's manifest/archive hashes
+and exact project commit too. Upload both original ZIPs and both checksums
+together; always distribute the matching source companion with the runtime.
 Release notes must name the exact commit, minimum OS/architecture, validation
 scope, missing ROMs, signing status and remaining preview limitations.
 

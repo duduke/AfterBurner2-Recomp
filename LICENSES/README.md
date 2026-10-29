@@ -4,8 +4,12 @@ The files in this directory collect the notices for code used by this project.
 Original project code is covered by `LICENSE.txt` at the repository root;
 third-party components retain their own terms. Source headers and vendored
 license files remain intact. See `docs/THIRD-PARTY-NOTICES.md` in the source
-tree for component usage and attribution. Release packages copy this entire
-directory to `Notices/project/` and include a complete project source archive.
+tree for component usage and attribution. macOS runtime packages consolidate
+these texts and bundled dependency notices in `THIRD-PARTY-NOTICES.txt`, storing
+identical texts once. Their matching `-sources.zip` companion contains the
+complete project tree and dependency source archives and must be distributed
+alongside the runtime. The Windows packager retains `Notices/project/` and
+its source archives; see `docs/WORKFLOW.md` for each packaging path.
 
 | Component | License / notice in this directory |
 | --- | --- |

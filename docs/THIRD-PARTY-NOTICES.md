@@ -13,9 +13,11 @@ project's original-code license.
 ## macOS preview dependencies
 
 The macOS ZIP bundles dynamically linked SDL3 3.4.16 (zlib license) and OpenAL
-Soft 1.25.2. `Notices/` contains their licenses and the linked-code notices;
-`Sources/` contains the complete project source at the manifest's commit plus
-the pinned upstream SDL/OpenAL source archives. No Homebrew installation is
+Soft 1.25.2. `THIRD-PARTY-NOTICES.txt` consolidates their licenses and the
+linked-code notices without duplicate texts or complete source headers.
+The matching `-sources.zip` companion contains the complete project source at
+the manifest's commit plus the pinned upstream SDL/OpenAL source archives.
+Distribute both ZIPs together. No Homebrew installation is
 needed to run that package. The shared libraries remain replaceable by
 ABI-compatible local builds. See the [release workflow](WORKFLOW.md#macos-preview-release).
 
