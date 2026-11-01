@@ -15187,4 +15187,54 @@ comparison/mutation instrumentation have not changed since the complete
 `full` in `build/workflow/20261101T060232.245524Z/`; reuse that engine evidence
 with its declared older routine-race skips. Later changes are frontend touch,
 packaging/version and documentation, covered by their fresh checks above.
-Extracted-package and upload evidence will be recorded after artifact creation.
+Extracted-package and upload evidence follows in the publication record below.
+
+
+## Preview 6 publication (2026-11-01)
+
+Committed current work as `7ee7a11` and merged to main at
+`add8b04535897ecc92b8114a3e3f6554d673f708`; both refs are pushed. The isolated
+custom-stage prototype remains separate at the user's explicit direction.
+Published `v0.1.0-preview.6` as a prerelease in both
+[the main repository](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
+and [the public releases repository](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6).
+Each has the same macOS runtime ZIP, Android sideload APK and their two checksum
+files. Earlier releases/assets remain intact; source companions remain local.
+The public README now points to Preview 6 and retains the Windows Preview 5 link.
+
+- macOS runtime: `AfterBurner2-v0.1.0-preview.6-macOS-arm64.zip`, 4,561,098 bytes,
+  SHA-256 `5c8760c618044c84a7cacadf75385cd55f2efaa2b0ac431ba4061e87bbe278d1`.
+- Android: `AfterBurner2-v0.1.0-preview.6-Android-arm64-preview.apk`, 8,148,783 bytes,
+  SHA-256 `d9b9441f8cc3f1b16513a5c7f72752a08d95ad3b3cb11e5bcf603d6070a4a27f`.
+  Its embedded identity is the clean merged commit, version code 2; the native
+  library is byte-identical to the physically tested Hide/Show build. The final
+  install attempt found no attached ADB device, so no final version/identity-only
+  reinstall is claimed. Earlier phone native/controls evidence remains scoped
+  to that identical native library and the documented earlier APKs.
+- Source companion: `AfterBurner2-v0.1.0-preview.6-macOS-arm64-sources.zip`,
+  SHA-256 `6a1ef31ef3bc7de88695d987311e8b2116580d4f965e1861d656f69466621b43`,
+  retained locally with its checksum, full exact project tree and pinned SDL/OpenAL
+  archives. Release notes link the exact project and dependency sources.
+
+Independent macOS audit: `build/release-preview6/macos-audit.json`. All 14
+runtime files, source equality, upstream hashes/notices, arm64/macOS 26 minimum,
+permissions, strict ad-hoc signatures and packaged dependency paths pass. Four
+240-frame physical-output Metal/OpenAL HRTF launches pass: Arcade (10.731 s),
+21:9 (8.950 s), Practice stage 8 (12.585 s), and Shuffle seed 0 with packaged
+aircraft (8.349 s). All report zero underruns; temporary ROM links were removed.
+The APK passes the Android manifest/signature/notices/allowlist/16 KiB checks.
+
+The complete 21:9 directed sweep passes 22,540 native RGB/PCM/time frames over
+all 23 slots at `build/workflow/20261101T072605.613801Z/01-verify-wide-stages-21-9.log`.
+That workflow's subsequent GPU command failed sandbox display enumeration; the
+unsandboxed rerun passes 24/24 cases / 14,499,072 pixels, zero skips, followed by
+all **10/10 touch faults rejected, 0 skipped**, at
+`build/workflow/20261101T073314.228640Z/`. Artifacts remain at
+`build/touch-mutants-ijpx43iq/`. The main profile/release build and reused complete
+engine gate evidence are recorded in the preparation section above.
+
+Both repositories' four uploaded files were downloaded again and match the
+local tested files byte-for-byte. Retained upload inventories, published metadata,
+notes and download receipts: `build/release-preview6/`. These finite release
+checks retain the documented whole-credit, broader device/TV and sustained
+peak-load/thermal limits; Windows was not rebuilt.
