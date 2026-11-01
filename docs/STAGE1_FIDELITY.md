@@ -6,7 +6,7 @@ remains in `OEngine` and the original Stage 1 regression suite; it no longer
 drives the live game. `verify-stage1` retains those assertions and also runs
 `verify-whole-host`, covering 781 physical frames, native inputs/RGB/audio and
 restart equality with a fresh board. Current status and full-credit exclusions are in
-[ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-24). The descriptions below
+[ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-31). The descriptions below
 apply only to the legacy reconstruction and its tests, not live gameplay.
 
 PR #1 targeted the Stage 1 appearance and playable experience selected by the

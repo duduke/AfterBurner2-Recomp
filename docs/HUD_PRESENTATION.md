@@ -11,7 +11,7 @@ add authored detail.
 The SDL window requests high pixel density. Fullscreen uses the desktop's
 resolution, including 3840×2160 on a 4K desktop. Letterboxing and Integer
 scaling still apply; no fixed 4K intermediate buffer is allocated. The HUD
-stays in the centered native 320×224 area in Original, 16:10 and 16:9 viewports.
+stays in the centered native 320×224 area in Original, 16:10 and 16:9 viewports, plus the source 21:9 preview.
 Menus retain their ROM font and the existing logical mouse coordinates.
 
 ## Custom artwork
@@ -80,12 +80,14 @@ python3 tools/workflow.py run verify-hud-presentation verify-native-menu
 python3 tools/workflow.py run verify-gpu-hud verify-gpu-native-menu native-release
 ```
 
-These supplement the normal `test` / `verify-stage1` cadence; they do not replace
-the complete regression gate for a merge or milestone. The synthetic scene
+These supplement daily `main` and affected checks under the
+[validation cadence](ROADMAP.md#working-on-the-remaining-tasks-read-this-first).
+The complete regression/oracle/mutation gate is reserved for engine changes. The synthetic scene
 checks cover text palette/priority, effects, frontier splits, display disable,
 reset and same-frame mode changes, with retained rejected mutations. The native
 integration compares original versus captured RGB/PCM/time and independently
 reconstructs native text from planar ROM pixels at all three widths. Software
 and real GPU checks exercise custom atlas validation/fallback, palette changes,
-occlusion and output layouts. Detailed local results live in
+occlusion and output layouts; source software layout checks include 522-wide
+21:9. Detailed local results live in
 [ENGINE_NOTES](ENGINE_NOTES.md).

@@ -6,7 +6,8 @@
 | Scan priorities, current coverage and working rules | [Summarized roadmap](ROADMAP.md#summarized-roadmap) |
 | Plan whole-credit fidelity and lifecycle acceptance | [Fidelity plan](FIDELITY_PLAN.md) |
 | See implemented enhancements and future proposals | [Enhancement backlog](ENHANCEMENT_PLAN.md) |
-| Run tests, captures or recover a missing instruction | [Workflow](WORKFLOW.md) |
+| Run daily main checks, engine oracles or recover an instruction | [Workflow](WORKFLOW.md) |
+| Build and sideload Android / Android TV | [Android preview](ANDROID.md) |
 | Package the macOS preview | [macOS release workflow](WORKFLOW.md#macos-preview-release) |
 | Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |
 | Select a starting stage or retry Practice | [Stage Select / Practice](PRACTICE_MODE.md) |
@@ -18,7 +19,7 @@
 | Configure or understand replacement music | [Music replacement](MUSIC_REPLACEMENT_PLAN.md) — custom audio routing, settings and [Saturn tracklist](MUSIC_REPLACEMENT_PLAN.md#sega-saturn-sega-ages-soundtrack-tracklist) |
 | Configure headphone HRTF, speakers or interpolation | [OpenAL Soft cockpit audio](SPATIAL_AUDIO_PLAN.md) |
 | Implement rumble or force feedback | [Haptics notes](HAPTICS_PLAN.md) — rumble implemented, advanced FFB planned |
-| Extend the visible scene without stretching | [True widescreen plan](WIDESCREEN_PLAN.md) — experimental 16:9 and 16:10 previews |
+| Extend the visible scene without stretching | [True widescreen plan](WIDESCREEN_PLAN.md) — experimental 16:9/16:10 previews and source 21:9 |
 | Find ROM addresses, MAME evidence or validation logs | [Engine notes](ENGINE_NOTES.md) |
 | Understand X-Board hardware | [Hardware](HARDWARE.md) |
 | Inspect retained reconstruction tests | [Historical Stage 1 baseline](STAGE1_FIDELITY.md) |

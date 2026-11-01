@@ -9,7 +9,7 @@ int main(int argc,char** argv)try{
     std::cout<<"Wide GPU fixture: "<<path<<'\n';
     std::ifstream f(path,std::ios::binary);char magic[8];uint32_t dim[3];
     require(bool(f.read(magic,8))&&!memcmp(magic,"AB2WIDE1",8)&&bool(f.read(reinterpret_cast<char*>(dim),sizeof(dim))),"wide GPU fixture missing");
-    const unsigned w=dim[0],h=dim[1],count=dim[2],n=w*h;require((w==398||w==358)&&h==224&&count<8000000,"wide GPU fixture dimensions");
+    const unsigned w=dim[0],h=dim[1],count=dim[2],n=w*h;require((w==398||w==358||w==522)&&h==224&&count<8000000,"wide GPU fixture dimensions");
     std::vector<uint32_t> bg(n),sp(n),heads(n);std::vector<uint8_t> protection(n);std::vector<Presentation::Fragment> fragments(count);
     for(auto* data:{&bg,&sp,&heads})require(bool(f.read(reinterpret_cast<char*>(data->data()),n*4)),"wide GPU planes truncated");
     require(bool(f.read(reinterpret_cast<char*>(protection.data()),n))&&bool(f.read(reinterpret_cast<char*>(fragments.data()),count*sizeof(Presentation::Fragment)))&&f.peek()==EOF,"wide GPU scene truncated");

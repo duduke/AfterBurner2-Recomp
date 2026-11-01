@@ -16,9 +16,9 @@ int main(int argc,char** argv)try{
         require(i+1<argc,"Missing wide-stage option value");
         if(std::string_view(argv[i])=="--stage"){requested=std::stoul(argv[i+1]);require(requested>=1&&requested<=stage_count,"Invalid stage");}
         else if(std::string_view(argv[i])=="--width")width=std::stoul(argv[i+1]);
-        else throw std::runtime_error("Usage: wide_stage_visibility [--stage 1..23] [--width 398|358]");
+        else throw std::runtime_error("Usage: wide_stage_visibility [--stage 1..23] [--width 398|358|522]");
     }
-    require(width==398||width==358,"Unsupported test viewport");
+    require(width==398||width==358||width==522,"Unsupported test viewport");
     for(unsigned stage=requested?requested:1;stage<=(requested?requested:stage_count);++stage){
         std::cout<<"Wide stage "<<stage<<": boot"<<std::endl;
         auto reference_owner=std::make_unique<GameSession>(roms),captured_owner=std::make_unique<GameSession>(roms);
@@ -43,8 +43,8 @@ int main(int argc,char** argv)try{
                 require(valid_wide_ground_change(p,q,i,fill_witness),"wide stage correction overwrote terrain");++changes;}
             for(auto& clip:scene.clips)for(auto& d:clip.extended_sprites)retained+=d.kind==2;
             ++directions[c.stick_x>0];
-            if(f==210||f==270){std::ofstream image("build/oracle/widescreen/stage-"+std::to_string(stage)+"-"+std::to_string(f)+(width==398?"":"-358")+".ppm",std::ios::binary);image<<"P6\n"<<width<<" 224\n255\n";
-                if(width==358)save_wide_ground_fixture(q,"build/oracle/widescreen/aspect-358-stage-"+std::to_string(stage)+"-"+std::to_string(f)+".bin");
+            if(f==210||f==270){std::ofstream image("build/oracle/widescreen/stage-"+std::to_string(stage)+"-"+std::to_string(f)+(width==398?"":"-"+std::to_string(width))+".ppm",std::ios::binary);image<<"P6\n"<<width<<" 224\n255\n";
+                if(width!=398)save_wide_ground_fixture(q,"build/oracle/widescreen/aspect-"+std::to_string(width)+"-stage-"+std::to_string(stage)+"-"+std::to_string(f)+".bin");
                 for(unsigned i=0;i<q.background.size();++i){auto color=q.sprites[i]?q.sprites[i]:q.background[i];for(unsigned shift:{16u,8u,0u})image.put(char(color>>shift));}}
             if(f==180)captured.capture_feedback(false);
         }

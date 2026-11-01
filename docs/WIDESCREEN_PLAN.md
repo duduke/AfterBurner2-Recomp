@@ -1,21 +1,22 @@
 # True widescreen implementation plan
 
-**Status: experimental 16:9 and 16:10 previews released for macOS; exhaustive acceptance remains open.**
-Updated **2026-10-24** for
-[macOS Preview 4](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.4).
-The existing Windows Preview 2 download includes 16:9.
+**Status: 16:9/16:10 in Preview 5; 21:9 Preview added in local source.**
+Updated **2026-10-31**. Published packages predate 21:9.
+Scene/platform and sustained performance acceptance remain open; see
+[release notes](RELEASE_NOTES.md) and [Windows status](WINDOWS_PERFORMANCE.md).
 
 Render additional scene content left and
 right of the original view, preserving object proportions, vertical coverage and
-native simulation. Initial target: 16:9; 16:10 now uses the same pipeline, with ultrawide still future work. Stretch,
+native simulation. 16:9, 16:10 and nominal 21:9 share the same pipeline. Stretch,
 crop-to-fill, repeated border columns and invented scenery are not acceptance
 substitutes. Keep Original as the default and regression reference.
 
 ## Implemented preview
 
-**Options → Video → Viewport** cycles Original, **16:9 Preview** (398×224,
-39 additional columns per side) and **16:10 Preview** (358×224, 19 per side).
-Both wide modes render additional scene content with square-pixel proportions.
+**Settings → Display → Aspect Ratio** cycles Original, **16:9 Preview**
+(398×224, 39 additional columns per side), **16:10 Preview** (358×224,
+19 per side) and **21:9 Preview** (522×224, 101 per side).
+All wide modes render additional scene content with square-pixel proportions.
 Widths are rounded to even numbers for symmetric margins. Original remains the
 default. The HUD/menu stay in the centered 320×224 safe area. Window resizing,
 pointer conversion, full-width captures, saved preferences, existing sprite
@@ -68,7 +69,7 @@ remain authoritative. See the
 
 The horizon extends the `$10ED8` generator's exact 16.16 segment increments at
 both ends, using its current ROM frame/flips and previous-frame positions. The
-**Ground → Corrected** option measures these full-width sprites. It
+**Ground → Corrected** option (the default on every platform) measures these full-width sprites. It
 corrects eligible plain ground fill on the sky side. The enhanced wide plane also
 fills confirmed ground-side sky gaps from an observed native-row ground/sea
 index, including edge holes exposed by translucent clouds. Tiles, terrain,
@@ -91,9 +92,10 @@ This expands rendering capacity, not native spawning or gameplay capacity.
 All 23 ordered stage slots and retained natural lifecycle recordings have
 dedicated validation targets (see [coverage and results](ENGINE_NOTES.md#widescreen-capacity-and-stagelifecycle-checks-2026-10-15)). These are finite input
 windows and recordings, not proof of every possible object/input trajectory.
-Broader 16:10 acceptance, ultrawide and sustained performance remain open. Windows
-has finite Stage 1/5 runtime evidence; the new 16:10 mode still needs physical
-Windows/Linux checks.
+Broader scene/platform acceptance and sustained performance remain open.
+21:9 uses the existing square-pixel policy, rounded to an even width for
+symmetric margins; physical ultrawide display acceptance remains separate.
+Windows has finite Stage 1/5 runtime evidence; broader Windows/Linux checks remain.
 Other object controllers still require audit before promising complete visibility
 in every possible scene.
 
@@ -111,11 +113,28 @@ It does not select the snapshot renderer. macOS Preview 4 uses the integrated
 primary renderer for both wide ratios; `--scene-renderer snapshot` is the
 explicit reconstruction reference. The default viewport remains Original.
 
+## 21:9 source preview (2026-10-31)
+
+The selector and saved settings expose 522×224 with symmetric 101-column margins.
+This reuses the width-derived capture, projection, render textures, scaling,
+window sizing and centered 320×224 safe area. Legacy `widescreen=1` still selects
+16:9; a recognized explicit viewport wins in either file order. Original remains
+the default. Native gameplay, clocks and sprite feedback are unchanged.
+
+Focused checks extend independent ROM geometry, directed stages, CPU/GPU filter
+comparison fixtures, HUD/CRT/aircraft layout and live shader switching to 522.
+Run `verify-wide-geometry`, `verify-wide-stages-21-9`, `verify-wide-gpu-21-9`
+and `verify-integrated-shader-main`; results and limitations belong in the
+[current evidence record](ENGINE_NOTES.md#219-and-main-functionality-workflow-2026-10-31).
+These are finite checks; they do not close physical ultrawide, sustained load,
+all controller/scene trajectories or other-platform acceptance.
+
 ## Delivered preview and remaining gates
 
-macOS Preview 4 provides **Original, 16:9 and 16:10**, with 224 logical rows,
+macOS Preview 5 provides **Original, 16:9 and 16:10**, with 224 logical rows,
 current square-pixel proportions, native combat rules and a centered HUD.
-Windows Preview 2 provides Original and 16:9. These are experimental increments;
+The experimental Windows Preview 5 also includes 16:10; current source adds
+21:9 (522×224). These are experimental increments;
 exhaustive widescreen acceptance remains open. See the
 [Mac renderer acceptance](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
 
@@ -125,8 +144,8 @@ exhaustive widescreen acceptance remains open. See the
 | 2. CPU backgrounds | Wide road/sky/tiles and exact legacy reconstruction implemented | Broader stage/input/scene trajectories |
 | 3. Sprites and visibility | Wider projection, retained scenery, horizon/wave extension and queue/depth-drop recovery implemented | Remaining controller/culling and visible-but-untargetable cases |
 | 4. Existing enhancements | Wide CPU/GPU filters, translucency and corrected ground implemented | Other backends and peak-load behavior |
-| 5. Frontend integration | Persisted Original/16:9/16:10 viewport, centered HUD/menu, capture and switching implemented | Complete physical high-DPI/resize/fullscreen/input matrix |
-| 6. Release/acceptance | macOS preview release gates pass for the recorded scope | Broader scene audit and sustained performance for both widths; ultrawide separately |
+| 5. Frontend integration | Persisted Original/16:9/16:10/21:9 viewport, centered HUD/menu, capture and switching implemented | Complete physical high-DPI/resize/fullscreen/input matrix |
+| 6. Release/acceptance | macOS preview release gates pass for the recorded scope | Broader scene audit, sustained performance and physical display checks for all widths |
 
 The 2026-10-15 Preview 1 integration run covers all 23 directed slots: 22,494 counted native
 RGB/PCM/time frames unchanged and 8,280 exact legacy reconstructions. It also
@@ -138,7 +157,7 @@ this is reused GPU evidence, not a new readback run. See
 [the complete release checkpoint](ENGINE_NOTES.md#macos-preview-packaging-2026-10-15).
 
 The 16:10 implementation included in macOS Preview 3 shares the renderer and width-derived visibility
-margin with 16:9. `viewport=original|16:9|16:10` is persisted; legacy
+margin with 16:9. `viewport=original|16:9|16:10|21:9` is persisted; legacy
 `widescreen=1` migrates to 16:9. The explicit viewport wins regardless of file
 order. Switching widths rebuilds presentation resources and clears detached
 visibility history without advancing native time; fresh clips arrive on the
@@ -167,7 +186,7 @@ release/lifecycle results above retain their historical scope. These checks do
 not declare a new release or exhaustive scene acceptance.
 
 Source builds now use the integrated primary renderer described below. Retain
-controller/scene and sustained-load audits for both widths. Establish named
+controller/scene and sustained-load audits for all supported widths. Establish named
 Windows/Linux/GPU coverage before accepting ultrawide. Optional
 pixel-aspect correction, edge-anchored HUD and wider gameplay rules are separate
 features. Do not promote finite lifecycle coverage into exhaustive visual coverage.
@@ -225,7 +244,8 @@ Target pipeline:
    Native observers and `GameSession::frame()` remain intact. The frontend adapter
    uses the integrated path by default in source builds; `--scene-renderer snapshot`
    selects the retained reconstruction reference. macOS Preview 4 ships this default;
-   the Windows package remains Preview 2.
+   Windows Preview 5 includes the Vulkan path with its separately recorded
+   performance and validation limits.
    Retained snapshots support comparisons; compact capture reuses one metadata
    slot, omits the unused tile snapshot and makes `wide_scene()` unavailable.
 3. **Enhanced composition:** the live consumer uses the existing
@@ -238,7 +258,8 @@ Target pipeline:
 4. **Acceptance and rollout:** compare native RGB/PCM/time and feedback with
    independent MAME fixtures, reject relevant mutations, compare enhanced output
    with the retained preview, and benchmark matched settings and busy trajectories.
-   Run complete required gates before promoting the path to the playable frontend.
+   Before promoting engine changes, run the complete required gate; presentation-only
+   changes follow main functionality and affected renderer comparisons.
    A synthetic pass is not MAME or whole-host acceptance.
    Windows independent RGB passes 3,500/3,500 comparisons; complete `test` and
    `verify-stage1` pass. Instrumented CPU/device and supplemental full gates
@@ -253,7 +274,8 @@ Target pipeline:
    initial API follows the existing bound of even widths 320–640 and 224 rows;
    522 exercises nominal 21:9 geometry. Wider visibility, actual panel ratios,
    scene coverage, HUD placement and performance require separate validation.
-   No new viewport selection is enabled by this prototype.
+   The renderer prototype itself did not add a selector; the 31 October source
+   increment now exposes nominal 21:9, with broader acceptance still open.
 
 Matched frontend timing uses the same executable, viewport/settings, shader
 runtime and neutral controller policy in snapshot/integrated/integrated/snapshot
@@ -394,10 +416,10 @@ request capacity to compensate for missing content without a separate plan.
 
 ### 5. HUD, menus and settings
 
-**Current state:** Original/16:9/16:10 settings and centered safe area ship in macOS Preview 3; ultrawide and optional HUD relocation remain.
+**Current state:** Original/16:9/16:10 ship in Preview 5; local source adds 21:9 with the same centered safe area. Physical ultrawide acceptance and optional HUD relocation remain.
 
-Options → Video → Viewport offers Original, 16:9 and 16:10. Add
-supported ultrawide/custom aspects after their separate acceptance gates. Persist independently from window scaling/fullscreen. Reallocate enhanced
+Settings → Display → Aspect Ratio offers Original, 16:9, 16:10 and 21:9.
+Add further custom aspects after their separate acceptance gates. Persist independently from window scaling/fullscreen. Reallocate enhanced
 resources at a safe frame boundary; preserve board state and pause status.
 Map window resize, high DPI, letterboxing and mouse coordinates consistently.
 
@@ -462,6 +484,6 @@ and screenshots under ignored `build/oracle/`.
 
 The released macOS 16:9/16:10 previews pass their declared background, sprite,
 visibility, HUD and lifecycle gates. Broader scene/performance acceptance remains
-open for both widths; ultrawide requires separate validation. Record supported scenes/aspects,
+open across the supported widths; physical ultrawide requires separate validation. Record supported scenes/aspects,
 fallbacks, enhanced gameplay differences and unverified cases. True widescreen
 does not establish full-credit arcade equivalence.

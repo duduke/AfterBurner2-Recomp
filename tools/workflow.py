@@ -13,7 +13,9 @@ import time
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILES = {
-    "quick": ["test", "verify-stage1"],
+    "main": ["test-main", "verify-game-session", "verify-practice-mode", "verify-shuffle-session"],
+    "quick": ["test-main", "verify-game-session", "verify-practice-mode", "verify-shuffle-session"],
+    "integration": ["test", "verify-stage1"],
     "joint": ["oracle-joint-main-progress"],
     "full": ["oracle-joint-main-progress-full", "oracle-joint-reset-window"],
     "required": ["test", "verify-stage1", "oracle-test"],

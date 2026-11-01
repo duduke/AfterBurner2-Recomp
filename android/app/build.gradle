@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'org.afterburner2.app'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    ndkVersion '28.2.13676358'
+    defaultConfig {
+        applicationId 'org.afterburner2.app'
+        minSdk 26
+        targetSdk 35
+        versionCode 2
+        versionName '0.1.0-preview.6'
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild {
+            cmake {
+                arguments '-DBUILD_TESTING=OFF', '-DAB2_ENABLE_OPENAL=OFF', '-DANDROID_STL=c++_shared',
+                          '-DAB2_ENABLE_IPO=OFF', '-DCMAKE_BUILD_TYPE=RelWithDebInfo',
+                          "-DAB2_ANDROID_WORKER_CONTINUATION=${project.findProperty('ab2WorkerContinuation') ?: 'OFF'}"
+                targets 'afterburner2', 'SDL3-shared'
+            }
+        }
+    }
+    externalNativeBuild { cmake { path '../../CMakeLists.txt'; version '3.22.1' } }
+    sourceSets.main {
+        java.srcDir '../../build/deps/SDL3-3.4.16/android-project/app/src/main/java'
+        assets.srcDir layout.buildDirectory.dir('notices')
+    }
+    buildTypes { release { minifyEnabled false } }
+}
+// An allowlist ensures ROMs, captures and private settings never become assets.
+tasks.register('prepareNotices', Copy) {
+    from('../..') { include 'LICENSE.txt'; include 'LICENSES/**'; include 'docs/THIRD-PARTY-NOTICES.md' }
+    from("${android.ndkDirectory}/toolchains/llvm/prebuilt/darwin-x86_64/NOTICE") {
+        into 'LICENSES'
+        rename { 'Android-NDK-runtime.txt' }
+    }
+    into layout.buildDirectory.dir('notices')
+}
+tasks.named('preBuild').configure { dependsOn 'prepareNotices' }

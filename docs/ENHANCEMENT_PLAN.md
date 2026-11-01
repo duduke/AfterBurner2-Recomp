@@ -1,9 +1,9 @@
 # Enhancement backlog
 
-Difficulty ratings assessed **2026-10-17**; feature status updated **2026-10-25**.
+Difficulty ratings assessed **2026-10-17**; feature status updated **2026-10-31**.
 The published release is
 [macOS v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
-with the [Windows Preview 2 download](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.2) retained;
+with an experimental Windows x64 Preview 5 refresh and older downloads retained;
 see the roadmap for platform results and outstanding validation.
 Use the [summarized roadmap](ROADMAP.md#summarized-roadmap) for priorities and
 [architecture guide](ENHANCEMENT_ARCHITECTURE.md) for implemented contracts.
@@ -36,12 +36,12 @@ ratings apply to future work, not delivered foundations.
 | Menus | Arcade-font initial/pause menus; direct Arcade/Practice/Shuffle startup, grouped Display/Graphics/CRT/Controls/Audio/Arcade Settings; live bound-input calibration display, scroll hints, mouse/controller navigation, persisted preferences | Service/sound test, coin ratios, high-score persistence and additional modes |
 | Input | Keyboard/gamepad/raw-joystick remapping, axes/buttons/hats, deadzone/sensitivity/polarity, full-axis throttle, hotplug and community mappings | Named HOTAS/retro-controller presets, response curves and physical calibration across platforms |
 | Feedback | SDL body/trigger rumble, motor tests, device selection, gains, four verified cues and lifecycle stops | See [haptics plan](HAPTICS_PLAN.md): Windows/Linux/fallback hardware, warning cues, stick forces and motion telemetry |
-| Presentation | Off/EPX/Scale3x/2xSaI/Super2xSaI/ScaleFX; GPU composition with CPU fallback; independent original-art opacity; Off/Subtle/Arcade CRT and optional macOS Metal RetroArch `.slangp` presets with an external runtime | Other shader backends, HDR, sustained performance and new assets |
+| Presentation | Off/EPX/Scale3x/2xSaI/Super2xSaI/ScaleFX; GPU composition with CPU fallback; independent original-art opacity; Off/Subtle/Arcade CRT and optional macOS Metal / Windows Vulkan RetroArch `.slangp` presets with an external runtime | Other shader backends, HDR, sustained performance and new assets |
 | Ground/horizon | Targeted roll-wedge correction; wide-plane corner/clipped-horizon fill, both actual roll directions and terrain protection checked | Broader scene audit and optional continuous ground projection |
-| Widescreen | 16:9 and 16:10 previews with wider road/tiles/sprites, detached scenery, horizon/water extension, native request/depth-drop recovery and dynamic presentation storage | Broader scene/performance/platform acceptance for both widths, ultrawide and optional HUD anchoring; [plan](WIDESCREEN_PLAN.md) |
+| Widescreen | 16:9/16:10 previews and local-source 21:9 with wider road/tiles/sprites, detached scenery, horizon/water extension, native request/depth-drop recovery and dynamic presentation storage | Broader scene/performance/platform and physical ultrawide acceptance and optional HUD anchoring; [plan](WIDESCREEN_PLAN.md) |
 | Music | Six WAV/FLAC replacements, preview/fallback, separate gains and live active-song changes; all six native song contexts/fades observed | Replacement-file natural fade and listening checks; [plan](MUSIC_REPLACEMENT_PLAN.md) |
 | Spatial output | OpenAL Soft chip-rate interpolation, headphone HRTF, 2.1/5.1 modes, direct stereo music, reviewed routing, stall recovery and original Deluxe stereo wiring audit | Revised-cue listening, physical surround/unplug, other platforms and end-to-end latency; ABII cabinet-revision evidence; [plan](SPATIAL_AUDIO_PLAN.md) |
-| Distribution | ROM-free Apple Silicon/macOS 26+ Preview 5 and Windows x64 Preview 2 ZIPs, bundled libraries/sources/notices and checksums | Windows feature refresh, broader OS/architecture packages and signing/notarization |
+| Distribution | ROM-free Apple Silicon/macOS 26+ Preview 5 and experimental Windows x64 Preview 5 ZIPs, bundled libraries/sources/notices and checksums | Windows performance/audio stability, broader OS/architecture packages and signing/notarization |
 
 The 2026-10-22 macOS checkpoint passed the complete `required` and supplemental
 `full` gates, including the local spatial-audio and HUD changes. The later CRT
@@ -70,7 +70,7 @@ remain unchanged.
 
 | Proposed increment | Assessed difficulty | Dependency / boundary |
 | --- | --- | --- |
-| CRT display and pacing improvements | 2–3/5 remaining | Local [CRT display](CRT_DISPLAY.md) includes built-in scanlines/RGB mask and optional macOS Metal RetroArch `.slangp` presets for richer effects; broader shader backend/load acceptance, HDR, parameter UI and general pacing improvements remain |
+| CRT display and pacing improvements | 2–3/5 remaining | Local [CRT display](CRT_DISPLAY.md) includes built-in scanlines/RGB mask and optional macOS Metal / Windows Vulkan RetroArch `.slangp` presets for richer effects; broader shader backend/load acceptance, HDR, parameter UI and general pacing improvements remain |
 | Sprite extraction CLI | Implemented offline | [Indexed PNG export and JSON mapping](SPRITE_EXTRACTION.md): 2,931 structural record candidates, stable Sub ROM identities and renderer differential/mutations; semantic labels, palette assignment and general runtime catalog mapping remain open |
 | Replacement sprites, larger textures and RGB/RGBA assets | 4/5 remaining | Local [registered HD player-aircraft pack](SPRITE_REPLACEMENT.md) maps neutral/gentle-bank poses and ROM LODs to transparent output-resolution art with explicit bounds/pivots and native ownership; full animation sets, production registration/LOD art and effect-palette support remain |
 | Soft clouds, fading trails and additional visual particles | 3/5 | Existing ordered fragment interface plus RGBA assets and lifetime events; validate ordering and dense-scene cost; implemented original-art translucency is already separate |
@@ -78,7 +78,7 @@ remain unchanged.
 | Smoother sprite rotation | 3/5 | Stable pivots, interpolation or additional art/banks without changing native roll logic; preserve alignment and priority across rotation |
 | Additional scalers | 2–3/5 | CPU integration can reuse existing filter interfaces; GPU versions and border/readback comparisons add work; license compatibility required; xBRZ/ScaleHQ remain proposals |
 | 120/144 Hz presentation interpolation | 4/5 | Scene/state history, object correspondence across spawn/despawn and pacing independent of the original simulation; evaluate before changing gameplay cadence |
-| Additional aspect acceptance, ultrawide and optional pixel-aspect correction | 2–3/5 | 16:10 ships in macOS Preview 3 and needs broader acceptance; ultrawide increases controller/culling and load coverage; explicit width/aspect policy and independent scene, UI, GPU and performance acceptance |
+| Additional aspect acceptance, ultrawide and optional pixel-aspect correction | 2–3/5 | 16:9/16:10 ship in Preview 5; 21:9 is available in source and needs broader acceptance; ultrawide increases controller/culling and load coverage; explicit width/aspect policy and independent scene, UI, GPU and performance acceptance |
 | Continuous ground/horizon projection | 4/5 | ROM-derived bank/pitch/altitude and layer audit across rolls/inversion; preserve the completed targeted correction and Original terrain behavior |
 
 Dynamic presentation storage already addresses native request/depth bottlenecks.

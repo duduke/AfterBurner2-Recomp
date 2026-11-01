@@ -8,6 +8,14 @@ int main() try {
     const std::string path="build/native_settings_regression.cfg";
     std::filesystem::remove(path);
     require(Frontend::load_settings(path,true)==Frontend::Settings{},"missing settings must preserve arcade defaults");
+    require(Frontend::Settings{}.ground && Frontend::load_settings(path,true).ground,
+            "fresh settings must use corrected ground on every platform");
+    {std::ofstream f(path);f<<"AB2SETTINGS1\nviewport=21:9\n";}
+    require(Frontend::load_settings(path,true).ground,"settings without a ground preference must use corrected ground");
+    for(bool corrected:{false,true}) {
+        {std::ofstream f(path);f<<"AB2SETTINGS1\nground="<<corrected<<'\n';}
+        require(Frontend::load_settings(path,true).ground==corrected,"explicit ground choice was overwritten by the default");
+    }
     Frontend::Settings chosen;chosen.scaling=Frontend::Scaling::integer;chosen.fullscreen=true;chosen.stats=Frontend::Stats::detailed;
     require(Frontend::save_settings(path,chosen),"cannot save settings");
     require(Frontend::load_settings(path,true)==chosen,"persistent settings round-trip changed");
@@ -16,14 +24,17 @@ int main() try {
     auto narrow_wide=chosen;narrow_wide.viewport=Frontend::Viewport::wide16_10;
     require(Frontend::viewport_width(narrow_wide)==358,"16:10 logical width");
     require(Frontend::save_settings(path,narrow_wide)&&Frontend::load_settings(path,true)==narrow_wide,"16:10 preference persistence");
+    auto ultrawide=chosen;ultrawide.viewport=Frontend::Viewport::wide21_9;
+    require(Frontend::viewport_width(ultrawide)==522 && Frontend::is_wide(ultrawide),"21:9 logical width");
+    require(Frontend::save_settings(path,ultrawide)&&Frontend::load_settings(path,true)==ultrawide,"21:9 preference persistence");
     for(bool enabled:{false,true}){
         {std::ofstream f(path);f<<"AB2SETTINGS1\nwidescreen="<<enabled<<'\n';}
         require(Frontend::load_settings(path,true).viewport==(enabled?Frontend::Viewport::wide16_9:Frontend::Viewport::original),"legacy viewport migration changed");
     }
-    for(bool explicit_first:{false,true}){
+    for(const char* ratio:{"16:10","21:9"})for(bool explicit_first:{false,true}){
         {std::ofstream f(path);f<<"AB2SETTINGS1\n";
-         if(explicit_first)f<<"viewport=16:10\n";f<<"widescreen=1\n";if(!explicit_first)f<<"viewport=16:10\n";}
-        require(Frontend::load_settings(path,true).viewport==Frontend::Viewport::wide16_10,"explicit viewport must override legacy value in either order");
+         if(explicit_first)f<<"viewport="<<ratio<<'\n';f<<"widescreen=1\n";if(!explicit_first)f<<"viewport="<<ratio<<'\n';}
+        require(Frontend::load_settings(path,true).viewport==(std::string_view(ratio)=="21:9"?Frontend::Viewport::wide21_9:Frontend::Viewport::wide16_10),"explicit viewport must override legacy value in either order");
     }
     for(int i=0;i<Frontend::sprite_filter_count;++i) {
         auto filter=chosen;filter.sprites=static_cast<Frontend::SpriteFilter>(i);
@@ -65,7 +76,10 @@ int main() try {
     }
     for(bool explosions:{false,true})for(bool afterburner:{false,true}){auto effects=chosen;effects.explosions=explosions;effects.afterburner=afterburner;require(Frontend::save_settings(path,effects) && Frontend::load_settings(path,true)==effects,"explosion/flame persistence failed");}
     for(bool clouds:{false,true})for(bool trails:{false,true}){auto effects=chosen;effects.clouds=clouds;effects.trails=trails;require(Frontend::save_settings(path,effects) && Frontend::load_settings(path,true)==effects,"independent effect persistence failed");}
-    auto ground=chosen;ground.ground=true;require(Frontend::save_settings(path,ground) && Frontend::load_settings(path,true)==ground,"ground setting persistence failed");
+    for(bool corrected:{false,true}) {
+        auto ground=chosen;ground.ground=corrected;
+        require(Frontend::save_settings(path,ground) && Frontend::load_settings(path,true)==ground,"ground setting persistence failed");
+    }
     for(unsigned lives=0;lives<4;++lives)for(unsigned difficulty=0;difficulty<4;++difficulty) {
         auto dips=chosen;dips.lives=lives;dips.difficulty=difficulty;
         require(Frontend::save_settings(path,dips) && Frontend::load_settings(path,true)==dips,"DIP persistence failed");
@@ -76,7 +90,7 @@ int main() try {
     require(Frontend::dip_switches({})==std::array<uint8_t,3>{255,255,221},"default physical DIP pins changed");
     auto invalid=chosen;invalid.lives=4;require(!Frontend::save_settings(path,invalid),"invalid lives accepted");
     invalid=chosen;invalid.difficulty=4;require(!Frontend::save_settings(path,invalid),"invalid difficulty accepted");
-    invalid=chosen;invalid.viewport=static_cast<Frontend::Viewport>(3);require(!Frontend::save_settings(path,invalid),"invalid viewport accepted");
+    invalid=chosen;invalid.viewport=static_cast<Frontend::Viewport>(Frontend::viewport_count);require(!Frontend::save_settings(path,invalid),"invalid viewport accepted");
     invalid=chosen;invalid.hud=static_cast<Frontend::Hud>(Frontend::hud_count);require(!Frontend::save_settings(path,invalid),"invalid HUD accepted");
     invalid=chosen;invalid.crt=static_cast<Frontend::Crt>(Frontend::crt_count);require(!Frontend::save_settings(path,invalid),"invalid CRT mode accepted");
     invalid=chosen;invalid.crt_scanlines=101;require(!Frontend::save_settings(path,invalid),"invalid CRT scanline strength accepted");
@@ -92,7 +106,7 @@ int main() try {
     const auto fallback=Frontend::load_settings(path,false);
     require(fallback.scaling==Frontend::Scaling::nearest && fallback.fullscreen && fallback.stats==Frontend::Stats::fps,
         "unsupported filter must fall back without losing independent settings");
-    {std::ofstream f(path);f<<"AB2SETTINGS1\nscaling=999\nstats=-1\nfullscreen=invalid\nsprites=xbrz\nlives=4\ndifficulty=-1\nviewport=21:9\nhud=unknown\ncrt=unknown\n";}
+    {std::ofstream f(path);f<<"AB2SETTINGS1\nscaling=999\nstats=-1\nfullscreen=invalid\nsprites=xbrz\nlives=4\ndifficulty=-1\nviewport=32:9\nhud=unknown\ncrt=unknown\n";}
     require(Frontend::load_settings(path,true)==Frontend::Settings{},"malformed values must not enter runtime enums");
     {std::ofstream f(path);f<<"UNKNOWN VERSION\nfullscreen=1\n";}
     require(Frontend::load_settings(path,true)==Frontend::Settings{},"unknown format must preserve defaults");

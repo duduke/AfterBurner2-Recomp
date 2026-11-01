@@ -1,25 +1,24 @@
 # Roadmap
 
-Updated **2026-10-28**. [Preview v0.1.0-preview.5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
-refreshes Apple Silicon / macOS 26+ with ROM ZIP loading/picker, reorganized menus,
-native Metal filters with Slang presets, Shuffle gameplay openings, corrected
-rolling sky/cloud coverage and broader widescreen effect retention. It retains
-the integrated renderer, Practice/Shuffle, HUD/CRT, optional aircraft art,
-calibration and spatial audio. The
+Updated **2026-11-01**. [Preview v0.1.0-preview.6](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
+adds the Android ARM64 host, touch controls, cooperative CPU continuations and
+21:9, and refreshes the Apple Silicon / macOS 26+ runtime. Corrected ground is
+the shared default. It retains the integrated renderer, Practice/Shuffle,
+HUD/CRT, optional aircraft art, calibration and desktop spatial audio. The
 [Windows 10/11 x64 Preview 5 package](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
-has a compact 28 October experimental refresh with the Vulkan/HUD performance
-changes below; [Windows FPS/audio issues](WINDOWS_PERFORMANCE.md) remain open.
+remains the compact 28 October experimental refresh;
+[Windows FPS/audio issues](WINDOWS_PERFORMANCE.md) remain open.
 Original remains the regression reference. See
-[release notes](RELEASE_NOTES.md#v010-preview5--rom-startup-menus-and-widescreen-effects).
+[release notes](RELEASE_NOTES.md#v010-preview6--android-and-ultrawide-2026-11-01).
 
 ## Summarized roadmap
 
 | Priority | Workstream | Next outcome |
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
-| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Extend shared-renderer performance and controller/scene audits; retain snapshot comparisons and sustained 16:9/16:10 gates; ultrawide needs separate acceptance |
+| 2 | [Widescreen](WIDESCREEN_PLAN.md) | Extend shared-renderer performance and controller/scene audits; retain snapshot comparisons and sustained 16:9/16:10/21:9 checks and separate physical ultrawide acceptance |
 | 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification; [object-based HRTF](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned), starting with missile flybys and positioned explosions |
-| 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility; [Android / Android TV port and real-device ADB testing](#android--android-tv-port-planned); [Linux x86-64 / ARM64 builds and remote testing](#linux-x86-64--arm64-builds-and-remote-testing-planned) |
+| 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility; [Android / Android TV port and real-device ADB testing](#android--android-tv-port-initial-implementation); [Linux x86-64 / ARM64 builds and remote testing](#linux-x86-64--arm64-builds-and-remote-testing-planned) |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
 | 6 | [Gameplay extensions](ENHANCEMENT_PLAN.md#gameplay-and-content) | Extend the Practice/Shuffle interfaces for additional arranged rules; verify object/state contracts before new stages, save states or multiplayer |
 
@@ -76,30 +75,31 @@ bar is "matches MAME byte-for-byte", not "looks right".
    tables into source files either: read them from the ROM at runtime.
 6. **Keep the docs current**: tick roadmap items off with their results,
    and add what you learned to `ENGINE_NOTES.md`.
-7. **Validate according to the change and acceptance gate.** Local commits
-   require the applicable focused checks in the cadence below. Gameplay/core
-   merges, releases and acceptance milestones require `make test`,
-   `make verify-stage1` and the complete `make oracle-test`. Preserve all
-   fixtures and mutations; a focused pass is not whole-host acceptance.
+7. **Validate the affected functionality.** Daily development and presentation,
+   UI, packaging and documentation work use the main-functionality checks below.
+   At the user's direction (2026-10-31), complete oracle/mutation runs are
+   reserved for engine changes. Retain all fixtures, comparisons and mutations;
+   a main-functionality pass is not whole-host fidelity acceptance.
 
 **Validation cadence**
 
 | Change or gate | Required validation |
 | --- | --- |
-| Documentation only | `git diff --check`; inspect changed links, commands and policy consistency. No engine suites unless executable behavior also changes. |
-| Development and local code commits | Run `test` and affected oracle targets; add `verify-stage1` for engine, game-session or integration changes, and a relevant build/smoke for platform/UI changes. Record the targets and results; do not rerun unrelated long recordings after each edit. |
-| New or changed literal ports, fixtures or comparison gates | Passing independent MAME baselines, relevant branch/operand coverage and relevant rejected mutations before wiring/accepting. For recovery ports, retain and replay the complete corpus with its manifest/branch gate; repeat the affected natural recording. |
-| Shared CPU/flags/timing, bus, scheduler, device logic, generator implementation, compiler/options or oracle instrumentation changes | Full regression and all retained mutations before accepting the change, plus affected natural recordings. Regenerate captures when their semantics or instrumentation changed. Adding generated instruction bodies alone follows the literal-port row. |
-| Gameplay/core merge, release or declared acceptance milestone | Run the complete `required` profile (`test`, `verify-stage1`, `oracle-test`) on the final tree. Milestones also run the supplemental `full` profile and applicable complete natural recordings. |
-| Periodic integration checkpoint | Run the complete regression/mutation suite after ten code merges since the last full pass, even when each merge only required narrow checks. Documentation-only merges do not count. This is a validation trigger, not a scheduled automation. |
+| Documentation only | `git diff --check`; inspect changed links, commands and policy consistency. |
+| Daily work, non-engine merges and releases | Run `python3 tools/workflow.py run main` plus checks for affected functionality and relevant build/smoke. Releases also verify the extracted package, notices, source identity and platform launches. No automatic full oracle/mutation run. |
+| Presentation, input, playback or UI changes | Main profile plus affected geometry, image/audio, lifecycle or platform checks. Verify changed comparison gates against a passing baseline and relevant deliberate mutations. |
+| Engine changes: CPU/flags/timing, bus, scheduler, devices, native game logic, literal ports, generators or engine oracle instrumentation | Complete `required` profile (`test`, `verify-stage1`, `oracle-test`) with all retained mutations; independent MAME baselines, relevant operand/branch coverage and affected natural recordings. Engine acceptance milestones also run supplemental `full` and applicable complete natural recordings. |
+| New or changed literal ports, fixtures or comparison gates | Relevant independent MAME baselines, coverage and rejected mutations before wiring/acceptance. Recovery ports retain/replay the complete corpus with its manifest/branch gate. Engine changes also follow the full-engine row. |
+
+There is no merge-count trigger for full oracle/mutation testing. Engine changes
+trigger the full gate; non-engine work uses main functionality and affected checks.
 
 Reuse an earlier pass only while its relevant sources and transitive
 dependencies, compiler/options, fixtures, capture probe and comparison/mutation
 harness are unchanged. Cite its log and scope explicitly; do not present it
 as a new run or carry it across an affected change. A failure requires repair
-and rerunning the failed gate and dependent checks. Before a merge or milestone,
-a focused repair does not replace a clean complete run when that gate requires
-one. Existing tools do not implement automatic result caching.
+and rerunning the failed gate and dependent checks. When an engine change requires a complete run, a focused
+repair does not replace that gate. Existing tools do not implement automatic result caching.
 
 The current `oracle-test` includes all retained mutation checks, so the full
 regression gates above still execute them. Selective mutations are for focused
@@ -111,7 +111,8 @@ comparisons or skip unexplained failures to meet this cadence.
 
 ```bash
 make -j4                    # build the game: ./afterburner2
-make test                   # ROM-free engine checks
+python3 tools/workflow.py run main  # daily main functionality (needs roms/)
+make test                   # retained ROM-free suite
 make verify-stage1          # Stage 1 integration suite (needs roms/)
 make oracle-capture         # record MAME reference captures into build/oracle/
 make oracle-test            # check the ports against those captures
@@ -147,301 +148,45 @@ the decoder needs extending; in a data table it's expected.
 - The game logic runs at 30 Hz with an interpolated sprite list on the
   in-between frames. Don't port anything at 60 Hz.
 
-## Current checkpoint (2026-10-24)
+## Current checkpoint (2026-10-31)
 
-macOS packaging cleanup (2026-10-29): runtime packaging now moves project and
-dependency sources to a matching `-sources.zip` companion, links developer docs
-at the source commit and consolidates notice texts into one file. The dated
-runtime and checksum are published on Preview 5; source companions are retained
-locally, with exact project/dependency source links in the release notes.
-Earlier assets are retained; see the
-[release record](ENGINE_NOTES.md#compact-macos-release-refresh-2026-10-29).
+- 2026-11-01: **Corrected ground is the shared default on every platform**.
+  Fresh settings and files without a ground preference select Corrected; explicit
+  saved Original choices remain supported. See the
+  [default-setting record](ENGINE_NOTES.md#corrected-ground-default-on-every-platform-2026-11-01).
 
-Build/test maintenance (2026-10-28): removed stale compiled experiment outputs,
-expanded regression cleanup and added separate oracle/native cleanup commands.
-All test sources, fixtures, mutations and acceptance tasks remain retained; see
-[the pruning record](ENGINE_NOTES.md#build-and-test-artifact-pruning-2026-10-28).
+- Local source adds **21:9 Preview (522×224)** alongside Original, 16:9 and
+  16:10. The centered native HUD/menu and width-derived renderer are shared;
+  sustained ultrawide performance and physical display acceptance remain open.
+  See [widescreen](WIDESCREEN_PLAN.md) and the
+  [current change record](ENGINE_NOTES.md#219-and-main-functionality-workflow-2026-10-31).
+- Daily validation now uses the `main` profile (`quick` is an alias). Full
+  oracle/mutation runs are reserved for engine changes. Full test sources,
+  fixtures and mutations remain retained; see the cadence above and
+  [workflow](WORKFLOW.md#checks-and-logs).
+- macOS and Android packages are **Preview 6**; Windows remains **Preview 5**.
+  The macOS runtime uses a separate retained source companion;
+  the Windows 28 October refresh retains unresolved FPS/audio dips. Source
+  changes after those packages require a new build. See
+  [release notes](RELEASE_NOTES.md),
+  [macOS packaging evidence](ENGINE_NOTES.md#compact-macos-release-refresh-2026-10-29)
+  and [Windows status](WINDOWS_PERFORMANCE.md).
+- Main includes Practice/Shuffle, integrated primary rendering, GPU sprite
+  filters, HUD/CRT, optional aircraft art, calibration, haptics and spatial audio.
+  Native gameplay remains the regression reference. Latest complete integration
+  evidence is in the
+  [28 October gate](ENGINE_NOTES.md#completed-macoswindows-integration-gate-2026-10-28);
+  finite checks do not establish whole-game fidelity or sustained performance.
+- Custom stage experiments remain isolated on
+  [codex/custom-stage-prototype](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/custom-stage-prototype).
+  Android/TV host implementation is in progress; Linux builds and moving
+  object-based HRTF remain plans below.
 
-Integration update (2026-10-28): main consolidates the latest Windows rendering,
-audio and pacing work with local license/package maintenance and platform plans.
-Standalone custom-stage experiments are isolated on
-[codex/custom-stage-prototype](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/custom-stage-prototype),
-including their source, fixtures and instructions; they are excluded from the
-main-game macOS package. macOS validation also found and repaired an SDL
-starved-tail recovery race; see the new Engine Notes consolidation record.
-The completed macOS integration passes test, verify-stage1, the full oracle-test
-and native Metal checks. The unpublished local macOS .2 package passes independent
-payload/source/signature checks and finite Arcade/Practice/Shuffle Metal/OpenAL
-launches. Exact source, checksum, logs and retained skip/acceptance scope are in
-Engine Notes; existing Windows performance and whole-credit limits remain open.
-
-Licensing maintenance (2026-10-26): the central
-[license inventory](../LICENSES/README.md) now retains dependency and legacy
-audio notices, Vulkan header terms and GCC runtime terms. Native Windows
-packaging requires its compiler's MinGW notice; both packagers check required
-central notices. This updates future packages, not published artifacts. See
-the [validation record](ENGINE_NOTES.md#license-inventory-and-packaging-notices-2026-10-26).
-
-Windows source update (2026-10-24): checked LLVM-MinGW ThinLTO builds and a
-native Vulkan RetroArch `.slangp` host are implemented. Practice/Shuffle,
-16:10, HUD/CRT, aircraft presentation, calibration and revised spatial audio
-are shared with the macOS source; Windows packaging now includes the matching
-aircraft assets and shader notices. The published Windows download remains
-Preview 2. Local regression/GPU/shader evidence and the earlier full-oracle and
-symlink-fixture failures are recorded in
-[ENGINE_NOTES](ENGINE_NOTES.md#windows-lto-vulkan-shaders-and-feature-parity-2026-10-24).
-
-Windows NTSC shader follow-up removes immediate GPU waiting and redundant
-Off-mode sprite scaling. A bounded Original viewport/HUD run holds 59.64 fps
-after startup; busy 16:10 scenes still fall below target. See
-[NTSC measurements](ENGINE_NOTES.md#ntsc-preset-performance-follow-up-2026-10-24).
-
-Windows source follow-up (2026-10-27): CMake builds retain native Vulkan GPU
-sprite/scene composition with Slang, including ScaleFX. The live primary
-renderer reuses the hardware sprite raster for detached HUD ownership. Matched
-S-video Stage 5 fullscreen tests with Sharp HUD and corrected ground average
-59.49 fps at 16:9 and 59.64 fps at 16:10, with identical final images. These
-optimizations are local source changes awaiting a Windows package refresh;
-sustained scene/GPU and whole-game acceptance remain open. See the
-[implementation and validation record](ENGINE_NOTES.md#native-vulkan-sprite-filters-and-shared-hud-raster-2026-10-27).
-
-Stage 1 takeoff follow-up retains compact horizon/geometry caches, bounded
-frame-time diagnostics and terminal-fragment reuse. Earlier Practice runs
-excluded takeoff; longer fullscreen runs still show dips. The connected-desktop
-follow-up adds bounded host catch-up and SDL starvation recovery; consistent
-full speed remains open. See the
-[takeoff investigation](ENGINE_NOTES.md#windows-stage-1-takeoff-frame-time-investigation-2026-10-27).
-
-The 28 October user capture confirms 53.29 fps and ten SDL starvation events.
-Reordered ground checks and exact native ScaleFX capture reduction preserve
-rendered pixels and reduce work. Four local runs average 59.64 fps, but brief
-dips and one 16:10 starvation remain; user confirmation and sustained acceptance
-are still open. See the
-[dropout investigation](ENGINE_NOTES.md#user-operated-windows-dropout-capture-2026-10-28).
-
-The subsequent administrator CPU/GPU capture reproduces roughly 54–58 fps
-during active play, with little CPU pacing headroom. The user now confirms
-audible dips with repeated synchronized OpenAL underruns, superseding the
-earlier smooth-HRTF report. Long graphics waits cluster around pause/focus
-transitions; fullscreen presentation alternatives tested worse. A passive
-unit-zoom sprite-decoder shortcut and removal of a redundant SDL Vulkan
-submission pass focused rendering, regression and stage checks. Windows
-OpenAL now uses an 80 ms startup/recovery reserve with passing output controls,
-but final normal runs still dip to 53–56 fps with 1/3 underrun events.
-Sustained FPS/audio acceptance remains open. See the
-[trace investigation](ENGINE_NOTES.md#administrator-cpugpu-trace-and-unit-zoom-decoder-2026-10-28).
-
-Primary renderer integration (2026-10-24): source builds now use the shared
-primary road/tile pass for widescreen and detached HUD/aircraft presentation.
-It renders at a bounded even logical width, 224 rows and a centered native
-origin, retaining native partial-frame palette/priority rules, sprite feedback,
-CPU/device clocks and gameplay object pools. The live consumer uses compact
-metadata rather than copied tile snapshots. `--scene-renderer snapshot` retains
-the previous reconstruction reference. macOS Preview 4 includes this path; the
-Windows download remains Preview 2.
-
-The Windows checkpoint passes 3,500/3,500 independent stock-MAME RGB comparisons,
-complete `test` and `verify-stage1`; instrumented CPU/device and supplemental
-checks were deferred to this Mac. The Mac follow-up passes 3,010 counted
-CPU/bus/device/index/priority/RGB/audio frame comparisons at 358 and 398 pixels,
-zero supplied execution/state/read seeds or skips, with three rejected faults.
-All four retained natural recordings match the live and snapshot enhanced
-planes across **208,904/208,904 frames**, zero differences/skips. GPU/software
-frontend image pairs and live shader/viewport switching pass at all three menu
-viewports. Matched Stage 1/5 NTSC timings reduce board-plus-scene CPU time by
-3.70–4.51%, with identical final images; finite intervals still fall below target.
-The complete required gates and supplemental `full` profile pass on the final
-source. The clean complete oracle rerun retains all 207 recovery controls,
-18 geometry controls and the new integrated-host/RGB controls. Refreshed
-independent Shuffle recordings also match all 100,000 native replay observations.
-This closes the declared Mac/source renderer rollout gate. See the
-[Mac acceptance record](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24)
-for gate logs, overlap/coverage limits and timing scope.
-
-The bounded API accepts even widths 320–640; 522 is a nominal square-pixel 21:9
-test case rounded for symmetric margins, not an enabled or accepted ultrawide
-mode. Broader scene/platform and sustained-load acceptance remain open. Custom
-stages remain a separate opt-in stage/object-data interface: renderer integration
-does not authorize changes to arcade activation, targeting, collisions, stage
-scripts or spawn rules. See the
-[integration work order](WIDESCREEN_PLAN.md#primary-renderer-integration-work-order-2026-10-24).
-
-Local macOS shader follow-up (2026-10-25): source builds retain native Metal
-GPU sprite filters with Slang presets. This removes the CPU ScaleFX fallback
-behind the reported NTSC Composite slowdown. Exact CPU-reference comparisons
-pass 882/882 cases (157,452,162 pixels), with six rejected controls and all three
-live shader/viewport integration checks passing. See the
-[Metal sprite-filter record](ENGINE_NOTES.md#native-metal-sprite-filters-with-slang-2026-10-25)
-for measurements and validation scope. Included in macOS Preview 5.
-
-Local menu organization (2026-10-25): source builds now group settings into
-Display, Graphics, CRT and Shaders, Controls, Audio, Arcade Settings and
-Diagnostics. Startup offers all three modes directly; the pause menu adds
-Restart Run and Change Mode. Controls separates bindings, analog settings,
-Input Monitor and feedback cues/tests. Focused regression, software/Metal menu
-and release-build evidence is recorded in the
-[menu organization record](ENGINE_NOTES.md#native-menu-organization-2026-10-25).
-Included in macOS Preview 5; the Windows download remains Preview 2.
-
-Local ROM startup update (2026-10-25): source builds accept extracted directories
-or stored/Deflate ZIPs, automatically try `roms/aburner2.zip`, and open a native
-ZIP picker when startup cannot load the ROM set. Successful selections are
-remembered; chip sizes/CRCs and interleave remain checked. See the
-[ROM startup record](ENGINE_NOTES.md#zip-rom-loading-and-startup-picker-2026-10-25)
-and [setup instructions](../roms/README.md). Published packages are unchanged.
-
-Local widescreen visibility update (2026-10-25): source builds now retain
-world explosions across the native horizontal retirement boundary in 16:9
-and 16:10. Detached animation keeps native pause, hidden-frame and
-depth/vertical retirement rules. Independent MAME calls, branch coverage and
-rejected controls are recorded in the
-[world-explosion record](ENGINE_NOTES.md#wide-world-explosion-retention-2026-10-25).
-Other object controllers and broader scene/platform acceptance remain open.
-
-The subsequent source increment adds ground/air hit-effect retention through
-their separate horizontal cull, preserving ground drift, scale growth and ROM
-animation/palette rules. Independent MAME coverage and integration scope are in
-the [hit-effect record](ENGINE_NOTES.md#wide-ground-and-air-hit-effect-retention-2026-10-25).
-
-The following source increment adds horizontal retention for player/enemy
-missile smoke and world-projected player damage/death emissions. Visual copies
-retain each family's lifetime rules and the native emission-pool reset, with
-no changes to missiles, native rings/pools, damage, sound or respawn. See the
-[three-family record](ENGINE_NOTES.md#wide-missile-trails-and-player-damage-emissions-2026-10-25)
-for independent MAME comparisons and finite coverage limits.
-
-Local sky correction follow-up (2026-10-25): Corrected ground now uses the
-published horizon marker ordering when the current roll has crossed an axis
-before the displayed strip. This removes the reproduced Stage 6 white sky
-triangles at both wide render widths. See the
-[fast-roll evidence](ENGINE_NOTES.md#stage-6-fast-roll-sky-triangles-2026-10-25)
-for regression scope; included in macOS Preview 5.
-
-The follow-up also closes reproduced blue cloud gaps and further white sky
-cuts by prioritizing measured marker ordering and copying only observed,
-matching flat-color ground fields inside one render clip. The expanded test
-checks both measured sides throughout the Stage 6 replay; see the
-[two-sided horizon record](ENGINE_NOTES.md#stage-6-two-sided-horizon-correction-2026-10-25)
-for evidence and finite coverage.
-
-macOS release source is tagged `v0.1.0-preview.5`; the package manifests identify the
-exact source commit. The SDL3 native game is
-on `main`; the separate Three.js prototype remains on
-[`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).
-
-| Area | Implemented / validated | Still open |
-| --- | --- | --- |
-| Native game | Cold boot, attract, coin/start, flight, weapons, HUD, original audio and transitions; 12,466 recovery PCs / 78,670 identical fixtures / 207 retained controls | New execution paths, standard-credit recording and continuous whole-credit fidelity |
-| Whole host | Expanded 781-frame independent MAME corpus: CPU/bus/device/RGB/audio comparisons pass with zero supplied execution/state/read seeds | Finite input/operand coverage; broader DIP/reset/persistent-state paths |
-| Natural lifecycle | Four replays match ten MAME columns and native original-image reconstruction across 104,452 frames, zero skips; ending run visits all 23 stages | Name entry, NVRAM, alternate carrier/collision paths and whole-credit CPU/device/RGB/audio |
-| Menus and controls | Video/Controls/Audio/DIP submenus, [Stage Select / Practice](PRACTICE_MODE.md) and [Shuffle](SHUFFLE_MODE.md), live bound-input calibration display, scroll hints, persisted settings, keyboard/gamepad/raw-joystick remapping and hotplug | Service/coin options, full Practice entry-state fidelity and broader physical device acceptance |
-| Display and ground | Five GPU filters plus Off, four opacity controls, full-throttle-only flame translucency, optional ground correction, [high-DPI HUD preview](HUD_PRESENTATION.md) with Sharp 3x/custom indexed text tiles and [CRT display presets](CRT_DISPLAY.md) | Semantic sprite instruments, production replacement art, other backends, continuous terrain projection and sustained performance |
-| Widescreen | 398×224 and 358×224 previews in macOS Preview 3, detached scenery, queue/depth-drop recovery and horizon/water extensions; 23 directed slots per aspect preserve 22,540 counted native RGB/PCM/time frames | Broader controller/scene audit, ultrawide, other platforms and sustained load; gameplay object pools remain native |
-| Music | Six WAV/FLAC mappings, preview/fallback, independent gains, -12 dB replacement baseline and live active-song changes; all six native song contexts and natural fades observed | Replacement-file natural fade/listening acceptance |
-| Spatial audio | Chip-rate OpenAL Soft, headphone HRTF, 2.1/5.1 profiles, dry stereo music, reviewed routing and stall recovery; 117,509 exact MAME ownership observations and 104,452 unchanged native lifecycle frames; original Deluxe stereo wiring traced | Revised-cue listening, physical surround/unplug and Windows/Linux checks, end-to-end latency, ABII cabinet-revision evidence; planned object-to-voice ownership and moving HRTF sources |
-| Feedback | Cannon/missile/impact/boost cues; 4,200 native frames unchanged; macOS Xbox Bluetooth body and both triggers physically confirmed | Windows/Linux/fallback hardware, full gameplay feel, warning cues and advanced FFB |
-| Distribution | ROM-free macOS Preview 5 and runtime-verified Windows Preview 2 ZIPs with SDL3/OpenAL Soft 1.25.2, sources, notices, manifests and checksums | macOS ad-hoc signed; Windows unsigned and awaiting the new features; Intel/older macOS and Linux packages remain open |
-
-Local source update: the viewport selector now offers Original,
-16:9 (398×224) and 16:10 (358×224), with width-specific detached visibility and
-centered HUD/menu placement. `test`, `verify-stage1`, independent geometry,
-18 geometry mutation runs and Metal menu/wide GPU checks pass. Each aspect's
-23 directed stage slots preserve 22,540 counted native RGB/PCM/time frames.
-See [the local widescreen validation records](WIDESCREEN_PLAN.md#delivered-preview-and-remaining-gates).
-The complete `required` gate and supplemental `full` profile pass on the
-integrated 2026-10-19 macOS source; see the validation record below. Broader
-scene/platform and sustained-load work remains open.
-macOS Preview 3 includes this work. The source also has a
-controller-only live Calibration screen and revised headphone HRTF gain. The
-user confirmed responsive controller values and improved front/rear placement
-with External Headphones. See [engine evidence](ENGINE_NOTES.md#input-calibration-and-macos-spatial-audio-recheck-2026-10-18).
-
-Local source addition (2026-10-22): the [HUD presentation preview](HUD_PRESENTATION.md)
-adds Original / Sharp 3x / user indexed text art and high-DPI output. Native
-RGB/PCM/time, text priority/palette/frontiers, 4K software/Metal layouts and the
-complete local `test` / `verify-stage1` checks pass; see
-[the HUD evidence](ENGINE_NOTES.md#high-dpi-hud-text-presentation-2026-10-22).
-Sprite-based instruments, production replacement art and sustained/platform
-acceptance remain open. This does not replace the complete merge/release gate.
-
-Local source addition (2026-10-23): the opt-in
-[HD player-aircraft prototype](SPRITE_REPLACEMENT.md) now loads a versioned,
-registered pack containing neutral flight and gentle banking in both directions,
-including their runtime ROM LOD families. Native RGB/PCM/time is unchanged across
-3,004 comparison frames; 1,206 active-flight draws cover both families across
-three viewport widths. Software/Metal rendering at 3x and 4K, 35 retained negative
-controls and the 160-frame MAME video reference pass. Fixed bounds, pivots,
-scales and nozzle review points travel with the art. Other poses and unsupported
-overlaps retain Original; complete animation, production registration and
-sustained/platform acceptance remain open. See
-[the registered-pack evidence](ENGINE_NOTES.md#registered-aircraft-pack-and-gentle-bank-2026-10-23).
-
-Local source addition (2026-10-23): [CRT display](CRT_DISPLAY.md) adds Off /
-Subtle / Arcade presets with independent scanline and RGB-mask strengths on the
-completed game/HUD image, followed by readable frontend UI. Software/Metal
-pixel, renderer-state, 4K, high-DPI resize and six retained negative controls
-pass. Native replay preserves 781 RGB/PCM/time frames, zero skips. The later
-unlocked-desktop recheck passed actual fullscreen/windowed transitions; an
-accepted API request alone is not fullscreen acceptance.
-See [CRT evidence and measured limits](ENGINE_NOTES.md#optional-crt-display-presentation-2026-10-23).
-These local presentation checks do not extend the previous complete hardware
-gate to the changed frontend tree; sustained load and other platform acceptance
-remain open. Optional richer effects are covered by the Slang follow-up below.
-
-Local follow-up (2026-10-23): [RetroArch Slang presets](CRT_DISPLAY.md#retroarch-slang-presets-macos-metal)
-add an optional macOS Metal `.slangp` host through pinned librashader, native
-224-row input, live preset selection and renderer switching. CRT Easymode,
-CRT Geom and CRT Royale have been exercised locally. The host retains the
-original board framebuffer and audio, and frontend UI draws after the shader.
-Windows/Linux shader backends, HDR, parameter UI, first-input mipmaps and sustained
-preset performance remain open. Shader packs and runtime binaries are not
-committed or added to published packages. See the separate
-[shader validation record](ENGINE_NOTES.md#retroarch-slang-presentation-2026-10-23).
-
-On Windows 11 x64, both ROM-free continuation tests (`windows-fiber` and
-`worker-thread`) pass, and native `afterburner2.exe` with Vulkan GPU sprite
-filters (`renderer=gpu`, `filters=gpu`), OpenAL Soft 1.25.2 headphone HRTF,
-fullscreen switching, 16:9 widescreen, Corrected ground, ScaleFX 3x, all four
-translucency toggles and Integer/Pixel-Art scaling sustains locked
-`simulation_fps=59.6374 display_fps=59.6374` across 420-frame Stage 1 and
-Stage 5 profiles (`board_ms=9.15–10.24 ms`, `wide_scene_ms=1.27–3.94 ms`,
-`filter_submit_ms=0.22–0.45 ms`). The integrated source subsequently passed
-the macOS gate below.
-See [Preview 2 release notes](RELEASE_NOTES.md),
-[Windows runtime and pacing notes](ENGINE_NOTES.md#windows-runtime-openal-soft-and-widescreengpu-pacing-validation-2026-10-16),
-and the focused plans for scope.
+Dated implementation details and earlier checkpoints remain in
+[Engine Notes](ENGINE_NOTES.md), [release notes](RELEASE_NOTES.md) and the
+feature plans linked in the [documentation guide](README.md).
 
 ## Next acceptance tasks
-
-macOS Preview 5 includes the 25 October ROM startup, menu, Metal sprite-filter,
-horizon and widescreen effect updates. The complete final-source `required`
-release gate passes; see the [release record](ENGINE_NOTES.md#preview-5-release-2026-10-26).
-The remaining acceptance work below stays open.
-
-macOS Preview 4 includes the default integrated renderer and the complete
-required/supplemental and natural-lifecycle results recorded in the
-[Mac renderer acceptance](ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
-Its package manifest and GitHub release identify the exact source commit and
-independent extracted-package checks. This is a macOS refresh; Windows remains
-on Preview 2.
-
-The integrated macOS Preview 3 source passed the complete final-source
-`required` release gate on 2026-10-23 at
-`build/workflow/20261023T185259.944984Z/`: `test`, `verify-stage1` and the
-complete `oracle-test`, including all 207 recovery controls. Its complete
-Shuffle comparison matches 100,000 independent frame observations. See
-[the release record](ENGINE_NOTES.md#preview-3-release-2026-10-23).
-
-The 2026-10-22 macOS checkpoint passed the complete `required` gate: unchanged-source
-`test` / `verify-stage1` at `build/workflow/20261022T160051.739352Z/`, clean
-`oracle-test` at `build/workflow/20261022T162126.082489Z/`, and supplemental
-`full` at `build/workflow/20261022T161927.407826Z/`. The spatial HRTF lifecycle
-replays also preserve 104,452 native RGB/PCM/time frames. See
-[the scope and gate record](ENGINE_NOTES.md#spatial-audio-routing-and-playback-acceptance-2026-10-22).
-macOS Preview 3 refreshes performance, 16:10, calibration, spatial audio,
-HUD/CRT, aircraft presentation and Practice/Shuffle. Refreshing the Windows
-package and extending platform acceptance remain open. See the
-[Preview 3 release record](ENGINE_NOTES.md#preview-3-release-2026-10-23).
 
 On 2026-10-15, the user reported finishing the game from start to finish on
 macOS with the saved Normal / three-ship configuration and current enhancements.
@@ -473,36 +218,11 @@ Enhancements can be developed alongside this work using the contracts in
 [ENHANCEMENT_ARCHITECTURE.md](ENHANCEMENT_ARCHITECTURE.md). Keep an original
 mode as the regression reference; new features do not close full-game coverage.
 
-Local enhancement increment (2026-10-23): [Stage Select / Practice](PRACTICE_MODE.md)
-adds an explicit fresh directed startup, F5 retry and cold arcade return.
-The runtime ROM catalog matches 23/23 independent MAME entries, zero skipped,
-with four rejected catalog mutations. The existing palette check remains
-56/56 words identical. Local `test`, complete `verify-stage1` and final SDL
-menu/Practice launch checks pass. Complete stage-entry state, Time Attack and natural
-whole-credit acceptance remain open; see the
-[Practice evidence](ENGINE_NOTES.md#stage-select--practice-first-increment-2026-10-23).
-
-Local Shuffle follow-up (2026-10-25): generated runs cannot open with scripted
-stages 5, 13 or 23. All stages remain in the order, with stage 23 fixed last;
-seeded retries remain reproducible. Policy regressions and all nine ROM-policy
-controls pass; see [the validation record](ENGINE_NOTES.md#shuffle-gameplay-openings-2026-10-25)
-for scope and integration results.
-
-Local enhancement increment (2026-10-23): [Shuffle](SHUFFLE_MODE.md) randomizes
-gameplay stages 1–22 once each, keeping stage 23 as the native finale. It runs
-continuously with normal score/lives, same-order F5 retry, New Shuffle and
-canonical Arcade/Practice return. The fixed-finale native run visits all 23
-positions and completes ending, ranking and attract across 61,478 physical
-frames. The earlier Shuffle checkpoint passed the complete `required` profile,
-including all retained mutation checks. Paired-selector cleanup adds 180 MAME
-fixtures and 20 rejected controls; a later post-ending credit-prompt continuation
-adds 250 fixtures and 19 controls across the complete prompt routine. An attract
-controller/callee closure adds 286 independently verified fixtures and 22
-rejected controls. The complete retained instruction corpus passes
-78,670/78,670 comparisons, zero skipped.
-The final arranged-MAME comparison matches all 100,000 frame observations,
-including every stage, ending, ranking and the later attract sequence. See
-[Shuffle evidence and finite coverage](ENGINE_NOTES.md#shuffle-mode-2026-10-23).
+Practice and Shuffle are implemented; complete Practice entry-state fidelity,
+Time Attack and natural whole-credit acceptance remain open. Retained Shuffle
+MAME comparisons cover 100,000 frame observations across all stages, ending,
+ranking and attract. See [Practice](PRACTICE_MODE.md), [Shuffle](SHUFFLE_MODE.md)
+and their linked evidence for exact finite scope.
 
 ## Object-based spatial audio (planned)
 
@@ -522,19 +242,30 @@ future work, separate from current playback acceptance. See the ordered tasks,
 MAME/mutation gates and listening/performance requirements in the
 [spatial audio plan](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned).
 
-## Android / Android TV port (planned)
+## Android / Android TV port (initial implementation)
 
-Added 2026-10-26. Build on this Apple Silicon Mac using the shared C++/SDL3
-engine. First milestone: a ROM-free, controller-driven ARM64 APK with original
-graphics/audio and user ROM import, running on a real Android device. Android TV
-shares the engine and adds TV launcher integration and controller/remote menu
-navigation. Touch controls and richer presentation effects are later increments.
-No Android build or device acceptance is claimed yet.
+Updated 2026-11-01. The shared C++/SDL3 Android host now has ARM64 packaging,
+phone/tablet multi-touch controls, TV launcher integration, controller/remote
+menu navigation and private ROM ZIP import. Android Back/background handling
+and renderer reset recovery are implemented. See [Android build and device
+acceptance](ANDROID.md). A first SM-S908E / Android 16 smoke covers import,
+relaunch, touch Stage 1 entry and Home/surface-loss/resume; SDL orientation and
+fullscreen issues found there are fixed. Broader phone/TV acceptance, device-side
+comparisons and sustained performance remain open (one attract sample: 52.6 FPS). No engine behavior was added for this
+platform port.
 
-- [ ] Set up a working JDK, Android SDK/NDK, Gradle and ADB; pin toolchain and
-  dependency versions and document reproducible macOS build/install commands.
-- [ ] Add Android activity/manifest and native shared-library packaging through
-  SDL3/CMake; package required assets and notices without ROMs or captures.
+- [x] Set up a working JDK, Android SDK/NDK, Gradle and ADB; pin build toolchain
+  and dependency versions and document reproducible macOS build/install commands
+  (`tools/android.py`; platform-tools is a rolling host-only deployment package).
+- [x] Add Android activity/manifest and native shared-library packaging through
+  SDL3/CMake; package required notices without ROMs or captures. ARM64 APK
+  cross-build and manifest/signature/16 KiB packaging checks pass; see the
+  [1 November implementation record](ENGINE_NOTES.md#android-host-and-touch-controls-2026-11-01).
+- [x] Add handheld multi-touch steering, throttle, weapons, coin/start and menu
+  controls, including a spring-centered throttle slider, round top-center buttons
+  and a gamepad-style joystick, plus a Hide/Show toggle beside Menu, with host
+  regression and ten rejected adapter mutations. Physical
+  touch feel, cutout/safe-area and multi-touch hardware checks remain open.
 - [ ] Implement Android ROM import and persistent app storage, settings/NVRAM,
   Back navigation, pause/resume, audio interruption and surface recreation.
 - [ ] Add Android TV launcher icon/banner and manifest support without requiring
@@ -543,14 +274,19 @@ No Android build or device acceptance is claimed yet.
 - [ ] Validate Android rendering and audio backends. Measure the worker-thread
   CPU continuation fallback; add an Android ARM64 cooperative backend if needed
   for performance, preserving CPU/bus timing and the existing oracle contracts.
+  Android ARM64 cooperative stacks are implemented: the SM-S908E 7,200-frame
+  comparison improves 53.33 to 59.63 FPS at the unchanged 59.637 Hz arcade
+  cadence. Device continuation/FP/unwind checks and the 121-frame cold plus 781-frame
+  expanded independent MAME whole-host replays pass; broader GPU/audio/TV and peak-load acceptance
+  remain open. See the [Android optimization record](ENGINE_NOTES.md#android-arm64-cooperative-performance-2026-11-01).
 - [ ] When the user provides ADB access to a real device, install and launch
   builds, collect logs/screenshots and run repeatable startup, storage, lifecycle,
   input and gameplay checks. Record device model, Android version, ABI, GPU,
   build identity and exact test scope; phone and TV acceptance remain separate.
 - [ ] Run device-side deterministic replays against independent MAME references
   for CPU/bus/device, RGB and audio observations. Follow the validation cadence
-  above, including full regression and retained mutations for shared execution
-  changes and the complete required/supplemental gates for acceptance milestones.
+  above, reserving full regression and retained mutations for engine changes;
+  platform-only acceptance uses main functionality and affected device checks.
 - [ ] Measure sustained representative and peak-load gameplay on target hardware,
   including frame pacing, thermal throttling and audio stability. Obtain user
   checks of controller feel, perceived latency, listening quality and TV display
@@ -579,9 +315,9 @@ acceptance is claimed yet.
   architecture, distribution, compiler, dependencies and exact test scope.
 - [ ] Run native deterministic replays on both x86-64 and ARM64 against
   independent MAME references for CPU/bus/device, RGB and audio observations.
-  Apply the validation cadence above, including full regression and retained
-  mutations for shared execution changes and complete required/supplemental
-  gates for acceptance milestones.
+  Apply the validation cadence above, reserving full regression and retained
+  mutations for engine changes; platform-only acceptance uses main functionality
+  and affected device checks.
 - [ ] Validate Wayland/X11 startup, ROM picking, settings/NVRAM persistence,
   fullscreen/resize, audio routing and controller disconnect/reconnect. Use an
   accessible active desktop/GPU/audio session for graphical remote testing;
@@ -609,7 +345,7 @@ session and hardware coverage limits.
 | 3e: stages and game flow | All 23 directed slots and a natural ending transition stream pass; broader lifecycle acceptance remains |
 | 3f: full-game equivalence | Continuous whole-credit CPU/device/RGB/audio comparison open |
 | 4: Audio | Original Z80/YM2151/SegaPCM and declared MAME audio corpora pass; full-credit contexts remain |
-| 5: Enhancements | Practice/Shuffle, filters/opacity, HUD/CRT, remapping, music, basic rumble, OpenAL and 16:9/16:10 previews implemented; broader acceptance remains |
+| 5: Enhancements | Practice/Shuffle, filters/opacity, HUD/CRT, remapping, music, basic rumble, OpenAL and 16:9/16:10/21:9 source previews implemented; broader acceptance remains |
 
 Focused enhancement plans are linked from the [documentation guide](README.md).
 Detailed ROM discoveries and earlier checkpoints remain in ENGINE_NOTES and Git

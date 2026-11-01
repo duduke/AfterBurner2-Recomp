@@ -64,7 +64,7 @@ def main():
         with (overlay / 'build.log').open('w') as log:
             log.write(shlex.join(cmd)+'\n');log.flush()
             subprocess.run(cmd, cwd=ROOT, check=True, stdout=log, stderr=subprocess.STDOUT)
-        for width in (398, 358):
+        for width in (398, 358, 522):
             result = subprocess.run([str(binary), '--width', str(width)], cwd=ROOT, capture_output=True, text=True)
             output = result.stdout + result.stderr
             (overlay / f'run-{width}.log').write_text(output)
@@ -76,7 +76,7 @@ def main():
                 if result.returncode != 1 or witness not in output:
                     raise RuntimeError(f'{name} ({width}): expected semantic rejection missing; {overlay}')
                 print(f'Wide mutation {name} ({width}): rejected by independent geometry witness', flush=True)
-    print(f'Wide geometry mutations: {2*len(MUTATIONS)} of {2*len(MUTATIONS)} rejected, 0 skipped; sources/binaries/logs retained at {logs}')
+    print(f'Wide geometry mutations: {3*len(MUTATIONS)} of {3*len(MUTATIONS)} rejected, 0 skipped; sources/binaries/logs retained at {logs}')
 
 
 if __name__ == '__main__':

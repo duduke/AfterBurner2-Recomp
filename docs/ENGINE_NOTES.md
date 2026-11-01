@@ -11,7 +11,7 @@ until it's actually been exercised by a running port.
 
 This is a chronological reverse-engineering journal. A checkpoint's pending
 work and supplied boundaries describe that checkpoint, and may be superseded
-later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-24) for current
+later. Use [ROADMAP.md](ROADMAP.md#current-checkpoint-2026-10-31) for current
 status and [WORKFLOW.md](WORKFLOW.md) for commands. The native SDL3 game is now
 on main; the historical reconstruction no longer drives the application.
 
@@ -14728,3 +14728,463 @@ stalled alongside Apple's `afplay`; the user-approved macOS audio-service restar
 restored output before the final audit. Failed attempts and a separate null-output
 diagnostic remain retained. These finite checks do not close sustained performance,
 controller/latency or continuous whole-credit acceptance.
+
+## 21:9 and main-functionality workflow (2026-10-31)
+
+Local source exposes **21:9 Preview**, 522×224 (101 columns per side), after
+Original, 16:9 and 16:10. The width follows the existing nominal square-pixel
+policy, rounded to an even number for symmetric margins. This uses the existing
+320–640 bounded renderer/capture API; no native engine instructions, clocks,
+collision, spawning or feedback behavior change. Window sizing, render targets,
+scaling, HUD/menu safe area and pointer conversion already derive from the
+selected width. Preferences add `viewport=21:9`; legacy Boolean migration and
+explicit-key precedence remain intact. Published Preview 5 assets predate this
+change.
+
+Coverage additions retain the old widths and extend independent ROM geometry,
+all 23 directed stage slots, pause/restart/width switching, Stage 1/5 CPU/GPU
+filter fixtures, HUD/CRT/aircraft layout, and actual shader/viewport switching
+to 522. The geometry mutation runner retains all nine controls at each width.
+No ROM data or captures are added to version control.
+
+At the user's direction, daily development and non-engine releases now use
+`python3 tools/workflow.py run main` (`quick` is an alias), plus affected checks.
+The profile runs `test-main`, `verify-game-session`, `verify-practice-mode` and
+`verify-shuffle-session`. It retains primary loading, settings, controls/input,
+pacing, software renderer/HUD/CRT/aircraft/filter/feedback, music/audio playback
+checks and the three
+mode lifecycles. Full `test`, `verify-stage1`, `oracle-test`, retained fixtures
+and mutations remain available. `integration` names the former quick profile;
+`required` remains the complete engine-change gate. Full oracle/mutation testing
+is reserved for engine changes, with no automatic release or merge-count trigger.
+The profile change does not modify the workflow execution/logging harness or
+compiler options.
+
+The roadmap checkpoint and next-task introduction now link to dated evidence
+instead of repeating hundreds of lines of history. Current documentation fixes
+stale Windows Preview 2 claims, distinguishes source 21:9 from published packages,
+and applies the new validation policy consistently. Historical evidence, all
+six ordered acceptance tasks, test fixtures and mutations remain retained.
+
+The added 522-wide aircraft checks exposed two fractional-layout issues at
+960×672. SDL's logical presentation reports y=130.5, while its physical viewport
+starts at floor(y)=130; the test now uses that independently confirmed origin
+(SDL 3.4.16 `SDL_render.c`, `UpdatePixelViewport`). The software strip quantizer
+also promoted SDL's float scale multiplication to double: at native y=112,
+`130 + 112 * float(411.0/224) - 0.5` became 335.0000038 instead of SDL's float
+335.0, claiming an extra row. Keep the endpoint products in float, matching
+SDL's rectangle scaling before applying the integer offset. Existing HD detail,
+alpha, mask-hole, reflection and half-open edge assertions remain strict at all
+four widths. The retained `software-fractional-endpoint` mutation restores the
+double promotion and must be rejected. This changes optional software aircraft
+presentation only, without changing the native board or GPU drawing path.
+
+Validation:
+
+| Check | Result and retained evidence |
+| --- | --- |
+| Final daily `main` | All four targets pass in **107.17 s** at `build/workflow/20261031T204815.509520Z/`: frontend/audio, 781 Arcade RGB frames, Practice lifecycle and Shuffle lifecycle plus its 7,118-frame three-position window. |
+| Independent wide geometry | 398/358/522 ROM planar wrap, partial palettes, signed edges, native road center and immutable feedback pass at `build/workflow/20261031T202828.497807Z/01-verify-wide-geometry.log`. |
+| 21:9 directed stages | All 23 slots pass: **22,540 native RGB/PCM/time frames**, both direction windows, pause/restart/viewport switching and terrain protection. Stage results are in `build/workflow/20261031T202828.497807Z/02-verify-wide-gpu-21-9.log`. Its subsequent GPU step failed sandbox display enumeration, not the stage assertions. |
+| 21:9 GPU filters | Retained Stage 1/5 fixtures pass **24/24** filter/opacity cases, **14,499,072 pixels**, zero skips, using desktop access at `build/workflow/20261031T203748.030070Z/01-verify-wide-gpu-21-9.log`. The GPU target consumes existing fixtures without repeating the stage sweep. |
+| Geometry controls | Passing baselines at all three widths, **27/27 rejected**, zero skips, at `build/workflow/20261031T203552.963527Z/01-verify-wide-mutations.log`. |
+| Aircraft precision fix | Passing software baseline and **22/22 rejected** controls, including the restored double-endpoint fault; `native-release` and `verify-player-aircraft` pass at `build/workflow/20261031T204508.105036Z/`. Integration preserves 3,004 native RGB/PCM/time frames and retained matcher/restoration cases at 320/358/398. |
+| Final aircraft GPU and live shaders | Both targets pass at `build/workflow/20261031T205034.676235Z/`. Aircraft layout covers all four widths; real GPU/Metal switching, failed-preset rollback and all live viewport switches pass from all four starting viewports, with paused native RGB/PCM/time identical and zero skips. |
+| GPU HUD/CRT | Four-width layout, pixel/state/cache, 4K/high-density and observed fullscreen round-trip checks pass at `build/workflow/20261031T203748.030070Z/03-verify-gpu-hud.log` and `04-verify-gpu-crt.log`. Their sources/dependencies are unchanged by the later aircraft-only repair. |
+| Final native launches | Rebuilt executable completes 60 frames at 21:9 with GPU/Sharp HUD and software/registered aircraft configurations. Valid full-width BMPs are 2582×1107 and 1566×672; logs/images are `build/oracle/widescreen/viewport-21-9-{native,software}-final.*`. These finite launches do not establish sustained speed or hardware audio. |
+| Documentation | All **30 project Markdown files** have valid local links/anchors; Python syntax and profile mapping inspection pass. `build/workflow/documentation-review-20261031.log`; `git diff --check` passes. |
+
+The complete `required`/`oracle-test` and supplemental `full` profiles were not
+rerun: there are no engine changes, under the revised user-requested cadence.
+All existing fixtures and mutations remain retained. These results are focused
+feature validation, not new whole-host or whole-game acceptance.
+Physical ultrawide/other-platform acceptance, sustained load and whole-credit
+fidelity remain open.
+
+## Android host and touch controls (2026-11-01)
+
+Added an ARM64 Android host around the existing C++/SDL3 application. CMake
+builds `libmain.so` alongside SDL3; the Android activity subclasses SDLActivity.
+The manifest supplies phone and Leanback launcher entries, an original icon/TV
+banner and optional touchscreen/gamepad features. No ROM or capture assets are
+bundled. `tools/android.py` provides checksummed Apple Silicon toolchain setup,
+optimized debug APK build, package verification and ADB installation. See
+[Android instructions and remaining device acceptance](ANDROID.md).
+
+Android's document picker returns content URIs. The frontend imports through
+SDL IO into private storage (temporary file, bounded 64 MiB copy, then rename),
+then runs the unchanged ROM loader's file-size/CRC checks and saves the private
+path. Shared SDL preference paths retain settings/input/audio profiles. Native
+NVRAM/high-score persistence remains open; no new board-state behavior was
+introduced. Android Back/Menu/remote center map to frontend navigation.
+Background/focus loss opens the pause menu, clears touch/feedback/audio and
+returning retains the pause menu. Renderer reset events rebuild frontend
+resources; physical lifecycle behavior is still unverified.
+
+`NativeTouch` owns fingers by touch-device/finger ID and retains each original
+control until release/cancel. It offers a radial analog flight pad, simultaneous
+weapons/throttle, coin/start and menu. It is enabled on Android handhelds and
+hidden on TV, merges with controller inputs, and preserves renderer state when
+drawing its overlay. Touch menu taps and vertical swipes provide navigation;
+Android Back returns through pages. The TV remote operates menus; a gamepad is
+intended for gameplay. TV document-provider availability is device dependent.
+
+Validation (local Apple Silicon host, no Android hardware acceptance):
+
+- `python3 tools/workflow.py run main` passed in
+  `build/workflow/20261101T045105.017724Z/`: main checks, 781 exact game-session
+  RGB frames, 375 Practice RGB/PCM/time comparisons, 660 Shuffle capture-neutral
+  comparisons, 16 original-host restoration frames and the 7,118-frame natural
+  Shuffle window. These are existing finite host checks, not Android replays.
+- Final desktop build passed in
+  `build/workflow/20261101T045828.674085Z/01-all.log`.
+- Touch/import checks and all four retained mutations passed in
+  `build/workflow/20261101T045412.159608Z/`. The baseline passes; inverted vertical
+  steering, uncleared background input, dropped cannon and an unbounded import
+  are each rejected. Tests include simultaneous controls, ownership/cancellation,
+  controller merging, renderer-state/readback and failed/oversize import.
+- Android ARM64 cross-build passed with SDL 3.4.16, JDK 17.0.21+9, Gradle 8.9,
+  AGP 8.7.3, SDK/build-tools 35, NDK 28.2.13676358 and CMake 3.22.1. Native flags
+  include `-O3` without fast-math; IPO is disabled for this initial Android build.
+  The final build/packaging log is `build/android-tools/build-final.log`.
+  The package checker verifies libraries and exported `SDL_main`, asset allowlist,
+  notices, phone/TV launcher declarations, optional touchscreen, debug signature
+  and 16 KiB ZIP/ELF load-segment alignment. Build identity is in the APK.
+- ADB 37.0.1 starts successfully but `devices -l` lists no devices. Installation,
+  document-provider import, GLES/audio, surface recreation, controller/remote,
+  touch feel and sustained thermal/frame-pacing behavior remain unverified on
+  both phone and TV. The shared worker-thread continuation backend is retained;
+  Android performance has not been measured. Full oracle/mutation runs are
+  reserved for engine changes under the existing cadence; engine code was not
+  changed here.
+
+### First physical Android phone smoke (2026-11-01)
+
+Installed and launched on the user's USB-connected Samsung Galaxy S22 Ultra
+SM-S908E, Android 16 / API 36, ARM64, Snapdragon SM8450 / Adreno 730 (GLES 3.2),
+2316×1080 landscape. The user explicitly authorized copying their local ROM
+set onto this phone. The Android document picker imported the ZIP into private
+app storage; its SHA-256 matches the supplied local ZIP. A forced stop/cold
+launch reused the private copy and opened the game menu without another picker.
+No ROM data or screenshots are tracked; local evidence is under
+`build/android-tools/phone-*`.
+
+Physical testing exposed SDL overriding the manifest's landscape request for a
+resizable window, followed by desktop windowed settings exposing Android bars.
+The host now sets `SDL_HINT_ORIENTATIONS` before SDL initialization and always
+applies fullscreen on Android; the display-mode row is fixed/disabled there.
+This changes Android presentation only. The rebuilt APK was installed and the
+landscape/fullscreen menu and live game were verified on the phone.
+
+Deployed APK SHA-256:
+`db7b1e1e79341183de6c30ab88e2b042be9e247e45eb718e7eb4f9c689155e61`.
+Build and install logs: `build/android-tools/phone-fix-build.log` and
+`phone-fix-install.log`. The APK's embedded working-tree identity predates this
+device-evidence documentation update; it identifies the deployed code build.
+
+Observed checks:
+
+- ARM64 installation, SDL/native library loading, Android document picker,
+  private ZIP import/hash, cold-launch ROM reuse and original menu rendering pass.
+- Touch menu selection enters Arcade. On-screen coin/start reaches the carrier
+  takeoff and Stage 1 naturally. A flight-pad gesture produces a displaced
+  thumb/aircraft response; holding GUN highlights the control and produces
+  visible cannon fire. Touch MENU opens the paused frontend.
+- Home/return retains the process and shows the pause menu. A longer background
+  interval logs `surfaceDestroyed`, `nativePause`, subsequent `surfaceCreated`
+  and `nativeResume`; touch Resume continues the existing run with live graphics.
+- The SDL Android audio stream initializes at 48 kHz/stereo. Listening quality,
+  latency, interruptions and underruns have not been physically assessed.
+- A brief attract screenshot reports 52.6 simulation/draw FPS. This is a finite
+  observation, below the intended arcade presentation rate; it is not sustained
+  performance acceptance or a CPU-profile attribution. No engine timing or
+  continuation code was changed to address it.
+- The main profile after the presentation fix passes in
+  `build/workflow/20261101T050654.482358Z/`. All earlier touch/storage regressions
+  and retained mutations remain in place. There were no native crash or Java
+  fatal-exception lines in the collected app-specific smoke logs.
+
+Remaining: simultaneous physical multi-touch/feel, all menu pages and gestures,
+missile/throttle-specific observations, gamepad reconnect, audio interruptions,
+activity/process recreation beyond the observed surface cycle, cutout/inset
+coverage, sustained/thermal performance, device-side independent MAME replays
+and separate Android TV hardware acceptance. This smoke is not full-game or
+whole-host fidelity acceptance.
+
+### Android widescreen wedge settings follow-up (2026-11-01)
+
+The user reported the early-widescreen-style tears/wedges at the sides in
+16:9, 16:10 and 21:9. The connected SM-S908E had `viewport=16:9` and `ground=0`;
+the Graphics menu confirmed **Ground: Original**. This bypasses the existing
+`GroundHorizon` silhouette/ROM-normal fill correction, including the earlier
+non-flight and fast-roll fixes. The Android host had retained the shared fresh
+preference defaults; no rendering regression or new engine cause was established.
+
+Enabled **Settings → Graphics → Ground → Corrected** through the live menu.
+The phone persisted `ground=1` across 16:9 → 16:10 → 21:9 → 16:9 changes.
+Recorded 25-second device samples in all three ratios, plus an additional
+25-second 21:9 coin/start/takeoff/Stage 1 sample because its first sample mostly
+showed ranking/title screens. Inspected sampled frames: 16:9 and 16:10 include
+banked attract scenery; the additional 21:9 run covers natural takeoff and flight.
+The sampled corrected horizons/outer ground fill are continuous. These are
+finite visual checks, not every roll/stage or a device-side MAME comparison.
+The phone is restored to 16:9 with Corrected ground and the run paused.
+
+Local, ignored evidence: `build/android-tools/edge-before.mp4`,
+`edge-corrected-16-10.mp4`, `edge-corrected-21-9.mp4`,
+`edge-corrected-21-9-flight.mp4`, `edge-corrected-16-9-full.mp4`, sampled PNGs,
+and `edge-final-settings.png`. No ROM/capture data is added to source control.
+No production code, oracle gates, fixtures or mutations changed in this follow-up;
+the installed APK remains the phone-smoke build identified above.
+
+Fresh affected checks passed under
+`build/workflow/20261101T051938.992124Z/`:
+
+- Wide geometry: 358×224, 398×224 and 522×224 pass independent planar-ROM
+  side/column wrap, partial palettes, both signed sprite edges, non-flight
+  correction and immutable-feedback checks.
+- Retained MAME roll fixture: **160 of 160 original RGB frames identical,
+  0 skipped**; 159 enhanced witnesses, one endpoint-unavailable observation;
+  **58,471 visible wedge pixels corrected**, **2,643,597 terrain pixels preserved**.
+
+Added an Android guide note identifying the Ground setting needed for these
+wider views. Original ground remains the explicit reference option. This is a
+configuration/documentation correction; the daily engine/full oracle gates are
+not rerun because no relevant engine or renderer source changed.
+
+## Corrected ground default on every platform (2026-11-01)
+
+At the user's request, `Frontend::Settings::ground` now initializes to true in
+the shared settings header. New macOS, Windows, Linux, Android and Android TV
+builds therefore default to Corrected ground, including preference files that
+omit `ground`. Explicit saved `ground=0` still selects Original; both choices
+remain available and round-trip through preferences. The existing correction
+algorithm, native board execution and default viewport are unchanged. This
+changes future builds; previously published packages are not retroactively
+reissued.
+
+Settings regression checks explicitly cover the fresh default, old files without
+the preference, saved Original/Corrected choices and round trips of both values.
+Updated the README, workflow, architecture, widescreen and Android guides and
+roadmap checkpoint. Validation evidence:
+
+- Main profile passed: `build/workflow/20261101T052338.208365Z/`.
+- Focused final settings regression passed:
+  `build/workflow/20261101T052424.481542Z/01-test-native-settings.log`.
+- Desktop build passed:
+  `build/workflow/20261101T052339.963730Z/01-all.log`.
+- Android ARM64 build and manifest/signature/entrypoint/16 KiB alignment checks
+  passed: `build/android-tools/default-ground-build.log`.
+- Updated Android APK installed and launched on the connected SM-S908E:
+  `build/android-tools/default-ground-install.log`. Its SHA-256 is
+  `e4409b9b1964f15ea2eed0e5419aa9b04868054c1b61a1d4999a82d61d6d521b`.
+  Existing preferences and imported ROM remain in private app storage.
+
+The previous widescreen geometry/MAME fixture evidence above remains unchanged;
+no engine/oracle comparison gate or mutation was modified for this default.
+
+## Android ARM64 cooperative performance (2026-11-01)
+
+The SM-S908E Android host used worker-thread continuations at every CPU grant.
+A bounded phase trace attributed most active-frame time to board execution,
+rather than the wide scene/filter/presentation passes. Added an Android ELF
+variant of the existing ARM64 cooperative context switch: the same continuation
+protocol and 176-byte save frame retain x19–x30, the low 64 bits of d8–d15,
+FPCR/FPSR and a 16-byte-aligned stack. Android's reserved x18 is untouched.
+See the [AAPCS64 register contract](https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst)
+and [NDK ARM64 ABI documentation](https://developer.android.com/ndk/guides/abis#arm64-v8a).
+Each continuation retains the existing 1 MiB stack, cancellation, debt, bus and
+unwind logic. Only the OS handoff mechanism changes; no ROM port, arithmetic,
+CPU/bus/device time, frame count, resolution or quality setting was changed.
+
+`AB2_FORCE_THREAD_CONTINUATION` retains the worker reference. The Android build
+exposes it as `tools/android.py build --worker-continuation`; ASan/TSan and
+shadow-call-stack builds also retain workers. The backend reports
+`android-arm64-stack`. No fast-math or newer device-specific ISA is introduced.
+A ThinLTO candidate was measured and rejected: the same 900-frame Stage 6
+capture stayed exact but FPS fell from 59.30 to 55.73. It is not enabled in the
+final build. The existing `-O3` Android compilation policy is retained.
+
+### Measured phone workloads
+
+Device: Samsung SM-S908E, Android 16/API 36, Snapdragon SM8450 / Adreno 730,
+2316×1080 landscape, battery saver off, USB powered. Saved presentation was
+16:9 (398×224), nearest, Corrected ground, original HUD, CRT/filter/transparency
+Off. All tests use the same physical arcade period, 262 × 64 µs = 16.768 ms
+(**59.63740458 Hz**). Debug Stage 6 entry supplies the existing bounded boot and
+stage-skip path; 7,200 measured physical frames follow that entry and include
+its subsequent gameplay/attract trajectory. This is not a natural whole-credit
+completion claim or 7,200 frames exclusively within one stage.
+
+| 7,200-frame run | Actual FPS | Mean board | Mean work | Work p95 | Work within arcade budget |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Original worker APK | 53.3348 | 15.5857 ms | 18.6236 ms | 23.1213 ms | 26.07% |
+| Cooperative APK | 59.6271 | 8.8401 ms | 11.3777 ms | 12.8313 ms | 99.67% |
+| Cooperative warmed repeat | 59.6253 | 10.6349 ms | 13.7572 ms | 15.7035 ms | 99.56% |
+
+All three final BMPs have SHA-256
+`15fd9aa0db4b702214e0df3bd502bfac2cfd0b010640c88b6c5118f4eeb5f8b9`.
+The worker run reached Android thermal status 1 / AP 53.6°C; the warmed
+cooperative observation was status 0 / AP 48.8°C. Test order and thermal/governor
+conditions limit a universal speedup claim. The mean board reduction is 43.3%
+in this paired workload; a separate 900-frame Stage 6 comparison reduces it
+from 13.5946 to 9.4001 ms with an identical final BMP. A 900-frame Stage 14 /
+21:9 sample completes at 59.5592 FPS, work p95 14.0672 ms, 98.44% within budget.
+Occasional OS/driver outliers remain; these results do not guarantee every
+frame, all optional effects, every stage/trajectory, other devices or TV.
+
+Logs/data remain ignored under `build/android-tools/`: `perf/base-stage6`,
+`perf/lto-stage6`, `perf/stack-stage6`, `perf/worker-sustained`,
+`perf/stack-sustained`, `perf/stack-warm`, `perf/stack-stage14-21-9`, build/install
+logs and thermal reports. CSVs retain contiguous physical-frame numbers and
+separate board, scene, ground, filter, present and pacing time. Timing rows stay
+in memory during play. `android_benchmark.py` rejects locked phones, paused or
+missing frames, incomplete sequences and stable interrupted prefixes. A system
+overlay interrupted an earlier Stage 14 attempt; it was not accepted as a pass.
+Bounded Android runs now terminate on background/focus loss, while normal play
+retains its pause menu. A startup-interrupted native run produced a header-only
+trace; the harness was corrected to use stable short traces because the Java
+process can outlive native main. Parser regressions cover this case; a later
+physical interruption attempt was blocked by the lockscreen guard and is not
+claimed as a successful live-game interruption test.
+
+### Correctness and acceptance evidence
+
+The user explicitly authorized native executable/ROM-derived fixture transfer
+and execution on their phone, including the complete expanded fixture and its
+cleanup. Separate device test executables are excluded from APK packaging.
+
+- `build/android-tools/device-checks.log`: both ARM64-stack and forced-worker
+  continuation regressions pass indivisible clocks, bus/tail debt, RMW retention,
+  floating-point rounding, locals, cancellation/unwinding and error propagation.
+- `device-continuation-mutations.log`: passing Android baseline; **2 of 2 faults
+  rejected, 0 skipped**. Omitting FPCR restore fails the regression (exit 1);
+  breaking stack unwind aborts (exit 134). Altered headers/binaries/run logs are
+  retained under `build/android-tools/continuation-mutations/`.
+- Native Android cold MAME replay: **121 of 121 frames identical, 0 skipped**;
+  4,279,315 CPU snapshots, 11,514,112 bus phases, 8,673,280 RGB pixels and
+  96,961 mixed stereo frames match, with zero supplied execution/state/read seeds.
+- `device-expanded-checks.log`: complete native Android gameplay MAME replay:
+  **781 of 781 frames identical, 0 skipped**, **28,128,435 CPU snapshots**,
+  **73,593,282 bus phases**, **55,982,080 RGB pixels**, 13,765,117 Z80 transactions
+  and **627,841 mixed stereo frames** match; 6 sub RESET deliveries/7 reset
+  sequences. Zero supplied execution/state/read seeds and zero differences.
+  All 5.56 GiB of expanded fixture files were removed from the phone afterward;
+  the original host corpus remains intact.
+- Main profile passed in `build/workflow/20261101T053148.661828Z/`.
+- Complete `required` engine gate passed in
+  `build/workflow/20261101T053505.935330Z/`: `test` 107.60 s,
+  `verify-stage1` 539.54 s and `oracle-test` 5,054.46 s. All **216 CPU faults**
+  (9 instruction/exception and 207 recovery faults) were rejected, alongside
+  every other retained mutation. Natural ending (74,452 frames), neutral
+  (12,000), continue (10,000) and weapons (8,000) replays pass with zero skips.
+  Older routine captures retain their declared concurrent-input race skips;
+  no fixture, comparison or mutation coverage was removed.
+- Supplemental `full` passed in `build/workflow/20261101T060232.245524Z/`:
+  20,532,168/20,532,168 joint instruction records and 53,449,620/53,449,620 ordered
+  phases identical, 0 skipped; RESET-window 1,449,740/1,449,740 instruction records
+  and 3,763,047/3,763,047 ordered phases identical, 0 skipped. These bounded joint
+  tests retain their declared initial supplied entry/latch contexts.
+- Final desktop build passed in `build/workflow/20261101T060046.431941Z/`;
+  Android timing-parser regressions pass in `build/workflow/20261101T061104.464729Z/`.
+  Final Android build/packaging log: `build/android-tools/perf-final-build.log`.
+
+The shipped APK remains ROM/capture-free and preserves the user's normal saved
+preferences. Android lifecycle/input/listening, sustained peak-load/thermal
+behavior beyond these samples, additional devices/ABIs and TV acceptance remain
+open. The larger host/natural corpus is not replaced by focused device checks.
+
+
+## Android touch layout revision (2026-11-01)
+
+Replaced the separate Boost/Brake touch buttons with a far-right analog vertical
+slider. Up requests boost, down requests brake, and a small center deadzone
+requests neutral. Release, finger cancellation and background/focus loss clear
+its owner and return the knob/input to the middle. A second finger cannot take
+over an active slider or flight stick. An actively held neutral slider overrides
+a controller throttle; an untouched overlay preserves controller input.
+
+COIN, START and MENU are round, with matching circular hit areas, at the top
+center. GUN and MSL are round and sit side by side above the lower-left flight
+stick. The stick has a small concentric, gripped gamepad-style cap, about 12.6%
+of screen height in diameter, with 8.5%-height radial travel and a larger
+15%-height acquisition radius. All radii scale with height so circles remain
+round on different landscape aspect ratios. Its existing radial deadzone and
+arcade input mapping remain in the frontend; no engine behavior changed.
+
+Validation:
+
+- `build/workflow/20261101T071318.076682Z/`: touch regression and initial seven
+  deliberate faults pass/reject as expected. Covers simultaneous controls,
+  analog endpoints/intermediate positions, clamped drags, neutral/release/cancel,
+  second-finger ownership, multi-device IDs, menu edges, background clearing,
+  controller merging, round hit areas, 4:3/16:9/16:10/21:9 geometry and preserved
+  renderer state/readback, plus all retained private-import negative checks.
+- `build/workflow/20261101T071415.174126Z/`: passing baseline and **7/7 faults
+  rejected, 0 skipped** after retaining mutation artifacts/logs under
+  `build/touch-mutants-yx8ac3ch/`. The four original mutations remain; added
+  reversed throttle, canceled-slider retention and square button hit areas.
+- Main profile passes in `build/workflow/20261101T071347.901716Z/`; desktop build
+  passes in `build/workflow/20261101T071349.440396Z/`.
+- Android APK build and manifest/signature/asset/16 KiB alignment checks pass;
+  build/install logs: `build/android-tools/touch-layout-{build,install}.log`.
+- Installed on the same SM-S908E / Android 16. Entered Arcade through touch;
+  physical-screen captures confirm the new layout. ADB swipes move the slider
+  and stick cap, and release returns both to center. Held/released captures and
+  a host-rendered preview remain ignored in `build/android-tools/touch-*.png`.
+  This is a synthetic one-finger device smoke; simultaneous multi-finger behavior
+  is covered by the host regression, with physical comfort/feel still for the
+  user to assess. No Android TV touchscreen behavior is enabled.
+- A complete, unpaused 900-frame Stage 6-start phone sample with the new overlay
+  reaches **59.56 FPS**, work p95 **12.91 ms**, with **99.33%** of work within
+  the 16.768 ms arcade budget. Retained in
+  `build/android-tools/perf/touch-layout-stage6.{csv,json,bmp}`; a finite workload,
+  not expanded whole-game/thermal acceptance.
+
+
+## Android touch Hide/Show (2026-11-01)
+
+Added a round HIDE button immediately right of MENU. It hides and disables all
+other overlay controls, clears held fingers and becomes SHOW in the same
+position. SHOW restores the controls without reviving old inputs. The choice
+survives menu/background transitions within the app session; a fresh process
+starts visible. Controller input and Android Back remain available. Overlay
+button events are handled only while the overlay is drawn, so touches in the
+native menus cannot accidentally change visibility. No engine behavior changed.
+
+- Touch regression and **10/10 rejected faults, 0 skipped**:
+  `build/workflow/20261101T071951.336533Z/`. Retains all seven older faults and
+  adds held input on hiding, active hidden controls and hidden rendering faults.
+  Test sources/binaries/logs remain in `build/touch-mutants-9bf8g1u4/`.
+  Covers neutralization, ignored hidden controls, controller preservation,
+  nonrepeating toggles, background retention, safe restoration and actual hidden/
+  restored pixel readback, alongside the earlier layout/input/import checks.
+- Main profile passes in `build/workflow/20261101T072013.977784Z/`; desktop build
+  passes in `build/workflow/20261101T072015.511998Z/`.
+- Android packaging checks and install pass; logs:
+  `build/android-tools/touch-visibility-{build,install}.log`. On SM-S908E /
+  Android 16, ADB taps enter Arcade, hide to SHOW-only and restore the full
+  overlay. Captures remain ignored at
+  `build/android-tools/visibility-phone-{visible,hidden,restored}.png`.
+
+
+## Preview 6 release preparation (2026-11-01)
+
+Consolidates the current Android/21:9/default-setting work for macOS and Android;
+the user explicitly keeps the custom-stage prototype separate. Android version
+code 2 / name `0.1.0-preview.6` preserves sideload updates with the existing
+local debug signing certificate. Packages remain previews with their documented
+platform/finite-coverage limits; runtime/checksum assets are intended for both
+the main repository and the public releases repository. Source companions remain
+retained locally, following the existing public asset policy.
+
+Fresh final functionality passes at `build/workflow/20261101T072518.503244Z/`;
+`native-release` passes at `build/workflow/20261101T072520.627801Z/`. The 21:9 GPU
+fixtures pass 24/24 filter/opacity cases, 14,499,072 pixels, zero skips at
+`build/workflow/20261101T072656.487653Z/`. Engine sources/options, fixtures and
+comparison/mutation instrumentation have not changed since the complete
+`required` pass in `build/workflow/20261101T053505.935330Z/` and supplemental
+`full` in `build/workflow/20261101T060232.245524Z/`; reuse that engine evidence
+with its declared older routine-race skips. Later changes are frontend touch,
+packaging/version and documentation, covered by their fresh checks above.
+Extracted-package and upload evidence will be recorded after artifact creation.

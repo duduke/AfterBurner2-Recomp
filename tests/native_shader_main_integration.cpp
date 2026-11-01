@@ -203,8 +203,8 @@ int main(int argc,char** argv)try {
     const std::string viewport=argc>=4?argv[3]:"16:10";
     const std::string filter=argc==5?argv[4]:"none";
     require_shader(filter=="none"||filter=="scalefx","Invalid shader integration sprite filter");
-    require_shader(viewport=="original"||viewport=="16:9"||viewport=="16:10","Invalid shader integration viewport");
-    shader_test.initial_viewport=viewport=="original"?Frontend::Viewport::original:viewport=="16:9"?Frontend::Viewport::wide16_9:Frontend::Viewport::wide16_10;
+    require_shader(viewport=="original"||viewport=="16:9"||viewport=="16:10"||viewport=="21:9","Invalid shader integration viewport");
+    shader_test.initial_viewport=viewport=="original"?Frontend::Viewport::original:viewport=="16:9"?Frontend::Viewport::wide16_9:viewport=="16:10"?Frontend::Viewport::wide16_10:Frontend::Viewport::wide21_9;
     shader_test.valid=std::filesystem::absolute(argv[1]).string();
     const auto directory=std::filesystem::path("build/oracle/shader-main")/
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -226,6 +226,6 @@ int main(int argc,char** argv)try {
     require_shader(!timeout,"Shader main integration timed out");
     require_shader(shader_test.failure.empty(),shader_test.failure);
     require_shader(status==0 && shader_test.step==ShaderMainState::Step::finished,"Shader main integration did not finish every transition");
-    std::cout<<"Native shader main viewport="<<viewport<<" sprites="<<filter<<": real GPU -> "<<shader_renderer_name<<" -> GPU, queued chooser, failed-preset GPU rollback, accepted settings and all three live viewport switches; paused native RGB/PCM/time identical, 0 skipped.\n";
+    std::cout<<"Native shader main viewport="<<viewport<<" sprites="<<filter<<": real GPU -> "<<shader_renderer_name<<" -> GPU, queued chooser, failed-preset GPU rollback, accepted settings and all live viewport switches; paused native RGB/PCM/time identical, 0 skipped.\n";
     return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}

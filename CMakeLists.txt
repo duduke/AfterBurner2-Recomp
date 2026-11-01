@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(afterburner2-recomp CXX)
+project(afterburner2-recomp C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,7 +35,15 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   add_compile_options($<$<CONFIG:Release,RelWithDebInfo>:-O3>)
 endif()
 
-find_package(SDL3 3.4 REQUIRED CONFIG COMPONENTS SDL3)
+if(ANDROID)
+  set(AB2_SDL_SOURCE "${CMAKE_SOURCE_DIR}/build/deps/SDL3-3.4.16" CACHE PATH "Pinned SDL3 source")
+  set(SDL_SHARED ON CACHE BOOL "" FORCE)
+  set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+  add_subdirectory("${AB2_SDL_SOURCE}" "${CMAKE_BINARY_DIR}/SDL3")
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else()
+  find_package(SDL3 3.4 REQUIRED CONFIG COMPONENTS SDL3)
+endif()
 find_package(Threads REQUIRED)
 
 # The optional Slang runtime is dynamically loaded; no downloaded library is
@@ -78,7 +86,7 @@ if(AB2_ENABLE_OPENAL)
 endif()
 
 
-add_executable(afterburner2
+set(AB2_APP_SOURCES
     src/main/main.cpp
     src/main/frontend/music_decoder.cpp
     src/main/romloader.cpp
@@ -118,6 +126,29 @@ add_executable(afterburner2
     src/main/engine/osubroad.cpp
     src/main/engine/osubirq.cpp src/main/engine/osubprogress.cpp src/main/engine/osubpublication.cpp
 )
+if(ANDROID)
+  add_library(afterburner2 SHARED ${AB2_APP_SOURCES})
+  set_target_properties(afterburner2 PROPERTIES OUTPUT_NAME main)
+  option(AB2_ANDROID_WORKER_CONTINUATION "Use worker CPU continuations for Android comparison" OFF)
+  if(AB2_ANDROID_WORKER_CONTINUATION)
+    target_compile_definitions(afterburner2 PRIVATE AB2_FORCE_THREAD_CONTINUATION)
+  endif()
+  # Explicit device-side ABI/lifecycle checks; never included in the APK.
+  foreach(backend stack worker)
+    add_executable(android_continuation_${backend} EXCLUDE_FROM_ALL tests/cpu_continuation_regression.cpp)
+    target_include_directories(android_continuation_${backend} PRIVATE src/main)
+    target_link_libraries(android_continuation_${backend} PRIVATE Threads::Threads)
+  endforeach()
+  target_compile_definitions(android_continuation_worker PRIVATE AB2_FORCE_THREAD_CONTINUATION)
+  add_executable(android_whole_host EXCLUDE_FROM_ALL tests/oracle_whole_host.cpp)
+  target_include_directories(android_whole_host PRIVATE src/main)
+  target_link_libraries(android_whole_host PRIVATE afterburner2 Threads::Threads)
+  if(AB2_ANDROID_WORKER_CONTINUATION)
+    target_compile_definitions(android_whole_host PRIVATE AB2_FORCE_THREAD_CONTINUATION)
+  endif()
+else()
+  add_executable(afterburner2 ${AB2_APP_SOURCES})
+endif()
 
 if(AB2_OPENAL_TARGET)
   target_compile_definitions(afterburner2 PRIVATE AB2_OPENAL=1)
@@ -150,6 +181,13 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME android_benchmark_regression COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_SOURCE_DIR}/tests/android_benchmark_regression.py)
+    add_executable(native_touch_regression tests/native_touch_regression.cpp)
+    target_include_directories(native_touch_regression PRIVATE src/main)
+    target_link_libraries(native_touch_regression PRIVATE SDL3::SDL3)
+    add_test(NAME native_touch_regression COMMAND native_touch_regression)
+    set_tests_properties(native_touch_regression PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy")
     add_executable(frame_pacing_regression tests/frame_pacing_regression.cpp)
     target_include_directories(frame_pacing_regression PRIVATE src/main)
     add_test(NAME frame_pacing_regression COMMAND frame_pacing_regression)

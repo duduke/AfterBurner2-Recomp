@@ -1,5 +1,43 @@
 # Release notes
 
+## v0.1.0-preview.6 — Android and ultrawide (2026-11-01)
+
+[Main repository release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
+· [Public downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6)
+
+- Add an **Android ARM64 preview** for Android 8.0/API 26 or newer, with private
+  ROM ZIP import, controller/remote navigation and Android TV launcher support.
+- Handheld touch controls include a thumb-sized gamepad-style joystick cap,
+  round GUN/MSL buttons above it, a spring-centered right-hand throttle slider,
+  round top-center COIN/START/MENU buttons and a HIDE/SHOW toggle beside MENU.
+- Android ARM64 cooperative CPU continuations reduce OS handoffs. On the
+  SM-S908E / Android 16, identical 7,200-frame workloads improve from 53.33 to
+  59.63 FPS against the unchanged 59.637 Hz arcade cadence; a warmed repeat also
+  reaches 59.63 FPS. Complete 121-frame cold and 781-frame gameplay MAME replays
+  match CPU/bus/video/audio with zero differences or skips. These are finite
+  phone workloads; broader device, TV and peak-load/thermal acceptance remain open.
+- Add **21:9 Preview (522×224)** alongside 16:9 and 16:10, preserving the centered
+  native HUD/menu and existing wide-renderer effects. Fix optional software
+  aircraft edge rounding at fractional display scales.
+- Make **Corrected ground the default on every platform**, preserving explicit
+  saved Original choices. Consolidate the roadmap and use the documented main
+  validation profile for frontend work; full engine fixtures/mutations remain.
+
+The macOS ZIP targets **Apple Silicon / macOS 26+**, bundles SDL3 3.4.16 and
+OpenAL Soft 1.25.2, and is ad-hoc signed, without Developer ID signing or
+notarization. The Android APK is an optimized **debug-signed sideload preview**,
+with no Play Store signing/release claim; SDL audio is included, while OpenAL
+and external Slang effects are excluded. Its version code is 2. See
+[Android setup, controls and limits](ANDROID.md).
+
+Both packages exclude ROMs, captures, user settings and personal soundtracks.
+Supply your own complete `aburner2` ROM directory/ZIP on macOS or import a ZIP
+on Android. Matching source companions are retained locally; release notes link
+exact project/dependency sources. The release records its exact source commit,
+checksums, extracted-package validation and finite device scope. Custom-stage
+experiments remain separate. Windows retains its existing Preview 5 build and
+known FPS/audio issues; this release does not update Windows.
+
 ## Unpublished macOS development refresh (2026-10-28)
 
 The local `v0.1.0-preview.6-20261028.2` package consolidates main through the

@@ -387,7 +387,7 @@ int main(int argc,char** argv)try {
     Frontend::Settings settings;settings.crt=Frontend::Crt::arcade;
     for(const auto dimensions:{std::array{320,224},std::array{640,336},std::array{640,448},std::array{960,672},std::array{3840,2160}}) {
         Fixture fixture(device.get(),dimensions[0],dimensions[1]);
-        for(unsigned width:{320u,358u,398u})for(auto mode:{SDL_LOGICAL_PRESENTATION_LETTERBOX,SDL_LOGICAL_PRESENTATION_INTEGER_SCALE})
+        for(unsigned width:{320u,358u,398u,522u})for(auto mode:{SDL_LOGICAL_PRESENTATION_LETTERBOX,SDL_LOGICAL_PRESENTATION_INTEGER_SCALE})
             check_layout(fixture,width,mode,settings,true);
         // Separate terms prevent a missing mask or beam pattern from being
         // hidden by the other attenuation; endpoints exercise full black.
@@ -402,6 +402,6 @@ int main(int argc,char** argv)try {
     {Fixture fixture(device.get(),1920,1080);timing(fixture);}
     beam_contrast(device.get());active_target_and_limits(device.get());
     if(gpu)window_lifecycle(device.get());
-    std::cout<<"Native CRT: independent RGB/beam readbacks across 320/358/398 viewports, letterbox/integer and 1x through 4K; exact off/zero/invalid pixels, preserved source/state/UI, bounded cache and output lifecycle passed.\n";
+    std::cout<<"Native CRT: independent RGB/beam readbacks across 320/358/398/522 viewports, letterbox/integer and 1x through 4K; exact off/zero/invalid pixels, preserved source/state/UI, bounded cache and output lifecycle passed.\n";
     return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
