@@ -7,7 +7,7 @@ with reimplemented YM2151/SegaPCM devices. SDL3 handles the desktop frontend.
 Independent MAME captures check the translated game against the arcade ROM.
 Inspired by [Cannonball](https://github.com/djyt/cannonball).
 
-Supply your own [ROM dump](roms/README.md). macOS Preview 5 and source builds also load
+Supply your own [ROM dump](roms/README.md). macOS Preview 6 and source builds also load
 `roms/aburner2.zip` directly and offer a ZIP file picker when ROMs are missing. ROMs, original artwork and personal
 soundtracks are not distributed. This project is not affiliated with SEGA.
 See [LICENSE.txt](LICENSE.txt) and [third-party notices](docs/THIRD-PARTY-NOTICES.md).
@@ -26,16 +26,13 @@ continuous whole-credit CPU/device/RGB/audio comparison and sustained peak-load
 performance still need verification. Xbox Bluetooth body and both trigger motors are physically confirmed on macOS;
 other controllers/HOTAS, Windows/Linux hardware and GPU backends beyond the
 recorded Metal/software checks remain open. See the
-[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-24) for scope.
+[roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-31) for scope.
 
-Preview 5 refreshes the Apple Silicon macOS download with direct ROM ZIP
-loading and a native picker, reorganized settings and run controls, native Metal
-sprite filters with Slang presets, cleaner rolling horizons and wider retention
-of smoke, explosions and player damage effects. Shuffle now starts on a gameplay
-stage. It retains Practice, 16:10/16:9, HUD/CRT, optional HD aircraft, calibration
-and spatial audio. An experimental Windows x64 Preview 5 package is also available.
-Its Slang path uses CPU composition; native Vulkan GPU composition and HUD-raster
-reuse are newer source changes. See the
+Preview 6 adds Android ARM64 with multi-touch controls and an optimized CPU
+continuation backend, plus 21:9 on macOS and Android. Corrected ground is now the
+shared default. It retains the compact macOS runtime, Arcade/Practice/Shuffle,
+filters, HUD/CRT, optional artwork, calibration and spatial audio. Windows keeps
+its experimental Preview 5 package and unresolved FPS/audio limitations. See the
 [release notes](docs/RELEASE_NOTES.md) and [roadmap](docs/ROADMAP.md).
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
@@ -45,6 +42,14 @@ triangles, blue cloud gaps and attract-cloud corner artifacts. It also fixes the
 at PC `$15C10`. The original simulation remains the comparison reference;
 the wider presentation still needs exhaustive scene and platform validation.
 
+## Android and Android TV
+
+An initial ARM64 Android host adds phone/tablet multi-touch controls, Android TV
+launcher support, controller/remote menus and private ROM ZIP import. Build and
+sideload instructions are in [Android preview](docs/ANDROID.md). SM-S908E / Android 16 checks cover import, touch layout, Hide/Show, finite
+performance samples and independent MAME replays. Broader phone/TV acceptance
+and sustained peak-load performance remain open.
+
 ## Current enhancements
 
 | Area | Implemented features |
@@ -52,12 +57,12 @@ the wider presentation still needs exhaustive scene and platform validation.
 | Menus | Arcade-font Arcade/Practice/Shuffle/Settings/Quit launcher; pause/resume, restart and mode selection; grouped display, graphics, CRT, controls, audio and arcade settings; keyboard, mouse and controller navigation |
 | Stage Select / Practice | [Practice mode](docs/PRACTICE_MODE.md): fresh directed entry to 23 ROM stages, normal lives/damage, F5 retry and return to arcade; separate from natural recordings |
 | Shuffle | [Shuffle mode](docs/SHUFFLE_MODE.md): stages 1–22 in random order with stage 23 as the finale, continuous score/lives, same-order F5 retry and fresh New Shuffle |
-| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery, world explosions, hit effects, player/enemy missile smoke and player damage emissions with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 5 |
+| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery, world explosions, hit effects, player/enemy missile smoke and player damage emissions with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 5; current source also adds experimental 21:9 (522×224) |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
 | CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows Vulkan with a separately installed runtime and shader pack; readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
 | Player aircraft prototype | Optional [registered neutral/gentle-bank HD pack](docs/SPRITE_REPLACEMENT.md), included in macOS Preview 3; unsupported poses retain the original art |
-| Ground/horizon | Optional Corrected mode removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains the default |
+| Ground/horizon | Corrected mode is the default on every platform and removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains selectable |
 | Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |
 | Controls | Keyboard, gamepad and raw joystick remapping; axes/buttons/hats; live calibration display, deadzone, sensitivity, polarity and full-axis throttle; hotplug and persisted device profiles |
 | Controller feedback | Optional SDL body and Xbox trigger rumble; cannon, missile, player-impact and full-throttle cues; strengths, motor tests, device selection and lifecycle stops |
@@ -69,7 +74,7 @@ the wider presentation still needs exhaustive scene and platform validation.
 Source builds and macOS Preview 5 use the integrated primary renderer for widescreen and detached
 HUD/aircraft presentation. It shares the native partial-frame road/tile pass;
 `--scene-renderer snapshot` selects the retained reconstruction reference.
-The `16:9 Preview` and `16:10 Preview` labels describe remaining widescreen
+The `16:9 Preview`, `16:10 Preview` and source-only `21:9 Preview` labels describe remaining widescreen
 scene/platform acceptance, not renderer selection. Original remains the default
 viewport; selecting a wide ratio uses the integrated renderer. See the
 [Mac acceptance record](docs/ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
@@ -81,6 +86,8 @@ complete replacement animation, broader shader backends, save states and additio
 remain **planned**. The [haptics notes](docs/HAPTICS_PLAN.md) cover current SDL
 output and remaining platform hardware checks.
 Choose **Settings → Display → Aspect Ratio → 16:9 Preview** to try the wider view.
+Current source also offers **21:9 Preview (522×224)**, with 101 additional
+columns per side and the same centered HUD/menu. Published packages predate it.
 The wider view retains side scenery, smoke and effects beyond native screen-edge
 removal while leaving gameplay intact, and recovers hidden sprite requests.
 Choose **Settings → Graphics → Ground → Corrected** for full-width sky correction during rolls.
@@ -88,21 +95,22 @@ The wider renderer now recovers requests discarded by the original 192-request
 queue and full depth buckets, and renders a dynamic descriptor list. Native
 object allocation and gameplay limits stay unchanged. All 23 stage slots and
 recorded lifecycle paths have dedicated checks; exhaustive scene/platform
-validation for both widths and ultrawide remain open. See the
+validation and sustained ultrawide performance remain open. See the
 [true widescreen plan](docs/WIDESCREEN_PLAN.md) for progress and remaining gates.
 
 ## Build and play
 
-Download [macOS Preview 5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
+Download [macOS or Android Preview 6](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6)
 or [Windows Preview 5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
-and extract the complete ZIP. Put your own extracted ROM
-files in its `roms/` directory. Preview 5 also accepts `aburner2.zip`
-there, or lets you select a ROM ZIP on startup. Sources, notices and SHA-256 files accompany
-the packages; ROMs, captures and personal settings are excluded.
+and extract the complete desktop ZIP. Put your own extracted ROM files or
+`aburner2.zip` in its `roms/` directory, or select a ZIP on startup. Android uses
+the sideload APK and imports a ROM ZIP through its document picker; see
+[Android setup](docs/ANDROID.md). Notices, exact source links and SHA-256 files
+accompany the packages; ROMs, captures and personal settings are excluded.
 
 The **Apple Silicon / macOS 26+** package opens with `Launch.command`.
-SDL3 and OpenAL Soft are included, along with their
-sources and notices. The preview is ad-hoc signed and **not notarized**; macOS
+SDL3 and OpenAL Soft are included with notices and exact source links; the
+matching source companion is retained separately. The preview is ad-hoc signed and **not notarized**; macOS
 may require approval in Privacy & Security. Intel Macs are not included in this
 build. See the package's `START-HERE.txt` for setup.
 
@@ -294,12 +302,14 @@ and registration. Other poses retain Original artwork:
 
 ```sh
 python3 tools/workflow.py context
-python3 tools/workflow.py run test verify-stage1 -j 4
-python3 tools/workflow.py run required -j 4
+python3 tools/workflow.py run main -j 4       # daily main functionality
+python3 tools/workflow.py run required -j 4   # engine changes only
 ```
 
-`test` is ROM-free; `verify-stage1` adds ROM-backed integration; `required` also
-runs the retained MAME oracles/mutations. Follow the roadmap's validation cadence
+`main` covers the primary frontend and Arcade/Practice/Shuffle lifecycles.
+`test` is ROM-free; `verify-stage1` retains broad ROM-backed integration;
+`required` adds all retained MAME oracles/mutations for engine changes.
+Non-engine releases use `main`, affected checks and package validation. Follow the roadmap's validation cadence
 and preserve all fixtures. Never commit ROMs, captures, recordings or personal
 music. GPU readback tests require a working graphics backend.
 

@@ -38,6 +38,7 @@
 #include "frontend/native_player_aircraft.hpp"
 #include "frontend/controller_database.hpp"
 #include "frontend/native_rom_picker.hpp"
+#include "frontend/native_touch.hpp"
 #include "frontend/frame_timings.hpp"
 #include "frontend/frame_pacing.hpp"
 
@@ -122,11 +123,19 @@ int main(int argc, char** argv)try
         throw std::runtime_error("Shuffle cannot be combined with selected-stage startup");
     if (!recording_path.empty() && (start_stage || practice_start_stage || shuffle_start))
         throw std::runtime_error("Natural recording requires normal cold boot without selected-stage startup");
+#ifdef SDL_PLATFORM_ANDROID
+    // SDL's resizable window otherwise permits portrait despite the manifest.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS,"LandscapeLeft LandscapeRight");
+#endif
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK))
     {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
         return 1;
     }
+#ifdef SDL_PLATFORM_ANDROID
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS,"0");
+    SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON,"1");
+#endif
 
     if (settings_path.empty()) {
         if (char* path=SDL_GetPrefPath("AfterBurner2-Recomp","AfterBurner2")) {
@@ -314,6 +323,14 @@ int main(int argc, char** argv)try
     music_player=std::make_unique<Frontend::NativeMusic>(settings_path.empty()?"":settings_path+".audio");
     Frontend::load_controller_database();
     auto input_manager=std::make_unique<Frontend::NativeInput>(settings_path.empty()?"":settings_path+".inputs");
+    Frontend::NativeTouch touch;
+#ifdef SDL_PLATFORM_ANDROID
+    touch.enabled=!SDL_IsTV();
+#endif
+    auto touch_aspect=[&]{int w=1,h=1;SDL_GetWindowSize(window,&w,&h);return float(w)/std::max(1,h);};
+    std::optional<SDL_FingerID> menu_finger;
+    float menu_touch_y{},menu_scroll_y{};
+    bool menu_touch_moved{};
     SDL_InitSubSystem(SDL_INIT_HAPTIC); // Optional joystick haptic fallback.
     auto feedback=std::make_unique<Frontend::NativeHaptics>(*input_manager,settings_path.empty()?"":settings_path+".haptics");
     game.capture_feedback(feedback->settings.enabled);
@@ -692,12 +709,60 @@ int main(int argc, char** argv)try
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+#ifdef SDL_PLATFORM_ANDROID
+            // Android remote Back and Menu use consumer keycodes.
+            if(event.type==SDL_EVENT_KEY_DOWN || event.type==SDL_EVENT_KEY_UP) {
+                if(event.key.key==SDLK_AC_BACK)event.key.key=SDLK_ESCAPE;
+                if(event.key.key==SDLK_MENU)event.key.key=SDLK_F1;
+                if(event.key.key==SDLK_SELECT)event.key.key=SDLK_RETURN;
+            }
+            if(event.type==SDL_EVENT_WILL_ENTER_BACKGROUND || event.type==SDL_EVENT_WINDOW_FOCUS_LOST) {
+                touch.clear();
+                menu_finger.reset();
+                // Bounded Android checks must report an interrupted prefix,
+                // rather than waiting indefinitely in the paused frontend.
+                if(frame_limit){running=false;continue;}
+                if(!menu->is_open())menu->open(game);
+                feedback->stop();reset_pacing();sync_audio();
+            }
+            if(event.type==SDL_EVENT_DID_ENTER_FOREGROUND) {reset_pacing();sync_audio();}
+            if(event.type==SDL_EVENT_RENDER_DEVICE_RESET || event.type==SDL_EVENT_RENDER_TARGETS_RESET) {
+                rebuild_renderer(false,menu->settings);reset_pacing();continue;
+            }
+#endif
+            const bool touch_menu=!menu->is_open() && touch.event(event,touch_aspect());
+            if(touch_menu && !menu->is_open()) {
+                touch.clear();menu->open(game);reset_pacing();sync_audio();continue;
+            }
             if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST){music_player->stop_preview();audio_output->clear();}
             feedback->event(event);
             if(input_manager->event(event))continue;
             if (event.type == SDL_EVENT_QUIT)
                 running = false;
             if(menu->is_open()) {
+                if(touch.enabled) {
+                    if(event.type==SDL_EVENT_FINGER_DOWN && !menu_finger) {
+                        menu_finger=event.tfinger.fingerID;
+                        menu_touch_y=menu_scroll_y=event.tfinger.y;menu_touch_moved=false;
+                    }
+                    if(event.type==SDL_EVENT_FINGER_MOTION && menu_finger && *menu_finger==event.tfinger.fingerID) {
+                        menu_touch_moved|=std::abs(event.tfinger.y-menu_touch_y)>.035f;
+                        if(std::abs(event.tfinger.y-menu_scroll_y)>.07f) {
+                            menu_action(menu->key(event.tfinger.y<menu_scroll_y?SDLK_DOWN:SDLK_UP));
+                            menu_scroll_y=event.tfinger.y;
+                        }
+                    }
+                    if(event.type==SDL_EVENT_FINGER_UP && menu_finger && *menu_finger==event.tfinger.fingerID) {
+                        if(!menu_touch_moved) {
+                            int w,h;SDL_GetWindowSize(window,&w,&h);float x,y;
+                            if(SDL_RenderCoordinatesFromWindow(renderer,event.tfinger.x*w,event.tfinger.y*h,&x,&y))
+                                menu_action(menu->pointer(x,y,true));
+                        }
+                        menu_finger.reset();
+                    }
+                    if(event.type==SDL_EVENT_FINGER_CANCELED)menu_finger.reset();
+                }
+                touch.clear();
                 if(auto key=input_manager->menu_key(event))menu_action(menu->key(key));
                 if(event.type==SDL_EVENT_KEY_DOWN && (!event.key.repeat || event.key.key==SDLK_UP || event.key.key==SDLK_DOWN))
                     menu_action(menu->key(event.key.key));
@@ -755,6 +820,7 @@ int main(int argc, char** argv)try
         game.capture_feedback(feedback->settings.enabled);
         feedback->update(game.paused() || menu->is_open());
         GameControls input=input_manager->read(menu->is_open());
+        if(!menu->is_open() && !game.paused() && input_manager->focused)touch.merge(input,touch_aspect());
 
         // Keep input polling and presentation responsive 1:1 with simulated
         // frames. Every simulated frame executes all CPU/device work and is
@@ -879,6 +945,7 @@ int main(int argc, char** argv)try
 
         if(menu->is_open())menu->draw();
         else {menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
+        if(!menu->is_open())touch.draw(renderer);
         if(!frame_preview.empty() && frame_limit && simulated_frames>=frame_limit) {
             SDL_SetRenderViewport(renderer,nullptr);
             auto* preview=SDL_RenderReadPixels(renderer,nullptr);

@@ -22,10 +22,12 @@ to put into an assistant's context.
 ## Checks and logs
 
 ```sh
-python3 tools/workflow.py run quick       # ROM-free tests + Stage 1
+python3 tools/workflow.py run main        # daily main-functionality checks
+python3 tools/workflow.py run quick       # alias for main
+python3 tools/workflow.py run integration # retained broad tests + Stage 1
 python3 tools/workflow.py run joint       # current 120-frame joint oracle
 python3 tools/workflow.py run full        # 600-frame joint + reset window
-python3 tools/workflow.py run required    # full gameplay/core merge or milestone gate
+python3 tools/workflow.py run required    # complete engine-change gate
 python3 tools/workflow.py run oracle-subirq -j 4  # any focused make target
 ```
 
@@ -40,7 +42,16 @@ result lines per successful target or eighteen final lines on failure.
 These excerpts are navigation aids: inspect the log for detailed coverage,
 unverified paths and diagnostics. JSON records describe checks that actually
 ran; absent later targets have not passed. Checks are not cached or skipped.
-The `full` profile supplements, rather than replaces, the required profile.
+The `full` profile supplements the engine-change `required` profile.
+The `main` profile runs `test-main`, `verify-game-session`, `verify-practice-mode`
+and `verify-shuffle-session`. It checks ROM loading/picker, settings, controls,
+input, pacing, renderer, HUD/CRT, aircraft, filters, feedback, music/audio
+playback and the Arcade, Practice and Shuffle lifecycles. It omits the full
+oracle/mutation suite and complete stage/lifecycle sweeps. Add affected geometry,
+GPU, extended audio or package checks when those change. `test`, `verify-stage1`, `oracle-test` and all their fixtures
+remain intact. Full oracle/mutation runs are reserved for engine changes,
+including releases containing engine changes; other releases use `main`, affected
+checks and package validation. There is no periodic merge-count full-suite gate.
 Profiles do not automatically capture or regenerate missing fixtures.
 
 Choose gates and evidence reuse by the
@@ -95,7 +106,7 @@ loader's relative include path. No new external ZIP library is required.
 The default source frontend shares primary road/tile layers at native partial
 frontiers. Keep `--scene-renderer snapshot` for differential comparisons.
 The complete required profile includes the original whole-host oracle plus
-`oracle-integrated-host-mutations` at both supported widescreen widths, and
+`oracle-integrated-host-mutations` at the retained 358/398 widths, and
 independent integrated RGB comparisons across four corpora and five widths.
 
 ```sh
@@ -110,7 +121,7 @@ with snapshot reconstruction for every frame, with ground correction both off
 and on, while retaining the independent MAME observations and native image
 checks. The shader target requires a working desktop GPU and optional shader
 runtime; it exercises actual frontend renderer switching and rollback at all
-three menu viewports. These supplemental checks do not replace `required` or
+four menu viewports. These supplemental checks do not replace an applicable engine `required` gate or
 establish exhaustive platform/performance coverage.
 
 ## macOS preview release
@@ -120,10 +131,11 @@ the deployment target of the executable and its bundled SDL3/OpenAL libraries,
 not a claim of compatibility with older macOS or Intel Macs. It is ad-hoc
 signed, without Developer ID signing or notarization.
 
-Before publishing, run the final-tree `required` profile and build
+Before publishing, run the final-tree `main` profile, affected checks and build
 `native-release`. Retain the full logs and inspect failures; a focused check
 does not substitute for the release gate. Complete any additional checks
-required by the roadmap for the affected code. Prepare the matching upstream
+required by the roadmap for the affected code (including `required` for engine
+changes). Prepare the matching upstream
 SDL3 3.4.16 source archive under `build/deps/SDL3-3.4.16.tar.gz` from
 [the official release](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16).
 The optional OpenAL builder provides its library, source archive and notices.
@@ -166,7 +178,29 @@ scope, missing ROMs, signing status and remaining preview limitations.
 
 ## Experimental Windows preview release
 
-Preview 2 includes a **Windows 10/11 x64** package. `tools/package_windows.py`
+The current downloadable compact runtime is the 28 October Preview 5 refresh.
+`tools/package_windows_runtime.py` produces its separate runtime/source ZIPs,
+including librashader and its DirectX/Microsoft C++ runtime dependencies. It
+requires a clean committed tree, a Release/OpenAL native build, the pinned
+librashader/DirectX source archives and app-local Microsoft C++ runtime files:
+
+```sh
+python3 tools/package_windows_runtime.py "$AB2_VERSION" --label "$AB2_LABEL" \
+  --build build/win --msvc-redist "$AB2_MSVC_REDIST"
+```
+
+Set `AB2_VERSION`/`AB2_LABEL` to a fresh version/date label and
+`AB2_MSVC_REDIST` to the directory containing the runtime DLLs. Use verified
+dependency files; package directories
+are never overwritten. The runtime has no tests, general docs or optional
+asset packs. The source companion retains covered sources and the manifest.
+Inspect both archives and launch an extracted runtime; the current release's
+scope and unresolved performance/recording limits are in
+[release notes](RELEASE_NOTES.md#compact-windows-refresh-2026-10-28) and
+[Windows status](WINDOWS_PERFORMANCE.md). The full-layout packager below remains
+available for development/distribution variants.
+
+Preview 5 includes an experimental **Windows 10/11 x64** package. `tools/package_windows.py`
 supports both a native Windows x64 Release build (`--native-build build/win`,
 with SDL3 3.4.18 and OpenAL Soft 1.25.2 enabled) and the macOS LLVM-MinGW
 cross-build (`build/windows-cross`). The artifact is unsigned.
@@ -178,8 +212,10 @@ without LTO; LLVM-MinGW 20261020 / Clang 23.1.4 supports checked ThinLTO.
 `AB2_REQUIRE_IPO=ON` makes an unavailable LTO toolchain a configuration error.
 The packager now copies the same four allowlisted aircraft assets and
 librashader notices as macOS and includes detected LLVM-MinGW runtime DLLs.
-The published Windows Preview 2 artifact remains unchanged; a new package still
-requires the clean committed tree and complete release gates below.
+Preview 5 has a compact 28 October Windows refresh; older Preview 2 assets
+remain retained. A new package requires a clean committed tree and the current
+main-functionality/affected-check release policy; engine changes also require
+the complete `required` gate. See [Windows limitations](WINDOWS_PERFORMANCE.md).
 
 To package a native Windows x64 build on Windows (with `SDL3-3.4.18.tar.gz`,
 `SDL3-3.4.18-mingw.zip`, `openal-soft-1.25.2.tar.gz` and
@@ -245,8 +281,8 @@ it compares all ten MAME transition columns on every frame and checks row covera
 and terrain/protected-layer preservation. `verify-wide-lifecycle-mutations` also
 rejects an altered MAME mode. It needs the ignored `natural_*` recordings and
 `natural_*_sequences.mame.csv` files. Whole-credit CPU/device/RGB/audio equivalence
-remains a separate acceptance scope. Full acceptance still follows ROADMAP's
-complete `required`/`full` cadence.
+remains a separate acceptance scope. Acceptance follows ROADMAP's scope-based cadence; complete `required`/`full`
+runs are reserved for engine changes.
 
 Lifecycle replay uses **observed MAME pins**, preserving input-update latency:
 `natural_ending_sequences.inputs` for ending, and each other capture's
@@ -351,7 +387,7 @@ Use the detailed Filter timing to compare modes; backend and load affect perform
 
 Graphics → HUD Style offers Original (default), Sharp 3x ROM-tile smoothing and Custom
 indexed PNG artwork. The replacement text plane uses output-resolution drawing
-and native palette/priority, centered at all three viewport widths. The window
+and native palette/priority, centered at all four source viewport widths. The window
 requests high pixel density; fullscreen uses the desktop resolution. See
 [HUD presentation](HUD_PRESENTATION.md) for atlas format, `--hud-atlas`, fallback
 and validation scope. Sprite-based instruments retain their native artwork.
@@ -506,7 +542,7 @@ IRQ blend to finish. This avoids unset canyon colors after skipping directly
 to stages 5, 8, 13 or 17. Compare these fourteen-word gradients against original
 MAME with `python3 tools/workflow.py run capture-native-stage-palette verify-native-stage-palette`.
 Reuse the local captures with `verify-native-stage-palette`; the focused check
-does not replace a full merge or milestone gate when the cadence requires one.
+does not replace the complete engine-change gate when that cadence applies.
 
 
 ## Natural recordings and transition observations
@@ -639,8 +675,8 @@ regenerating the complete plan; focused increments keep their 32-second limit.
 
 After the new instructions and mutations pass, run the directed stage sweep,
 refresh the complete recovery capture with `oracle-capture-recovery`, and run
-the checks required by the validation cadence above. Full merge and milestone
-gates still include `test`, `verify-stage1` and the complete `oracle-test`. The
+the checks required by the validation cadence above. Engine-change merge and milestone
+gates include `test`, `verify-stage1` and the complete `oracle-test`. The
 full capture allows 96 emulated seconds for the expanded fixture roster;
 focused captures keep their bounded window. Keep older captures and coverage.
 
@@ -772,24 +808,28 @@ natural target replays complete weapons and continue recordings at both widths,
 reporting player/enemy/damage descriptor observations and native pool-reset
 entries. Observe the counts before claiming a path was exercised.
 
-### 16:10 viewport
+### Widescreen viewports
 
-macOS Preview 3 offers Display → Aspect Ratio → 16:10 Preview (358×224,
-19 additional columns on each side). The selector cycles Original → 16:9 →
-16:10 in either direction. Legacy `widescreen=1` preferences still select 16:9;
-new files additionally persist `viewport=original|16:9|16:10`.
+Settings → Display → Aspect Ratio cycles Original → 16:9 (398×224) →
+16:10 (358×224) → 21:9 (522×224) in either direction. Preview 5 includes the
+first three; 21:9 is local source. Legacy `widescreen=1` still selects 16:9;
+new files additionally persist `viewport=original|16:9|16:10|21:9`.
 
 ```sh
-python3 tools/workflow.py run test-native-settings verify-wide-geometry verify-wide-stages-16-10 -j 4
-python3 tools/workflow.py run verify-wide-gpu-16-10 -j 4
+python3 tools/workflow.py run test-native-settings verify-wide-geometry -j 4
+python3 tools/workflow.py run verify-wide-stages-21-9 -j 4
+python3 tools/workflow.py run verify-wide-gpu-21-9 -j 4
 ```
 
-The first command generates retained Stage 1/5 fixtures under
-`build/oracle/widescreen/`; the second requires a real GPU/display and reads
-those fixtures without repeating the stage sweep. The 16:10 sweep is also part
-of `verify-stage1`. Geometry mutation checks exercise both widths independently.
-The Windows Preview 2 download retains 16:9; broader 16:10
-controller/scene, physical-platform and sustained-load acceptance remains open.
+The 23-stage 21:9 sweep generates Stage 1/5 fixtures; the GPU target consumes
+those retained fixtures and compares six filters and both opacity policies on
+a real GPU without repeating the sweep.
+The retained 16:10 targets are `verify-wide-stages-16-10` and
+`verify-wide-gpu-16-10`; the latter consumes existing fixtures. All three stage
+sweeps are in `verify-stage1`; geometry mutations exercise all three widths.
+They are affected-feature checks, outside the smaller daily `main` profile.
+Physical display/platform, broader scene and sustained-load acceptance remain
+open. See [the widescreen plan](WIDESCREEN_PLAN.md).
 
 ### SDL GPU sprite filtering
 
@@ -867,7 +907,7 @@ actual FM effects voice ownership. Shared audio changes still require `required`
 
 ### Optional ground horizon correction
 
-Settings → Graphics → Ground offers Original (default) and Corrected. This removes
+Settings → Graphics → Ground offers Corrected (default on every platform) and Original. This removes
 misplaced ground fill on the sky side of the native horizon strip in eligible
 normal-road flight; other modes retain Original. It does not change gameplay or
 implement continuous 3D terrain. Focused checks:

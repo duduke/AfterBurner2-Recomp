@@ -15,6 +15,12 @@ SOURCE = (ROOT / "src/main/frontend/native_player_aircraft.hpp").read_text()
 PACK_SOURCE = (ROOT / "src/main/frontend/aircraft_pack.hpp").read_text()
 MUTATIONS = [
     (
+        "software-fractional-endpoint",
+        "axis.offset+destination*axis.scale-0.5);\n        const double last=std::ceil(axis.offset+(destination+extent)*axis.scale-0.5",
+        "axis.offset+double(destination)*axis.scale-0.5);\n        const double last=std::ceil(axis.offset+(double(destination)+extent)*axis.scale-0.5",
+        "fractional HD aircraft crossed half-open vertical ownership",
+    ),
+    (
         "canvas-padding",
         "extent={float(left),float(top),float(right-left+1),float(bottom-top+1)};",
         "extent={0,0,float(rgba->w),float(rgba->h)};",

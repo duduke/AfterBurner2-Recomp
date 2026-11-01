@@ -155,7 +155,7 @@ int main(int argc,char** argv)try {
 #endif
     auto high_clip=clip();high_clip.entries.fill(0);high_clip.entries[41]=1;high_clip.entries[42]=5;
     std::fill(occlusion.begin(),occlusion.end(),0);
-    for(unsigned width:{320u,358u,398u})for(auto mode:{SDL_LOGICAL_PRESENTATION_LETTERBOX,SDL_LOGICAL_PRESENTATION_INTEGER_SCALE}) {
+    for(unsigned width:{320u,358u,398u,522u})for(auto mode:{SDL_LOGICAL_PRESENTATION_LETTERBOX,SDL_LOGICAL_PRESENTATION_INTEGER_SCALE}) {
         require(SDL_SetRenderLogicalPresentation(high.get(),width,224,mode),"4K logical presentation failed");
         clear(high.get());high_hud.draw({std::span(&high_clip,1),occlusion},Frontend::Hud::custom,width);
         SDL_FRect presentation;require(SDL_GetRenderLogicalPresentationRect(high.get(),&presentation),"4K layout query failed");
@@ -181,6 +181,6 @@ int main(int argc,char** argv)try {
                 "4K linear HUD edge darkened alpha coverage");
         }
     }
-    std::cout<<"Native HUD ("<<SDL_GetRendererName(renderer.get())<<"): indexed BMP/PNG, transactional reload, ROM fallback, alpha, live palette/frontiers, occlusion, renderer state, bounded cache and 3840x2160 across all three viewports passed.\n";
+    std::cout<<"Native HUD ("<<SDL_GetRendererName(renderer.get())<<"): indexed BMP/PNG, transactional reload, ROM fallback, alpha, live palette/frontiers, occlusion, renderer state, bounded cache and 3840x2160 across all four viewports passed.\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

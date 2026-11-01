@@ -9,9 +9,9 @@ void require(bool c,const char* m){if(!c)throw std::runtime_error(m);}
 int main(int argc,char** argv)try {
     unsigned requested=0;
     if(argc==3&&std::string_view(argv[1])=="--width")requested=std::stoul(argv[2]);
-    require(argc==1||(argc==3&&(requested==398||requested==358)),"Usage: wide_scene_geometry [--width 398|358]");
+    require(argc==1||(argc==3&&(requested==398||requested==358||requested==522)),"Usage: wide_scene_geometry [--width 398|358|522]");
     require(roms.load_aburner2(),"ROMs required");
-    for(const unsigned width:{398u,358u}){const unsigned margin=(width-320)/2;Frontend::SpriteScaler scaler;
+    for(const unsigned width:{398u,358u,522u}){const unsigned margin=(width-320)/2;Frontend::SpriteScaler scaler;
     if(requested&&requested!=width)continue;
     // The full fixture owns several decoded road devices. Keep them off the
     // Windows main stack without changing any geometry or comparison cases.

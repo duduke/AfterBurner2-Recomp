@@ -4,7 +4,7 @@ out/
 cmake-build-*/
 *.o
 *.d
-afterburner2
+/afterburner2
 /afterburner2.exe
 
 # Original arcade ROM data (copyrighted, not redistributable)
@@ -33,3 +33,12 @@ __pycache__/
 
 # User-provided replacement music
 /soundtrack/
+
+# Android local toolchain, Gradle caches and private signing configuration.
+/android/.gradle/
+/android/.cxx/
+/android/app/.cxx/
+/android/app/build/
+/android/local.properties
+*.keystore
+*.jks

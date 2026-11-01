@@ -30,11 +30,11 @@ enum class Crt { off, subtle, arcade, retroarch };
 inline constexpr const char* crt_keys[]{"off","subtle","arcade","retroarch"};
 inline constexpr const char* crt_labels[]{"OFF","SUBTLE","ARCADE","RETROARCH"};
 inline constexpr unsigned crt_count=4;
-enum class Viewport { original, wide16_9, wide16_10 };
-inline constexpr const char* viewport_keys[]{"original","16:9","16:10"};
-inline constexpr const char* viewport_labels[]{"ORIGINAL","16:9 PREVIEW","16:10 PREVIEW"};
-inline constexpr unsigned viewport_widths[]{320,398,358};
-inline constexpr int viewport_count=3;
+enum class Viewport { original, wide16_9, wide16_10, wide21_9 };
+inline constexpr const char* viewport_keys[]{"original","16:9","16:10","21:9"};
+inline constexpr const char* viewport_labels[]{"ORIGINAL","16:9 PREVIEW","16:10 PREVIEW","21:9 PREVIEW"};
+inline constexpr unsigned viewport_widths[]{320,398,358,522};
+inline constexpr int viewport_count=4;
 struct Settings {
     Scaling scaling{Scaling::nearest};
     bool fullscreen{};
@@ -42,7 +42,7 @@ struct Settings {
     SpriteFilter sprites{SpriteFilter::none};
     bool clouds{},trails{},explosions{},afterburner{};
     unsigned lives{},difficulty{1};
-    bool ground{};
+    bool ground{true};
     Viewport viewport{Viewport::original};
     Hud hud{Hud::original};
     std::string hud_atlas;

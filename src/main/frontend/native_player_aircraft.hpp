@@ -59,8 +59,11 @@ class NativePlayerAircraft {
         // A physical pixel belongs to this half-open native strip precisely
         // when its center does. Shared endpoints therefore quantize equally;
         // neither empty cracks nor twice-blended seams can appear.
-        const double first=std::ceil(axis.offset+double(destination)*axis.scale-0.5);
-        const double last=std::ceil(axis.offset+(double(destination)+extent)*axis.scale-0.5);
+        // SDL scales rectangle coordinates in float before adding the
+        // integer viewport offset. Promoting the multiplication to double
+        // can move an exact pixel-center tie across the half-open boundary.
+        const double first=std::ceil(axis.offset+destination*axis.scale-0.5);
+        const double last=std::ceil(axis.offset+(destination+extent)*axis.scale-0.5);
         if(first>=last)return false;
         const double begin=(first-axis.offset)/axis.scale,span=(last-first)/axis.scale;
         // Keep the authored source interval: SDL's software copy truncates

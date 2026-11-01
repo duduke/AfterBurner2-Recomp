@@ -96,8 +96,9 @@ combinations and invalid/out-of-range device axes without ROMs.
 `make verify-game-session` compares the session to `XBoardGame` for the same
 781-frame physical-input run, including exact RGB/audio identity, pause/resume,
 nonzero audio processing and extension restart lifecycle. These checks are
-included in `test` and `verify-stage1` respectively. All existing MAME checks
-remain required; the session comparison supplements them.
+included in `test` and `verify-stage1` respectively. Existing MAME checks remain retained for engine changes under the
+[validation cadence](ROADMAP.md#working-on-the-remaining-tasks-read-this-first);
+the session comparison covers daily main functionality.
 
 ## Native settings implementation
 
@@ -249,7 +250,8 @@ handle clipped/banked corners, while ground-side extension requires an observed
 native-row ground/sea color. A guessed fitted plane is not a substitute for the
 observed strip. Missing silhouette/color evidence remains unfilled.
 Both paths require normal-road control 4 and preserve protected terrain/layers,
-partial palettes, sprite ordering and shadows. Original is the default. This
+partial palettes, sprite ordering and shadows. Corrected is the default on every
+platform; an explicit Original preference remains supported. This
 is a targeted fill correction, not a replacement terrain/pitch/roll model.
 
 ## Detached widescreen presentation

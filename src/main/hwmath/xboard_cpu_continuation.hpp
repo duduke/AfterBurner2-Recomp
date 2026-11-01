@@ -47,6 +47,31 @@ asm(
 "mov x0,x19\nblr x20\nbrk #0\n");
 #endif
 
+#if defined(__ANDROID__) && defined(__aarch64__) && !defined(AB2_FORCE_THREAD_CONTINUATION) && !defined(__SANITIZE_ADDRESS__) && !__has_feature(address_sanitizer) && !__has_feature(thread_sanitizer) && !__has_feature(shadow_call_stack)
+// Android AAPCS64 uses the same callee-saved register set/16-byte stack
+// alignment as the existing ARM64 host, with ELF symbol spelling/directives.
+// x18 is platform-reserved and is never touched. Sanitized builds retain the
+// worker backend; switching a shadow-call stack would require its own context.
+#define AB2_STACK_CONTINUATION 1
+extern "C" void ab2_context_swap(void**,void*);
+extern "C" void ab2_context_enter();
+asm(
+".text\n.p2align 2\n.weak ab2_context_swap\n.hidden ab2_context_swap\n.type ab2_context_swap,%function\nab2_context_swap:\n"
+"sub sp,sp,#176\n"
+"stp x19,x20,[sp,#0]\nstp x21,x22,[sp,#16]\nstp x23,x24,[sp,#32]\n"
+"stp x25,x26,[sp,#48]\nstp x27,x28,[sp,#64]\nstp x29,x30,[sp,#80]\n"
+"stp d8,d9,[sp,#96]\nstp d10,d11,[sp,#112]\nstp d12,d13,[sp,#128]\nstp d14,d15,[sp,#144]\n"
+"mrs x9,fpcr\nmrs x10,fpsr\nstp x9,x10,[sp,#160]\n"
+"mov x9,sp\nstr x9,[x0]\nmov sp,x1\n"
+"ldp x9,x10,[sp,#160]\nmsr fpcr,x9\nmsr fpsr,x10\n"
+"ldp d8,d9,[sp,#96]\nldp d10,d11,[sp,#112]\nldp d12,d13,[sp,#128]\nldp d14,d15,[sp,#144]\n"
+"ldp x19,x20,[sp,#0]\nldp x21,x22,[sp,#16]\nldp x23,x24,[sp,#32]\n"
+"ldp x25,x26,[sp,#48]\nldp x27,x28,[sp,#64]\nldp x29,x30,[sp,#80]\n"
+"add sp,sp,#176\nret\n.size ab2_context_swap,.-ab2_context_swap\n"
+".p2align 2\n.weak ab2_context_enter\n.hidden ab2_context_enter\n.type ab2_context_enter,%function\nab2_context_enter:\n"
+"mov x0,x19\nblr x20\nbrk #0\n.size ab2_context_enter,.-ab2_context_enter\n");
+#endif
+
 #if AB2_STACK_CONTINUATION || AB2_WINDOWS_FIBER
 #define AB2_COOPERATIVE_CONTINUATION 1
 #endif
@@ -63,6 +88,8 @@ public:
     static constexpr const char* backend_name(){
 #if AB2_WINDOWS_FIBER
         return "windows-fiber";
+#elif AB2_STACK_CONTINUATION && defined(__ANDROID__)
+        return "android-arm64-stack";
 #elif AB2_STACK_CONTINUATION
         return "apple-arm64-stack";
 #else

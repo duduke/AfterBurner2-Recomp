@@ -289,7 +289,7 @@ record in [ENGINE_NOTES](ENGINE_NOTES.md#retroarch-slang-presentation-2026-10-23
 
 The renderer regression uses independent synthetic pixel expectations for
 Off/zero identity, scanline phase and attenuation, RGB mask ordering, clipping,
-letterboxing, all three viewport widths, integer/fractional scaling, high-DPI
+letterboxing, all four source viewport widths (320/358/398/522), integer/fractional scaling, high-DPI
 output, renderer state and cache lifecycle. The menu integration checks native
 RGB/PCM/time while the feature is active. Retained deliberate mutations must
 fail against a passing baseline. The normal `test` includes the CRT checks;

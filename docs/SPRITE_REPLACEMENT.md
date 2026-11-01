@@ -63,7 +63,9 @@ image orientations against the budget; those copies preserve HD linear sampling
 when SDL's software reflection path would downsample a logical ownership row.
 No image copying or orientation allocation occurs during gameplay rendering.
 Software row endpoints also align to physical pixel ownership so fractional
-window sizes do not leave cracks or blend adjacent strips twice.
+window sizes do not leave cracks or blend adjacent strips twice. Source checks
+include 522-wide 21:9: endpoint multiplication follows SDL's float arithmetic
+and integer viewport origin, including exact pixel-center ties.
 
 ## Identity and presentation contract
 
@@ -136,6 +138,9 @@ each partial frontier's palette. It observes both base frames in attract and
 active flight; smaller LODs remain covered by generated direction/zoom fixtures
 rather than claiming natural in-flight observations. Software and 4K Metal
 tests cover alpha, flips, registered bounds/pivots, LOD overrides, masks and
-invalid input. Retained mutations prove the gates reject faults.
+invalid input. Current source layout tests include 320/358/398/522, with
+22 retained frontend mutations; see the
+[21:9 follow-up](ENGINE_NOTES.md#219-and-main-functionality-workflow-2026-10-31).
+Retained mutations prove the gates reject faults.
 See [engine evidence](ENGINE_NOTES.md#registered-aircraft-pack-and-gentle-bank-2026-10-23)
 for logs and remaining acceptance scope.

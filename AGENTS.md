@@ -16,8 +16,8 @@ generated instruction tables into chat. See [docs/WORKFLOW.md](docs/WORKFLOW.md)
 
 Use `python3 tools/workflow.py run <profile-or-make-target>` for bounded
 output and full local logs. Start with focused targets, reuse existing
-captures, and use ROADMAP's validation cadence: focused checks for local
-commits, full checks for gameplay/core merges, shared execution/tooling changes,
-releases and acceptance milestones. Documentation-only changes need diff and
-policy/command/link inspection. Retain all fixtures and mutations. Do not treat a
+captures, and use ROADMAP's validation cadence: main-functionality and affected
+checks for daily work and non-engine releases; full oracle/mutation checks only
+for engine changes. Documentation-only changes need diff and policy/command/link
+inspection. Retain all fixtures and mutations. Do not treat a
 focused pass as whole-host acceptance or remove fixture coverage to save time.

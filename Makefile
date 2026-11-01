@@ -1671,7 +1671,7 @@ build/native_shader_main_integration: $(addprefix build/native_obj/,$(patsubst %
 verify-native-shader-main: build/native_shader_main_integration
 	SDL_AUDIODRIVER=dummy ./build/native_shader_main_integration tests/fixtures/native_slang/reference.slangp
 verify-integrated-shader-main: build/native_shader_main_integration
-	@for viewport in original 16:9 16:10; do \
+	@for viewport in original 16:9 16:10 21:9; do \
 	  SDL_AUDIODRIVER=dummy ./build/native_shader_main_integration tests/fixtures/native_slang/reference.slangp "" $$viewport || exit $$?; \
 	done
 -include build/native_obj/tests/native_shader_main_integration.d
@@ -2168,3 +2168,34 @@ test-license-notices:
 test: test-license-notices
 .PHONY: test-license-notices
 .PHONY: test-wide-ground-reference
+
+# Daily main-functionality checks; complete test/verify-stage1/oracle-test remain intact.
+.PHONY: test-main verify-wide-stages-21-9 verify-wide-gpu-21-9
+test-main: test-native-touch test-romloader test-rom-picker test-native-settings test-game-controls test-native-input test-frame-pacing test-integrated-renderer test-native-hud test-native-crt test-native-player-aircraft test-sprite-filters test-native-haptics test-native-music test-spatial-audio
+
+build/native_touch_regression: tests/native_touch_regression.cpp src/main/frontend/native_touch.hpp src/main/frontend/native_rom_picker.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
+
+.PHONY: test-native-touch
+test-native-touch: build/native_touch_regression
+	SDL_VIDEODRIVER=dummy ./build/native_touch_regression
+verify-wide-stages-21-9: build/wide_stage_visibility
+	./build/wide_stage_visibility --width 522
+verify-wide-gpu-21-9: build/wide_gpu_regression
+	./build/wide_gpu_regression build/oracle/widescreen/aspect-522-stage-1-210.bin
+	./build/wide_gpu_regression build/oracle/widescreen/aspect-522-stage-5-270.bin
+verify-stage1: verify-wide-stages-21-9
+
+.PHONY: test-native-touch-mutations
+test-native-touch-mutations:
+	CXX="$(CXX)" python3 tools/check_touch_mutations.py
+
+test: test-native-touch test-native-touch-mutations
+
+.PHONY: test-android-benchmark
+test-android-benchmark:
+	python3 tests/android_benchmark_regression.py
+
+test-main: test-android-benchmark
+test: test-android-benchmark

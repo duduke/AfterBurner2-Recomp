@@ -142,8 +142,10 @@ Independent passive MAME captures compare 42,148 observations in 781 frames and
 119,374 in 1,800 frames, with zero skips. The longer physical-input recording
 includes 472 actual FM effects channel writes. Retained negative controls target
 wrong song mapping, lost sequencer starts, FM effects classified as music,
-lost PCM percussion, bypassed replacement attenuation and deferred live selection. Original speaker/joint-audio and whole-host gates remain
-required, alongside the complete regression/mutation profile for shared changes.
+lost PCM percussion, bypassed replacement attenuation and deferred live selection. Original speaker/joint-audio and whole-host gates remain retained for engine
+changes, alongside the complete regression/mutation profile. Playback-only work
+uses daily `main` plus affected audio checks under the
+[validation cadence](ROADMAP.md#working-on-the-remaining-tasks-read-this-first).
 
 All six native music slots now occur in retained physical-input replays. The
 ending run records starts `1,3,2,2,2,4` in the command-table order above and 525

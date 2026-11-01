@@ -100,8 +100,8 @@ int main(int argc,char** argv)try {
     Device device(gpu?SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,true,nullptr):nullptr);
     require(!gpu || bool(device),"aircraft GPU device creation failed");
     Temporary directory{temporary_directory()};const auto path=directory.path/"aircraft.bmp";
-    Surface canvas=surface(398,224);
-    Window window(gpu?SDL_CreateWindow("Aircraft renderer regression",398,224,SDL_WINDOW_HIDDEN):nullptr);
+    Surface canvas=surface(522,224);
+    Window window(gpu?SDL_CreateWindow("Aircraft renderer regression",522,224,SDL_WINDOW_HIDDEN):nullptr);
     require(!gpu || bool(window),"aircraft GPU window creation failed");
     Renderer renderer(gpu?SDL_CreateGPURenderer(device.get(),window.get()):SDL_CreateSoftwareRenderer(canvas.get()));
     require(bool(renderer),"aircraft renderer failed");
@@ -117,7 +117,7 @@ int main(int argc,char** argv)try {
 
     // The scene owns native coverage; art is cropped to its alpha bounds and
     // sampled at native coordinates without generator padding shifting it.
-    for(unsigned width:{320u,358u,398u}) {
+    for(unsigned width:{320u,358u,398u,522u}) {
         clear(renderer.get());aircraft.draw(scene,width);auto result=read(renderer.get());
         const unsigned origin=(width-320)/2;
         require(pixel(result,origin+80,64)==solid[0] && pixel(result,origin+199,64)==solid[1],
@@ -231,7 +231,7 @@ int main(int argc,char** argv)try {
     require(registered.lods.size()==1&&registered.lods[0].frame_address==0x100b0&&
         registered.lods[0].native_pivot.x==0&&registered.lods[0].pixels_per_native.x==2,
         "aircraft pack lost explicit LOD registration");
-    for(unsigned width:{320u,358u,398u})for(bool horizontal:{false,true})for(bool vertical:{false,true}){
+    for(unsigned width:{320u,358u,398u,522u})for(bool horizontal:{false,true})for(bool vertical:{false,true}){
         place(draws[0],horizontal,vertical);clear(renderer.get());aircraft.draw(scene,width);result=read(renderer.get());
         const unsigned origin=(width-320)/2;
         require(pixel(result,origin+(horizontal?190:90),vertical?104:72)==solid[0],
@@ -346,7 +346,7 @@ int main(int argc,char** argv)try {
     auto translucent_image=surface(264,112);
     for(unsigned y=0;y<96;++y)for(unsigned x=0;x<240;++x)rgba(translucent_image,11+x,7+y,{240,192,24,128});
     save(translucent_image,translucent_path);
-    for(unsigned output_mode:{0u,1u,2u})for(unsigned width:{320u,358u,398u}){
+    for(unsigned output_mode:{0u,1u,2u})for(unsigned width:{320u,358u,398u,522u}){
         const bool three_x=output_mode==0,fractional=output_mode==2;
         if(fractional&&width==320)continue; // Already covered by exact 3x.
         const unsigned output_width=three_x?width*3:fractional?960:3840,output_height=output_mode==1?2160:672;
@@ -371,6 +371,10 @@ int main(int argc,char** argv)try {
         require(SDL_SetRenderLogicalPresentation(high.get(),width,224,SDL_LOGICAL_PRESENTATION_LETTERBOX),"HD aircraft logical layout failed");
         clear(high.get());high_aircraft.draw(scene,width);
         SDL_FRect presentation;require(SDL_GetRenderLogicalPresentationRect(high.get(),&presentation),"HD aircraft layout query failed");
+        // SDL 3.4.16 UpdatePixelViewport floors the logical offset before
+        // rasterization. A 960x672 / 522x224 layout reports y=130.5 but
+        // starts its physical viewport at row 130 on both renderers.
+        presentation.x=std::floor(presentation.x);presentation.y=std::floor(presentation.y);
         require(SDL_SetRenderLogicalPresentation(high.get(),0,0,SDL_LOGICAL_PRESENTATION_DISABLED),"HD aircraft readback viewport failed");
         result=read(high.get());if(fractional&&translucent_high)fill_mask(visibility);
         const float scale=presentation.w/width,origin=float(width-320)/2;
@@ -410,8 +414,11 @@ int main(int argc,char** argv)try {
                 require(pixel(result,left_edge-1,py)==background&&pixel(result,right_edge,py)==background,
                     "fractional HD aircraft crossed half-open horizontal ownership");
             for(unsigned px=left_edge;px<right_edge;++px)
-                require(pixel(result,px,top_edge-1)==background&&pixel(result,px,bottom_edge)==background,
-                    "fractional HD aircraft crossed half-open vertical ownership");
+                if(pixel(result,px,top_edge-1)!=background||pixel(result,px,bottom_edge)!=background)
+                    throw std::runtime_error("fractional HD aircraft crossed half-open vertical ownership; viewport "+
+                        std::to_string(width)+" x "+std::to_string(px)+" top "+std::to_string(top_edge)+
+                        " bottom "+std::to_string(bottom_edge)+" registered "+std::to_string(registered_high)+
+                        " translucent "+std::to_string(translucent_high));
         }
         if(translucent_high)continue;
         if(three_x||fractional){
@@ -445,6 +452,6 @@ int main(int argc,char** argv)try {
         }
         }
     }
-    std::cout<<"Native aircraft ("<<SDL_GetRendererName(renderer.get())<<"): transparent BMP/PNG bounds, registered source/pivot/nozzles/LOD, per-pose dispatch, transactional image/pack rejection, premultiplied alpha, flips, native/caller clips, malformed scenes and HD detail across 320/358/398 viewports passed.\n";
+    std::cout<<"Native aircraft ("<<SDL_GetRendererName(renderer.get())<<"): transparent BMP/PNG bounds, registered source/pivot/nozzles/LOD, per-pose dispatch, transactional image/pack rejection, premultiplied alpha, flips, native/caller clips, malformed scenes and HD detail across 320/358/398/522 viewports passed.\n";
     return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

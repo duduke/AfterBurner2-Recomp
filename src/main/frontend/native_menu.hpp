@@ -326,7 +326,11 @@ private:
             link("ARCADE SETTINGS",Page::arcade,"LIVES AND DIFFICULTY REQUIRE RESTART");link("DIAGNOSTICS",Page::diagnostics);back();break;
         case Page::display: {
             const char* scales[]{"NEAREST","SMOOTH","INTEGER","PIXEL ART"};
+#ifdef SDL_PLATFORM_ANDROID
+            setting(6,"DISPLAY MODE","FULLSCREEN","ANDROID USES THE FULL DISPLAY",false);
+#else
             setting(6,"DISPLAY MODE",settings.fullscreen?"FULLSCREEN":"WINDOWED");
+#endif
             setting(9,"ASPECT RATIO",viewport_labels[unsigned(settings.viewport)],"WIDE VIEWS ARE EXPERIMENTAL");
             setting(0,"OUTPUT SCALING",scales[int(settings.scaling)]);back();break;
         }
@@ -471,10 +475,15 @@ inline bool apply_texture_settings(SDL_Texture* texture,const Settings& settings
 }
 inline bool apply_settings(SDL_Window* window,SDL_Renderer* renderer,SDL_Texture* texture,
                            const Settings& settings) {
+#ifdef SDL_PLATFORM_ANDROID
+    constexpr bool fullscreen=true;
+#else
+    const bool fullscreen=settings.fullscreen;
+#endif
     return apply_texture_settings(texture,settings) &&
         SDL_SetRenderLogicalPresentation(renderer,viewport_width(settings),224,settings.scaling==Scaling::integer?
             SDL_LOGICAL_PRESENTATION_INTEGER_SCALE:SDL_LOGICAL_PRESENTATION_LETTERBOX) &&
-        (((SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN)!=0)==settings.fullscreen ||
-         (SDL_SetWindowFullscreen(window,settings.fullscreen) && SDL_SyncWindow(window)));
+        (((SDL_GetWindowFlags(window)&SDL_WINDOW_FULLSCREEN)!=0)==fullscreen ||
+         (SDL_SetWindowFullscreen(window,fullscreen) && SDL_SyncWindow(window)));
 }
 }
