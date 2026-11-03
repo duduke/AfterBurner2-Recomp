@@ -15617,3 +15617,25 @@ oracle, regression or gameplay tests, at the user's explicit direction.
 Release JSON, notes, inventories, source snapshots and integrity receipts are
 retained under `build/release-preview7/`. These final publication records are
 documentation-only updates after the immutable release source tag.
+
+## Linux bundled Slang runtime refresh (2026-11-03)
+
+At the user's request, the Preview 7 `20261103.1` packaging refresh bundles
+`liblibrashader_capi.so` directly in each game archive's `lib/` directory so
+users need no separate runtime installation. Packaging requires the retained
+checksum-pinned architecture-specific runtime/source archive, verifies its
+internal inventory and ABI/API/build identity, copies its notices into
+`LICENSES/librashader/`, records its manifest/source link in `BUILD.json`, and
+includes its ELF in the package architecture/glibc gate. The matching complete
+runtime/Cargo sources and notices remain publicly downloadable in the existing
+runtime/source archives; full project sources remain local/private. The private
+project source companion now retains the runtime/source archive as well.
+
+The official Libretro endpoint
+`https://buildbot.libretro.com/assets/frontend/shaders_slang.zip` returns
+HTTP 200 / application/zip when checked on 2026-11-03. README, Linux/CRT docs,
+release notes and packaged instructions tell users to download that ZIP,
+extract the entire tree (including includes and textures), then select a
+`.slangp` through Settings → CRT and Shaders → Shader Preset. Shader packs
+are not bundled. Game and shader runtime binaries are unchanged; no engine
+changes or new oracle/regression runs are needed for this packaging refresh.
