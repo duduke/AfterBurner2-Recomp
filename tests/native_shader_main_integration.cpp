@@ -31,10 +31,10 @@
 #include <vector>
 
 namespace {
-#ifdef _WIN32
-constexpr const char* shader_renderer_name="vulkan";
-#else
+#ifdef __APPLE__
 constexpr const char* shader_renderer_name="metal";
+#else
+constexpr const char* shader_renderer_name="vulkan";
 #endif
 void require_shader(bool condition,const std::string& message) {
     if(!condition)throw std::runtime_error(message+": "+SDL_GetError());
@@ -216,9 +216,15 @@ int main(int argc,char** argv)try {
     std::vector<std::string> arguments{"shader-main","--boot-to-flight","--settings-file",shader_test.config};
     if(argc>=3){arguments.push_back("--shader-runtime");arguments.emplace_back(argv[2]);}
     std::vector<char*> pointers;for(auto& argument:arguments)pointers.push_back(argument.data());
+    // Native Linux VMs can spend over 90 seconds in the physical boot alone.
+    // Keep every transition/assertion and a bounded watchdog, with an explicit
+    // longer allowance for those hosts rather than skipping their cold boot.
+    const unsigned timeout_seconds=SDL_getenv("AB2_SHADER_MAIN_TIMEOUT_SECONDS")?
+        std::stoul(SDL_getenv("AB2_SHADER_MAIN_TIMEOUT_SECONDS")):90;
+    require_shader(timeout_seconds>=1 && timeout_seconds<=900,"Invalid shader integration timeout (1..900 seconds)");
     std::atomic_bool timeout{};
     std::jthread watchdog([&](std::stop_token stop){
-        for(unsigned i=0;i<1800 && !stop.stop_requested();++i)std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        for(unsigned i=0;i<timeout_seconds*20 && !stop.stop_requested();++i)std::this_thread::sleep_for(std::chrono::milliseconds(50));
         if(!stop.stop_requested()){timeout=true;quit_shader_test();}
     });
     const int status=embedded_shader_main(int(pointers.size()),pointers.data());

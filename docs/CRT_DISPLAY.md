@@ -25,7 +25,7 @@ separate Slang host below. General frame-pacing changes remain separate work.
 
 <a id="retroarch-slang-presets-macos-metal"></a>
 
-## RetroArch Slang presets (macOS Metal / Windows Vulkan)
+## RetroArch Slang presets (macOS Metal / Windows and Linux Vulkan)
 
 The optional shader host loads **`.slangp`** presets through
 [librashader 0.12.0](https://github.com/SnowflakePowered/librashader/tree/librashader-v0.12.0).
@@ -65,7 +65,7 @@ For an isolated preview:
 The application can switch between its normal SDL GPU renderer and the native
 Metal or Vulkan shader renderer while the game/menu session remains live. macOS
 shader mode runs the existing sprite-filter and scene-composition kernels on
-native Metal, including ScaleFX. CMake Windows source builds run the same
+native Metal, including ScaleFX. CMake Windows and Linux source builds run the same
 kernels on native Vulkan; `--profile` reports `filters=vulkan-gpu` when active.
 The published Windows Preview 5 package still uses CPU composition in shader
 mode. Loading and compilation can pause
@@ -90,8 +90,9 @@ a Metal history-clear bug for chains without history; a requested history reset
 recreates the chain and reapplies parameter values rather than calling that
 broken path. This can cause a compilation stall on reset.
 
-The backends support **macOS Metal or Windows Vulkan / SDR / `.slangp`**.
-The fetcher supports Apple Silicon and Windows x64. Linux shader support, legacy `.glslp`/Cg presets,
+The backends support **macOS Metal or Windows/Linux Vulkan / SDR / `.slangp`**.
+The binary fetcher supports Apple Silicon and Windows x64. Linux uses the
+[source build helper](LINUX.md#retroarch-slang--native-vulkan-composition). Legacy `.glslp`/Cg presets,
 HDR output and universal preset compatibility are not implemented. First-input
 mipmap generation is also unavailable. CRT Easymode, CRT Geom and CRT Royale
 have been exercised with a complete local shader pack. Preset cost varies;
@@ -101,7 +102,8 @@ The runtime is optional and loaded dynamically. Search order is an explicit
 `--shader-runtime` path (or saved `shader-runtime`), `AB2_LIBRASHADER`, application
 library locations (including `deps/librashader/librashader.dylib` beside the
 macOS executable), then `build/deps/librashader/librashader.dylib` (macOS) or
-`build/deps/librashader/librashader.dll` (Windows). It must expose
+`build/deps/librashader/librashader.dll` (Windows), or
+`build/deps/librashader/liblibrashader_capi.so` (Linux). It must expose
 ABI 2 / API 5. The fetcher verifies a pinned release SHA-256 before extraction
 and records source/license metadata. No shader pack or runtime binary is
 committed. The pinned source and redistribution notes are in

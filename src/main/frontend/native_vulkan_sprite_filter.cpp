@@ -6,6 +6,8 @@
 #include <array>
 #include <cstring>
 #include <string_view>
+#include <stdexcept>
+#include <string>
 
 namespace Frontend {
 namespace {

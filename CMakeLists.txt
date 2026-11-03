@@ -54,12 +54,13 @@ if(APPLE)
   set_target_properties(ab2_slang PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON)
   target_compile_options(ab2_slang PRIVATE -fobjc-arc)
   target_link_libraries(ab2_slang PRIVATE "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreVideo")
-elseif(WIN32)
+elseif(WIN32 OR (CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+  set(AB2_NATIVE_VULKAN ON)
   find_path(AB2_VULKAN_INCLUDE_DIR vulkan/vulkan.h
     HINTS "$ENV{VULKAN_SDK}/Include" "${CMAKE_SOURCE_DIR}/build/deps/Vulkan-Headers-1.4.341/include"
     REQUIRED)
   add_library(ab2_slang STATIC src/main/frontend/native_slang_vulkan.cpp src/main/frontend/native_vulkan_sprite_filter.cpp)
-  # Only native Windows entrypoints use this compositor. Portable Make builds
+  # Native Windows/Linux CMake entrypoints use this compositor. Make builds
   # retain their existing stub host and do not link the Vulkan implementation.
   set_property(SOURCE src/main/main.cpp tests/native_shader_main_integration.cpp
     APPEND PROPERTY COMPILE_DEFINITIONS AB2_NATIVE_VULKAN_SPRITES)
@@ -275,7 +276,7 @@ if(BUILD_TESTING)
         DEPENDS native_crt_regression WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     add_test(NAME librashader_fetch_regression COMMAND ${Python3_EXECUTABLE} tests/test_fetch_librashader.py)
     set_tests_properties(librashader_fetch_regression PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    if(APPLE OR WIN32)
+    if(APPLE OR AB2_NATIVE_VULKAN)
       add_executable(native_slang_integration tests/native_slang_integration.mm)
       if(APPLE)
         set_target_properties(native_slang_integration PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON)
@@ -297,7 +298,7 @@ if(BUILD_TESTING)
         add_custom_target(verify-native-slang-mutations
           COMMAND ${Python3_EXECUTABLE} tools/video/check_native_slang_mutations.py
           DEPENDS verify-native-slang WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-      elseif(WIN32)
+      elseif(AB2_NATIVE_VULKAN)
         add_executable(native_vulkan_sprite_filter_regression tests/gpu_sprite_filter_regression.cpp)
         target_compile_definitions(native_vulkan_sprite_filter_regression PRIVATE AB2_NATIVE_VULKAN_SPRITES)
         target_link_libraries(native_vulkan_sprite_filter_regression PRIVATE ab2_slang)
@@ -836,7 +837,7 @@ if(BUILD_TESTING AND STAGE1_ROM_TESTS)
     add_executable(native_menu_integration tests/native_menu_integration.cpp src/main/frontend/music_decoder.cpp ${WHOLE_HOST_GAME_SOURCES})
     target_include_directories(native_menu_integration PRIVATE src/main)
     target_link_libraries(native_menu_integration PRIVATE SDL3::SDL3 Threads::Threads)
-    if(APPLE OR WIN32)
+    if(APPLE OR AB2_NATIVE_VULKAN)
       add_executable(native_shader_main_integration tests/native_shader_main_integration.cpp src/main/frontend/music_decoder.cpp ${WHOLE_HOST_GAME_SOURCES})
       target_include_directories(native_shader_main_integration PRIVATE src/main)
       target_link_libraries(native_shader_main_integration PRIVATE SDL3::SDL3 Threads::Threads ab2_slang)

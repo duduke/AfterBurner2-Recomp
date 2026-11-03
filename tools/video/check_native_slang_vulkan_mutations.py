@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Windows Vulkan shader controls, with all sources and logs retained locally."""
+"""Windows/Linux Vulkan shader controls, with all sources and logs retained locally."""
 import argparse
 from datetime import datetime, timezone
 import os
@@ -22,10 +22,17 @@ MUTATIONS = (
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, required=True)
+    parser.add_argument("--compiler", help="Host probe compiler when testing an SDK build")
+    parser.add_argument("--sdl-prefix", type=Path, help="Host path to the SDK-built SDL installation")
+    parser.add_argument("--vulkan-include", help="Host Vulkan header directory")
     args = parser.parse_args()
     build = args.build_dir.resolve()
     cache = dict(re.findall(r"^([^/#\r\n:=]+):[^=\r\n]*=(.*)$", (build / "CMakeCache.txt").read_text(), re.M))
-    sdl = Path(cache["SDL3_DIR"]).parents[2]
+    sdl = args.sdl_prefix.resolve() if args.sdl_prefix else Path(cache["SDL3_DIR"]).parents[2]
+    if args.compiler:
+        cache["CMAKE_CXX_COMPILER"] = args.compiler
+    if args.vulkan_include:
+        cache["AB2_VULKAN_INCLUDE_DIR"] = args.vulkan_include
     destination = ROOT / "build/oracle/slang-vulkan-mutations" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     inputs = destination / "inputs"
     (inputs / "src/main/frontend").mkdir(parents=True)
@@ -62,8 +69,13 @@ def main():
         if result.returncode:
             raise SystemExit(f"Mutation build failed: {folder / 'build.log'}")
         environment = dict(os.environ, PATH=str(build) + os.pathsep + os.environ.get("PATH", ""),
-                           AB2_LIBRASHADER=str(ROOT / "build/deps/librashader/librashader.dll"),
+                           AB2_LIBRASHADER=os.environ.get("AB2_LIBRASHADER", str(ROOT / "build/deps/librashader" /
+                               ("librashader.dll" if os.name == "nt" else "liblibrashader_capi.so"))),
                            AB2_SLANG_TEST_OUTPUT=str(folder / "observations"))
+        environment["LD_LIBRARY_PATH"] = str(sdl / "lib") + os.pathsep + environment.get("LD_LIBRARY_PATH", "")
+        if os.name != "nt":
+            # The discovery check clears the override and launches from an unrelated cwd.
+            shutil.copy2(environment["AB2_LIBRASHADER"], folder / "liblibrashader_capi.so")
         log_path = folder / "run.log"
         with log_path.open("w") as log:
             result = subprocess.run([str(binary)], cwd=inputs, env=environment,
