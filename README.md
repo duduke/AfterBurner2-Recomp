@@ -52,8 +52,10 @@ and sustained peak-load performance remain open.
 ## Linux and Steam Deck
 
 [Linux Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
-include separate ROM-free x86-64 and ARM64 packages, source companions and
-checksums. SDL3/OpenAL are bundled; optional Slang runtimes are separate downloads.
+include separate ROM-free x86-64 and ARM64 packages and checksums. SDL3/OpenAL
+are bundled; optional Slang runtimes are separate downloads. Full project source
+companions remain local and in the private development release; optional runtime
+archives include their corresponding covered source and notices.
 
 | Platform | Game | Optional Vulkan Slang runtime |
 | --- | --- | --- |

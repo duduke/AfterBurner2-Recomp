@@ -15581,3 +15581,39 @@ publication because the engine is unchanged. Publication checks are restricted
 to diff/links, exact source and binary identity, archive inventories, notices,
 ROM/capture exclusions, checksums and uploaded release assets. Existing finite
 functional, MAME and device evidence above is retained with its original scope.
+
+## Linux Preview 7 published (2026-11-03)
+
+Implementation commit `2e1977d` is merged into main by
+`978eccddc88314c309ebdf8fcbe46a0e69f235e5`; the annotated
+`v0.1.0-preview.7` source tag resolves to that merge commit. Both releases are
+published as prereleases:
+
+- [Private development release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7):
+  12 assets, including both project source companions and their checksums.
+- [Public downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7):
+  8 assets: both game archives, both optional runtime/source/notice archives,
+  and their four SHA-256 sidecars. Full project source companions stay local
+  and in the private development release, following the existing download policy.
+
+The initial public upload mistakenly included the four full-project source
+companion/checksum assets. Those attachments were removed after confirming the
+development repository is private, and public README/release notes were corrected.
+Required covered source and notices for the optional librashader runtimes remain
+inside their own runtime archives. Earlier releases and tags were preserved.
+
+Both Preview 7 source manifests identify the clean merge commit above. The game
+executables remain byte-identical to the previously tested Slang previews:
+x86-64 SHA-256 `74134c1f391684b380a66a28af8298692f548ab6fa33e987c168df0e013f243e`;
+ARM64 `2c3fbd08fde8d1b494aa488bf5cac25826eac22e7fa65b2d785917654ee3557c`.
+Game archive hashes are respectively
+`43e761500e421123eed27cfea9499ede4f0c4eee0052dc3be4b2ba3ba8e600b1`
+and `37206a434df57b48effeb475c5456fa94e3addd5adc4dbdc91685093b802b579`.
+All published asset sizes and GitHub-computed SHA-256 values match the local
+inventory (12/12 private, 8/8 public); archive/internal/source hashes, notices,
+source cleanliness and ROM exclusions pass integrity inspection. Main/public
+README links match their final asset inventories. Publication runs no new
+oracle, regression or gameplay tests, at the user's explicit direction.
+Release JSON, notes, inventories, source snapshots and integrity receipts are
+retained under `build/release-preview7/`. These final publication records are
+documentation-only updates after the immutable release source tag.

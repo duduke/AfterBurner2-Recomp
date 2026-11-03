@@ -7,7 +7,9 @@
 
 - Add separate **Linux x86-64 / Steam Deck** and **Linux ARM64 desktop** packages
   with SDL3 3.4.16, OpenAL Soft 1.25.2, dependency notices, exact source companions
-  and SHA-256 inventories. x86-64 targets sniper / glibc 2.31; ARM64 targets
+  and SHA-256 inventories. Full project source companions are retained locally
+  and in the private development release, not the public download repository.
+  x86-64 targets sniper / glibc 2.31; ARM64 targets
   Debian 12 / glibc 2.36. Builds use the existing worker-thread CPU continuation.
 - Add **native Vulkan composition for RetroArch Slang**, sharing the Windows
   bridge and generated GPU sprite/scene kernels, including ScaleFX. Shader

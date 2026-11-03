@@ -1,8 +1,10 @@
 # Linux x86-64 / ARM64 previews
 
 [Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
-include both game architectures, matching source companions, optional shader
-runtimes with covered source/notices, and SHA-256 files.
+include both game architectures, optional shader runtimes with covered
+source/notices, and SHA-256 files. Full project source companions remain local
+and in the private development release, following the existing public-download
+policy.
 
 The x86-64 Linux packaging workflow targets Valve's Steam Linux Runtime 3 **sniper**
 SDK, not the build host's Ubuntu libraries. The pinned SDK is
