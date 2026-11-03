@@ -1,5 +1,46 @@
 # Release notes
 
+## v0.1.0-preview.7 — Linux and Vulkan Slang (2026-11-03)
+
+[Main repository release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
+· [Public downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
+
+- Add separate **Linux x86-64 / Steam Deck** and **Linux ARM64 desktop** packages
+  with SDL3 3.4.16, OpenAL Soft 1.25.2, dependency notices, exact source companions
+  and SHA-256 inventories. x86-64 targets sniper / glibc 2.31; ARM64 targets
+  Debian 12 / glibc 2.36. Builds use the existing worker-thread CPU continuation.
+- Add **native Vulkan composition for RetroArch Slang**, sharing the Windows
+  bridge and generated GPU sprite/scene kernels, including ScaleFX. Shader
+  history, cached pause redraws, live renderer switching and failed-load rollback
+  preserve the game session. The game engine and board timing are unchanged.
+- Provide separate optional **librashader 0.12.0 Vulkan runtime archives** for
+  each architecture, with corresponding upstream/Cargo sources and notices.
+  Copy `liblibrashader_capi.so` into the matching game's `lib/`, then select a
+  `.slangp` from a complete external shader pack. Legacy GLSL/Cg, HDR and
+  first-input mipmap generation remain unsupported.
+
+Extract the game and run `Launch.sh`. Steam Deck uses the x86-64 package natively
+and a Gamepad template, with fullscreen/16:10 defaults. ARM64 uses windowed /
+Original defaults. Existing preferences are preserved. Supply your own verified
+ROM directory or ZIP; no ROMs, captures, preferences or music are included.
+See [Linux setup and source builds](LINUX.md).
+
+Prior validation on the two architecture-native VMs includes the complete main
+profile, finite independent MAME cold replay (121/121, zero skips), Vulkan pixel
+references (1,176/1,176 per architecture), all 11 relevant deliberate faults,
+six real renderer-switch cases and extracted-package X11/Wayland launches.
+Publication reuses those results and the identical tested binaries. At the
+user's explicit direction, no new oracle/regression run is performed for this
+non-engine release; publication checks cover source identity, archive hashes,
+notices and uploaded assets. Physical Deck/ARM64 GPU/audio/controls, suspend and
+sustained performance remain unverified. Earlier quiet VM samples reached only
+11.7 FPS x86-64 and 5.76 FPS ARM64 on different configurations, with underruns;
+these do not establish hardware performance or an architecture comparison.
+
+macOS/Android remain on Preview 6 and Windows remains on experimental Preview 5.
+This release also records the earlier TCL TV's 32-bit-only ABI incompatibility;
+no 32-bit Android package is supplied.
+
 ## v0.1.0-preview.6 — Android and ultrawide (2026-11-01)
 
 [Main repository release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)

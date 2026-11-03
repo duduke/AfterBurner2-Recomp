@@ -15238,3 +15238,346 @@ local tested files byte-for-byte. Retained upload inventories, published metadat
 notes and download receipts: `build/release-preview6/`. These finite release
 checks retain the documented whole-credit, broader device/TV and sustained
 peak-load/thermal limits; Windows was not rebuilt.
+
+
+## TCL Android TV ABI compatibility check (2026-11-02)
+
+Wireless ADB pairing and connection succeeded on the user-provided TCL TV.
+Device identity: manufacturer TCL, model Smart TV Pro, product G08_4K_GB,
+device G08, Android 14 / API 34, hardware mt5896. Build fingerprint:
+`TCL/G08_4K_GB/G08:14/UTT2.250416.001/AU02:user/release-keys`.
+SurfaceFlinger reports ARM Mali-G52 / OpenGL ES 3.2
+`v1.r44p1-01eac0.179200695d2e75bb7b5413075447c7ed`.
+Display physical size is 3840×2160 with a 1920×1080 override. Leanback,
+leanback-only and television features are present; available data storage was
+15 GiB. No existing `org.afterburner2.app` package was found.
+
+The OS reports `ro.product.cpu.abilist=armeabi-v7a,armeabi` and an empty
+`ro.product.cpu.abilist64`. Preview 6's debug APK contains only `arm64-v8a`;
+`adb install -r` fails with `INSTALL_FAILED_NO_MATCHING_ABIS` (native library
+extraction result -113). APK SHA-256:
+`d9b9441f8cc3f1b16513a5c7f72752a08d95ad3b3cb11e5bcf603d6070a4a27f`.
+Embedded source revision is `add8b04535897ecc92b8114a3e3f6554d673f708`,
+with the empty working-tree digest and `android-arm64-stack` continuation.
+
+This is a compatibility check, not a successful app smoke. No app launch,
+ROM import, controller/remote navigation, rendering/audio, lifecycle or
+performance result was obtained. Supporting this device requires an
+`armeabi-v7a` build with a compatible CPU continuation backend and its own
+platform validation; ARM64 phone evidence does not establish that support.
+No engine or packaging code was changed during this check.
+
+## Linux x86-64 / Steam Deck packaging (2026-11-03)
+
+The user supplied an Ubuntu 26.04.1 x86-64 SSH host. This is a VMware VM with
+8 vCPUs, 7.2 GiB RAM, an Intel Xeon E5-2699 v4 CPU identity, VMware SVGA II
+graphics and Ubuntu glibc 2.43. Podman runs
+Valve's Steam Linux Runtime 3 sniper SDK `3.0.20261021.266025`, image digest
+`sha256:bb30053d3cd19d35c76ae69b2790dbaa1430448006f8240cb6d7e723f2d1940e`.
+The SDK's GCC 14.2.0 provides C++20 atomic wait support missing from the
+default GCC 10 headers. SDK glibc is 2.31. SDL3 3.4.16 and OpenAL Soft 1.25.2
+come from the retained checksum-pinned source archives. No engine sources,
+clocks, scheduling, oracle comparisons or fixtures were changed.
+
+`tools/build_linux.sh` builds Release/LTO without host-native CPU flags or
+fast-math, then runs the main profile, continuation regression and ROM ZIP
+startup checks. `tools/snapshot_linux.py` records every source hash and the base
+commit (`855ffcdc006dc722251957c0bae6302c1aa6d895` for this build). Existing
+uncommitted documentation and new Linux tools are identified explicitly in the
+snapshot; this is a local working-tree preview, not a clean public release.
+`tools/package_linux.py` validates the snapshot and configuration and creates
+runtime/source `.tar.gz` files, SHA-256 sidecars and internal inventories.
+See [commands and installation](LINUX.md).
+
+The local artifacts are
+`build/releases/AfterBurner2-v0.1.0-preview.6-20261103-Linux-x86_64-SteamDeck-preview.tar.gz`
+and its `-sources.tar.gz` companion. The runtime is approximately 6.8 MiB and
+contains shared SDL3/OpenAL and required notices; the SDK statically links its
+newer GCC C++ runtime, whose notices are retained too. Maximum ELF glibc
+requirements are app **2.30**, SDL3 **2.29**, OpenAL **2.28**, within the
+declared sniper / glibc 2.31 baseline. The exact project source and dependency
+archives are in the companion. Neither distribution contains ROMs, captures,
+preferences or user music. `Launch.sh` seeds fullscreen / 16:10 / linear /
+corrected ground only for new preferences and keeps settings under XDG data.
+
+Completed finite evidence:
+
+- Independent retained MAME cold fixture: **121 of 121 frames identical,
+  0 skipped**, 4,279,315 CPU snapshots, 11,514,112 bus phases, 8,673,280 RGB
+  pixels, 2,155,095 Z80 transactions and raw/mixed audio comparisons; zero
+  supplied execution/state/read seeds and zero differences. SDK/GCC 14 `-O2`
+  replay log: remote `oracle-source/build/workflow/20261103T083855.397386Z/`.
+- Extracted runtime in sniper and directly on Ubuntu: archive/internal hashes,
+  executable permissions, library resolution, launch from `/tmp`, 120 frames,
+  first-run defaults, preserved saved settings and bounded missing-ROM failure
+  pass. Both final software BMPs have SHA-256
+  `29a5c3b01d2d060325d962f5333b2a09bcc5248203ed7ac0a118724e35f20d69`.
+- Native X11 cold boot and Wayland Stage 7 launch each render 180 frames and
+  exit successfully; Wayland reports SDL Vulkan GPU rendering and filters,
+  SDL 3.4.16, VSync 1 and `worker-thread` continuation. The Stage 7 frame was
+  visually inspected. These ran concurrently with validation compilation;
+  their timing is not a quiet performance benchmark.
+- Complete Linux `main` profile passes at remote
+  `source/build/workflow/20261103T085319.026064Z/`: frontend checks, 781 exact
+  game-session RGB frames with audio/lifecycle checks, 375 Practice RGB/PCM/time
+  comparisons and 2,280 supplied hidden-frame callbacks, 660 Shuffle lifecycle
+  frames plus 16 restoration frames, and the 7,118-frame natural three-position
+  window. The natural window observes cannon=141, missile=6 and impact=4 with
+  no stage skips, extra board restarts or native frame/time resets. Its declared
+  Easy / 99-credit fixture starts with 297 lives; it is not the default-life
+  whole-credit acceptance run. Target wall times, including build work, are
+  54.91 / 377.58 / 952.24 / 874.40 seconds respectively.
+- The focused `worker-thread` continuation regression passes (indivisible
+  clocks, bus/tail debt, RMW, reuse, cancellation and error propagation), logged
+  at remote `source/build/workflow/20261103T093058.304725Z/`.
+- ROM startup checks pass: directory, explicit ZIP, remembered ZIP and default
+  ZIP produce identical 240-frame final images; an explicit missing source
+  fails without opening the picker.
+
+After all compilation/validation jobs exited, an additional **180 contiguous,
+unpaused Stage 7 frames** used the extracted release with Wayland/Vulkan,
+fullscreen 16:10, linear scaling, CRT off and live audio. This CLI debug-stage
+entry is a presentation sample, not natural whole-credit progression. Mean
+rate is **11.7066 FPS**, mean frame time **85.4221 ms** (p95 **94.2017 ms**),
+mean board work **64.5790 ms**, with **0%** of work samples within the arcade's
+16.768 ms frame budget. The last profile line reports 51 audio underruns and
+51 reprimes. The run exits successfully, but **playback is not real-time on
+this VM**. Do not extrapolate this to physical Deck hardware or claim sustained
+60 FPS. The retained Linux worker backend still needs separate performance
+work; an engine/backend change requires the full engine validation cadence.
+
+Private complete logs, SDK image metadata, timing CSV/JSON and screenshots are
+retained locally in
+`build/linux-validation/evidence/validation-evidence.tar.gz` (also on the
+remote host under `~/ab2-linux-build/`). These contain captures and are not
+release assets. The runtime archive SHA-256 is
+`42a5216ba098ef6d94598de1636cd420c5b58c0706283ae0cd1ffd1a9be91dce`;
+the measured executable SHA-256 is
+`9860b8d2750bf14593f30479a08d3c1d2f81e58de9eb6a0cc6a4fbeef7c4b7ce`.
+At this x86-64 packaging checkpoint, application and build-tool sources matched
+the packaged snapshot with only post-build documentation differences. Later
+ARM64 tooling extensions are recorded separately below; the x86-64 artifact
+and its source companion remain unchanged.
+
+Full oracle/mutation runs are not required for this packaging-only change;
+all retained tests, fixtures and mutations remain intact. The cold replay is
+finite native Linux evidence, not complete whole-host or whole-credit
+acceptance. Linux ARM64, physical Steam Deck controls/feel, disconnect/reconnect,
+ROM picker interaction, suspend/resume, listening quality, peak-load pacing and
+sustained hardware performance remain open. Linux RetroArch Slang remains a
+stub; built-in CRT modes are available.
+
+## Linux ARM64 preview (2026-11-03)
+
+The user supplied an AArch64 Debian forky/sid guest with
+kernel `7.2.12+deb14-arm64`, glibc 2.43, 8 vCPUs, 7.7 GiB RAM and an Apple CPU
+vendor identifier. `systemd-detect-virt` reports QEMU; this is VM evidence,
+not bare hardware acceptance. The active desktop is GNOME/Wayland with Xwayland.
+
+`tools/linux-arm64.Containerfile` pins the ARM64 Debian 12 base manifest
+`sha256:7ccb8b5b60c7654f5b795d94ee7d751cd0811500803f0b09cefcd555e755a55a`
+and Debian/security package snapshots at `20261103T000000Z`. The selected SDK
+image ID is
+`5ccc1bb84f2ccc2003ca8c3035dd6e1000427a2120ca35f011203ece5e6a58ac`,
+with recipe SHA-256
+`21e3d2c5b68e83e4c1cf2ba238553b4ef1a4ea7ad5b8196dffab2355941c8d2d`.
+It supplies glibc 2.36, Clang/LLD 14.0.6 and GCC/libstdc++ 12.2.0. SDL3 3.4.16
+and OpenAL Soft 1.25.2 retain their pinned source archive hashes. The game and
+checks use Clang/LLD; OpenAL uses GCC 12 across its public C API because Clang
+14 cannot instantiate its C++20 ranges code with these standard-library
+headers. No engine or upstream dependency source patch was made.
+
+The initial GCC 12 game/oracle compile attempts were stopped after the large
+IRQ unit exceeded 12 minutes and approached the guest's RAM limit. Both work
+trees, source snapshots, SDK metadata and logs remain under remote
+`~/ab2-arm64-build/` with `gcc12` names. A temporary 8 GiB swap file was created
+to prevent OOM during the transition and was swapped off and removed once
+Clang had adequate headroom. The failed Clang/OpenAL dependency attempt is also
+retained; fresh compiler build directories avoid mixing object files or CMake
+compiler caches. These stopped attempts are not passing validation evidence.
+
+The separate local runtime is
+`build/releases/AfterBurner2-v0.1.0-preview.6-20261103-Linux-arm64-preview.tar.gz`,
+with matching `-sources.tar.gz` companion and SHA-256 sidecars. The package
+validates every bundled ELF as AArch64 and caps required glibc at **2.36**:
+app **2.35**, SDL3 **2.34**, OpenAL **2.34**, libgcc_s **2.35**, libstdc++
+**2.36**. Source/build identity, the SDK package inventory, required notices and
+replaceable shared libraries are retained. No ROMs, captures, user preferences
+or music are distributed. `Launch.sh` seeds windowed / Original viewport /
+nearest / corrected ground for new settings only; saved settings survive.
+Fullscreen and 16:10 remain menu options. The x86-64 Steam Deck launcher keeps
+its separate fullscreen/16:10 defaults.
+
+Finite completed ARM64 evidence:
+
+- Independent retained MAME cold replay: **121 of 121 frames identical,
+  0 skipped**, including 4,279,315 CPU snapshots, 11,514,112 bus phases,
+  8,673,280 RGB pixels, 2,155,095 Z80 transactions and raw/mixed audio. Zero
+  supplied execution/state/read seeds and zero differences. Clang `-O2` log:
+  remote `oracle-source/build/workflow/20261103T100006.973076Z/` (156.19 seconds
+  including compilation).
+- Extracted runtime in Debian 12 and directly on the forky host: archive and
+  internal hashes, permissions, library resolution, launch from `/tmp`, 120
+  frames, windowed/Original defaults, saved settings and bounded missing-ROM
+  failure pass. The two software BMPs are byte-identical, SHA-256
+  `5c1dbf6cc130a89da9af659c13c2518d5bfee3f5a5a5ae95d9246eff0a5b3f9e`.
+- Native X11 and Wayland launch/render/exit checks each complete 180 frames.
+  The first X11 run included a locked screen (178.08 seconds); after the user
+  unlocked the desktop, a fresh X11 run passed in 31.39 seconds. A temporary
+  session idle inhibitor held the desktop awake and was released after testing. The
+  Wayland Stage 7 CLI debug-entry run passed in 225.15 seconds including its
+  cold boot and directed stage-entry warmup, and its frame was visually inspected. Both report
+  SDL 3.4.16 Vulkan GPU API rendering, VSync 1 and `worker-thread` continuation.
+  These concurrent runs are functional evidence, not quiet performance samples.
+- Complete ARM64 `main` profile passes at remote
+  `source/build/workflow/20261103T100633.415066Z/`: frontend checks, the 781-frame
+  RGB/audio/lifecycle game-session comparison, 375 exact Practice RGB/PCM/time
+  comparisons and 2,280 supplied hidden-frame callbacks, 660 Shuffle lifecycle
+  comparisons plus 16 restoration frames, and the 7,118-frame natural
+  three-position window. That declared Easy / 99-credit fixture starts with
+  297 lives and observes cannon=141, missile=6 and impact=4, with no stage
+  skips, extra restarts or native frame/time resets. It does not close the
+  default-life whole-credit task. Target wall times including build are
+  14.87 / 394.01 / 1,641.55 / 1,884.10 seconds.
+- The focused `worker-thread` continuation regression passes (indivisible
+  clocks, bus/tail debt, RMW, reuse, cancellation and error propagation) at
+  remote `source/build/workflow/20261103T111207.995587Z/`.
+- ROM startup checks pass: directory, explicit ZIP, remembered ZIP and default
+  ZIP produce identical 240-frame final images; an explicit missing source
+  fails without opening the picker.
+
+After all build/regression jobs exited, a quiet **180 contiguous, unpaused
+Stage 7 frames** used the same packaged binary, Wayland/Vulkan, windowed
+Original viewport, nearest scaling, CRT off and live audio. Mean rate is
+**5.7593 FPS**, mean frame time **173.6314 ms** (p95 **204.7655 ms**), mean board
+work **172.5846 ms**, and **0%** of work samples meet the 16.768 ms arcade
+budget. Playback underruns/repriming are present. The directed startup plus
+sample takes 221.29 seconds. This is **not real-time playback on this VM**,
+and it does not establish physical ARM64 performance. Do not compare it as an
+architecture benchmark against the x86-64 VM's different hardware and viewport.
+
+The runtime SHA-256 is
+`0f1a8dde4f35cff7505b05b440399aca2670cd891bddd87d53461fde3f64adf5`;
+the measured executable SHA-256 is
+`6688793418864158d1f0d268450f32ceeb476e5838ece98055739518a28ba1d8`.
+Archive/internal/source hashes were rechecked after retrieval. All application
+and build-tool sources match the packaged snapshot; later changes are
+documentation only. Complete private logs, SDK manifests, timing CSV/JSON,
+screenshots and failed/stopped-attempt diagnostics are retained in
+`build/linux-arm64-validation/evidence/validation-evidence.tar.gz` and on the
+remote host under `~/ab2-arm64-build/`. Captures are not release assets.
+
+The ARM64 package is a Linux ELF build, separate from x86-64 Steam Deck,
+Android APK and macOS builds. Physical ARM64 GPU/audio/controller behavior,
+hotplug, ROM picker interaction, suspend/resume, sustained load/thermals and
+whole-credit fidelity remain open. Linux ARM64 uses the retained worker
+continuation backend; the Apple/Android cooperative backends were not enabled
+or changed. Full engine oracle/mutation gates are reserved for engine changes;
+all existing fixtures, comparisons and mutations remain retained.
+
+## Linux native Vulkan Slang composition (2026-11-03)
+
+CMake Linux x86-64 and ARM64 entrypoints now use the same native SDL Vulkan
+Slang bridge and `NativeVulkanSpriteScaler` as Windows. Selecting RetroArch
+switches from SDL GPU to native Vulkan; leaving it restores SDL GPU. The six
+existing generated sprite/scene kernels, priority masks, shadows, effect
+opacities and ScaleFX are unchanged. The engine, board clocks, continuation
+backend and Linux VSync policy are unchanged. The portable Make frontend
+retains the stub shader host; Linux shader builds use CMake and Vulkan headers.
+
+Linux runtime lookup accepts the explicit/saved path and `AB2_LIBRASHADER`,
+then `liblibrashader_capi.so` beside the executable, in its `lib/` directory,
+and in source-build dependency locations. The source-build lookup is tested
+from an unrelated working directory with the override cleared. The optional
+runtime remains external to the game archive, as do user shader packs.
+`tools/deps/build_librashader_linux.sh` verifies the 0.12.0 source SHA-256
+`4bf8cf2489d00848dcabbf2163204093776082da4217d5a5db45e4cbf335cedf`,
+requires Rust/Cargo 1.99.1, builds only `runtime-vulkan` with the upstream lockfile,
+and records a manifest. It was exercised in both original pinned Linux SDKs.
+Runtime maximum required glibc is 2.30 (x86-64/sniper) and 2.34 (ARM64/Debian 12).
+The runtime hashes are respectively
+`fe7d64709c13939412aca4641c1591c4963aaeeb03613d08d8b7bc467a01f151`
+and `cad687db66c82b617e0088bf6ef8088645b68f883758bda1ccbaf294612f5a44`.
+Separate optional runtime archives retain upstream/Cargo sources, the build
+manifest/helper, MPL text and dependency/Rust/compiler notices.
+
+Finite affected checks on the authorized Ubuntu x86-64 and Debian ARM64 VMs:
+
+- Both SDK-built Vulkan sprite regressions match **1,176/1,176 cases**, covering
+  **167,610,366 pixels** per architecture, with no skips; queued output reuse
+  and resize preserve earlier frames in both synchronization modes.
+- Both Slang baselines pass the authored channel mapping, raw microsecond delta,
+  previous-frame history/reset, renderer-state restoration, cached pause redraw,
+  resize through 4K and failure/recovery checks. All **3/3 Slang mutations** and
+  **8/8 sprite/capture mutations** are rejected on each architecture, with no
+  removed fixtures or skipped cases.
+- ARM64 mutation probes use Clang 14 and the SDK's Vulkan driver. The sniper
+  SDK's driver lacks the required surface extension, so x86-64 probes use
+  Ubuntu GCC **15.2.0**, the same SDK-built SDL3 3.4.16 and the working host Vulkan
+  driver. Release and real-main binaries remain built with sniper GCC 14;
+  the host compiler does not replace the release toolchain.
+- Local `main` passes all four targets at
+  `build/workflow/20261103T113759.603865Z`; a later focused `test-main` pass is
+  `20261103T114717.102567Z`. macOS native Slang also passes at
+  `20261103T114508.970305Z` with desktop access. The earlier sandboxed attempt
+  could not enumerate displays and is retained. Earlier complete Linux `main`
+  and 121-frame independent MAME evidence above is reused for unchanged engine
+  code/dependencies/fixtures; these new presentation checks do not broaden it
+  into whole-host or physical hardware acceptance.
+
+The original live shader test's 90-second watchdog expires during the ARM64
+VM's physical boot. `AB2_SHADER_MAIN_TIMEOUT_SECONDS` now allows an explicit
+1–900-second bound (default still 90), retaining the complete cold boot and all
+assertions. These VM runs use 600 seconds, two independent cases concurrently
+and `LP_NUM_THREADS=2`; they are correctness checks, not performance samples.
+The expired and prematurely launched pre-relink attempts remain in local/remote
+ignored evidence. Physical Steam Deck/ARM64 GPU, audio, controls, suspend and
+sustained preset performance acceptance remain open.
+
+All **six real-main cases per architecture** pass: Original, 16:9 and 16:10,
+each with filtering Off and ScaleFX. They exercise the actual GPU → Vulkan →
+GPU renderer switch, queued file chooser, invalid-preset GPU rollback,
+persistence and every live viewport switch while proving paused native RGB,
+PCM and board time identical. No cases are skipped. x86-64 cases take
+43.4–45.3 seconds; ARM64 cases take 69.8–103.0 seconds with the stated concurrent
+correctness-run settings. The runtime also resolves its dependencies and
+reports ABI 2 / API 5 inside sniper itself, independently of the newer host.
+Private build, mutation, live-main and package evidence is retained on the
+hosts under `~/ab2-linux-build/` / `~/ab2-arm64-build/` and locally under
+`build/linux-slang-validation/`. Optional runtime/source/notice archives are
+`build/releases/librashader-0.12.0-Linux-{x86_64,arm64}-Vulkan.tar.gz`.
+
+The refreshed ROM-free game archives are
+`AfterBurner2-v0.1.0-preview.6-20261103-slang-Linux-x86_64-SteamDeck-preview.tar.gz`
+and `AfterBurner2-v0.1.0-preview.6-20261103-slang-Linux-arm64-preview.tar.gz`, with
+exact source companions and checksum sidecars in `build/releases/`. Their
+SHA-256 values are respectively
+`7629e29c2ebdc663ce1796ab79bd176bc357e1024f5c69ebb8b4d75beb58496a`
+and `b1da28d29f2aa8de80d7783b590aa3c252aee9c71fc0c008f96f2273b3291851`.
+All archive/internal/source hashes and ROM exclusions were checked after retrieval.
+Extracted packages launch from `/tmp` on both X11 and Wayland for 60 cold
+frames with ScaleFX and the authored Slang reference. With the runtime copied
+into `lib/`, no runtime override is supplied; all four launches report native
+Vulkan and `filters=vulkan-gpu`. Captures match across both desktop backends
+and architectures at that finite cold checkpoint (BMP SHA-256
+`092892fcb0cb45579a1ec0467c591a785dd4282c7a807243b7b69ec9063a98e3`).
+This checkpoint is startup evidence, not representative gameplay performance.
+All application/build-tool sources match the packaged snapshot; these final
+artifact/validation and runtime-installation notes are documentation-only
+additions after packaging. Full private evidence archives are
+`build/linux-slang-validation/{x86_64,arm64}/slang-validation-evidence.tar.gz`.
+Temporary desktop idle inhibitors used for validation are released afterward.
+
+## Linux Preview 7 publication preparation (2026-11-03)
+
+The user authorizes committing/merging the Linux host, Slang composition and
+platform documentation, then publishing releases to the development and public
+download repositories. Preview 7 uses a fresh tag, keeping existing desktop and
+Android releases intact. Game binaries are unchanged from the tested Slang
+previews above; only the version label and committed source/build metadata are
+regenerated. Optional runtime binaries/source/notice archives are unchanged.
+At the user's explicit direction no oracle or regression suite is rerun for
+publication because the engine is unchanged. Publication checks are restricted
+to diff/links, exact source and binary identity, archive inventories, notices,
+ROM/capture exclusions, checksums and uploaded release assets. Existing finite
+functional, MAME and device evidence above is retained with its original scope.

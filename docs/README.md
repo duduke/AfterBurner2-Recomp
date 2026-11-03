@@ -8,6 +8,7 @@
 | See implemented enhancements and future proposals | [Enhancement backlog](ENHANCEMENT_PLAN.md) |
 | Run daily main checks, engine oracles or recover an instruction | [Workflow](WORKFLOW.md) |
 | Build and sideload Android / Android TV | [Android preview](ANDROID.md) |
+| Build and package Linux x86-64 / Steam Deck or ARM64 | [Linux previews](LINUX.md) |
 | Package the macOS preview | [macOS release workflow](WORKFLOW.md#macos-preview-release) |
 | Extend presentation, controls or audio | [Enhancement architecture](ENHANCEMENT_ARCHITECTURE.md) |
 | Select a starting stage or retry Practice | [Stage Select / Practice](PRACTICE_MODE.md) |

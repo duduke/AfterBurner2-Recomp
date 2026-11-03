@@ -30,12 +30,20 @@ struct Api {
         if(!requested.empty())paths.push_back(requested);
         else {
             if(const char* p=SDL_getenv("AB2_LIBRASHADER"))if(*p)paths.emplace_back(p);
+#ifdef _WIN32
+            constexpr const char* library="librashader.dll";
+#else
+            constexpr const char* library="liblibrashader_capi.so";
+#endif
             if(const char* base=SDL_GetBasePath()) {
-                paths.emplace_back(std::string(base)+"librashader.dll");
-                paths.emplace_back(std::string(base)+"build/deps/librashader/librashader.dll");
+                paths.emplace_back(std::string(base)+library);
+                paths.emplace_back(std::string(base)+"lib/"+library);
+                paths.emplace_back(std::string(base)+"build/deps/librashader/"+library);
+                // CMake build/linux/afterburner2, independent of launch cwd.
+                paths.emplace_back(std::string(base)+"../deps/librashader/"+library);
             }
-            paths.emplace_back("build/deps/librashader/librashader.dll");
-            paths.emplace_back("librashader.dll");
+            paths.emplace_back(std::string("build/deps/librashader/")+library);
+            paths.emplace_back(library);
         }
         for(const auto& path:paths){object=SDL_LoadObject(path.c_str());if(object)break;}
         if(!object)throw std::runtime_error("Optional librashader runtime unavailable: "+std::string(SDL_GetError()));

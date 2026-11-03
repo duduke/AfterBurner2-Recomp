@@ -245,7 +245,7 @@ int main(int argc, char** argv)try
             renderer=SDL_CreateRenderer(window,"metal");
             native_shader_backend=renderer!=nullptr;
         } else
-#elif defined(_WIN32)
+#elif defined(AB2_NATIVE_VULKAN_SPRITES)
         if(native_shader) {
             renderer=SDL_CreateRenderer(window,"vulkan");
             native_shader_backend=renderer!=nullptr;
@@ -593,7 +593,7 @@ int main(int argc, char** argv)try
         if(!pending_shader_settings)return;
         const auto requested=*pending_shader_settings;pending_shader_settings.reset();
         const auto previous=accepted_settings;const bool previous_native=native_shader_backend;
-#if defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(AB2_NATIVE_VULKAN_SPRITES)
         const bool wants_native=requested.crt==Frontend::Crt::retroarch;
 #else
         const bool wants_native=false;

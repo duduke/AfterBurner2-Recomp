@@ -1,5 +1,4 @@
 #pragma once
-#ifdef _WIN32
 #include <SDL3/SDL.h>
 #include <memory>
 #include "frontend/sprite_filter.hpp"
@@ -24,4 +23,3 @@ private:
     std::unique_ptr<Impl> impl;
 };
 }
-#endif

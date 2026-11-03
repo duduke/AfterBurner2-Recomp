@@ -12,7 +12,7 @@ struct ShaderParameter {
 };
 
 // Optional RetroArch Slang presentation. The emulated frame is never modified.
-// macOS uses SDL Metal; Windows uses SDL Vulkan. Both load an optional
+// macOS uses SDL Metal; Windows/Linux use SDL Vulkan. Both load an optional
 // librashader runtime. Other platforms retain the built-in CRT modes.
 class NativeSlang {
 public:

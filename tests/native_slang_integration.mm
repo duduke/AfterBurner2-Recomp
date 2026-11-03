@@ -16,12 +16,12 @@ static uint64_t image(SDL_Renderer* renderer,bool* lit=nullptr){
 int main(int argc,char** argv){try{
  const std::filesystem::path output=SDL_getenv("AB2_SLANG_TEST_OUTPUT")?SDL_getenv("AB2_SLANG_TEST_OUTPUT"):"build/oracle/retroarch-probe";std::filesystem::create_directories(output);
  require(SDL_Init(SDL_INIT_VIDEO),"video");auto* w=SDL_CreateWindow("Slang renderer integration",960,672,SDL_WINDOW_HIDDEN);require(w,"window");
-#ifdef _WIN32
- auto* r=SDL_CreateRenderer(w,"vulkan");require(r,"native Vulkan renderer");
-#else
- auto* r=SDL_CreateRenderer(w,"metal");require(r,"native Metal renderer");
-#endif
 #ifdef __APPLE__
+ auto* r=SDL_CreateRenderer(w,"metal");require(r,"native Metal renderer");
+#else
+ auto* r=SDL_CreateRenderer(w,"vulkan");require(r,"native Vulkan renderer");
+#endif
+#if defined(__APPLE__) || defined(__linux__)
  // Source builds must discover build/deps beside the executable even when
  // launched outside the checkout, without an environment override.
  {

@@ -23,12 +23,17 @@ MUTATIONS = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, required=True)
+    parser.add_argument("--compiler", help="Host probe compiler when testing an SDK build")
+    parser.add_argument("--sdl-prefix", type=Path, help="Host path to the SDK-built SDL installation")
+    parser.add_argument("--vulkan-include", help="Host Vulkan header directory")
     args = parser.parse_args()
-    if os.name != "nt":
-        raise SystemExit("Native Vulkan mutation gate requires Windows; no checks skipped.")
     cache = dict(re.findall(r"^([^/#\r\n:=]+):[^=\r\n]*=(.*)$", (args.build_dir / "CMakeCache.txt").read_text(), re.M))
+    sdl = args.sdl_prefix.resolve() if args.sdl_prefix else Path(cache["SDL3_DIR"]).parents[2]
+    if args.compiler:
+        cache["CMAKE_CXX_COMPILER"] = args.compiler
+    if args.vulkan_include:
+        cache["AB2_VULKAN_INCLUDE_DIR"] = args.vulkan_include
     compiler = Path(cache["CMAKE_CXX_COMPILER"])
-    sdl = Path(cache["SDL3_DIR"]).parents[2]
     destination = ROOT / "build/oracle/native-vulkan-sprite-mutations" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     inputs = destination / "inputs"
     for name in ("src/main/frontend/native_vulkan_sprite_filter.hpp", "src/main/frontend/sprite_filter.hpp",
@@ -43,6 +48,8 @@ def main():
             raise SystemExit(f"Native Vulkan mutation site changed: {name}; no checks skipped.")
     environment = os.environ.copy()
     environment["PATH"] = str(compiler.parent) + os.pathsep + str(sdl / "bin") + os.pathsep + environment.get("PATH", "")
+
+    environment["LD_LIBRARY_PATH"] = str(sdl / "lib") + os.pathsep + environment.get("LD_LIBRARY_PATH", "")
 
     def run(name, body, test_body=None):
         folder = destination / name

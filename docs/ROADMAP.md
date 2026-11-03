@@ -1,6 +1,8 @@
 # Roadmap
 
-Updated **2026-11-01**. [Preview v0.1.0-preview.6](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
+Updated **2026-11-03**. [Preview v0.1.0-preview.7](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
+adds Linux x86-64/ARM64 packages and native Vulkan Slang composition.
+Physical Linux hardware and sustained performance acceptance remain open. [Preview v0.1.0-preview.6](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
 adds the Android ARM64 host, touch controls, cooperative CPU continuations and
 21:9, and refreshes the Apple Silicon / macOS 26+ runtime. Corrected ground is
 the shared default. It retains the integrated renderer, Practice/Shuffle,
@@ -9,7 +11,7 @@ HUD/CRT, optional aircraft art, calibration and desktop spatial audio. The
 remains the compact 28 October experimental refresh;
 [Windows FPS/audio issues](WINDOWS_PERFORMANCE.md) remain open.
 Original remains the regression reference. See
-[release notes](RELEASE_NOTES.md#v010-preview6--android-and-ultrawide-2026-11-01).
+[release notes](RELEASE_NOTES.md#v010-preview7--linux-and-vulkan-slang-2026-11-03).
 
 ## Summarized roadmap
 
@@ -18,7 +20,7 @@ Original remains the regression reference. See
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
 | 2 | [Widescreen](WIDESCREEN_PLAN.md) | Extend shared-renderer performance and controller/scene audits; retain snapshot comparisons and sustained 16:9/16:10/21:9 checks and separate physical ultrawide acceptance |
 | 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification; [object-based HRTF](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned), starting with missile flybys and positioned explosions |
-| 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility; [Android / Android TV port and real-device ADB testing](#android--android-tv-port-initial-implementation); [Linux x86-64 / ARM64 builds and remote testing](#linux-x86-64--arm64-builds-and-remote-testing-planned) |
+| 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility; [Android / Android TV port and real-device ADB testing](#android--android-tv-port-initial-implementation); [Linux x86-64 / ARM64 builds and remote testing](#linux-x86-64--arm64-builds-and-remote-testing) |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
 | 6 | [Gameplay extensions](ENHANCEMENT_PLAN.md#gameplay-and-content) | Extend the Practice/Shuffle interfaces for additional arranged rules; verify object/state contracts before new stages, save states or multiplayer |
 
@@ -179,8 +181,9 @@ the decoder needs extending; in a data table it's expected.
   finite checks do not establish whole-game fidelity or sustained performance.
 - Custom stage experiments remain isolated on
   [codex/custom-stage-prototype](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/custom-stage-prototype).
-  Android/TV host implementation is in progress; Linux builds and moving
-  object-based HRTF remain plans below.
+  Android/TV host implementation is in progress. Linux Preview 7 x86-64/ARM64
+  packages are available; hardware/performance acceptance and moving object-based
+  HRTF remain open below.
 
 Dated implementation details and earlier checkpoints remain in
 [Engine Notes](ENGINE_NOTES.md), [release notes](RELEASE_NOTES.md) and the
@@ -244,6 +247,12 @@ MAME/mutation gates and listening/performance requirements in the
 
 ## Android / Android TV port (initial implementation)
 
+2026-11-02 TCL TV check: wireless ADB pairing/connection succeeded, but the
+Android 14 G08 OS supports only 32-bit ARM and rejects the ARM64 Preview 6 APK
+with `INSTALL_FAILED_NO_MATCHING_ABIS`. Add and validate `armeabi-v7a` packaging
+before gameplay testing on that device; TV acceptance remains open. See the
+[compatibility record](ENGINE_NOTES.md#tcl-android-tv-abi-compatibility-check-2026-11-02).
+
 Updated 2026-11-01. The shared C++/SDL3 Android host now has ARM64 packaging,
 phone/tablet multi-touch controls, TV launcher integration, controller/remote
 menu navigation and private ROM ZIP import. Android Back/background handling
@@ -296,36 +305,48 @@ Record implementation and device evidence in ENGINE_NOTES as work proceeds.
 Lower-cost TV performance, optional shaders/spatial audio and broader device/ABI
 support remain unverified until measured on the corresponding hardware.
 
-## Linux x86-64 / ARM64 builds and remote testing (planned)
+## Linux x86-64 / ARM64 builds and remote testing
 
-Added 2026-10-26. Produce separate ROM-free Linux x86-64 and ARM64 packages
-using the shared C++/SDL3 engine. Support reproducible builds from this Apple
-Silicon Mac through a Linux VM/container and cross-toolchains or emulation, and
-native builds on user-provided remote Linux hosts. No Linux package or hardware
-acceptance is claimed yet.
+Added 2026-10-26; initial previews built 2026-11-03. Separate ROM-free x86-64
+and ARM64 packages use the shared C++/SDL3 engine, exact source companions and
+checksums. The Ubuntu 26.04.1 VMware x86-64 build targets Valve's sniper SDK /
+glibc 2.31; the Debian forky QEMU ARM64 build targets a pinned Debian 12 SDK /
+glibc 2.36. Both pass the complete main profile, continuation and ROM startup
+checks, extracted SDK/host/X11/Wayland launches, and an independent MAME cold
+replay: **121 of 121 frames identical, 0 skipped per architecture**.
+These are finite architecture-native VM checks, not bare hardware acceptance.
+Quiet Stage 7 samples are only **11.7 FPS x86-64** and **5.76 FPS ARM64** on
+their different VMs/viewports, with audio underruns; neither establishes real-time
+playback or a cross-architecture performance comparison. See
+[build and validation](LINUX.md), the
+[x86-64 record](ENGINE_NOTES.md#linux-x86-64--steam-deck-packaging-2026-11-03) and
+[ARM64 record](ENGINE_NOTES.md#linux-arm64-preview-2026-11-03).
+Physical Deck/ARM64 controls, lifecycle, audio and sustained performance remain open.
 
-- [ ] Establish versioned build environments for both architectures, including
+- [x] Establish versioned build environments for both architectures, including
   SDL3 and optional OpenAL Soft dependencies. Declare supported distributions
   and minimum glibc/runtime requirements; document build and packaging commands.
-- [ ] Produce architecture-specific packages with required assets, dependency
+- [x] Produce architecture-specific packages with required assets, dependency
   notices, source/build identity and checksums; exclude ROMs and captures.
-- [ ] When the user provides SSH access, sync the intended source revision,
+- [x] When the user provides SSH access, sync the intended source revision,
   build and run regression/oracle checks with locally supplied ROMs and fixtures,
   collect logs and retrieve packages. Keep ROMs/captures ignored and record host
   architecture, distribution, compiler, dependencies and exact test scope.
-- [ ] Run native deterministic replays on both x86-64 and ARM64 against
+- [x] Run native deterministic replays on both x86-64 and ARM64 against
   independent MAME references for CPU/bus/device, RGB and audio observations.
   Apply the validation cadence above, reserving full regression and retained
   mutations for engine changes; platform-only acceptance uses main functionality
-  and affected device checks.
+  and affected device checks. Initial scope is the 121-frame independent cold
+  fixture on each VM; expanded/natural and physical hardware acceptance remain open.
 - [ ] Validate Wayland/X11 startup, ROM picking, settings/NVRAM persistence,
   fullscreen/resize, audio routing and controller disconnect/reconnect. Use an
   accessible active desktop/GPU/audio session for graphical remote testing;
   headless SSH checks alone do not establish desktop hardware acceptance.
 - [ ] Measure the worker-thread CPU continuation fallback on each architecture;
   implement faster Linux continuation backends if needed without changing
-  CPU/bus timing. Validate GPU filters and extend the current Linux Slang stub
-  for optional shader support, recording supported backends and limitations.
+  CPU/bus timing. CMake Linux builds now share the Windows Vulkan Slang and
+  GPU composition backend; validate sustained shader performance on physical
+  hardware and retain the documented optional runtime/backend limitations.
 - [ ] Measure sustained representative and peak-load pacing and audio stability
   on native hardware of both architectures. Obtain physical controller-feel,
   perceived-latency and listening checks; VM, cross-build and emulated results

@@ -7,6 +7,11 @@ initial platform preview. A Samsung SM-S908E / Android 16 physical smoke covers
 import/relaunch, landscape rendering, touch coin/start/steering/cannon and one
 Home/surface-loss/resume cycle; see the [device evidence](ENGINE_NOTES.md#first-physical-android-phone-smoke-2026-11-01).
 Sustained performance, broader lifecycle coverage and Android TV remain open.
+The 2026-11-02 TCL Smart TV Pro (G08, Android 14) install attempt failed with
+`INSTALL_FAILED_NO_MATCHING_ABIS`: its OS exposes only `armeabi-v7a,armeabi`,
+while this APK packages only `arm64-v8a`. This TV needs a separately built and
+validated 32-bit ARM package before launch or gameplay can be tested. See the
+[TCL compatibility record](ENGINE_NOTES.md#tcl-android-tv-abi-compatibility-check-2026-11-02).
 
 ## Build on Apple Silicon macOS
 
