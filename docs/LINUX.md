@@ -1,8 +1,8 @@
 # Linux x86-64 / ARM64 previews
 
 [Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
-include both game architectures, optional shader runtimes with covered
-source/notices, and SHA-256 files. Full project source companions remain local
+include both game architectures with the Vulkan Slang runtime already bundled,
+runtime covered-source/notice archives, and SHA-256 files. Full project source companions remain local
 and in the private development release, following the existing public-download
 policy.
 
@@ -21,7 +21,7 @@ This is a preview workflow. A successful SDK build or Ubuntu launch does not
 establish physical Steam Deck performance, input, audio or suspend acceptance.
 Linux uses the retained worker-thread CPU continuation backend. RetroArch Slang
 shaders use the native SDL Vulkan renderer and GPU sprite composition in CMake
-builds. The optional runtime and shader packs remain external (see below).
+builds. The release bundles the runtime; shader packs remain external downloads.
 No engine changes are required by these build and packaging tools.
 
 ## RetroArch Slang / native Vulkan composition
@@ -55,20 +55,23 @@ Do not use an Ubuntu-host-built runtime in a sniper release.
   --shader-preset /absolute/path/to/shaders_slang/crt/crt-geom.slangp
 ```
 
-Local optional runtime previews are named
-`librashader-0.12.0-Linux-{x86_64,arm64}-Vulkan.tar.gz`. They contain the shared
-library, manifest, corresponding upstream/Cargo sources and license notices.
-Extract the archive matching the game architecture and copy only
-`liblibrashader_capi.so` into the game's `lib/` directory, then select a `.slangp`
-through the CRT and Shaders menu. Shader packs remain external.
+The **20261103.1 Preview 7 game archives already bundle librashader** in `lib/`.
+No separate runtime installation or runtime path setting is needed.
 
-For packaged builds put `liblibrashader_capi.so` in `lib/` beside the executable,
-or supply its absolute path. Source CMake builds also discover it in
-`build/deps/librashader/`, independently of the launch directory. The runtime
-must expose ABI 2 / API 5. Keep complete shader packs together. HDR output,
-legacy GLSL/Cg presets and first-input mipmap generation remain unsupported.
-Runtime redistribution requires its notices and corresponding covered source;
-see [librashader's notice](../src/third_party/librashader/NOTICE.md).
+1. Download [shaders_slang.zip](https://buildbot.libretro.com/assets/frontend/shaders_slang.zip) from the
+   [official Libretro frontend assets directory](https://buildbot.libretro.com/assets/frontend/).
+2. Extract the entire ZIP to a folder you can keep. Preserve all subfolders,
+   shader includes and lookup textures; individual presets depend on them.
+3. Open **Settings → CRT and Shaders → Shader Preset**, then select a `.slangp`
+   preset from the extracted pack. Successful selection activates RetroArch mode.
+
+The retained `librashader-0.12.0-Linux-{x86_64,arm64}-Vulkan.tar.gz` downloads
+provide corresponding upstream/Cargo sources and complete notices for the bundled
+library. End users do not need to install these archives. The game keeps the
+library replaceable in `lib/`; source builds may still use an absolute
+`--shader-runtime` path or `build/deps/librashader/`. ABI 2 / API 5 is required.
+HDR, legacy GLSL/Cg and first-input mipmap generation remain unsupported.
+See the [runtime notice](../src/third_party/librashader/NOTICE.md).
 
 The affected checks are `verify-native-slang`, `verify-native-slang-mutations`,
 `verify-native-vulkan-sprite-filters`, `verify-native-vulkan-sprite-mutations`
@@ -159,7 +162,8 @@ retains the supplied manifest in its runtime metadata and source companion:
 
 ```sh
 LD_LIBRARY_PATH="$PWD/build/deps/linux/lib:$PWD/build/deps/linux/lib64" \
-  python3 tools/package_linux.py v0.1.0-preview.7 \
+  python3 tools/package_linux.py v0.1.0-preview.7-20261103.1 \
+  --librashader-bundle build/releases/librashader-0.12.0-Linux-arm64-Vulkan.tar.gz \
   --platform debian12-arm64 --environment /inputs/arm64-environment.json \
   --snapshot /inputs/linux-arm64-source.tar.gz \
   --manifest /inputs/linux-arm64-source.json
@@ -181,15 +185,19 @@ Run the packager inside the same SDK, with the dependency library directory in
 
 ```sh
 LD_LIBRARY_PATH="$PWD/build/deps/linux/lib:$PWD/build/deps/linux/lib64" \
-  python3 tools/package_linux.py v0.1.0-preview.7 \
+  python3 tools/package_linux.py v0.1.0-preview.7-20261103.1 \
+  --librashader-bundle build/releases/librashader-0.12.0-Linux-x86_64-Vulkan.tar.gz \
   --snapshot /inputs/linux-source.tar.gz --manifest /inputs/linux-source.json
 ```
 
 Mount `/inputs` read-only into the container. Packaging refuses changed source
 hashes and refuses to replace existing output directories. It writes runtime
 and source-companion `.tar.gz` files and SHA-256 sidecars in `build/releases/`.
-The companion contains the exact project snapshot and pinned dependency source
-archives. Runtime `BUILD.json` retains source identity and glibc requirements;
+Pass the matching ARM64 runtime/source archive for ARM64 packaging. The packager
+requires the checksum-pinned runtime/source bundle, verifies its manifest and
+notices, copies the library into `lib/` and checks its ELF architecture/glibc
+requirements with every other bundled library. The companion contains the exact
+project snapshot and pinned dependency/runtime-source archives. Runtime `BUILD.json` retains source identity and glibc requirements;
 `SHA256SUMS` inventories its files. Keep shared libraries replaceable.
 
 Before distribution, extract into a separate directory and verify the archive

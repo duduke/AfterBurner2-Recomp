@@ -52,21 +52,24 @@ and sustained peak-load performance remain open.
 ## Linux and Steam Deck
 
 [Linux Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
-include separate ROM-free x86-64 and ARM64 packages and checksums. SDL3/OpenAL
-are bundled; optional Slang runtimes are separate downloads. Full project source
-companions remain local and in the private development release; optional runtime
-archives include their corresponding covered source and notices.
+include separate ROM-free x86-64 and ARM64 packages and checksums. SDL3/OpenAL and the Vulkan Slang runtime are bundled. Full project source
+companions remain local and in the private development release; corresponding runtime
+source and notices remain available separately.
 
-| Platform | Game | Optional Vulkan Slang runtime |
-| --- | --- | --- |
-| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-Linux-x86_64-SteamDeck-preview.tar.gz) | [x86-64 runtime](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/librashader-0.12.0-Linux-x86_64-Vulkan.tar.gz) |
-| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-Linux-arm64-preview.tar.gz) | [ARM64 runtime](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/librashader-0.12.0-Linux-arm64-Vulkan.tar.gz) |
+| Platform | Download |
+| --- | --- |
+| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-x86_64-SteamDeck-preview.tar.gz) |
+| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-arm64-preview.tar.gz) |
 
 Extract the game and run `Launch.sh`. For Steam Deck, add the x86-64 `Launch.sh`
 as a Non-Steam Game and use a Gamepad template; first-run settings use
-fullscreen/16:10. ARM64 uses windowed/Original desktop defaults. To use Slang,
-copy the matching runtime's `liblibrashader_capi.so` into the game's `lib/`, then
-select a `.slangp` preset from a complete external shader pack.
+fullscreen/16:10. ARM64 uses windowed/Original desktop defaults.
+
+For Slang shaders, download the [official RetroArch Slang shader pack](https://buildbot.libretro.com/assets/frontend/shaders_slang.zip),
+extract the **entire ZIP** into a permanent folder, then open **Settings → CRT
+and Shaders → Shader Preset** and select a `.slangp` from that folder. Keep all
+subfolders, includes and textures together. No separate runtime installation is
+needed. Existing preferences are preserved.
 
 x86-64 targets Valve's sniper SDK / glibc 2.31; ARM64 targets Debian 12 /
 glibc 2.36. Both have X11/Wayland and finite Vulkan presentation checks on VMs.
@@ -84,7 +87,7 @@ the measured VMs do not sustain arcade speed. See the
 | Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery, world explosions, hit effects, player/enemy missile smoke and player damage emissions with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 5; current source also adds experimental 21:9 (522×224) |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
-| CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows/Linux Vulkan with a separately installed runtime and shader pack; readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
+| CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows/Linux Vulkan (runtime bundled on Linux; shader packs downloaded separately); readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
 | Player aircraft prototype | Optional [registered neutral/gentle-bank HD pack](docs/SPRITE_REPLACEMENT.md), included in macOS Preview 3; unsupported poses retain the original art |
 | Ground/horizon | Corrected mode is the default on every platform and removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains selectable |
 | Translucency | Independent Clouds, Missile Trails, Explosions and Afterburner settings; player flame is translucent only at full throttle during flight; crash fire/smoke included, aircraft/debris remain opaque |

@@ -3,7 +3,7 @@
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -16,6 +16,45 @@ SOURCES = {
     'SDL3-3.4.16.tar.gz': '7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68',
     'openal-soft-1.25.2.tar.gz': 'fb27e5839aa11f0e5b9d33756965291fad5d6909ab928ea1f796f4a1a6877894',
 }
+
+SLANG_BUNDLES = {
+    'x86_64': '4ea9bdc1c2156d9d05aff583a6c628bc17e43de3ec276af5aa1b26654f56b58c',
+    'arm64': '5b97babca026d566d1e73159739c1531771b658cb1c156ceca4f370da1db30d3',
+}
+SHADER_PACK_URL = 'https://buildbot.libretro.com/assets/frontend/shaders_slang.zip'
+
+
+def load_slang_bundle(path, architecture):
+    """Verify the retained runtime/source/notice archive before copying any files."""
+    if digest(path) != SLANG_BUNDLES[architecture]:
+        raise SystemExit('Pinned librashader runtime/source archive checksum mismatch')
+    prefix = f'librashader-0.12.0-Linux-{architecture}-Vulkan'
+    files = {}
+    with tarfile.open(path) as archive:
+        for member in archive.getmembers():
+            relative = PurePosixPath(member.name)
+            if relative.is_absolute() or '..' in relative.parts or relative.parts[0] != prefix:
+                raise SystemExit('Unsafe librashader archive path')
+            if not member.isdir() and not member.isfile():
+                raise SystemExit('Expected only regular librashader files/directories')
+            if member.isfile():
+                name = str(relative.relative_to(prefix))
+                if name in files:
+                    raise SystemExit('Duplicate librashader archive file')
+                files[name] = archive.extractfile(member).read()
+    for line in files['SHA256SUMS'].decode().splitlines():
+        expected, name = line.split('  ', 1)
+        if name not in files or hashlib.sha256(files[name]).hexdigest() != expected:
+            raise SystemExit(f'librashader internal checksum mismatch: {name}')
+    manifest = json.loads(files['build-manifest.json'])
+    if (manifest['version'], manifest['abi'], manifest['api'], manifest['architecture']) != (
+            '0.12.0', 2, 5, 'aarch64' if architecture == 'arm64' else 'x86_64'):
+        raise SystemExit('Incorrect librashader version/ABI/API/architecture')
+    if hashlib.sha256(files['liblibrashader_capi.so']).hexdigest() != manifest['runtime_sha256']:
+        raise SystemExit('librashader runtime does not match its build manifest')
+    if not any(name.startswith('sources/cargo-crates/') for name in files):
+        raise SystemExit('Missing librashader corresponding dependency sources')
+    return manifest, files
 
 
 def digest(path):
@@ -34,9 +73,15 @@ def main():
     parser.add_argument('--platform', choices=('sniper-x86_64', 'debian12-arm64'),
                         default='sniper-x86_64')
     parser.add_argument('--environment', type=Path, help='ARM64 SDK image/package manifest')
+    parser.add_argument('--librashader-bundle', type=Path, required=True,
+                        help='Pinned runtime/source/notice archive from the retained Linux build')
     args = parser.parse_args()
     arm64 = args.platform == 'debian12-arm64'
     architecture = 'arm64' if arm64 else 'x86_64'
+    slang_manifest, slang_files = load_slang_bundle(args.librashader_bundle, architecture)
+    slang_source_name = args.librashader_bundle.name
+    slang_source_url = ('https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/'
+                        'v0.1.0-preview.7/' + slang_source_name)
     compiler = 'clang++-14' if arm64 else 'g++-14'
     maximum_glibc = (2, 36) if arm64 else (2, 31)
     environment = None
@@ -96,11 +141,22 @@ def main():
     (package / 'lib').mkdir()
     (package / 'roms').mkdir()
     shutil.copy2(binary, package / 'afterburner2')
+    (package / 'lib/liblibrashader_capi.so').write_bytes(slang_files['liblibrashader_capi.so'])
     for soname, path in libraries.items():
         shutil.copy2(path.resolve(), package / 'lib' / soname)
     shutil.copytree(ROOT / 'assets', package / 'assets')
     shutil.copytree(ROOT / 'LICENSES', package / 'LICENSES')
     shutil.copy2(ROOT / 'LICENSE.txt', package / 'LICENSE.txt')
+    for relative, data in slang_files.items():
+        if relative.startswith('notices/'):
+            notice = package / 'LICENSES/librashader' / relative.removeprefix('notices/')
+            notice.parent.mkdir(parents=True, exist_ok=True)
+            notice.write_bytes(data)
+    (package / 'LICENSES/librashader/build-manifest.json').write_bytes(slang_files['build-manifest.json'])
+    (package / 'LICENSES/librashader/SOURCES.txt').write_text(
+        'Bundled librashader 0.12.0 uses the MPL-2.0 option.\n'
+        'Corresponding upstream/Cargo sources and complete notices: ' + slang_source_url + '\n'
+        'Archive SHA-256: ' + SLANG_BUNDLES[architecture] + '\n')
     shutil.copy2(ROOT / 'roms/README.md', package / 'roms/README.md')
     # Retain the actual license files from the pinned dependency sources too.
     shutil.copy2(ROOT / 'build/deps/SDL3-3.4.16/LICENSE.txt', package / 'LICENSES/SDL3-source.txt')
@@ -153,7 +209,7 @@ Settings and controller bindings are stored under XDG_DATA_HOME (by default
 ~/.local/share/AfterBurner2-Recomp/AfterBurner2).
 
 Built in {platform_description}
-SDL3/OpenAL and any shared C++ runtimes are replaceable files in lib/. The
+SDL3/OpenAL, librashader and any shared C++ runtimes are replaceable files in lib/. The
 SDK may link its newer libstdc++ statically; GCC runtime notices are included. System
 graphics, window-system and audio drivers remain supplied by the Linux host/runtime.
 The exact project snapshot and dependency source archives are supplied in the
@@ -161,10 +217,18 @@ sources companion. BUILD.json records the base commit and snapshot hashes.
 
 Preview limitations: {limitations} Linux currently
 uses the existing worker-thread CPU continuation backend. RetroArch Slang
-uses native Vulkan composition with an optional external librashader runtime.
-Build it with tools/deps/build_librashader_linux.sh in the matching SDK and
-supply --shader-runtime /path/to/liblibrashader_capi.so and --shader-preset
-/path/to/preset.slangp. Keep the complete shader pack together; it is external.
+uses native Vulkan composition with librashader 0.12.0 already bundled in lib/.
+No separate shader runtime installation is needed.
+
+To install RetroArch Slang shaders:
+1. Download the official Libretro shader pack: {SHADER_PACK_URL}
+2. Extract the entire ZIP into a folder you can keep. Preserve its subfolders,
+   shader includes and lookup textures together.
+3. Open Settings > CRT and Shaders > Shader Preset and select a .slangp preset
+   from that extracted pack. Selection activates RetroArch mode.
+Shader packs are external downloads; they are not included in this game archive.
+Corresponding bundled-runtime sources and notices: {slang_source_url}
+Legacy GLSL/Cg presets, HDR and first-input mipmap generation remain unsupported.
 ''')
     requirements = {}
     for path in [package / 'afterburner2', *sorted((package / 'lib').iterdir())]:
@@ -181,12 +245,15 @@ supply --shader-runtime /path/to/liblibrashader_capi.so and --shader-preset
                  environment=environment, compiler=output(compiler, '--version'),
                  sdk_os_release=os_release, cmake_cache_sha256=digest(cache_path),
                  glibc_requirements=requirements, dependencies=SOURCES,
+                 shader_runtime=slang_manifest,
+                 shader_runtime_sources=dict(url=slang_source_url, sha256=SLANG_BUNDLES[architecture]),
                  limitations=limitations)
     (package / 'BUILD.json').write_text(json.dumps(build, indent=2) + '\n')
     companion = releases / f'{name}-sources'
     companion.mkdir()
     shutil.copy2(args.snapshot, companion / 'project-source.tar.gz')
     shutil.copy2(args.manifest, companion / 'SOURCE.json')
+    shutil.copy2(args.librashader_bundle, companion / slang_source_name)
     if args.environment:
         shutil.copy2(args.environment, companion / 'BUILD-ENVIRONMENT.json')
     for dep in SOURCES:

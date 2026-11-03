@@ -98,7 +98,8 @@ mipmap generation is also unavailable. CRT Easymode, CRT Geom and CRT Royale
 have been exercised with a complete local shader pack. Preset cost varies;
 sustained performance must be measured with the chosen preset and settings.
 
-The runtime is optional and loaded dynamically. Search order is an explicit
+The runtime is loaded dynamically and bundled in current Linux game archives;
+other source builds may install it separately. Search order is an explicit
 `--shader-runtime` path (or saved `shader-runtime`), `AB2_LIBRASHADER`, application
 library locations (including `deps/librashader/librashader.dylib` beside the
 macOS executable), then `build/deps/librashader/librashader.dylib` (macOS) or
@@ -114,6 +115,16 @@ Source-built macOS executables discover the fetched runtime independently of
 the working directory. Older builds can use an absolute `--shader-runtime`
 path to `build/deps/librashader/librashader.dylib` until rebuilt. Downloading a
 shader pack alone does not install this optional runtime.
+
+### Linux packages
+
+The Linux Preview 7 packaging refresh bundles librashader in the game archive;
+no separate runtime download or installation is needed. Download the
+[official RetroArch Slang pack](https://buildbot.libretro.com/assets/frontend/shaders_slang.zip), extract the entire ZIP while
+preserving all subfolders/includes/textures, then choose **Settings → CRT and
+Shaders → Shader Preset** and select a `.slangp` from the extracted folder.
+See [Linux installation](LINUX.md#retroarch-slang--native-vulkan-composition).
+Shader packs remain separate from the game download.
 
 ### Windows Vulkan
 

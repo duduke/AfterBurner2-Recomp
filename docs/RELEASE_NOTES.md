@@ -15,11 +15,13 @@
   bridge and generated GPU sprite/scene kernels, including ScaleFX. Shader
   history, cached pause redraws, live renderer switching and failed-load rollback
   preserve the game session. The game engine and board timing are unchanged.
-- Provide separate optional **librashader 0.12.0 Vulkan runtime archives** for
-  each architecture, with corresponding upstream/Cargo sources and notices.
-  Copy `liblibrashader_capi.so` into the matching game's `lib/`, then select a
-  `.slangp` from a complete external shader pack. Legacy GLSL/Cg, HDR and
-  first-input mipmap generation remain unsupported.
+- The **20261103.1 packaging refresh bundles librashader 0.12.0** in each game
+  archive, including required notices. There is no separate runtime installation.
+  Corresponding upstream/Cargo sources and notices remain available in the
+  retained runtime/source archives. Download the [official Slang shader pack](https://buildbot.libretro.com/assets/frontend/shaders_slang.zip),
+  extract the entire ZIP with its folders/includes/textures, then choose a
+  `.slangp` through Settings → CRT and Shaders → Shader Preset. Shader packs
+  remain external. Legacy GLSL/Cg, HDR and first-input mipmaps remain unsupported.
 
 Extract the game and run `Launch.sh`. Steam Deck uses the x86-64 package natively
 and a Gamepad template, with fullscreen/16:10 defaults. ARM64 uses windowed /
