@@ -15639,3 +15639,24 @@ extract the entire tree (including includes and textures), then select a
 `.slangp` through Settings → CRT and Shaders → Shader Preset. Shader packs
 are not bundled. Game and shader runtime binaries are unchanged; no engine
 changes or new oracle/regression runs are needed for this packaging refresh.
+
+The bundled-runtime refresh is merged by
+`f7a6700088b4e4678a5c4e2beb4ea64a6394aed1` (implementation `fe44bd7`).
+Both Preview 7 releases now serve the `v0.1.0-preview.7-20261103.1` game
+archives; superseded unbundled game/source attachments are retired, with local
+copies retained. The original tag and older release versions are unchanged.
+Public README commit `92ff975470ad2a96e93c74b11fdfdda382f70e45` and both release
+pages describe bundled runtime setup and link the official shader ZIP. The
+retained runtime archives are labeled as corresponding source/notices, not a
+required end-user download. No full-project source companion is public.
+
+Package integrity inspection confirms the unchanged game binary hashes, exact
+pinned runtime bytes, complete runtime notices, official ZIP instructions and
+clean source identity. Runtime maximum required glibc remains 2.30 (x86-64)
+and 2.34 (ARM64), within each package's baseline. The library loaded from each
+final game directory in its target SDK and reports ABI 2 / API 5 with resolved
+dependencies. GitHub's final asset sizes/digests match local files: 12/12 assets
+in the private release and 8/8 in public downloads. Main/public README download
+links match the final inventories. No engine, oracle or regression suite was
+rerun; this refresh changes packaging/documentation only. Receipts and final
+release metadata are retained in `build/release-preview7-bundled-runtime/`.
