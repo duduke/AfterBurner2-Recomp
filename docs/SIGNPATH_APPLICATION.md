@@ -1,6 +1,6 @@
 # SignPath eligibility inquiry — prepared draft
 
-**Status: not submitted, not approved.** The current project does not satisfy the
+**Status: eligibility inquiry emailed to SignPath on 4 November 2026; not approved.** The current project does not satisfy the
 published OSI-license requirement. This draft discloses that issue; it must not
 be submitted as a declaration that all eligibility conditions are met. No
 certificate, signing subscription or sponsorship is claimed.
@@ -82,5 +82,7 @@ trust changes or security-policy changes are part of installation.
 
 Prepared from [Foundation eligibility terms](https://signpath.org/terms) and
 [GitHub build-origin requirements](https://docs.signpath.io/trusted-build-systems/github).
-No request has been sent and no provider account or repository integration has
-been created.
+The owner authorized sending this eligibility inquiry, which was emailed to
+SignPath's published general contact on 4 November 2026. This is not a formal
+Foundation application or approval. No provider account or repository integration
+has been created.

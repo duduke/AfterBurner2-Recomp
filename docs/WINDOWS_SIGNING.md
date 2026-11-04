@@ -20,7 +20,8 @@ licenses. The project's [license](../LICENSE.txt) prohibits commercial use, and
 retained dependencies also have noncommercial terms. Consequently the project
 does not meet the published free-program requirements in its current form.
 At the owner's request, a [candid eligibility-inquiry draft](SIGNPATH_APPLICATION.md)
-is prepared. No submission, approval or change of license is claimed. Foundation restrictions on
+was prepared and emailed to SignPath on 4 November 2026 with the owner's
+explicit authorization. No formal application, approval or change of license is claimed. Foundation restrictions on
 signing upstream DLLs would also need resolving before choosing that route.
 
 Use an existing publicly trusted CA-issued certificate/HSM or an approved
