@@ -129,7 +129,6 @@ validation and sustained ultrawide performance remain open. See the
 
 Download [Linux Preview 7](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7),
 [macOS or Android Preview 6](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6)
-or [Windows Preview 5](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
 and extract the complete desktop archive. Put your own extracted ROM files or
 `aburner2.zip` in its `roms/` directory, or select a ZIP on startup. Android uses
 the sideload APK and imports a ROM ZIP through its document picker; see
@@ -142,7 +141,9 @@ matching source companion is retained separately. The preview is ad-hoc signed a
 may require approval in Privacy & Security. Intel Macs are not included in this
 build. See the package's `START-HERE.txt` for setup.
 
-The compact **Windows 10/11 x64** refresh dated **20261028** opens with
+**Windows downloads were withdrawn from the public release repository on
+4 November 2026 pending signing and performance fixes.** The retained compact
+Windows 10/11 x64 diagnostic package dated **20261028** opens with
 `Launch.cmd`; keep all bundled DLLs beside the EXE. It includes librashader
 and its DirectX/Microsoft C++ dependencies. Shader preset packs remain separate.
 `Launch.cmd --profile` reports backend and timing output. Sources are a separate

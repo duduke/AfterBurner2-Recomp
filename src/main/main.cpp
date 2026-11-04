@@ -46,6 +46,7 @@ namespace
 {
     constexpr int SCREEN_WIDTH = GameSession::width;
     constexpr int SCREEN_HEIGHT = GameSession::height;
+    constexpr unsigned PRESENTATION_FRAMES_IN_FLIGHT = 3;
 
     struct ShaderDialogReply {std::string path,error;bool cancelled{};};
     struct ShaderDialogState {
@@ -256,7 +257,7 @@ int main(int argc, char** argv)try
         {
             gpu_device=SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL|SDL_GPU_SHADERFORMAT_SPIRV,false,nullptr);
             renderer=gpu_device?SDL_CreateGPURenderer(gpu_device,window):nullptr;
-            if(renderer)SDL_SetGPUAllowedFramesInFlight(gpu_device,3);
+            if(renderer)SDL_SetGPUAllowedFramesInFlight(gpu_device,PRESENTATION_FRAMES_IN_FLIGHT);
             else {
                 if(gpu_device)SDL_DestroyGPUDevice(gpu_device);gpu_device=nullptr;
                 renderer=SDL_CreateRenderer(window,nullptr);
@@ -484,6 +485,29 @@ int main(int argc, char** argv)try
         SDL_ShowOpenFileDialog(shader_dialog_result,raw,window,&filter,1,
             raw->initial_path.empty()?nullptr:raw->initial_path.c_str(),false);
     };
+    const auto prepare_fullscreen=[&](const Frontend::Settings& value) {
+#ifdef _WIN32
+        if(!value.fullscreen)return;
+        // Cold fullscreen submissions can block for hundreds of milliseconds.
+        // Prepare the allowed in-flight queue before playback/pacing starts,
+        // or while transition callers have playback paused. Never advance the
+        // board or consume/generate PCM to repay renderer initialization time.
+        const bool had_viewport=SDL_RenderViewportSet(renderer);
+        SDL_Rect viewport{};SDL_GetRenderViewport(renderer,&viewport);
+        std::fill(texture_pixels.begin(),texture_pixels.end(),0xff000000u);
+        if(!SDL_UpdateTexture(texture,nullptr,texture_pixels.data(),SCREEN_WIDTH*4))
+            throw std::runtime_error(SDL_GetError());
+        SDL_SetRenderViewport(renderer,nullptr);
+        for(unsigned i=0;i<PRESENTATION_FRAMES_IN_FLIGHT;++i) {
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);
+            if(!SDL_RenderClear(renderer) || !SDL_RenderTexture(renderer,texture,nullptr,nullptr) ||
+                !SDL_RenderPresent(renderer))throw std::runtime_error(SDL_GetError());
+        }
+        SDL_SetRenderViewport(renderer,had_viewport?&viewport:nullptr);
+#else
+        (void)value;
+#endif
+    };
     // Renderer-owned objects release their textures before the backend dies.
     // Board, audio, input, menus and the current frame remain live throughout.
     const auto rebuild_renderer=[&](bool native_shader,const Frontend::Settings& value) {
@@ -505,6 +529,7 @@ int main(int argc, char** argv)try
         menu->rebind(renderer,roms);
         if(!configure_sprite_texture(value))throw std::runtime_error(SDL_GetError());
         last_sprite_frame=UINT64_MAX;
+        prepare_fullscreen(value);
     };
     menu->apply=[&](const Frontend::Settings& changed) {
         const auto previous=accepted_settings;
@@ -538,6 +563,7 @@ int main(int argc, char** argv)try
             SDL_RenderClear(renderer);SDL_RenderPresent(renderer);
         }
         SDL_Rect safe_area{int((Frontend::viewport_width(changed)-SCREEN_WIDTH)/2),0,SCREEN_WIDTH,SCREEN_HEIGHT};SDL_SetRenderViewport(renderer,&safe_area);
+        if(changed.fullscreen&&!previous.fullscreen)prepare_fullscreen(changed);
         menu->notice.clear();
         accepted_settings=changed;
         if(slang_renderer)slang_renderer->invalidate();
@@ -558,6 +584,8 @@ int main(int argc, char** argv)try
     }
     if(!frame_limit && !boot_to_flight && !start_stage && !practice_start_stage && !shuffle_start) menu->open(game);
 
+    prepare_fullscreen(settings);
+
     auto audio_output=std::make_unique<Frontend::AudioOutput>(settings_path.empty()?"":settings_path+".output");
     menu->audio=audio_output.get();
     bool cockpit_enabled=audio_output->settings.profile!=Frontend::AudioProfile::original;
@@ -570,21 +598,41 @@ int main(int argc, char** argv)try
     uint64_t previous_counter = SDL_GetPerformanceCounter();
     uint64_t profile_start = previous_counter;
     unsigned profile_frames=0, profile_displays=0;
-    double profile_core=0, profile_present=0, profile_filter=0, profile_scene=0, profile_crt=0;
+    double profile_core=0, profile_present=0, profile_filter=0, profile_scene=0, profile_crt=0, profile_audio=0;
     unsigned filter_frames=0;
     Frontend::Performance performance;
     Frontend::FrameTimings frame_timings(SDL_getenv("AB2_FRAME_TIMINGS"),frame_limit);
     const auto timing_phases=[&] {
         Frontend::FrameTimings::Phases phases{profile_core,profile_scene,profile_filter,profile_crt,profile_present};
         if(wide_renderer)std::copy(wide_renderer->profile_counters().begin(),wide_renderer->profile_counters().end(),phases.begin()+5);
+        phases[9]=profile_audio;
         return phases;
     };
     Frontend::FramePacing pacing(tick_seconds);
+#ifdef _WIN32
+    uint64_t observed_audio_reprimes=audio_output->status().reprimes;
+#endif
+    const auto pacing_seconds=[&](double elapsed) {
+#ifdef _WIN32
+        const auto reprimes=audio_output->status().reprimes;
+        // Both Windows playback paths reserve 80 ms. A longer host outage
+        // also needs rebasing if the suspended audio worker has not reported
+        // exhaustion yet. Check work time and pacing waits: either can stall.
+        constexpr double playback_reserve_seconds=0.080;
+        if(elapsed>playback_reserve_seconds || reprimes!=observed_audio_reprimes) {
+            // Repaying the outage as a burst fills the bounded audio queues
+            // and leaves lasting latency. Re-anchor host pacing only; retain
+            // every board frame and PCM sample.
+            observed_audio_reprimes=reprimes;pacing.reset();return tick_seconds;
+        }
+#endif
+        return elapsed;
+    };
     bool running = true;
     auto reset_pacing=[&] {
         pacing.reset(); previous_counter=SDL_GetPerformanceCounter();
         profile_start=previous_counter;profile_frames=profile_displays=0;profile_core=profile_present=0;
-        performance={};last_sprite_frame=UINT64_MAX;profile_filter=0;profile_scene=0;profile_crt=0;filter_frames=0;
+        performance={};last_sprite_frame=UINT64_MAX;profile_filter=0;profile_scene=0;profile_crt=0;profile_audio=0;filter_frames=0;
     };
     auto sync_audio=[&] {audio_output->pause(game.paused());};
     sync_audio();
@@ -779,7 +827,14 @@ int main(int argc, char** argv)try
                 menu->open(game);reset_pacing();sync_audio();continue;
             }
             if(event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key==SDLK_F11) {
-                menu->fullscreen_toggle();reset_pacing();continue;
+#ifdef _WIN32
+                audio_output->pause(true);
+#endif
+                menu->fullscreen_toggle();reset_pacing();
+#ifdef _WIN32
+                sync_audio();
+#endif
+                continue;
             }
             if(event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key==SDLK_F3) {
                 menu->stats_toggle();reset_pacing();continue;
@@ -838,7 +893,9 @@ int main(int argc, char** argv)try
             if(measure) profile_core+=(SDL_GetPerformanceCounter()-core_start)*1000.0/counter_frequency-scene_elapsed;
             ++profile_frames;
             // Playback owns bounded queues and never clocks the emulated board.
+            const auto audio_start=measure ? SDL_GetPerformanceCounter() : 0;
             take_audio();
+            if(measure)profile_audio+=(SDL_GetPerformanceCounter()-audio_start)*1000.0/counter_frequency;
             ++simulated_frames;
             if (frame_limit && simulated_frames >= frame_limit)
                 running = false;
@@ -967,7 +1024,7 @@ int main(int argc, char** argv)try
             {
                 uint64_t counter = present_end;
                 // Bound catch-up after a suspended window or debugger pause.
-                pacing.elapsed((counter - previous_counter) / counter_frequency);
+                pacing.elapsed(pacing_seconds((counter - previous_counter) / counter_frequency));
                 previous_counter = counter;
                 if (pacing.delay()>0)
                 {
@@ -978,7 +1035,7 @@ int main(int argc, char** argv)try
                         const double remaining = pacing.delay(elapsed);
                         if (remaining <= 0.0)
                         {
-                            pacing.waited(elapsed);
+                            pacing.waited(pacing_seconds(elapsed));
                             previous_counter = counter;
                             break;
                         }
@@ -1003,6 +1060,7 @@ int main(int argc, char** argv)try
                              <<" display_fps="<<profile_displays/seconds
                              <<" filter_submit_ms="<<(filter_frames?profile_filter/filter_frames:0)
                              <<" board_ms="<<(profile_frames?profile_core/profile_frames:0)
+                             <<" audio_submit_ms="<<(profile_frames?profile_audio/profile_frames:0)
                              <<" wide_scene_ms="<<profile_scene/profile_displays
                              <<" scene_renderer="<<(wide_renderer?(integrated_scene?"integrated":"snapshot"):"native")
                              <<" crt_submit_ms="<<profile_crt/profile_displays
@@ -1020,7 +1078,7 @@ int main(int argc, char** argv)try
                              <<" audio_reprimes="<<audio.reprimes
                              <<" audio_recoveries="<<audio.recoveries<<'\n';
                 }
-                profile_start=now; profile_frames=profile_displays=0; profile_core=profile_present=0; profile_filter=0;profile_scene=0;profile_crt=0;filter_frames=0;
+                profile_start=now; profile_frames=profile_displays=0; profile_core=profile_present=0; profile_filter=0;profile_scene=0;profile_crt=0;profile_audio=0;filter_frames=0;
             }
         }
     }

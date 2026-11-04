@@ -242,7 +242,8 @@ time alone does not measure GPU completion or total presentation latency.
 For a bounded Windows frame-time trace, set `AB2_FRAME_TIMINGS` to a CSV
 path before launching the game. The trace buffers up to 36,000 frames in
 memory and writes on normal exit. It records frame cadence, board and scene
-CPU phases, filter/shader submission, presentation, pacing and thread cycles.
+CPU phases, audio mixing/submission (including playback queue waits), filter/shader
+submission, presentation, pacing and thread cycles.
 For example, from Command Prompt:
 
 ```bat

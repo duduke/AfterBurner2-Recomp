@@ -1,15 +1,14 @@
 # Roadmap
 
-Updated **2026-11-03**. [Preview v0.1.0-preview.7](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
+Updated **2026-11-04**. [Preview v0.1.0-preview.7](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
 adds Linux x86-64/ARM64 packages and native Vulkan Slang composition.
 Physical Linux hardware and sustained performance acceptance remain open. [Preview v0.1.0-preview.6](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
 adds the Android ARM64 host, touch controls, cooperative CPU continuations and
 21:9, and refreshes the Apple Silicon / macOS 26+ runtime. Corrected ground is
 the shared default. It retains the integrated renderer, Practice/Shuffle,
 HUD/CRT, optional aircraft art, calibration and desktop spatial audio. The
-[Windows 10/11 x64 Preview 5 package](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.5)
-remains the compact 28 October experimental refresh;
-[Windows FPS/audio issues](WINDOWS_PERFORMANCE.md) remain open.
+[Windows downloads are withdrawn pending signing/performance fixes](WINDOWS_PERFORMANCE.md).
+The compact 28 October experimental refresh is retained for diagnosis.
 Original remains the regression reference. See
 [release notes](RELEASE_NOTES.md#v010-preview7--linux-and-vulkan-slang-2026-11-03).
 
@@ -152,6 +151,18 @@ the decoder needs extending; in a data table it's expected.
 
 ## Current checkpoint (2026-10-31)
 
+- 2026-11-04: **Windows public downloads withdrawn; development fullscreen
+  backlog/recovery fix implemented.** Preparing presentation before playback and
+  rebasing host pacing after playback outages removes lasting audio queue debt
+  in foreground-controlled startup, F11 and forced-pause checks. Final 21:9 runs
+  at native cadence; shader/HRTF GPU stalls and occasional underruns remain.
+  Signing, sustained whole-game acceptance, the Windows recording header bug
+  and two user-reported graphical issues remain open. See
+  [Windows evidence and exact scope](WINDOWS_PERFORMANCE.md#final-development-build-validation).
+  Trusted-signature checks and an honest [SignPath eligibility inquiry](SIGNPATH_APPLICATION.md)
+  are prepared; noncommercial-license eligibility and upstream DLL signing block
+  the requested free-provider release. No replacement has been published.
+
 - 2026-11-01: **Corrected ground is the shared default on every platform**.
   Fresh settings and files without a ground preference select Corrected; explicit
   saved Original choices remain supported. See the
@@ -166,7 +177,8 @@ the decoder needs extending; in a data table it's expected.
   oracle/mutation runs are reserved for engine changes. Full test sources,
   fixtures and mutations remain retained; see the cadence above and
   [workflow](WORKFLOW.md#checks-and-logs).
-- macOS and Android packages are **Preview 6**; Windows remains **Preview 5**.
+- macOS and Android packages are **Preview 6**; Windows public downloads are
+  **withdrawn**, with Preview 5 retained privately for diagnosis.
   The macOS runtime uses a separate retained source companion;
   the Windows 28 October refresh retains unresolved FPS/audio dips. Source
   changes after those packages require a new build. See

@@ -19,7 +19,7 @@ namespace Frontend {
 // filesystem writes cannot manufacture the stalls being measured.
 class FrameTimings {
 public:
-    using Phases=std::array<double,9>; // board, scene, filter, shader, present, scene subphases
+    using Phases=std::array<double,10>; // board, scene, filter, shader, present, scene subphases, audio submission
     explicit FrameTimings(const char* path,unsigned frames):path(path?path:""),
         frequency(double(SDL_GetPerformanceFrequency())),capacity(std::min(frames?frames:36000u,36000u)) {
         if(!this->path.empty())rows.reserve(capacity);
@@ -29,7 +29,7 @@ public:
         try {
             const std::filesystem::path destination(std::u8string(path.begin(),path.end()));
             std::ofstream out(destination);
-            out<<"frame,paused,total_ms,work_ms,pacing_ms,gap_ms,board_ms,scene_ms,filter_ms,shader_ms,present_ms,scene_setup_ms,ground_ms,scene_sprite_ms,flatten_ms,thread_cycles,processor_begin,processor_end\n"<<std::fixed<<std::setprecision(6);
+            out<<"frame,paused,total_ms,work_ms,pacing_ms,gap_ms,board_ms,scene_ms,filter_ms,shader_ms,present_ms,scene_setup_ms,ground_ms,scene_sprite_ms,flatten_ms,audio_ms,thread_cycles,processor_begin,processor_end\n"<<std::fixed<<std::setprecision(6);
             for(const auto& row:rows) {
                 out<<row.frame<<','<<row.paused<<','<<row.total<<','<<row.work<<','<<row.pacing<<','<<row.gap;
                 for(auto value:row.phases)out<<','<<value;

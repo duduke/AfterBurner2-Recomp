@@ -191,7 +191,10 @@ int main(int argc,char** argv) try {
         GameSession game(roms);require(game.advance({}),"initial game advance failed");game.take_audio();
         const auto before=game.info();const auto source=game.frame().pixels;
         const std::vector<RGB888> pixels(source.begin(),source.end());
-        Frontend::NativeMenu menu(renderer,roms,{},Frontend::pixel_art_available());
+        // This block exercises Original -> Corrected. Keep its starting state
+        // explicit now that fresh application settings default to Corrected.
+        Frontend::Settings initial;initial.ground=false;
+        Frontend::NativeMenu menu(renderer,roms,initial,Frontend::pixel_art_available());
         menu.apply=[&](const Frontend::Settings& s){return Frontend::apply_settings(window,renderer,texture,s);};
         menu.open(game);require(game.paused(),"opening menu did not freeze board");
         require(!game.advance({}) && game.info().number==before.number,"menu admitted a physical board frame");
@@ -258,8 +261,15 @@ int main(int argc,char** argv) try {
         require(SDL_RenderCoordinatesToWindow(renderer,60,65,&wx,&wy),"16:10 mouse transform unavailable");
         pointer.motion.x=wx;pointer.motion.y=wy;
         require(SDL_ConvertEventToRenderCoordinates(renderer,&pointer)&&std::abs(pointer.motion.x-60)<.01f&&std::abs(pointer.motion.y-65)<.01f,"16:10 menu pointer did not match centered drawing");
+        menu.key(SDLK_RIGHT);require(menu.settings.viewport==Frontend::Viewport::wide21_9,"21:9 viewport entry missing");
+        require(SDL_GetRenderLogicalPresentation(renderer,&w,&h,&presentation)&&w==522&&h==224,"21:9 logical viewport not applied");
+        safe.x=101;require(SDL_SetRenderViewport(renderer,&safe),"21:9 centered menu viewport failed");
+        require(SDL_RenderCoordinatesToWindow(renderer,60,65,&wx,&wy),"21:9 mouse transform unavailable");
+        pointer.motion.x=wx;pointer.motion.y=wy;
+        require(SDL_ConvertEventToRenderCoordinates(renderer,&pointer)&&std::abs(pointer.motion.x-60)<.01f&&std::abs(pointer.motion.y-65)<.01f,"21:9 menu pointer did not match centered drawing");
         menu.key(SDLK_RIGHT);require(menu.settings.viewport==Frontend::Viewport::original,"viewport forward wrap failed");
-        menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide16_10,"viewport reverse wrap failed");
+        menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide21_9,"viewport reverse wrap failed");
+        menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide16_10,"16:10 viewport return failed");
         menu.key(SDLK_LEFT);require(menu.settings.viewport==Frontend::Viewport::wide16_9,"16:9 viewport return failed");
         menu.key(SDLK_LEFT);require(!Frontend::is_wide(menu.settings),"Original viewport return failed");SDL_SetRenderViewport(renderer,nullptr);
         navigate(menu,{"SETTINGS","GRAPHICS","TRANSPARENCY"});menu.pointer(60,60,false); // Hover the first effects row.

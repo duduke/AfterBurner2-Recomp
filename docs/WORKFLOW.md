@@ -178,7 +178,8 @@ scope, missing ROMs, signing status and remaining preview limitations.
 
 ## Experimental Windows preview release
 
-The current downloadable compact runtime is the 28 October Preview 5 refresh.
+Windows public downloads are withdrawn. The retained 28 October Preview 5
+refresh is diagnostic-only; see [signing and publication](WINDOWS_SIGNING.md).
 `tools/package_windows_runtime.py` produces its separate runtime/source ZIPs,
 including librashader and its DirectX/Microsoft C++ runtime dependencies. It
 requires a clean committed tree, a Release/OpenAL native build, the pinned
@@ -186,9 +187,12 @@ librashader/DirectX source archives and app-local Microsoft C++ runtime files:
 
 ```sh
 python3 tools/package_windows_runtime.py "$AB2_VERSION" --label "$AB2_LABEL" \
-  --build build/win --msvc-redist "$AB2_MSVC_REDIST"
+  --build build/win --msvc-redist "$AB2_MSVC_REDIST" \
+  --verified-runtime "$AB2_SIGNED_RUNTIME" --signature-receipt "$AB2_SIGNATURE_RECEIPT"
 ```
 
+Use `--unsigned-signing-input` instead of the two signing arguments only for
+nonpublic staging. The packager checks receipt coverage and signed-file hashes.
 Set `AB2_VERSION`/`AB2_LABEL` to a fresh version/date label and
 `AB2_MSVC_REDIST` to the directory containing the runtime DLLs. Use verified
 dependency files; package directories

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
 import zipfile
@@ -24,13 +25,62 @@ def command(*args):
     return subprocess.check_output(args, cwd=ROOT, text=True).strip()
 
 
+def signing_payload(path):
+    """Keep every original byte except Authenticode/checksum fields and padding."""
+    data = bytearray(path.read_bytes())
+    if data[:2] != b'MZ' or len(data) < 64:
+        raise SystemExit('Not a PE image: '+str(path))
+    pe = struct.unpack_from('<I', data, 60)[0]
+    if data[pe:pe+4] != b'PE\0\0':
+        raise SystemExit('Invalid PE header: '+str(path))
+    optional = pe+24
+    if optional+152 > len(data) or struct.unpack_from('<H', data, optional)[0] != 0x20b:
+        raise SystemExit('Expected a PE32+ runtime image: '+str(path))
+    security = optional+112+4*8
+    offset, size = struct.unpack_from('<II', data, security)
+    if offset or size:
+        if offset < security+8 or offset % 8 or size < 8 or offset+size != len(data):
+            raise SystemExit('Unexpected certificate-table layout: '+str(path))
+        data = data[:offset]
+    data[optional+64:optional+68] = b'\0'*4
+    data[security:security+8] = b'\0'*8
+    data.extend(b'\0'*(-len(data) % 8))
+    return data
+
+
+def verified_signatures(runtime, receipt_path, originals):
+    receipt = json.loads(receipt_path.read_text(encoding='utf-8-sig'))
+    if receipt.get('Schema') != 1 or receipt.get('Passed') is not True or receipt.get('FullRuntime') is not True:
+        raise SystemExit('A passing full-runtime Windows signature receipt is required')
+    files = receipt.get('Files', [])
+    if len(files) != len(originals) or {item['File'] for item in files} != set(originals):
+        raise SystemExit('Signature receipt does not cover the exact runtime PE inventory')
+    for item in files:
+        path = runtime/item['File']
+        if (path.is_symlink() or not path.is_file() or item.get('Passed') is not True or
+                item.get('Status') != 'Valid' or item.get('Timestamped') is not True or
+                digest(path).lower() != item.get('SHA256', '').lower()):
+            raise SystemExit('Signed payload/receipt mismatch: '+item['File'])
+        if signing_payload(path) != signing_payload(originals[item['File']]):
+            raise SystemExit('Signing changed the built PE payload: '+item['File'])
+    return receipt
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('version')
     parser.add_argument('--label', required=True)
     parser.add_argument('--build', type=Path, required=True)
     parser.add_argument('--msvc-redist', type=Path, required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--verified-runtime', type=Path,
+                      help='Runtime signed and checked on Windows; requires --signature-receipt')
+    mode.add_argument('--unsigned-signing-input', action='store_true',
+                      help='Create explicitly UNSIGNED staging artifacts; never publish as a fixed release')
+    parser.add_argument('--signature-receipt', type=Path)
     args = parser.parse_args()
+    if bool(args.verified_runtime) != bool(args.signature_receipt):
+        parser.error('--verified-runtime and --signature-receipt must be supplied together')
     if not all(re.fullmatch(r'[A-Za-z0-9.\-]+', x) for x in (args.version, args.label)):
         parser.error('Invalid artifact version/label')
     if command('git', 'status', '--porcelain'):
@@ -48,15 +98,21 @@ def main():
     if digest(source) != '4bf8cf2489d00848dcabbf2163204093776082da4217d5a5db45e4cbf335cedf':
         raise SystemExit('librashader source checksum mismatch')
     name = f'AfterBurner2-{args.version}-Windows-x64-{args.label}-experimental'
+    if args.unsigned_signing_input:
+        name += '-UNSIGNED-signing-input'
     output = ROOT/'build/releases'
     package = output/name
-    package.mkdir()  # Preserve every previous artifact.
     binaries = {n: build/n for n in ('afterburner2.exe','SDL3.dll','OpenAL32.dll','libc++.dll','libunwind.dll')}
     binaries['librashader.dll'] = deps/'librashader-windows/librashader.dll'
     for n in ('MSVCP140.dll','VCRUNTIME140.dll','VCRUNTIME140_1.dll'):
         binaries[n] = args.msvc_redist/n
     for n in ('D3DX9_43.dll','D3DCompiler_43.dll'):
         binaries[n] = dx/'build/native/release/bin/x64'/n
+    signatures = None
+    if args.verified_runtime:
+        signatures = verified_signatures(args.verified_runtime, args.signature_receipt, binaries)
+        binaries = {n: args.verified_runtime/n for n in binaries}
+    package.mkdir()  # Preserve every previous artifact; validate signatures first.
     for name_, original in binaries.items():
         shutil.copy2(original, package/name_)
     (package/'Launch.cmd').write_bytes(b'@echo off\r\ncd /d "%~dp0"\r\n"%~dp0afterburner2.exe" %*\r\n')
@@ -108,7 +164,8 @@ def main():
         raise SystemExit('Unexpected runtime payload')
     manifest = {'commit':command('git','rev-parse','HEAD'),'executable_sha256':digest(package/'afterburner2.exe'),
                 'imports':imports,'sha256':{p.name:digest(p) for p in package.iterdir()},
-                'limits':'Experimental Windows build: FPS/audio drops persist; full oracle/release acceptance remains open.'}
+                'signatures':signatures,'unsigned_signing_input':args.unsigned_signing_input,
+                'limits':'Experimental Windows build: occasional GPU stalls/HRTF underruns and hardware acceptance remain open. Signing receipts do not replace extracted-package launch/shader checks.'}
     (output/(name+'.manifest.json')).write_text(json.dumps(manifest,indent=2)+'\n')
     companion = output/(name+'-sources')
     companion.mkdir()

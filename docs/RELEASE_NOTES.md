@@ -1,5 +1,19 @@
 # Release notes
 
+## Windows public download withdrawal (2026-11-04)
+
+At the user's direction, the Windows Preview 5 runtime ZIP and checksum were
+removed from the public download repository. Its README and Preview 5/6/7
+release notices now mark Windows withdrawn pending signing, shader-runtime
+policy compatibility and performance fixes. Other platforms remain available;
+the original Windows artifact is retained privately and locally for diagnosis.
+See [Windows evidence and remaining work](WINDOWS_PERFORMANCE.md).
+
+A development frontend fix prepares fullscreen before playback and restores
+normal pacing after audio/host outages, preserving all native frames and PCM.
+It remains private: occasional GPU stalls/HRTF underruns, trusted signing and
+whole-game hardware acceptance are still outstanding.
+
 ## v0.1.0-preview.7 — Linux and Vulkan Slang (2026-11-03)
 
 [Main repository release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)

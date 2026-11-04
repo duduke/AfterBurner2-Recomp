@@ -15660,3 +15660,253 @@ in the private release and 8/8 in public downloads. Main/public README download
 links match the final inventories. No engine, oracle or regression suite was
 rerun; this refresh changes packaging/documentation only. Receipts and final
 release metadata are retained in `build/release-preview7-bundled-runtime/`.
+
+## Windows 11 signing, shader and pacing investigation (2026-11-04)
+
+The initial diagnostic subsections below are historical checkpoints; the
+fullscreen preparation implementation and final validation follow them.
+
+The user's i5-13400 / Radeon Pro WX 5100 host supplied direct SSH access and an
+active console session. Earlier Code Integrity events 3033/3077 explicitly
+block `librashader.dll` for failing the signing policy. The user's executable
+has since been locally self-signed. A separately downloaded, checksum-verified
+original Preview 5 ZIP is unsigned but now loads CRT Geom on this host, including
+in the real desktop session; the earlier fresh-install policy failure is not
+currently reproduced. No trust stores or security policies were modified.
+
+Short 1,200-frame fullscreen desktop startup runs at 1280×720, with filters and
+shaders off, average about 59.6 FPS in both Original and 16:9 but retain stalls
+and one audio underrun per run. Long presentation calls are observed in the
+worst frames; this is not proof of a driver cause or a widescreen-only fault.
+The user reports a completed Windows playthrough with two minor graphical
+issues, whose reproductions remain outstanding. No engine code or fixtures
+changed, and no oracle or main-functionality pass is claimed for these package
+diagnostics. Full hardware acceptance remains open.
+
+See [the measurements, package identities and evidence paths](WINDOWS_PERFORMANCE.md#windows-11-hardware-investigation--4-november-2026).
+Temporary scheduled tasks used ordinary interactive-user tokens and were removed
+after testing. Logs and computed statistics stay ignored under
+`build/windows-clean-diagnostics/`; ROMs remain in the user's existing package.
+
+### Public Windows withdrawal and diagnostic build (2026-11-04)
+
+At the user's direction, removed the public release repository's Windows runtime
+asset 691701432 and checksum 691701433. The public Preview 5 release now preserves
+only its two macOS assets; all public releases were checked for remaining Windows
+assets (none). Preview 5/6/7 notices and the public download index mark Windows
+withdrawn. The index update is commit `76c6167bfb380df47e3974073a016414649a52ed`
+in `duduke/AfterBurner2-Recomp-Releases`. The private development release and
+local original ZIP remain available for diagnosis. No replacement was published.
+Metadata snapshots and mutation payloads are in `build/windows-performance-fix/`.
+
+The clean desktop traces leave 9.08/8.55 ms of mean frame work outside the
+existing phase counters in Original/16:9. Added an `audio_ms` CSV phase and
+`audio_submit_ms` profile field around existing audio collection, mixing and
+submission, including playback queue waits. Playback/pacing behavior, native
+clocks, engine sources and fixtures are unchanged. This instrumentation does
+not itself fix performance or establish audio backpressure as the cause.
+
+Restored the pinned LLVM-MinGW 20261006 / Clang 23.1.3 toolchain and SDL3 3.4.18
+SDK from verified upstream asset digests and Vulkan-Headers v1.4.341. Release/LTO
+cross-build passes with the required IPO check and SDL output (OpenAL disabled
+for this diagnostic build). Executable:
+`build/windows-performance-fix/cmake/afterburner2.exe`, SHA-256
+`e58607869ab34f55b0744dde157949e2de164bd7c451944d4e256c0cffb14807`.
+The Windows network connection repeatedly dropped before transfer completed;
+deployment, phase measurements, renderer comparisons and an actual performance
+repair remain pending stable host access.
+
+Validation for the diagnostic source:
+
+- Complete main profile passes at `build/workflow/20261104T063302.996190Z/`.
+- macOS release build passes at `build/workflow/20261104T063352.102571Z/`.
+- A 180-frame macOS desktop/dummy-audio smoke writes 180 correctly aligned
+  19-column rows with nonnegative `audio_ms` values. Logs/CSV remain in
+  `build/windows-performance-fix/`; this is diagnostic validation, not Windows
+  performance acceptance.
+- Real desktop `verify-native-shader-main` passes at
+  `build/workflow/20261104T063757.369891Z/`, preserving native RGB/PCM/time across
+  renderer, preset failure and viewport transitions. Initial sandboxed graphics
+  launches failed because the sandbox had no display; desktop-access reruns pass.
+- `git diff --check` passes. No engine oracle/mutation rerun is required for
+  these diagnostics and documentation changes under the stated cadence.
+
+### Playback/pacing comparisons and diagnostic signing block (2026-11-04)
+
+Stable host access allowed deployment of the instrumented EXE without replacing
+the user's installed package. Application Control rejects this new unsigned
+binary (3033/3077). Existing trusted public certificates do not supply a private
+key to `codex` in either SSH or its interactive console session; running the
+prepared signing script as administrator confirms the missing key. Earlier
+signing commands belong to `duduke`'s PowerShell history, whose private-key
+availability has not been established. A hash-pinned helper at
+`C:\Games\AB2-diagnostics\sign-profile-build.ps1` can reuse that existing key
+if available; it creates no certificates, exports no keys and changes no trust
+or security policy. No signing or performance repair is claimed.
+
+Unchanged-executable comparisons remain possible. Ten sequential 1,200-frame
+16:9 desktop startup cases show about 8.6–9.0 ms of unaccounted mean work and
+full pending playback queues in fullscreen with SDL/WASAPI, dummy, DirectSound
+and OpenAL playback. Windowed playback and fullscreen with the playback device
+disabled reduce that gap to about 0.02–0.03 ms. Native Vulkan/bilinear Slang,
+disabling profile output and 256/512-frame SDL device hints do not resolve the
+pattern. The precise playback/pacing mechanism still needs the instrumented
+phase measurements; disabling sound is not a repair, and presentation outliers
+remain. No native code, PCM, pacing or queue behavior was modified.
+
+See [the complete matrix and scoped evidence](WINDOWS_PERFORMANCE.md#additional-comparisons-with-the-existing-executable).
+ZIPs, summaries and settings remain ignored under
+`build/windows-performance-fix/`. The completed main/renderer/CSV checks above
+still cover the unchanged diagnostic source; only documentation and ignored
+helpers changed afterward. Temporary scheduled tasks were removed. A bounded
+WPR availability check succeeds, saves its short trace locally on Windows and
+leaves no recording active; it is not a gameplay CPU profile.
+
+
+### Windows fullscreen preparation implementation (2026-11-04)
+
+The instrumented baseline eventually ran after the user signed it under
+`duduke` using their existing key. Smart App Control continued rejecting the
+self-signed executable. The user explicitly approved switching Smart App Control
+Off for development and approved the UAC prompt; no trust stores were changed,
+no new certificates were created and no keys were exported. This is development
+access, not a release-signing solution.
+
+The audio phase identifies 8.94 ms/frame in bounded playback submission after
+210.73/144.13 ms cold fullscreen presents, versus 0.017 ms windowed. Queue debt
+persists at 120 ms after the pacer catches up with renderer setup. Three known
+black presentations now prepare the Windows fullscreen queue before audio and
+pacing start, matching the existing allowed in-flight count. Fullscreen entry
+and renderer rebuild receive the same preparation while playback is paused;
+F11 explicitly pauses/resumes audio around the transition and resets pacing.
+A later 21:9 presentation stall of 140.57 ms still recreated queue debt. The
+final Windows pacing caller therefore re-anchors after playback re-primes or a
+work phase or pacing wait exceeds the existing 80 ms playback reserve. A whole-process
+suspension demonstrated that re-prime notification alone is insufficient: its
+audio worker cannot report the outage until the process resumes. Re-anchoring
+retains all board frames and PCM, forgoing wall-time catch-up for that exceptional
+outage. Ordinary short stalls retain normal deadline repayment. No engine
+sources, native timing, queue bounds or other platforms' presentation change.
+
+The startup-only prototype reduces 16:9 p99 from 22.10 to 16.80 ms and audio
+submission from 8.94 to 0.015 ms with zero steady pending queue and zero underruns
+in 1,200 frames. Its F11 test reproduced backlog, motivating transition handling
+in the final implementation. Those traces and the failed transition are retained,
+not counted as final acceptance. Isolated GPU/presentation waits remain.
+
+Release/LTO Windows cross-build uses pinned LLVM-MinGW 20261006 / Clang 23.1.3,
+SDL 3.4.18 and Vulkan-Headers 1.4.341; the final build enables OpenAL with the
+original runtime DLL and matching headers. Final executable SHA-256:
+`c56180f74d4bd0026a1577778a5dc661d3f5d803242c8351e79a688ea9e79524`.
+The private validation runtime is `C:\Games\AB2-diagnostics\fixed-validation`.
+No replacement public release was made.
+
+Main profile passes at `build/workflow/20261104T134615.325804Z/`: main/session,
+781 native RGB/audio frames, Practice and Shuffle. Relevant transitive sources
+remain unchanged; these results are reused within that scope. Final macOS
+release and native shader/main checks pass at
+`build/workflow/20261104T145228.611117Z/`. Final menu checks pass on macOS at
+`build/workflow/20261104T142046.849846Z/` after repairing explicit starting-ground
+and four-viewport test assumptions. Ground-toggle coverage is retained and 21:9
+logical sizing, pointer mapping and wrap coverage is added. Production menu
+behavior is unchanged. Both relevant deliberately faulty menu variants are
+retained under `build/oracle/menu-mutations/`; the reusable build helper is
+`tools/windows/build_menu_mutation.py`.
+
+On Windows, the Vulkan pixel check passes **1,176 of 1,176 cases**, **167,610,366
+pixels identical, 0 skipped**. Spatial audio passes 60 sample-seconds / 2,880,000
+frames / 13 sources plus backpressure, pause, profile and recovery checks.
+All eight native shader/main cases (four viewports × Off/ScaleFX) pass native
+RGB/PCM/time checks. The corrected menu baseline reaches the pre-existing
+`recording header lost selected switches` failure; this overall Windows gate
+remains failed. The Ground and 21:9 gates pass before that failure; their
+mutants fail at `ground correction UI failed` and `21:9 viewport entry missing`
+respectively. Their rejection demonstrates those specific checks, not a passing
+complete Windows menu suite. No engine/oracle acceptance is claimed.
+
+The Windows text-mode recording writer seeks to byte 9 to update its count;
+CRLF expansion makes that offset incorrect. Repairing that separate recording
+issue and validating its fixtures remains outstanding; no Windows recording
+from this build is accepted as an oracle fixture.
+
+See [final hardware measurements and remaining limits](WINDOWS_PERFORMANCE.md#fullscreen-presentation-preparation).
+Ignored evidence stays under `build/windows-performance-fix/` and on the Windows
+host; no ROMs, captures, private keys or personal account data are committed.
+
+
+Final recovery evidence: foreground-controlled quarter-second pauses now recover
+from both work and pacing sleep, retaining 1,800/1,200 consecutive native-frame
+rows respectively. The preparation-only and work-only variants retain lasting
+queue debt; their failures and traces remain available. Final post-outage tail
+cadence is 59.637 Hz, p99 about 16.77 ms and audio submission 0.015–0.017 ms,
+with 0–20 ms pending instead of 120 ms. This forgoes wall-time catch-up after an
+exceptional outage, without skipping a frame or dropping PCM.
+
+Final 3,600-frame 21:9 is 59.637 FPS with no underruns; the 16:9
+ScaleFX/S-video-scanline/Sharp HUD/HRTF case averages 59.381 FPS with a 185.57 ms
+GPU stall, two source-group underrun messages (13 source counts) and one
+synchronized re-prime, then recovers to normal cadence with no persistent queue.
+Final 2,400-frame F11 transition has no underruns or trace gaps. Original/16:9
+frame-180 BMPs remain byte-identical to baseline. Eight final Windows shader/main
+cases pass. Mac GPU menu check adds 4,128/4,128 identical sprite-plane comparisons,
+0 skipped (`build/windows-performance-fix/mac-menu-gpu.log`). The last Mac release
+and shader/main workflow is `build/workflow/20261104T145228.611117Z/`.
+
+Background/occluded samples are excluded. Final tests explicitly activate the
+SDL window rather than its console and record foreground PID checks; a Media
+Player window had interfered with earlier launches. The initial severe 8–15 FPS
+sample did not repeat in the foreground A/B baseline and is not evidence for a
+persistent renderer regression. A complete chronological trace, failed variants,
+settings, SHA manifests and scoped statistics are retained under
+`build/windows-performance-fix/`; see the
+[final measurement table and remaining limits](WINDOWS_PERFORMANCE.md#final-development-build-validation).
+No replacement release or whole-host acceptance is claimed.
+
+
+Security restoration: after the user approved Windows UAC, Smart App Control
+was verified **On (policy state 1)** at 15:44:47 UTC on 4 November 2026.
+All temporary diagnostic scheduled tasks, including the restoration helper,
+were removed. The receipt is `build/windows-performance-fix/final-security-state.json`;
+the earlier Off observation is retained separately. No certificate trust stores
+were changed. The private executable remains unsigned and is not release-ready.
+
+
+### Windows release-signing preparation and SignPath eligibility (2026-11-04)
+
+At the user's request, prepare trusted signing and publication using focused
+checks, reusing the unchanged main/frontend evidence above. No engine source
+changed and no full engine regression/oracle run was requested or performed.
+The Windows audit finds six unsigned PE files (game, SDL, OpenAL, librashader,
+libc++ and libunwind) and five already valid, timestamped Microsoft DLLs.
+Smart App Control remains On throughout this signing preparation.
+
+Added `tools/windows/sign_release.ps1` for an existing CA-issued Windows/HSM key
+and `verify_release_signatures.ps1` for exact inventory, valid Authenticode,
+timestamps, approved public roots and per-file hashes. Existing vendor
+signatures are preserved. Verification passes the genuine five-file Microsoft
+control and rejects unsigned, locally trusted ad-hoc and tampered controls. A
+nested-call check confirms success clears a prior failure exit status. The full
+unsigned runtime correctly fails. Signing with the unavailable local key is
+rejected before changing any binary. Production signing itself remains untested
+and blocked on a publicly trusted identity.
+
+The compact packager now requires a verified signed runtime/receipt or an
+explicit `--unsigned-signing-input` mode, whose artifacts are visibly marked.
+Signed-file digests and complete receipt coverage are checked. PE payloads must
+match the original build after excluding only checksum, certificate metadata
+and signature padding. Genuine signed/unsigned vendor payloads compare equal;
+a retained code-byte mutation is rejected. Calling the packager without an
+explicit signing mode fails. Fixtures, receipts, failed controls and staged
+13-file unsigned input are retained in `build/windows-signing-release/`,
+`build/oracle/windows-signing-mutations/` and `C:\Games\AB2-signing-release`.
+No ROMs or captures are in the staged signing ZIP.
+
+The user selected preparation of the free SignPath route. Its published
+OSI-license requirement conflicts with the current project and retained
+noncommercial component terms. No license was changed and no eligibility claim,
+account, provider approval or signed release was manufactured. The
+[prepared eligibility inquiry](SIGNPATH_APPLICATION.md) explicitly discloses
+that issue, unsigned upstream DLLs, private-source access, GitHub-hosted build
+requirements and unconfirmed owner/MFA details. It has not been submitted.
+See [signing and publication steps](WINDOWS_SIGNING.md). Public Windows downloads
+remain withdrawn until real signatures and protected-package launches pass.
