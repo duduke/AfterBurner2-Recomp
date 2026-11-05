@@ -1,11 +1,17 @@
 # Windows release signing
 
-Public Windows downloads remain withdrawn until the executable **and all bundled
-DLLs** have trusted signatures and an extracted package launches with Smart App
-Control On. A checksum, GitHub attestation or a locally trusted self-signed
-certificate does not meet this requirement. No full engine regression/oracle run
-is needed for this frontend/packaging change; reuse the unchanged main and
-frontend evidence recorded in [Windows performance](WINDOWS_PERFORMANCE.md).
+At the owner's explicit direction on 5 November 2026, public **unsigned
+experimental previews** may be published while trusted signing is pending.
+Use `--unsigned-preview` and keep `UNSIGNED` in the artifact name and download
+label. Smart App Control and other Windows protections may block these builds;
+no security setting is changed or bypassed by the release workflow.
+
+A signed release still requires a publicly trusted signature on the executable
+and every bundled DLL, plus an extracted-package launch with Smart App Control
+On. A checksum, GitHub attestation or self-signed certificate does not meet that
+standard. The standalone base contains one EXE; optional OpenAL/Slang runtimes
+retain their separate provenance and compatibility requirements.
+No full engine gate is needed for these presentation/packaging changes.
 
 ## Signing identity required
 

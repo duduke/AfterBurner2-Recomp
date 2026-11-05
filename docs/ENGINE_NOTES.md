@@ -16265,3 +16265,52 @@ imports, main functionality and affected presentation/audio/license checks pass;
 trusted signing and protected final-package launch remain external prerequisites.
 See [the detailed validation record](WINDOWS_PERFORMANCE.md#public-source-and-standalone-signing-input--5-november-2026)
 and [current signing requirements](WINDOWS_SIGNING.md).
+
+
+## Playback-aligned object HRTF rendering (2026-11-05)
+
+The presentation path now isolates owned physical FM/PCM voices without another
+chip clock or changes to native output. Music masks retain priority. Owned
+contributions leave the category bus and enter 24 direction-weighted mono buses
+per chip, with 45-degree azimuth and three elevation rings (-30/0/+30 degrees).
+Together with the existing 13 streams this bounds playback at 61 sources.
+Static OpenAL positions make movement sample-aligned through queues, pauses and
+recovery. A causal 16 ms interpolation uses the last two historical bearings;
+it never reads a future frame position. Attenuation and Doppler remain disabled.
+
+New queue producers validate exact native return addresses and ROM command
+tables: player missiles `$A026`, firing aircraft `$14DA0`, world explosions
+`$91AC`, and target-lock FM `$7BAC`. The lock marker's live aircraft is A5-64;
+its generation/lifetime owns the cue. No pursuing-engine loop is invented.
+Aircraft/missile X/Y use signed ROM view rotation, including the neutral-roll
+X reversal. World positions use the separate `$9122/$9274/$92BA` shared offset
+pair, native signed products and 32-bit wrap. Shared RAM and main RAM pointers
+are checked before use. Unknown/stale sources retain category/stereo fallback.
+
+Focused independent MAME ownership comparisons pass:
+
+- Retained raw tracker: 2,244,500/2,244,500 records identical, zero skips.
+- Expanded `families-v3.txt`: 2,246,734/2,246,734, zero skips; 8,000 frames,
+  40 origins, 11,805 owned FM and 428,665 owned PCM observations, 39 identities,
+  and 2,234 extended family position observations.
+- `world-v1.txt` ground-award physical route: 3,713,339/3,713,339, zero skips;
+  12,000 frames, 154 origins, 62,253 FM and 1,404,331 PCM observations,
+  140 identities and 14,951 family position observations. This fixture has no
+  positive world-explosion producer; do not infer that from its filename.
+- Retained directed world corpus: 64/64 explosion handlers match MAME, with
+  eight emitted X/Y projection witnesses agreeing with the rendering coordinate
+  contract. Whole fixture: 248 identical, zero different, eight explicit
+  other-CPU input races in the unrelated `$8AF2` family.
+
+Natural `$6E/$6F` positive coverage remains open. The 12,000-frame recording
+witnesses 355 real `$156EC` comparisons and zero eligible conditions after the
+native unsigned `depth-$1FE0` subtraction. No command, sound or gameplay state
+is injected to disguise that gap. The retained synthetic protocol controls
+still cover both passing-command ownership and FM voice assignment.
+
+The 8,000-frame paired native export comparison preserves RGB/PCM/time and
+music/effects exactly, with nonzero rendered FM/PCM. Production loopback checks
+cover queued left/right changes, front/rear/elevation, 61-source starvation,
+pause/clear, six-packet backpressure and fallback. Final integrated-source and
+platform/package receipts are recorded below as they finish. No complete engine
+gate is required: these changes are passive observers and presentation taps.

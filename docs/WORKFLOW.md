@@ -1044,3 +1044,23 @@ These passive presentation observers use `main` plus the affected checks above
 and a relevant build/smoke. Their location in engine headers does not trigger
 the full `required` gate; follow ROADMAP's core-execution boundary. Retain all
 existing fixtures and mutation targets in the aggregate gate.
+
+
+Object rendering extensions use these focused checks (no complete engine gate):
+
+```sh
+python3 tools/workflow.py run oracle-object-audio-families verify-object-audio-world verify-object-audio-mutations verify-object-audio-wire-mutation verify-spatial-game verify-spatial-mutations
+```
+
+`families-v3.txt` is the 8,000-frame expanded natural ownership/trajectory capture;
+`world-v1.txt` is the 12,000-frame ground-award-route capture. Both use
+`AB2OBJ03`. The second name describes the input route, not proof of naturally
+sounding world explosions: its extended positive families are missiles, firing
+aircraft and target-lock attachments. World coordinates instead use the retained
+independent directed `world_directed.bin` projection witnesses.
+Regenerate expanded captures with `AB2_OBJECT_FAMILIES=1`, plus
+`OBJECT_AUDIO_INPUT`, `OBJECT_AUDIO_FRAMES` and `OBJECT_AUDIO_OUTPUT` environment
+variables before `python3 tools/workflow.py run capture-object-audio`.
+Keep all earlier fixtures and controls. Positive natural `$6E/$6F` remains open;
+355 actual comparison executions in the second recording have zero eligible
+unsigned depth conditions. Do not synthesize a command to claim natural coverage.

@@ -100,7 +100,7 @@ object_frames=emu.add_machine_frame_notifier(function()
   if (mem:read_u8(p)&0x80)~=0 then
    local base=mem:read_u32(p+54)&0x3fffff
    local bx,by=0,0
-   if kind==3 and base>=0x3f8000 and base<=0x3ffff8 then bx=mem:read_u32(base);by=mem:read_u32(base+4) end
+   if kind==3 and ((base>=0x3f8000 and base<=0x3ffff8) or (base>=0x280000 and base<=0x2bfff8)) then bx=mem:read_u32(base);by=mem:read_u32(base+4) end
    out:write(string.format('Q %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n',p,kind,mem:read_u16(p+42),mem:read_u16(p+44),mem:read_u16(p+36),mem:read_u16(0xffff8d14),mem:read_u16(0xffff8d16),mem:read_u16(0xffff8d18),base,bx,by,mem:read_u16(0x29c092),mem:read_u16(0x29c090),mem:read_u16(0x29c09e),ns()))
   end
  end end

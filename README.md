@@ -14,6 +14,13 @@ Original project code is **GPL-3.0-or-later**. Third-party and historical
 components retain their own licenses; this is not a blanket relicensing of them.
 See [LICENSE.txt](LICENSE.txt) and [third-party notices](docs/THIRD-PARTY-NOTICES.md).
 
+**Preview 8:** layered controller haptics and experimental moving object audio.
+[Downloads and release notes](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.8).
+macOS (Apple Silicon/macOS 26+), Linux x86-64 and ARM64, Android ARM64, and an
+explicitly **unsigned experimental Windows x64 base**. Windows protections may
+block the unsigned build; optional OpenAL/Slang runtimes are separate there.
+Android uses SDL audio. Supply your own verified arcade ROMs.
+
 ## Current state
 
 The native build supports cold boot, attract mode, coin/start, flight, weapons,

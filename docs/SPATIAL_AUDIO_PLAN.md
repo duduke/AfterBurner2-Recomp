@@ -1,7 +1,7 @@
 # OpenAL Soft cockpit audio
 
 **Status: experimental implementation shipped in the macOS preview.**
-Updated **2026-11-05** with passive object tracking; moving HRTF remains planned. The
+Updated **2026-11-05** with playback-aligned object rendering and expanded ownership. The
 implemented playback checkpoint is recorded for
 [macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
 Original SDL remains the
@@ -119,11 +119,34 @@ Ten retained metadata mutations and a detached sound-observer control protect
 the contracts. See [implementation evidence](ENGINE_NOTES.md#passive-object-audio-tracking-2026-11-05)
 and [commands](WORKFLOW.md#object-audio-tracking-checks).
 
-Dynamic placement still needs verified listener-relative coordinates for each
-family and separately renderable voices; the current renderer combines effects
-into fixed category buses. Tracking exports raw missile values, not inferred
-OpenAL bearings. Retain native trigger times, voice stealing, clocks and original
-stereo balance; never assign an ambiguous voice to a nearby object.
+Supported owned voices now render through a bounded 24-direction grid per chip
+(45-degree azimuth steps and -30/0/+30-degree elevation). Signed native view
+rotation converts listener-relative missile/aircraft positions; world explosions
+use their own shared-offset projection contract. A 16 ms causal transition uses
+past timestamped positions, with no future frame steering queued audio. The
+spatial weights travel with PCM, so pause, clear and recovery preserve alignment.
+Music stays direct stereo; unknown ownership keeps the existing category buses.
+
+The 61 total OpenAL sources include the 13 existing streams and 48 object buses.
+Owned effects are removed from their category bus before being added once to the
+grid. Chip generation, original stereo PCM, native voice stealing and triggers
+are unchanged. Distance attenuation and Doppler remain disabled. This is an
+experimental virtual-speaker presentation, with finite angular resolution.
+
+Verified additional producers are player missile `$A022` (return `$A026`),
+enemy launch `$14D9A`, world explosion `$91A6`, and target-lock FM `$7BA8`.
+The lock marker is an attachment: its cue belongs to the live aircraft at A5-64.
+Native X/Y are transformed with the ROM's signed sine/cosine frame; projected
+screen coordinates are never used to infer whether an aircraft is behind.
+
+Natural 8,000- and 12,000-frame MAME recordings verify FM and PCM ownership and
+17,185 family trajectory observations. The latter observes 355 executions of
+the `$156EC` flyby comparison, with **zero eligible unsigned depth conditions**.
+Natural positive `$6E/$6F` remains unverified; no event is invented to fill it.
+World geometry additionally matches eight independent MAME projection witnesses
+in the retained directed corpus (the full retained 64 explosion handler records
+also pass). A continuous pursuing-aircraft engine is still unsupported without
+a verified native voice or separately specified enhancement asset.
 
 Suggested implementation order:
 
@@ -151,14 +174,14 @@ presentation policy; the current implementation has attenuation and Doppler off.
   stale ownership on despawn/reuse, reset, restart and capture disable/re-enable
   (including Original/enhanced profile switches); retain
   the existing category/stereo fallback when ownership is unknown.
-- [ ] Render supported voices separately with bounded source/queue costs and
+- [x] Render supported voices separately with bounded source/queue costs and
   smooth movement aligned to audio playback time. Define the listener frame
   and camera/roll relationship explicitly; never feed presentation state back
   into game execution or native sound-device state.
 - [ ] Add independent MAME ownership/trajectory fixtures and rejected mutations
   for wrong source, side/depth, stale identity and timing. Preserve all retained
   fixtures, mutations and native RGB/PCM/time comparisons (initial tracking suite
-  implemented; natural flyby/FM and broader families remain open); apply ROADMAP's
+  expanded natural FM/PCM and directed world coordinates implemented; natural positive flyby and remaining families stay open); apply ROADMAP's
   focused/full validation cadence to the actual changes and acceptance gate.
 - [ ] Exercise overlapping sources, pause/resume, clear/restart, voice stealing,
   fallback and starvation; measure clipping, latency and sustained peak-load

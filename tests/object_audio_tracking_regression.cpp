@@ -71,5 +71,14 @@ int main()try{
     require(moving.render(aircraft,18000000,w)&&w[14]>.999f,"movement did not start continuously from the previous bearing");
     require(moving.render(aircraft,34000000,w)&&w[10]>.999f,"movement did not reach listener-right");
     put(35000000,parent,0);require(!moving.render(aircraft,35000001,w),"retired aircraft audio followed its surviving marker");
+    main_rom[0x91b8]=0x50;constexpr unsigned blast=0x3fc000;
+    put(36000000,blast,0x8000);put(36000001,blast+16,0);put(36000002,blast+18,0x90ac);
+    scene.longword(blast+54,0x29c190);scene.longword(0x29c190,64000);scene.longword(0x29c194,12800);
+    scene.word(blast+42,32);scene.word(blast+36,1024);scene.word(0x29c092,65408);scene.word(0x29c090,0);scene.longword(sp,0x91ac);
+    moving.context(0xb868,blast,sp,0);moving.main_write(36000003,0xb868,0x3f890c,0x5000,0xff00,16,view);
+    const auto blast_frame=moving.frame(3,37000000,view);const auto found=std::find_if(blast_frame.sources.begin(),blast_frame.sources.end(),[](const auto& source){return source.id.record==blast;});
+    require(found!=blast_frame.sources.end(),"world explosion producer lost its source");
+    require(moving.render(found->id,37000000,w,false),"shared-RAM world explosion bearing unavailable");
+    const auto expected_world=weights(468,100,0);for(unsigned d=0;d<directions;++d)require(std::abs(w[d]-expected_world[d])<1e-5,"world shared offsets or elevation were lost");
     std::cout<<"Object audio: generation-safe slots, raw missile coordinates, main ring/latch, Z80 NMI/queue shifts, sequencer/voices, unknown fallback, reuse and reset passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

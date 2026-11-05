@@ -1,5 +1,44 @@
 # Release notes
 
+## v0.1.0-preview.8 — Haptics and object audio (2026-11-05)
+
+This preview combines today's public GPL source/standalone Windows changes with
+layered controller feedback and experimental object-based spatial rendering.
+
+- Stronger impacts sustain rumble through the native explosion/fall/roll sequence.
+  Missile feedback follows the launch side. Each effect has Low, Med, High and
+  Off levels, with independent enablement.
+- Takeoff, landing and refueling use layered cues: approach/contact/rollout,
+  engine/run-up transitions, nozzle coupling and missile reload bumps aligned
+  to delivered native audio cues. Final carrier landing also works on the
+  Practice 22-to-23 route.
+- Desktop enhanced audio follows owned player missiles, firing aircraft and
+  target-lock cues; world explosions use their own coordinate contract.
+  Timestamped FM/PCM contributions are rendered once through a 24-direction
+  grid per chip. Music stays dry stereo and Original SDL preserves native PCM.
+- Native triggers, gameplay, emulated hardware and clocks are unchanged.
+  Natural FM/PCM ownership is independently checked in MAME; positive native
+  `$6E/$6F` flyby events remain unobserved in the retained recordings. No added
+  pursuer-engine loop, Doppler or distance attenuation is claimed.
+- The repository is public, with GPL-3.0-or-later original code and preserved
+  third-party licenses. Restricted SaI filters and unused legacy audio are
+  retained on the historical branch; EPX, Scale3x and ScaleFX remain.
+
+Windows is published at the owner's direction as an explicitly **UNSIGNED
+experimental standalone base**. Trusted signing is pending; Smart App Control
+may block it. OpenAL and Slang are optional external runtimes on Windows, with
+SDL/shader fallback when absent. This is not a signed compatibility fix.
+macOS remains ad-hoc signed; Android remains an ARM64 debug-signed sideload
+preview using SDL audio. Desktop HRTF is not included in the Android APK.
+Controller rumble depends on hardware support; phone vibration is not implied.
+
+Main functionality plus affected ownership, cue, mixer, lifecycle, mutation,
+package and platform checks apply. Full engine testing is required only when
+native execution or emulated hardware behavior changes. Hardware listening,
+physical rumble feel and sustained device performance retain their documented
+limits. Final artifact identities and platform results are recorded in Engine
+Notes and the published release.
+
 ## Windows public download withdrawal (2026-11-04)
 
 At the user's direction, the Windows Preview 5 runtime ZIP and checksum were
