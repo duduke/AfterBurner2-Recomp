@@ -388,3 +388,30 @@ module environment. Both signing scripts now use a shared bootstrap importing
 Management, Utility and Security from the active installation, and preflight
 all required commands in both hosts before compilation. The successful scoped
 PowerShell 7 control does not replace the complete hosted gate.
+
+
+### Complete Windows base gate passed
+
+[Run 42090148787](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42090148787)
+passes from candidate `170d9103a401a1703a28749dca836d1ab1cfe04c`:
+
+- Required commands/providers load under PowerShell **7.6.9** and Windows
+  PowerShell **5.1.26100.33648**, using each installation's own modules.
+- The actual EXE starts from an otherwise empty directory and reaches its CLI
+  parser. This tests startup imports, not gameplay or protected Windows 11.
+- Both PowerShell hosts correctly reject the actual EXE as `NotSigned` and
+  produce failed, full-inventory negative-control receipts. No trusted signature
+  is claimed; the failed receipts are retained in the CI artifact.
+- Original SDL and missing/incompatible OpenAL fallback pass with the dummy
+  audio driver explicitly selected and verified. Real device/HRTF and externally
+  signed optional runtimes remain separate acceptance work.
+- License checks, exact three-file runtime inventory, x64/system-only imports,
+  complete pinned source companion and artifact upload all pass.
+
+Unsigned runtime ZIP: 3,288,059 bytes, SHA-256
+`db0048be8b92c8cbc5fa9fdce28e0c176b2b5c7662c4f728adfdfce07cbd5413`.
+Corresponding-source ZIP: 219,322,013 bytes, SHA-256
+`c4857dc60aa538f2062b77368b70aa4b13b8132543c4f742214ace8512160205`.
+These are explicitly unsigned signing inputs, not restored public Windows
+release downloads. Documentation recording this result does not change the
+tested application/build/verifier inputs.
