@@ -76,7 +76,9 @@ foreach($file in $files | Sort-Object Name){
         Failures=$failures}
 }
 $passed=@($results | Where-Object {-not $_.Passed}).Count -eq 0
-$policy=Get-ItemPropertyValue 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' VerifiedAndReputablePolicyState -ErrorAction SilentlyContinue
+# Windows Server/older hosts may have no SAC value. Null means unavailable,
+# never On or Off. This metadata does not replace protected launch acceptance.
+$policy=[Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\CI\Policy','VerifiedAndReputablePolicyState',$null)
 $receipt=[PSCustomObject]@{Schema=1;UTC=[DateTime]::UtcNow.ToString('o');Passed=$passed;
     FullRuntime=(-not [bool]$FilesOnly);Profile=$Profile;SmartAppControlState=$policy;Files=$results;
     Scope='Authenticode, timestamps and approved public roots; launch/shader acceptance is separate'}

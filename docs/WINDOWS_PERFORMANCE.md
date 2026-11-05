@@ -372,3 +372,11 @@ name-only import in run 42085759296 produced duplicate type data on the mixed
 PowerShell 5/7 runner; the explicit manifest avoids selecting another host's
 module. No trust store or policy changes are made. Failed runs are retained
 and are not counted as passing signature/fallback acceptance.
+
+
+Both PowerShell provider preflights passed in run 42087123706. Its unsigned
+signature audit then reached an absent Smart App Control registry value on
+Windows Server. That field is metadata, not a signature criterion. The verifier
+now uses a read-only registry query returning null for an absent value; null
+means unavailable, never protection On or Off. Protected Windows 11 launch
+acceptance remains a separate required step after actual signing.
