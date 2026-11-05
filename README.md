@@ -10,6 +10,8 @@ Inspired by [Cannonball](https://github.com/djyt/cannonball).
 Supply your own [ROM dump](roms/README.md). macOS Preview 6 and source builds also load
 `roms/aburner2.zip` directly and offer a ZIP file picker when ROMs are missing. ROMs, original artwork and personal
 soundtracks are not distributed. This project is not affiliated with SEGA.
+Original project code is **GPL-3.0-or-later**. Third-party and historical
+components retain their own licenses; this is not a blanket relicensing of them.
 See [LICENSE.txt](LICENSE.txt) and [third-party notices](docs/THIRD-PARTY-NOTICES.md).
 
 ## Current state
