@@ -115,6 +115,8 @@ def main():
                       help='Runtime signed and checked on Windows; requires --signature-receipt')
     mode.add_argument('--unsigned-signing-input', action='store_true',
                       help='Create explicitly UNSIGNED staging artifacts; never publish as a fixed release')
+    mode.add_argument('--unsigned-preview', action='store_true',
+                      help='Publish an explicitly unsigned experimental preview; protected Windows may block it')
     parser.add_argument('--signature-receipt', type=Path)
     args = parser.parse_args()
     if bool(args.verified_runtime) != bool(args.signature_receipt):
@@ -146,6 +148,8 @@ def main():
     name = f'AfterBurner2-{args.version}-Windows-x64-{args.label}-{args.profile}-experimental'
     if args.unsigned_signing_input:
         name += '-UNSIGNED-signing-input'
+    elif args.unsigned_preview:
+        name += '-UNSIGNED'
     output = ROOT/'build/releases'
     package = output/name
     if base:
@@ -203,7 +207,7 @@ def main():
         raise SystemExit('Unexpected runtime payload')
     manifest = {'commit':command('git','rev-parse','HEAD'),'executable_sha256':digest(package/'afterburner2.exe'),
                 'imports':imports,'sha256':{p.name:digest(p) for p in package.iterdir()},
-                'profile':args.profile,'signatures':signatures,'unsigned_signing_input':args.unsigned_signing_input,
+                'profile':args.profile,'signatures':signatures,'unsigned_signing_input':args.unsigned_signing_input,'unsigned_preview':args.unsigned_preview,
                 'limits':'Experimental Windows build: occasional GPU stalls/HRTF underruns and hardware acceptance remain open. Signing receipts do not replace extracted-package launch/shader checks.'}
     (output/(name+'.manifest.json')).write_text(json.dumps(manifest,indent=2)+'\n')
     companion = output/(name+'-sources')

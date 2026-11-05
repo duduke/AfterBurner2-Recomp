@@ -13,12 +13,28 @@ Frontend::AudioPacket tone(unsigned speaker,int rate=48000){
     return p;
 }
 double energy(const std::vector<float>& values,unsigned channel,unsigned channels=2){double sum=0;for(size_t i=channel;i<values.size();i+=channels)sum+=values[i]*values[i];return sum;}
+void object_directions(Frontend::AudioOutput& output){
+    auto packet=[](float x,float y,float z){Frontend::AudioPacket p;const auto weights=ObjectAudio::weights(x,y,z);
+        for(unsigned d=0;d<ObjectAudio::directions;++d){auto& s=p.streams[13+d];s.channels=1;s.pcm.resize(4800);
+            for(unsigned n=0;n<s.pcm.size();++n)s.pcm[n]=int16_t(std::sin(n*.13)*3000*weights[d]);}return p;};
+    output.clear();output.submit(packet(-1,0,0));output.submit(packet(1,0,0));
+    auto first=output.render_loopback(4800),second=output.render_loopback(4800);
+    require(energy(first,0)>energy(first,1)*2,"queued object left position changed before playback");
+    require(energy(second,1)>energy(second,0)*2,"queued object right position was lost");
+    output.clear();output.submit(packet(0,0,-1));auto front=output.render_loopback(6000);
+    output.clear();output.submit(packet(0,0,1));auto rear=output.render_loopback(6000);
+    require(front!=rear,"object front/rear HRTF indistinguishable");
+    output.clear();output.submit(packet(0,1,-1));auto raised=output.render_loopback(6000);
+    require(front!=raised,"object elevation HRTF indistinguishable");
+    for(unsigned d=0;d<ObjectAudio::directions;++d){const auto p=ObjectAudio::direction(d);const auto w=ObjectAudio::weights(p[0],p[1],p[2]);float power=0;for(auto v:w)power+=v*v;require(std::abs(power-1)<1e-5,"object direction power discontinuity");}
+    std::cout<<"Object HRTF: queued left/right movement, front/rear, elevation and 24-direction power passed\n";
+}
 Frontend::AudioPacket continuous_packet(unsigned blocks_per_second){
     Frontend::AudioPacket packet;packet.original.resize(96000/blocks_per_second);
     for(unsigned source=0;source<packet.streams.size();++source){
         auto& stream=packet.streams[source];
-        const bool pcm=source==2||(source>=7&&source<=10)||source==12;
-        stream.rate=source==0?48000:pcm?31250:62500;stream.channels=source>=3&&source<=10?1:2;
+        const bool pcm=source==2||(source>=7&&source<=10)||source==12||source>=13+ObjectAudio::directions;
+        stream.rate=source==0?48000:pcm?31250:62500;stream.channels=(source>=3&&source<=10)||source>=13?1:2;
         stream.pcm.resize(stream.rate/blocks_per_second*stream.channels);
         for(size_t i=0;i<stream.pcm.size();++i)stream.pcm[i]=int16_t(std::sin(double(i/stream.channels)*6.28318530718*(110+source*70)/stream.rate)*300);
     }
@@ -33,7 +49,7 @@ void synchronized_reprime(Frontend::AudioOutput& output,bool staggered=false){
         // Twelve chip-rate streams stop first; the 48 kHz source survives one
         // more render quantum. Prove the first reap completed before draining
         // the survivor, so a same-poll counter cannot accidentally pass.
-        wait_for([&]{return output.status().underruns==before.underruns+12;},"staggered first source cohort did not drain");
+        wait_for([&]{return output.status().underruns==before.underruns+Frontend::audio_streams-1;},"staggered first source cohort did not drain");
         require(output.status().reprimes==before.reprimes,"partial source exhaustion stopped a live source");output.render_loopback(960);
     }
 #ifdef _WIN32
@@ -43,7 +59,7 @@ void synchronized_reprime(Frontend::AudioOutput& output,bool staggered=false){
 #endif
     for(unsigned block=0;block<quiet_blocks;++block){output.submit(packet);const auto quiet=output.render_loopback(960);require(energy(quiet,0)+energy(quiet,1)<1e-12,"exhausted streams restarted before synchronized re-prime");}
     output.submit(packet);const auto resumed=output.render_loopback(960);require(energy(resumed,0)+energy(resumed,1)>.1,"synchronized re-prime failed to resume");
-    const auto recovered=output.status();require(recovered.underruns==before.underruns+13&&recovered.reprimes==before.reprimes+1,"global starvation telemetry incorrect");
+    const auto recovered=output.status();require(recovered.underruns==before.underruns+Frontend::audio_streams&&recovered.reprimes==before.reprimes+1,"global starvation telemetry incorrect");
     for(unsigned block=0;block<50;++block){output.submit(packet);output.render_loopback(960);}
     require(output.status().underruns==recovered.underruns,"synchronized recovery repeated its underrun");output.clear();
 }
@@ -62,7 +78,7 @@ void sustained(Frontend::AudioOutput& output){
         peak_buffer=std::max(peak_buffer,output.status().buffered);require(peak_buffer<.3,"sustained queue latency grew");
     }
     const auto after=output.status();require(after.underruns==before.underruns,"sustained source underrun");require(minimum>1&&maximum/minimum<1.05,"sustained signal disappeared or drifted");
-    std::cout<<"Spatial sustained loopback: "<<seconds<<" sample-seconds, "<<seconds*48000ull<<" frames, 13 sources, no new underruns or clipping, steady-block energy="<<minimum<<".."<<maximum<<", peak software queue="<<peak_buffer*1000<<" ms\n";
+    std::cout<<"Spatial sustained loopback: "<<seconds<<" sample-seconds, "<<seconds*48000ull<<" frames, 61 sources, no new underruns or clipping, steady-block energy="<<minimum<<".."<<maximum<<", peak software queue="<<peak_buffer*1000<<" ms\n";
     output.clear();
 }
 int main()try{
@@ -107,7 +123,7 @@ int main()try{
     output.submit(tone(2));auto surround=output.render_loopback(7000);require(surround.size()==42000,"5.1 channel count");require(energy(surround,4,6)+energy(surround,5,6)>energy(surround,0,6)+energy(surround,1,6),"rear speaker did not reach surround channels");
     settings.profile=Frontend::AudioProfile::speakers21;configure(output,settings);require(output.status().mode==ALC_STEREO_BASIC_SOFT&&!output.status().hrtf,"2.1 stereo/bass management policy");
     settings.profile=Frontend::AudioProfile::headphones;settings.resampler=output.status().resamplers.back();configure(output,settings);require(output.status().hrtf,"HRTF/resampler retry failed");
-    synchronized_reprime(output);
+    object_directions(output);synchronized_reprime(output);
     synchronized_reprime(output,true);
     sustained(output);
     // Malformed backend PCM is a failure injection, not a game producer. It

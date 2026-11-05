@@ -112,19 +112,19 @@ def main():
     if "arm64" not in run("file", str(binary)):
         raise SystemExit("This packager expects an arm64 native-release build")
     sdl = Path(run("pkg-config", "--variable=libdir", "sdl3")) / "libSDL3.0.dylib"
-    if run("pkg-config", "--modversion", "sdl3") != "3.4.16":
+    if run("pkg-config", "--modversion", "sdl3") != "3.4.20":
         raise SystemExit("Update the pinned SDL source/version before packaging")
     openal = ROOT / "build/deps/openal/lib/libopenal.1.dylib"
     archives = [
-        checked_source(ROOT / "build/deps/SDL3-3.4.16.tar.gz",
-                       "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68"),
+        checked_source(ROOT / "build/deps/SDL3-3.4.20.tar.gz",
+                       "f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f"),
         checked_source(ROOT / "build/deps/openal-soft-1.25.2.tar.gz",
                        "fb27e5839aa11f0e5b9d33756965291fad5d6909ab928ea1f796f4a1a6877894"),
     ]
     # pkg-config may return a shared prefix such as /opt/homebrew/lib. Its
     # parent LICENSE.txt is Homebrew's notice, not SDL's. Use the pinned source.
     with tarfile.open(archives[0]) as source:
-        member = source.getmember("SDL3-3.4.16/LICENSE.txt")
+        member = source.getmember("SDL3-3.4.20/LICENSE.txt")
         if not member.isfile():
             raise SystemExit("SDL source license must be a regular file")
         sdl_license = source.extractfile(member).read()
@@ -230,7 +230,7 @@ def main():
         "version": args.version, "commit": commit,
         "sources": f"{sources.name}.zip",
         "architecture": "arm64", "minimum_macos": "26.0",
-        "libraries": {"SDL3": "3.4.16", "OpenAL Soft": "1.25.2"},
+        "libraries": {"SDL3": "3.4.20", "OpenAL Soft": "1.25.2"},
         "sha256": files,
     }, indent=2) + "\n")
     source_files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()

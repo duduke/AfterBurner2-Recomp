@@ -7,41 +7,54 @@
 #include <string>
 #include "engine/feedback_cues.hpp"
 #include "frontend/native_input.hpp"
+#include "frontend/sequence_haptics.hpp"
 
 namespace Frontend {
 struct FeedbackSettings {
     bool enabled{};int body=50,triggers=50;
-    bool cannon=true,missile=true,impact=true,boost=true,swap{};
+    int cannon=3,missile=3,impact=3,boost=3;bool swap{};
+    int landing=3,takeoff=3,refueling=3;
+    static const char* level(int value){return value==0?"OFF":value==1?"ON / LOW":value==2?"ON / MED":"ON / HIGH";}
+    static float gain(int value){return value==1?.35f:value==2?.65f:value==3?1.f:0.f;}
     std::string device;
 };
 // Wall-clock envelopes are independent of emulation and speaker playback.
 class FeedbackMixer {
 public:
-    void clear(){until.fill(0);boost=false;flight=false;fresh=0;}
-    void restart(){clear();last_frame=last_sequence=0;}
-    void consume(const Feedback::Frame& f,uint64_t now,const FeedbackSettings& s) {
+    void clear(){sequences.clear();until.fill(0);boost=false;damage=false;flight=false;fresh=0;}
+    void restart(){clear();sequences.restart();last_frame=last_sequence=0;}
+    void consume(const Feedback::Frame& f,uint64_t now,const FeedbackSettings& s,unsigned refill_delay_ms=0) {
         if(!f.number || f.number<=last_frame)return;
-        last_frame=f.number;fresh=now;flight=f.flight;boost=f.boost&&s.boost;
+        last_frame=f.number;fresh=now;flight=f.flight||f.motion.motion!=Feedback::Motion::none;boost=f.boost&&s.boost;damage=f.damage&&s.impact;
         if(!flight){clear();return;}
+        sequences.consume(f,now,refill_delay_ms);
         for(auto e:f.events){if(e.sequence<=last_sequence)continue;last_sequence=e.sequence;
             if(e.ns>f.ns || f.ns-e.ns>100000000)continue;
             unsigned i=unsigned(e.cue);const bool allow=i==0?s.cannon:i==1?s.missile:s.impact;
-            if(allow)until[i]=now+duration[i];
+            if(allow){until[i]=now+duration[i];if(i==1)missile_right=e.right;}
         }
     }
     std::array<Uint16,4> sample(uint64_t now,const FeedbackSettings& s) const {
         std::array<float,4> v{};
         if(!flight || now-fresh>=100)return {};
-        if(boost){v[0]=.10f;v[1]=.04f;}
-        constexpr std::array<std::array<float,4>,3> strength{{{.12f,.65f,0,.60f},{.65f,.18f,.65f,0},{.90f,.75f,.45f,.45f}}};
-        for(unsigned i=0;i<3;++i)if(until[i]>now){float envelope=float(until[i]-now)/duration[i];
+        if(boost){v[0]=.10f*FeedbackSettings::gain(s.boost);v[1]=.04f*FeedbackSettings::gain(s.boost);}
+        // High impact reaches 75% body output at the default 50% master gain.
+        // Saturation happens after the independent master gains below.
+        if(damage){const float g=FeedbackSettings::gain(s.impact);v={1.5f*g,1.5f*g,1.2f*g,1.2f*g};}
+        std::array<std::array<float,4>,3> strength{{{.12f,.65f,0,.60f},{.65f,0,.65f,0},{1.5f,1.5f,1.2f,1.2f}}};
+        if(missile_right){std::swap(strength[1][0],strength[1][1]);std::swap(strength[1][2],strength[1][3]);}
+        const int levels[]{s.cannon,s.missile,s.impact};
+        for(unsigned i=0;i<3;++i)if(until[i]>now){float envelope=float(until[i]-now)/duration[i]*FeedbackSettings::gain(levels[i]);
             for(unsigned c=0;c<4;++c)v[c]=std::max(v[c],strength[i][c]*envelope);}
+        const auto extra=sequences.sample(now,s);
+        for(unsigned c=0;c<4;++c)v[c]=std::max(v[c],extra[c]);
         if(s.swap)std::swap(v[2],v[3]);
         std::array<Uint16,4> out{};for(unsigned c=0;c<4;++c)out[c]=Uint16(std::clamp(v[c]*(c<2?s.body:s.triggers)/100.f,0.f,1.f)*65535);return out;
     }
 private:
     inline static constexpr std::array<unsigned,3> duration{65,180,350};
-    std::array<uint64_t,3> until{};uint64_t last_frame{},last_sequence{},fresh{};bool flight{},boost{};
+    SequenceMixer sequences;
+    std::array<uint64_t,3> until{};uint64_t last_frame{},last_sequence{},fresh{};bool flight{},boost{},damage{},missile_right{};
 };
 class NativeHaptics {
 public:
@@ -79,8 +92,10 @@ public:
         if(row==1){cycle(delta);return;}
         if(row==2)settings.body=std::clamp(settings.body+delta*10,0,100);
         if(row==3)settings.triggers=std::clamp(settings.triggers+delta*10,0,100);
-        if(row==4)settings.cannon=!settings.cannon;if(row==5)settings.missile=!settings.missile;
-        if(row==6)settings.impact=!settings.impact;if(row==7)settings.boost=!settings.boost;
+        if(row>=4&&row<=7){int* levels[]{&settings.cannon,&settings.missile,&settings.impact,&settings.boost};
+            *levels[row-4]=(*levels[row-4]+(delta>0?1:3))%4;}
+        if(row>=15&&row<=17){int* levels[]{&settings.landing,&settings.takeoff,&settings.refueling};
+            *levels[row-15]=(*levels[row-15]+(delta>0?1:3))%4;}
         if(row==8)settings.swap=!settings.swap;save();
     }
     // Tests are finite and deliberately available with gameplay feedback disabled.
@@ -93,8 +108,8 @@ public:
         std::array<Uint16,4> v{};v[motor]=Uint16(45000*gain/100);
         send(v,650);test_until=now+650;notice=(motor<2?body_failed:trigger_failed)?"TEST FAILED - SEE CONSOLE":"TESTING FOR 650 MS";
     }
-    void consume(const Feedback::Frame& f,uint64_t now=SDL_GetTicks()) {
-        if(settings.enabled && input.focused)mixer.consume(f,now,settings);
+    void consume(const Feedback::Frame& f,uint64_t now=SDL_GetTicks(),unsigned refill_delay_ms=0) {
+        if(settings.enabled && input.focused)mixer.consume(f,now,settings,refill_delay_ms);
     }
     void update(bool suspended,uint64_t now=SDL_GetTicks()) {
         sync();if(!input.focused){stop();return;}
@@ -142,7 +157,15 @@ private:
         }
     }
     void load(){if(path.empty())return;std::ifstream f(path);std::string magic;FeedbackSettings s;
-        if(f>>magic && magic=="AB2HAPTICS1" && f>>s.enabled>>s.body>>s.triggers>>s.cannon>>s.missile>>s.impact>>s.boost>>s.swap>>s.device && s.body>=0&&s.body<=100&&s.triggers>=0&&s.triggers<=100){settings=s;if(settings.device=="-")settings.device.clear();chosen=!settings.device.empty();}}
-    void save(){if(path.empty())return;std::ofstream f(path);f<<"AB2HAPTICS1\n"<<settings.enabled<<' '<<settings.body<<' '<<settings.triggers<<' '<<settings.cannon<<' '<<settings.missile<<' '<<settings.impact<<' '<<settings.boost<<' '<<settings.swap<<' '<<(settings.device.empty()?"-":settings.device)<<'\n';}
+        if(!(f>>magic) || (magic!="AB2HAPTICS1" && magic!="AB2HAPTICS2" && magic!="AB2HAPTICS3"))return;
+        if(!(f>>s.enabled>>s.body>>s.triggers>>s.cannon>>s.missile>>s.impact>>s.boost>>s.swap>>s.device))return;
+        if(magic=="AB2HAPTICS3" && !(f>>s.landing>>s.takeoff>>s.refueling))return;
+        if(s.landing<0||s.landing>3||s.takeoff<0||s.takeoff>3||s.refueling<0||s.refueling>3)return;
+        const int max_level=magic=="AB2HAPTICS1"?1:3;
+        if(s.body<0||s.body>100||s.triggers<0||s.triggers>100 ||
+           s.cannon<0||s.cannon>max_level||s.missile<0||s.missile>max_level||s.impact<0||s.impact>max_level||s.boost<0||s.boost>max_level)return;
+        if(magic=="AB2HAPTICS1"){s.cannon*=3;s.missile*=3;s.impact*=3;s.boost*=3;}
+        settings=s;if(settings.device=="-")settings.device.clear();chosen=!settings.device.empty();}
+    void save(){if(path.empty())return;std::ofstream f(path);f<<"AB2HAPTICS3\n"<<settings.enabled<<' '<<settings.body<<' '<<settings.triggers<<' '<<settings.cannon<<' '<<settings.missile<<' '<<settings.impact<<' '<<settings.boost<<' '<<settings.swap<<' '<<(settings.device.empty()?"-":settings.device)<<' '<<settings.landing<<' '<<settings.takeoff<<' '<<settings.refueling<<'\n';}
 };
 }

@@ -18,7 +18,7 @@ Original remains the regression reference. See
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
 | 2 | [Widescreen](WIDESCREEN_PLAN.md) | Extend shared-renderer performance and controller/scene audits; retain snapshot comparisons and sustained 16:9/16:10/21:9 checks and separate physical ultrawide acceptance |
-| 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification; [object-based HRTF](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned), starting with missile flybys and positioned explosions |
+| 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification; [object-based HRTF](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned), with rendering implemented for supported sources; positive natural flybys, additional families and listening remain |
 | 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility; [Android / Android TV port and real-device ADB testing](#android--android-tv-port-initial-implementation); [Linux x86-64 / ARM64 builds and remote testing](#linux-x86-64--arm64-builds-and-remote-testing) |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
 | 6 | [Gameplay extensions](ENHANCEMENT_PLAN.md#gameplay-and-content) | Extend the Practice/Shuffle interfaces for additional arranged rules; verify object/state contracts before new stages, save states or multiplayer |
@@ -78,8 +78,8 @@ bar is "matches MAME byte-for-byte", not "looks right".
    and add what you learned to `ENGINE_NOTES.md`.
 7. **Validate the affected functionality.** Daily development and presentation,
    UI, packaging and documentation work use the main-functionality checks below.
-   At the user's direction (2026-10-31), complete oracle/mutation runs are
-   reserved for engine changes. Retain all fixtures, comparisons and mutations;
+   At the user's explicit direction (2026-11-05), run the complete gate only
+   when the change affects native execution or emulated hardware behavior. Retain all fixtures, comparisons and mutations;
    a main-functionality pass is not whole-host fidelity acceptance.
 
 **Validation cadence**
@@ -89,11 +89,30 @@ bar is "matches MAME byte-for-byte", not "looks right".
 | Documentation only | `git diff --check`; inspect changed links, commands and policy consistency. |
 | Daily work, non-engine merges and releases | Run `python3 tools/workflow.py run main` plus checks for affected functionality and relevant build/smoke. Releases also verify the extracted package, notices, source identity and platform launches. No automatic full oracle/mutation run. |
 | Presentation, input, playback or UI changes | Main profile plus affected geometry, image/audio, lifecycle or platform checks. Verify changed comparison gates against a passing baseline and relevant deliberate mutations. |
-| Engine changes: CPU/flags/timing, bus, scheduler, devices, native game logic, literal ports, generators or engine oracle instrumentation | Complete `required` profile (`test`, `verify-stage1`, `oracle-test`) with all retained mutations; independent MAME baselines, relevant operand/branch coverage and affected natural recordings. Engine acceptance milestones also run supplemental `full` and applicable complete natural recordings. |
-| New or changed literal ports, fixtures or comparison gates | Relevant independent MAME baselines, coverage and rejected mutations before wiring/acceptance. Recovery ports retain/replay the complete corpus with its manifest/branch gate. Engine changes also follow the full-engine row. |
+| Haptics, presentation audio metadata, and read-only presentation observers/hooks (including in GameSession or engine headers) | Main profile, affected cue/sequence and motor/mixer/lifecycle checks, and relevant build/smoke. New or changed native cue interpretation needs focused independent MAME coverage, relevant rejected mutations, and paired native RGB/PCM/time checks for the affected path. No automatic `required`, `oracle-test`, or unrelated CPU/device mutation run. |
+| Changes affecting native execution or emulated hardware behavior: CPU/flags/timing, bus, scheduler, emulated devices, native game logic, literal ports, or generators that alter that execution/behavior | Complete `required` profile (`test`, `verify-stage1`, `oracle-test`) with all retained mutations; independent MAME baselines, relevant operand/branch coverage and affected natural recordings. Engine acceptance milestones also run supplemental `full` and applicable complete natural recordings. |
+| New or changed literal ports, fixtures or comparison gates | Relevant independent MAME baselines, coverage and rejected mutations before wiring/acceptance. Recovery ports retain/replay the complete corpus with its manifest/branch gate. The complete gate applies only if the change also affects native execution or emulated hardware behavior. |
 
-There is no merge-count trigger for full oracle/mutation testing. Engine changes
-trigger the full gate; non-engine work uses main functionality and affected checks.
+**Full-gate trigger: only changes affecting native execution or emulated hardware
+behavior.** This is the user's explicit testing preference. Editing an engine
+header, a fixture, a comparison gate, or instrumentation is not sufficient by
+itself. Test-only changes still require their focused baselines, coverage and
+rejected mutations; they do not independently trigger the whole suite.
+
+Classify changes by their effect, not their directory, filename, or use of a
+trace callback. Reading existing game state, adding passive cue/ownership metadata,
+and tuning rumble or presentation playback do not count as core engine changes
+when they leave CPU execution, emulated bus/device state, native game logic,
+clocks and exported native PCM unchanged. The stage-23 landing rumble correction
+falls in this presentation-observer category. Its full-gate runs are retained as
+historical evidence, not a precedent requiring them for future haptic work.
+If a task also changes execution, scheduling, bus/device behavior or native
+logic, the core engine row still applies to that change.
+
+There is no merge-count, release, milestone, or file-location trigger for full
+oracle/mutation testing. Only a change affecting native execution or emulated
+hardware behavior triggers it; other work uses the main profile and affected
+checks (documentation-only work uses inspection).
 
 Reuse an earlier pass only while its relevant sources and transitive
 dependencies, compiler/options, fixtures, capture probe and comparison/mutation
@@ -151,6 +170,20 @@ the decoder needs extending; in a data table it's expected.
 
 ## Current checkpoint (2026-10-31)
 
+- 2026-11-05: Local haptics adds separate Landing, Takeoff and Refueling levels,
+  layered ground/departure feedback, nozzle coupling and sound-delivery-driven
+  refill bumps. Passive MAME coverage includes the carrier and in-game airbase;
+  the stage-23 finale now also has touchdown and post-flight rollout feedback.
+  Physical feel and rebuilt packages remain open. See
+  [sequence feedback](ENGINE_NOTES.md#layered-landing-takeoff-and-refueling-feedback-2026-11-05)
+  and the [finale correction](ENGINE_NOTES.md#final-carrier-landing-feedback-correction-2026-11-05).
+
+- 2026-11-04: Local haptics source adds stronger sustained player damage,
+  directional missile launch feedback and per-effect Low/Med/High/Off choices.
+  Independent MAME witnesses cover both missile sides and intact/breakup damage;
+  updated physical feel and rebuilt packages remain open. See the
+  [feedback change record](ENGINE_NOTES.md#stronger-and-directional-controller-feedback-2026-11-04).
+
 - 2026-11-04: **Windows public downloads withdrawn; development fullscreen
   backlog/recovery fix implemented.** Preparing presentation before playback and
   rebasing host pacing after playback outages removes lasting audio queue debt
@@ -199,8 +232,7 @@ the decoder needs extending; in a data table it's expected.
 - Custom stage experiments remain isolated on
   [codex/custom-stage-prototype](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/custom-stage-prototype).
   Android/TV host implementation is in progress. Linux Preview 7 x86-64/ARM64
-  packages are available; hardware/performance acceptance and moving object-based
-  HRTF remain open below.
+  packages are available; hardware/performance acceptance and remaining object-audio coverage stay open below.
 
 Dated implementation details and earlier checkpoints remain in
 [Engine Notes](ENGINE_NOTES.md), [release notes](RELEASE_NOTES.md) and the
@@ -244,23 +276,24 @@ MAME comparisons cover 100,000 frame observations across all stages, ending,
 ranking and attract. See [Practice](PRACTICE_MODE.md), [Shuffle](SHUFFLE_MODE.md)
 and their linked evidence for exact finite scope.
 
-## Object-based spatial audio (planned)
+<a name="object-based-spatial-audio-planned"></a>
+## Object-based spatial audio
 
-Added 2026-10-26. Extend the fixed front/rear cockpit categories with opt-in
-moving HRTF sources. Start with missile flybys and positioned world explosions,
-then enemy weapon launches, player missiles and verified aircraft/rear threats;
-keep player propulsion anchored behind the listener. A chasing plane should
-sound from its actual rear bearing only after its relative position, chase
-state and sound ownership are verified. Continuous enemy engine audio requires
-an appropriate native voice or a separately specified optional added sound.
+Experimental rendering is implemented for supported sources (5 November 2026).
+Owned FM/PCM contributions use a bounded 24-direction grid per chip, with causal
+movement carried in queued samples. Native PCM, sound triggers and clock/device
+behavior stay unchanged. Player missiles, firing aircraft and target-lock
+attachments have natural ownership/trajectory evidence; world explosion
+coordinates have independent directed MAME projection witnesses.
 
-The prerequisite is passive object-to-voice ownership through sound delivery
-and FM/PCM allocation, with per-family coordinate/lifecycle contracts and
-separate rendering of supported voices. Preserve native gameplay, sound timing
-and exported PCM; ambiguous ownership retains the existing fallback. This is
-future work, separate from current playback acceptance. See the ordered tasks,
-MAME/mutation gates and listening/performance requirements in the
-[spatial audio plan](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned).
+Natural FM/PCM coverage passes across 8,000- and 12,000-frame recordings, with
+paired native RGB/PCM/time and production loopback comparisons. The 12,000-frame
+recording observes 355 real flyby comparisons and zero eligible unsigned depth
+conditions. Positive natural `$6E/$6F` remains open; no command or engine loop is
+invented to fill it. Remaining work includes additional typed families,
+verified pursuer/voice contracts, listening and physical platform acceptance.
+See [rendering evidence](ENGINE_NOTES.md#playback-aligned-object-hrtf-rendering-2026-11-05)
+and the [spatial audio plan](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned).
 
 ## Android / Android TV port (initial implementation)
 

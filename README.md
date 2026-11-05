@@ -7,12 +7,19 @@ with reimplemented YM2151/SegaPCM devices. SDL3 handles the desktop frontend.
 Independent MAME captures check the translated game against the arcade ROM.
 Inspired by [Cannonball](https://github.com/djyt/cannonball).
 
-Supply your own [ROM dump](roms/README.md). macOS Preview 6 and source builds also load
+Supply your own [ROM dump](roms/README.md). Current builds also load
 `roms/aburner2.zip` directly and offer a ZIP file picker when ROMs are missing. ROMs, original artwork and personal
 soundtracks are not distributed. This project is not affiliated with SEGA.
 Original project code is **GPL-3.0-or-later**. Third-party and historical
 components retain their own licenses; this is not a blanket relicensing of them.
 See [LICENSE.txt](LICENSE.txt) and [third-party notices](docs/THIRD-PARTY-NOTICES.md).
+
+**Preview 8:** layered controller haptics and experimental moving object audio.
+[Downloads and release notes](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.8).
+macOS (Apple Silicon/macOS 26+), Linux x86-64 and ARM64, Android ARM64, and an
+explicitly **unsigned experimental Windows x64 base**. Windows protections may
+block the unsigned build; optional OpenAL/Slang runtimes are separate there.
+Android uses SDL audio. Supply your own verified arcade ROMs.
 
 ## Current state
 
@@ -30,11 +37,10 @@ other controllers/HOTAS and physical Windows/Linux hardware acceptance remain
 open. Linux Vulkan VM checks are recorded separately from hardware acceptance. See the
 [roadmap checkpoint](docs/ROADMAP.md#current-checkpoint-2026-10-31) for scope.
 
-Preview 7 adds Linux x86-64 / Steam Deck and ARM64 packages, plus native Vulkan
-composition for RetroArch Slang and GPU sprite filters. macOS and Android retain
-Preview 6, with 21:9 and Corrected ground as the shared default. Windows retains
-its experimental Preview 5 package and unresolved FPS/audio limitations. See the
-[release notes](docs/RELEASE_NOTES.md) and [roadmap](docs/ROADMAP.md).
+Preview 8 adds layered impact, takeoff, landing and refueling feedback, plus
+experimental object-based desktop audio. Linux x86-64/ARM64, macOS and Android
+packages are available; Windows is an explicitly unsigned standalone preview.
+See the [release notes](docs/RELEASE_NOTES.md) for validation and platform limits.
 
 The widescreen work expands the experimental 16:9 view beyond the original sprite
 queue and depth-bucket limits, retains scenery as it crosses the wider edges,
@@ -53,15 +59,13 @@ and sustained peak-load performance remain open.
 
 ## Linux and Steam Deck
 
-[Linux Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
-include separate ROM-free x86-64 and ARM64 packages and checksums. SDL3/OpenAL and the Vulkan Slang runtime are bundled. Full project source
-companions remain local and in the private development release; corresponding runtime
-source and notices remain available separately.
+[Linux Preview 8 downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.8)
+include separate ROM-free x86-64 and ARM64 packages and checksums. SDL3/OpenAL and the Vulkan Slang runtime are bundled. The source repository is public; exact source commits and dependency source links accompany the packages.
 
 | Platform | Download |
 | --- | --- |
-| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-x86_64-SteamDeck-preview.tar.gz) |
-| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-arm64-preview.tar.gz) |
+| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.8/AfterBurner2-v0.1.0-preview.8-Linux-x86_64-SteamDeck-preview.tar.gz) |
+| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.8/AfterBurner2-v0.1.0-preview.8-Linux-arm64-preview.tar.gz) |
 
 Extract the game and run `Launch.sh`. For Steam Deck, add the x86-64 `Launch.sh`
 as a Non-Steam Game and use a Gamepad template; first-run settings use
@@ -86,7 +90,7 @@ the measured VMs do not sustain arcade speed. See the
 | Menus | Arcade-font Arcade/Practice/Shuffle/Settings/Quit launcher; pause/resume, restart and mode selection; grouped display, graphics, CRT, controls, audio and arcade settings; keyboard, mouse and controller navigation |
 | Stage Select / Practice | [Practice mode](docs/PRACTICE_MODE.md): fresh directed entry to 23 ROM stages, normal lives/damage, F5 retry and return to arcade; separate from natural recordings |
 | Shuffle | [Shuffle mode](docs/SHUFFLE_MODE.md): stages 1–22 in random order with stage 23 as the finale, continuous score/lives, same-order F5 retry and fresh New Shuffle |
-| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery, world explosions, hit effects, player/enemy missile smoke and player damage emissions with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 5; current source also adds experimental 21:9 (522×224) |
+| Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery, world explosions, hit effects, player/enemy missile smoke and player damage emissions with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Current builds also offer experimental 21:9 (522×224) |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
 | Sprite filters | Off, EPX, Scale3x and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
 | CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows/Linux Vulkan (runtime bundled on Linux; shader packs downloaded separately); readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
@@ -97,13 +101,13 @@ the measured VMs do not sustain arcade speed. See the
 | Controller feedback | Optional SDL body and Xbox trigger rumble; cannon, missile, player-impact and full-throttle cues; strengths, motor tests, device selection and lifecycle stops |
 | Arcade settings | Lives/Credit (3 or 4), Ship Increase (credit-multiplied lives) and Difficulty; Apply and Restart, F5 or next launch applies saved DIP choices |
 | Audio | Six WAV/FLAC track replacements, preview, live current-song switching, Original fallback; independent music/effects/per-track volume; replacement music balanced at -12 dB |
-| Spatial audio (experimental) | Optional OpenAL Soft: four virtual cockpit speakers with headphone HRTF, 2.1/5.1 profiles, chip-rate interpolation, output-device selection and speaker test; Original SDL remains default |
+| Spatial audio (experimental) | Optional OpenAL Soft: fixed cockpit categories and moving owned FM/PCM sources with headphone HRTF, 2.1/5.1 profiles, chip-rate interpolation, output-device selection and speaker test; Original SDL remains default |
 | Preferences and diagnostics | Saved video/input/audio/feedback/DIP preferences, physical-input recording, bounded launch checks and performance reporting |
 
-Source builds and macOS Preview 5 use the integrated primary renderer for widescreen and detached
+Current builds use the integrated primary renderer for widescreen and detached
 HUD/aircraft presentation. It shares the native partial-frame road/tile pass;
 `--scene-renderer snapshot` selects the retained reconstruction reference.
-The `16:9 Preview`, `16:10 Preview` and source-only `21:9 Preview` labels describe remaining widescreen
+The `16:9 Preview`, `16:10 Preview` and `21:9 Preview` labels describe remaining widescreen
 scene/platform acceptance, not renderer selection. Original remains the default
 viewport; selecting a wide ratio uses the integrated renderer. See the
 [Mac acceptance record](docs/ENGINE_NOTES.md#integrated-primary-renderer-macos-acceptance-2026-10-24).
@@ -129,8 +133,7 @@ validation and sustained ultrawide performance remain open. See the
 
 ## Build and play
 
-Download [Linux Preview 7](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7),
-[macOS or Android Preview 6](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
+Download [Preview 8 for macOS, Linux, Windows or Android](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.8)
 and extract the complete desktop archive. Put your own extracted ROM files or
 `aburner2.zip` in its `roms/` directory, or select a ZIP on startup. Android uses
 the sideload APK and imports a ROM ZIP through its document picker; see
@@ -143,23 +146,15 @@ matching source companion is retained separately. The preview is ad-hoc signed a
 may require approval in Privacy & Security. Intel Macs are not included in this
 build. See the package's `START-HERE.txt` for setup.
 
-**Windows downloads were withdrawn from the public release repository on
-4 November 2026 pending signing and performance fixes.** The retained compact
-Windows 10/11 x64 diagnostic package dated **20261028** opens with
-`Launch.cmd`; keep all bundled DLLs beside the EXE. It includes librashader
-and its DirectX/Microsoft C++ dependencies. Shader preset packs remain separate.
-`Launch.cmd --profile` reports backend and timing output. Sources are a separate
-companion download; the runtime ZIP has no regression binaries or general docs,
-and consolidates required redistribution terms into `LICENSES.txt`.
-This unsigned package is built and runtime-verified on Windows x64 with Vulkan
-GPU sprite filters, original SDL stereo, replacement music and OpenAL Soft 1.25.2
-spatial audio (HRTF, 2.1 and 5.1 profiles).
-This refresh retains GPU sprite/scene composition with Slang and reuses the
-native sprite raster for Sharp HUD ownership. **Windows FPS/audio drops remain
-unresolved**, including 53–56 FPS dips and synchronized OpenAL starvation.
-See [current Windows performance issues](docs/WINDOWS_PERFORMANCE.md) and
-[shader setup](docs/CRT_DISPLAY.md#windows-vulkan). Windows OpenAL's 80 ms
-reserve adds buffering and does not establish glitch-free acceptance.
+**Windows Preview 8 is an UNSIGNED experimental standalone base**, published at
+the owner's direction while trusted signing is pending. Smart App Control may
+block it. Extract the ZIP and run `Launch.cmd`; its only PE is `afterburner2.exe`,
+with SDL/compiler runtimes linked into the application. OpenAL Soft and Slang
+load as optional external runtimes, with Original SDL/shader fallback when absent.
+Do not expect the earlier bundled-DLL layout. See
+[Windows setup/signing](docs/WINDOWS_SIGNING.md),
+[performance limits](docs/WINDOWS_PERFORMANCE.md) and
+[shader setup](docs/CRT_DISPLAY.md#windows-vulkan).
 
 Requirements: your ROM dump, SDL3 **3.4+**, a C++20 compiler, and either Make with
 `pkg-config sdl3` or CMake with the installed `SDL3::SDL3` package. Run from the
@@ -222,7 +217,7 @@ are outside CMake's search paths. For shared SDL builds, CMake copies SDL and av
 beside the game. Windows OpenAL is loaded on demand and is not copied by default. `AB2_REQUIRE_IPO=ON` fails configuration
 if LTO cannot actually compile and link. [Windows shader setup](docs/CRT_DISPLAY.md#windows-vulkan)
 includes validation commands and the scope of newer source-only optimizations.
-Windows Preview 5 includes the shared ROM startup, menu and widescreen features.
+The Windows base includes the shared ROM startup, menu, feedback and widescreen features.
 
 For the standalone Windows signing input, use the pinned builder on Windows:
 

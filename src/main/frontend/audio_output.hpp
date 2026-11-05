@@ -1,5 +1,6 @@
 #pragma once
 #include <SDL3/SDL.h>
+#include "hwaudio/object_audio_rendering.hpp"
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -93,10 +94,13 @@ inline bool save_output_settings(const std::string& path,const OutputSettings& s
 // PCM buffers are independent of any device/context and safe to pass to the
 // playback owner. 0 = direct stereo music, 1/2 = unclassified stereo effects,
 // 3..6 = FM cockpit mono, 7..10 = PCM cockpit mono, 11/12 = direct chip-rate
-// stereo music. Chip streams retain rate.
+// stereo music; 13..60 = 24 direction-weighted object buses per chip.
+// Chip streams retain rate; all positions are fixed so queued movement is
+// sample-aligned, including pause, clear and recovery.
+inline constexpr unsigned audio_streams=13+2*ObjectAudio::directions;
 struct AudioPacket {
     struct Stream {int rate=48000,channels=2;std::vector<int16_t> pcm;};
-    std::array<Stream,13> streams;
+    std::array<Stream,audio_streams> streams;
     std::vector<int16_t> original;
 };
 struct WavPcm {int rate{},channels{};std::vector<int16_t> samples;};
@@ -215,8 +219,8 @@ private:
     }
     void record_buffered(double seconds){std::lock_guard lock(mutex);report.buffered=seconds;report.peak_buffered=std::max(report.peak_buffered,seconds);report.sdl_priming=sdl&&sdl_priming;}
 #ifdef AB2_OPENAL
-    ALCdevice* device{};ALCcontext* context{};std::array<ALuint,13> sources{};
-    struct Queued {ALuint buffer;double seconds;};std::array<std::deque<Queued>,13> queued;
+    ALCdevice* device{};ALCcontext* context{};std::array<ALuint,audio_streams> sources{};
+    struct Queued {ALuint buffer;double seconds;};std::array<std::deque<Queued>,audio_streams> queued;
     bool started{},al_paused{},repriming{};unsigned starved_sources{};int direct{};bool connected_extension{};
     void check(){const auto err=alGetError();if(err!=AL_NO_ERROR)throw std::runtime_error("OpenAL error "+std::to_string(err));}
     void reap(){
@@ -282,6 +286,7 @@ private:
             if(i>=3 && i<11){const unsigned slot=(i-3)%4;const auto& p=cockpit_positions[slot];
                 const float elevation=s.profile==AudioProfile::headphones&&slot>=2?headphone_rear_elevation:0.f;
                 alSource3f(sources[i],AL_POSITION,p[0],p[1]+elevation,p[2]);}
+            else if(i>=13){const auto p=ObjectAudio::direction((i-13)%ObjectAudio::directions);alSource3f(sources[i],AL_POSITION,p[0],p[1],p[2]);}
             else {alSource3f(sources[i],AL_POSITION,0,0,0);if(direct)alSourcei(sources[i],AL_DIRECT_CHANNELS_SOFT,direct);}
             if(selected>=0)alSourcei(sources[i],AL_SOURCE_RESAMPLER_SOFT,selected);
         }check();info.openal=info.ready=true;
@@ -310,12 +315,12 @@ private:
             constexpr double startup_reserve=0.025,recovery_reserve=0.050;
 #endif
             if((loopback&&!repriming) || latency()>=(repriming?recovery_reserve:startup_reserve)){
-                std::array<ALuint,13> active{};unsigned n=0;
+                std::array<ALuint,audio_streams> active{};unsigned n=0;
                 for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty())active[n++]=sources[i];
                 if(n){alSourcePlayv(int(n),active.data());started=true;repriming=false;}
             }
         } else {
-            std::array<ALuint,13> restart{};unsigned n=0,underruns=0;
+            std::array<ALuint,audio_streams> restart{};unsigned n=0,underruns=0;
             for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty()){
                 ALint state=0;alGetSourcei(sources[i],AL_SOURCE_STATE,&state);
                 if(state!=AL_PLAYING && state!=AL_PAUSED){restart[n++]=sources[i];if(state==AL_STOPPED)++underruns;}
@@ -385,7 +390,7 @@ private:
                 if(context){full=!loopback&&latency()>.10;const bool stop=is_paused&&!is_preview&&!testing;
                     if(stop!=al_paused&&started){
                         if(stop)alSourcePausev(int(sources.size()),sources.data());
-                        else {std::array<ALuint,13> active{};unsigned n=0;for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty())active[n++]=sources[i];if(n)alSourcePlayv(int(n),active.data());}
+                        else {std::array<ALuint,audio_streams> active{};unsigned n=0;for(unsigned i=0;i<sources.size();++i)if(!queued[i].empty())active[n++]=sources[i];if(n)alSourcePlayv(int(n),active.data());}
                         al_paused=stop;
                     }
                 }

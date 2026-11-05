@@ -1,6 +1,19 @@
 name: Windows base signing input
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Release version
+        default: v0.1.0
+        type: string
+      label:
+        description: Artifact label
+        default: development
+        type: string
+      unsigned_preview:
+        description: Explicitly unsigned public experimental preview
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -15,13 +28,34 @@ jobs:
         run: python tools/windows/build_base.py --package-sources
       - name: Verify license scope
         run: python tests/test_license_notices.py
-      - name: Package unsigned input and corresponding sources
-        run: >-
-          python tools/package_windows_runtime.py v0.1.0
-          --label ci-${{ github.run_id }} --profile base
-          --build build/windows-base-hosted --deps build/windows-base-inputs
-          --unsigned-signing-input
-      # No provider credentials or signing/publication step until approval.
+      - name: Check standalone test imports, object audio and haptic presentation
+        timeout-minutes: 3
+        shell: python
+        run: |
+          import pathlib, subprocess, sys
+          sys.path.insert(0, 'tools')
+          import package_windows_runtime as runtime
+          build = pathlib.Path('build/windows-base-hosted')
+          tests = ['object_audio_tracking_regression', 'native_haptics_regression']
+          subprocess.run(['cmake', '--build', str(build), '--target', *tests, '--parallel', '4'], check=True)
+          compiler = runtime.compiler_path(build, (build/'CMakeCache.txt').read_text())
+          runtime.audit_imports(build, [name+'.exe' for name in tests], compiler, True)
+          subprocess.run(['ctest', '--test-dir', str(build), '-R', '^('+'|'.join(tests)+')$',
+                          '--output-on-failure', '--timeout', '60', '-V'], check=True, timeout=150)
+      - name: Package explicitly selected unsigned artifact and corresponding sources
+        shell: python
+        env:
+          AB2_RELEASE_VERSION: ${{ inputs.version }}
+          AB2_RELEASE_LABEL: ${{ inputs.label }}
+          AB2_UNSIGNED_PREVIEW: ${{ inputs.unsigned_preview }}
+        run: |
+          import os, subprocess
+          mode = '--unsigned-preview' if os.environ['AB2_UNSIGNED_PREVIEW'] == 'true' else '--unsigned-signing-input'
+          subprocess.run(['python', 'tools/package_windows_runtime.py', os.environ['AB2_RELEASE_VERSION'],
+                          '--label', os.environ['AB2_RELEASE_LABEL'], '--profile', 'base',
+                          '--build', 'build/windows-base-hosted', '--deps', 'build/windows-base-inputs', mode], check=True)
+      # Trusted signing is a separate provider-controlled step. Public previews
+      # require the explicit unsigned_preview dispatch input and stay labeled.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-base-UNSIGNED-signing-input

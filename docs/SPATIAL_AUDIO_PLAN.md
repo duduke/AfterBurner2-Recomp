@@ -1,7 +1,7 @@
 # OpenAL Soft cockpit audio
 
 **Status: experimental implementation shipped in the macOS preview.**
-Updated **2026-10-26** with the planned object-based HRTF work below. The
+Updated **2026-11-05** with playback-aligned object rendering and expanded ownership. The
 implemented playback checkpoint is recorded for
 [macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
 Original SDL remains the
@@ -86,11 +86,13 @@ and semantic effect placement remain presentation choices. The native reference
 stays stereo. This verifies the documented 420-5812 wiring; unchanged wiring
 in an After Burner II cabinet revision still needs primary evidence.
 
-## Object-based HRTF (planned)
+<a name="object-based-hrtf-planned"></a>
+## Object-based HRTF: implementation and remaining work
 
 Added 2026-10-26. Extend the current fixed front/rear sound categories with
 moving sources tied to verified game objects. This is an opt-in presentation
-enhancement, not implemented or accepted by the existing cockpit audio tests.
+enhancement. Passive tracking was added on 2026-11-05; moving rendering is
+not implemented or accepted by the existing cockpit audio tests.
 Original SDL/native PCM remains the regression reference.
 
 The engine has object activity, handler identity, screen positions, motion and
@@ -101,13 +103,51 @@ alone cannot establish a source's bearing behind the player. Verify coordinates,
 player-relative depth, elevation and lifecycle for each supported family from
 its ROM routines and independent MAME observations.
 
-The main missing link is ownership from the producing object through the main
-sound queue, Z80 allocation and physical FM/PCM voice. Current routing tracks
-sound categories, not a persistent object-to-voice association, and combines
-effects into category buses. Dynamic placement needs presentation-only ownership
-metadata and separately renderable voices for supported effects. Retain native
-trigger times, voice stealing, clocks and original stereo balance; do not assign
-an ambiguous voice to whichever object happens to be nearest.
+Passive ownership now follows verified main-CPU producers through the main
+ring/latch, Z80 command buffers, sequencer allocation and physical FM/PCM voices.
+Object IDs include a session/reset epoch and slot generation; unknown ownership
+falls back without changing audio. The current contracts cover raw `$156CE`
+enemy-missile coordinates and `$D8` launch ownership by the firing aircraft in
+A5. Aircraft coordinates are deliberately unknown. `$6E/$6F` producer ownership
+is implemented and protocol-tested, but has no positive natural capture yet.
+
+The independent 8,000-frame MAME recording checks 2,244,500 records without skips:
+202 missile-coordinate samples and 15 aircraft-owned launch identities, with
+100,489 owned PCM observations. This recording has no positive owned FM or
+`$6E/$6F` event; synthetic protocol checks cover those paths separately. The
+paired native replay preserves every RGB/PCM/time and music/effects frame.
+Ten retained metadata mutations and a detached sound-observer control protect
+the contracts. See [implementation evidence](ENGINE_NOTES.md#passive-object-audio-tracking-2026-11-05)
+and [commands](WORKFLOW.md#object-audio-tracking-checks).
+
+Supported owned voices now render through a bounded 24-direction grid per chip
+(45-degree azimuth steps and -30/0/+30-degree elevation). Signed native view
+rotation converts listener-relative missile/aircraft positions; world explosions
+use their own shared-offset projection contract. A 16 ms causal transition uses
+past timestamped positions, with no future frame steering queued audio. The
+spatial weights travel with PCM, so pause, clear and recovery preserve alignment.
+Music stays direct stereo; unknown ownership keeps the existing category buses.
+
+The 61 total OpenAL sources include the 13 existing streams and 48 object buses.
+Owned effects are removed from their category bus before being added once to the
+grid. Chip generation, original stereo PCM, native voice stealing and triggers
+are unchanged. Distance attenuation and Doppler remain disabled. This is an
+experimental virtual-speaker presentation, with finite angular resolution.
+
+Verified additional producers are player missile `$A022` (return `$A026`),
+enemy launch `$14D9A`, world explosion `$91A6`, and target-lock FM `$7BA8`.
+The lock marker is an attachment: its cue belongs to the live aircraft at A5-64.
+Native X/Y are transformed with the ROM's signed sine/cosine frame; projected
+screen coordinates are never used to infer whether an aircraft is behind.
+
+Natural 8,000- and 12,000-frame MAME recordings verify FM and PCM ownership and
+17,185 family trajectory observations. The latter observes 355 executions of
+the `$156EC` flyby comparison, with **zero eligible unsigned depth conditions**.
+Natural positive `$6E/$6F` remains unverified; no event is invented to fill it.
+World geometry additionally matches eight independent MAME projection witnesses
+in the retained directed corpus (the full retained 64 explosion handler records
+also pass). A continuous pursuing-aircraft engine is still unsupported without
+a verified native voice or separately specified enhancement asset.
 
 Suggested implementation order:
 
@@ -130,17 +170,19 @@ presentation policy; the current implementation has attenuation and Doppler off.
 
 - [ ] Verify per-family coordinate and lifecycle contracts, including offscreen
   sources, player depth crossings, attachments and object-slot reuse.
-- [ ] Carry passive, timestamped object ownership through queue delivery,
+- [x] Carry passive, timestamped ownership for the verified producers above through queue delivery,
   sequencer allocation, overlapping commands and voice stealing. Invalidate
-  stale ownership on despawn/reuse, reset, restart and profile changes; retain
+  stale ownership on despawn/reuse, reset, restart and capture disable/re-enable
+  (including Original/enhanced profile switches); retain
   the existing category/stereo fallback when ownership is unknown.
-- [ ] Render supported voices separately with bounded source/queue costs and
+- [x] Render supported voices separately with bounded source/queue costs and
   smooth movement aligned to audio playback time. Define the listener frame
   and camera/roll relationship explicitly; never feed presentation state back
   into game execution or native sound-device state.
 - [ ] Add independent MAME ownership/trajectory fixtures and rejected mutations
   for wrong source, side/depth, stale identity and timing. Preserve all retained
-  fixtures, mutations and native RGB/PCM/time comparisons; apply ROADMAP's
+  fixtures, mutations and native RGB/PCM/time comparisons (initial tracking suite
+  expanded natural FM/PCM and directed world coordinates implemented; natural positive flyby and remaining families stay open); apply ROADMAP's
   focused/full validation cadence to the actual changes and acceptance gate.
 - [ ] Exercise overlapping sources, pause/resume, clear/restart, voice stealing,
   fallback and starvation; measure clipping, latency and sustained peak-load

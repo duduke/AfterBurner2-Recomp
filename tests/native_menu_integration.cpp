@@ -457,7 +457,14 @@ int main(int argc,char** argv) try {
         menu.open(game);navigate(menu,{"SETTINGS","CONTROLS","FEEDBACK"});
         require(menu.selection()==0,"Feedback submenu entry");menu.key(SDLK_RETURN);require(feedback.settings.enabled,"Feedback enabled UI");
         for(int row=0;row<menu.row_count();++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}
-        enter(menu,"CUES");for(int row=0;row<menu.row_count();++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}menu.key(SDLK_ESCAPE);
+        enter(menu,"CUES");menu.draw();SDL_RenderPresent(renderer);readback(renderer,"build/oracle/feedback-cue-levels.bmp");select(menu,"PLAYER IMPACT");
+        menu.key(SDLK_RIGHT);require(feedback.settings.impact==0,"Impact High to Off UI");
+        menu.key(SDLK_RIGHT);require(feedback.settings.impact==1,"Impact Off to Low UI");
+        menu.key(SDLK_RIGHT);require(feedback.settings.impact==2,"Impact Low to Med UI");
+        menu.key(SDLK_RIGHT);require(feedback.settings.impact==3,"Impact Med to High UI");
+        for(auto label:{"LANDING","TAKEOFF","REFUELING"}){select(menu,label);menu.key(SDLK_RIGHT);menu.key(SDLK_RIGHT);menu.key(SDLK_RIGHT);menu.key(SDLK_RIGHT);}
+        require(feedback.settings.landing==3&&feedback.settings.takeoff==3&&feedback.settings.refueling==3,"sequence effect level cycle UI");
+        for(int row=0;row<menu.row_count();++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}menu.key(SDLK_ESCAPE);
         enter(menu,"TEST FEEDBACK");for(int row=0;row<menu.row_count();++row){menu.draw();SDL_RenderPresent(renderer);menu.key(SDLK_DOWN);}menu.key(SDLK_ESCAPE);
         menu.key(SDLK_ESCAPE);require(menu.in_controls()&&menu.row_label(menu.selection())=="FEEDBACK","Feedback Escape navigation");menu.key(SDLK_RETURN);
         select(menu,"BODY STRENGTH");menu.key(SDLK_RIGHT);require(feedback.settings.body==60,"Feedback strength UI");

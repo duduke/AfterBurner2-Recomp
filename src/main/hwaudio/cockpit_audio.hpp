@@ -1,6 +1,7 @@
 #pragma once
 #include "hwaudio/music_routing.hpp"
 #include "hwaudio/xboard_pcm.hpp"
+#include "hwaudio/object_audio_rendering.hpp"
 #include <map>
 
 // Enhanced presentation policy. This never substitutes commands or clocks a
@@ -9,7 +10,7 @@
 class CockpitRouting {
 public:
     enum Group : unsigned { neutral, front, rear, unknown=neutral };
-    struct Block {unsigned chip{};uint64_t first{};std::array<std::vector<XBoardPcm::Sample>,3> groups;std::vector<XBoardPcm::Sample> music;};
+    struct Block {unsigned chip{};uint64_t first{};std::array<std::vector<XBoardPcm::Sample>,3> groups;std::vector<XBoardPcm::Sample> music;std::array<std::vector<float>,ObjectAudio::directions> objects;};
     std::array<Group,8> fm{};std::array<Group,16> pcm{};
     explicit CockpitRouting(std::span<const uint8_t> sound,std::span<const uint8_t> main):rom(sound){
         // Verified main producers: cannon $9ED8, reload $16CEC, missiles
