@@ -10,6 +10,9 @@ param(
     [string]$SignToolPath
 )
 $ErrorActionPreference='Stop'
+# A fresh -NoProfile process may not have registered the Cert: provider yet.
+# Load its built-in module explicitly before any certificate-store access.
+Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
 if(Test-Path -LiteralPath $ReceiptPath){throw 'Preserve the previous receipt; choose a new path'}
 $cert=$null
 $machine=$false

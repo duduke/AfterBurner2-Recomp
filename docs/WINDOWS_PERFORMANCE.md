@@ -359,3 +359,12 @@ succeeded from public main `9f3ace2`: pinned dependency build, system-only impor
 and license checks, unsigned runtime ZIP and corresponding-source ZIP. Runtime
 ZIP SHA-256: `203ccfa0a26689f630e9072fd64e7260233ea474381aba34c0a335289350031c`.
 This is unsigned CI input, not a public Windows release or protected launch.
+
+
+The added native startup smoke passed in [run 42083424626](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42083424626)
+from `7f4072b`: the EXE reached its command-line parser from an otherwise empty
+folder. That run then exposed a verifier initialization issue: fresh
+`powershell -NoProfile` had not loaded the `Cert:` provider. Both signing scripts
+now explicitly import the built-in `Microsoft.PowerShell.Security` module before
+store access; no trust store or policy changes are made. The earlier failed
+run is retained and is not counted as passing signature/fallback acceptance.

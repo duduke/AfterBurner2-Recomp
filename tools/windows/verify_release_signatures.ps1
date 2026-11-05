@@ -8,11 +8,14 @@ param(
     # Public CA roots confirmed out of band with the signing provider, not roots
     # created/imported for development. AuthRoot members are accepted by default.
     [ValidatePattern('^[A-Fa-f0-9]{40}$')][string[]]$ApprovedRootThumbprint=@(),
-    # Only for dependency/negative-control checks; never a full-runtime receipt.
     [ValidateSet('base','legacy')][string]$Profile='base',
+    # Only for dependency/negative-control checks; never a full-runtime receipt.
     [switch]$FilesOnly
 )
 $ErrorActionPreference='Stop'
+# A fresh -NoProfile process may not have registered the Cert: provider yet.
+# Load its built-in module explicitly before any certificate-store access.
+Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
 if(Test-Path -LiteralPath $ReceiptPath){throw 'Preserve the previous receipt; choose a new path'}
 $directory=Get-Item -LiteralPath $RuntimeDirectory
 if(-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)){

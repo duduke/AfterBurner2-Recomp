@@ -187,7 +187,7 @@ librashader/DirectX source archives and app-local Microsoft C++ runtime files:
 
 ```sh
 python3 tools/package_windows_runtime.py "$AB2_VERSION" --label "$AB2_LABEL" \
-  --build build/win --msvc-redist "$AB2_MSVC_REDIST" \
+  --build build/windows-base-hosted --deps build/windows-base-inputs --profile base \
   --verified-runtime "$AB2_SIGNED_RUNTIME" --signature-receipt "$AB2_SIGNATURE_RECEIPT"
 ```
 
@@ -203,6 +203,15 @@ scope and unresolved performance/recording limits are in
 [release notes](RELEASE_NOTES.md#compact-windows-refresh-2026-10-28) and
 [Windows status](WINDOWS_PERFORMANCE.md). The full-layout packager below remains
 available for development/distribution variants.
+
+The current standalone base is built with
+`python tools/windows/build_base.py --package-sources` on Windows, or the manual
+`.github/workflows/windows-base.yml` hosted workflow. Static SDL/compiler
+runtimes and dynamically loaded optional OpenAL eliminate upstream startup DLL
+imports. The compact packager defaults to `--profile base`; see
+[the current signing, source and launch requirements](WINDOWS_SIGNING.md).
+The full-layout commands below describe historical development packages and
+must not be used to restore Windows downloads without those publication checks.
 
 Preview 5 includes an experimental **Windows 10/11 x64** package. `tools/package_windows.py`
 supports both a native Windows x64 Release build (`--native-build build/win`,

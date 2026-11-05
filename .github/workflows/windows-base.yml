@@ -31,3 +31,4 @@ jobs:
             build/releases/*.sha256
             build/releases/*.manifest.json
             build/windows-base-hosted/pinned-inputs.json
+            build/windows-base-hosted/unsigned-negative-control.json
