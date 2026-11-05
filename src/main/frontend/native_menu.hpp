@@ -141,7 +141,7 @@ public:
             if(enter && row.id>=4 && row.id<15)input->begin(row.id-4);
             if(enter && row.id==15)input->reset();
         } else if(current==Page::feedback || current==Page::cues || current==Page::feedback_tests){
-            if(row.id<9)feedback->adjust(row.id,direction);
+            if(row.id<9 || (row.id>=15&&row.id<=17))feedback->adjust(row.id,direction);
             else if(enter && row.id>=10 && row.id<=13)feedback->test(row.id-10);
             else if(enter && row.id==14)feedback->stop();
         } else if(current==Page::audio){
@@ -364,8 +364,8 @@ private:
             setting(2,"BODY STRENGTH",std::to_string(feedback->settings.body)+"%");setting(3,"TRIGGER STRENGTH",std::to_string(feedback->settings.triggers)+"%");
             link("CUES",Page::cues);link("TEST FEEDBACK",Page::feedback_tests,feedback->capabilities());back();break;
         case Page::cues:{auto& s=feedback->settings;
-            const char* labels[]{"CANNON","MISSILES","PLAYER IMPACT","AFTERBURNER","SWAP TRIGGERS"};const bool flags[]{s.cannon,s.missile,s.impact,s.boost,s.swap};
-            for(int i=0;i<5;++i)setting(i+4,labels[i],flags[i]?"ON":"OFF");back();break;}
+            const char* labels[]{"CANNON","MISSILES","PLAYER IMPACT","AFTERBURNER","SWAP TRIGGERS"};const int levels[]{s.cannon,s.missile,s.impact,s.boost};
+            for(int i=0;i<4;++i)setting(i+4,labels[i],FeedbackSettings::level(levels[i]));setting(15,"LANDING",FeedbackSettings::level(s.landing));setting(16,"TAKEOFF",FeedbackSettings::level(s.takeoff));setting(17,"REFUELING",FeedbackSettings::level(s.refueling));setting(8,labels[4],s.swap?"ON":"OFF");back();break;}
         case Page::feedback_tests:
             setting(10,"TEST LOW BODY");setting(11,"TEST HIGH BODY");setting(12,"TEST LEFT TRIGGER");setting(13,"TEST RIGHT TRIGGER");setting(14,"STOP ALL","",feedback->capabilities());back();break;
         case Page::audio:

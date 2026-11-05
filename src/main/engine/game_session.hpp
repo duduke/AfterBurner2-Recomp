@@ -79,7 +79,19 @@ public:
         scene_ready=false;if(capture_wide)wide_clip_count=0;
         game.tick(input);
         if(primary_completed)primary_completed(info().number);
-        if(capture_feedback_)feedback_frame=feedback.take(info().number,info().time_ns,feedback_word(0x29c09c),feedback_word(0x29c0d2));
+        if(capture_feedback_){
+            feedback_frame=feedback.take(info().number,info().time_ns,feedback_word(0x29c09c),feedback_word(0x29c0d2),
+                feedback.player_record()?(uint32_t(feedback_word(feedback.player_record()+16))<<16)|feedback_word(feedback.player_record()+18):0,feedback_word(0xffff9124));
+            const auto base=feedback.sequences.base_record,finale=feedback.sequences.finale_record;
+            feedback_frame.motion=Feedback::SequenceCapture::state(feedback_word(0x29c09c),feedback_word(0xffff90b0),
+                feedback_word(0x29c0aa),feedback_word(0xffff90ae),bool(feedback_word(0xffff90fe)&0x100),
+                (base&&(feedback_word(base)&0x8000))?(uint32_t(feedback_word(base+16))<<16)|feedback_word(base+18):0,
+                base?feedback_word(base+40):0,base&&(feedback_word(base+60)&0x100),base?feedback_word(base+54):0,
+                (finale&&(feedback_word(finale)&0x8000))?(uint32_t(feedback_word(finale+16))<<16)|feedback_word(finale+18):0,
+                finale?feedback_word(finale+24):0);
+            feedback_frame.sequence_events=feedback.sequences.take();
+        }
+        if(capture_object_audio_)object_audio_frame=object_audio.frame(info().number,info().time_ns,[this](auto a){return feedback_word(a);});
         auto samples = game.take_audio();
         if (extensions.process_audio && !samples.empty()) extensions.process_audio(samples, info());
         if (audio.empty()) audio = std::move(samples);
@@ -217,8 +229,17 @@ public:
         bind_feedback_capture();
     }
     Feedback::Frame take_feedback(){auto f=std::move(feedback_frame);feedback_frame={};return f;}
-    void capture_music(bool enabled){game.capture_music(enabled);}
-    void capture_cockpit(bool enabled){game.capture_cockpit(enabled);}
+    void capture_music(bool enabled){if(!enabled)capture_audio_objects(false);game.capture_music(enabled);}
+    void capture_audio_objects(bool enabled){
+        if(enabled==capture_object_audio_)return;
+        capture_object_audio_=enabled;object_audio_frame={};
+        if(enabled){object_audio.configure({active_rom().soundcpu.rom,active_rom().soundcpu.length},{active_rom().maincpu.rom,active_rom().maincpu.length});object_audio.prime([this](auto a){return feedback_word(a);});}
+        else object_audio.reset(info().time_ns);
+        game.track_audio_objects(enabled?&object_audio:nullptr);bind_feedback_capture();
+    }
+    void capture_cockpit(bool enabled){game.capture_cockpit(enabled);capture_audio_objects(enabled);}
+    ObjectAudio::Frame take_audio_objects(){auto f=std::move(object_audio_frame);object_audio_frame={};return f;}
+    std::vector<ObjectAudio::Event> take_audio_object_events(){return object_audio.take_events(info().time_ns);}
     std::vector<XBoardGame::AudioPresentation> take_music(){return game.take_music();}
     std::vector<int16_t> take_audio() {
         auto result = std::move(audio);
@@ -279,6 +300,7 @@ private:
         };
         if(!capture_sprites)game.board().rendered=[this](auto ns,auto top,auto bottom,auto display){publish_wide(ns,top,bottom,display);};
     }
+    ObjectAudio::Tracking object_audio;ObjectAudio::Frame object_audio_frame;bool capture_object_audio_{};
     Feedback::Capture feedback;Feedback::Frame feedback_frame;bool capture_feedback_{};
     uint16_t feedback_word(uint32_t a) const {const auto o=MainBus::memory_offset(a);const auto& m=game.board().memory.bytes;return uint16_t(m[o]<<8|m[o+1]);}
     Roms& active_rom() { return shuffle_view ? shuffle_view->rom() : rom; }
@@ -290,7 +312,8 @@ private:
             if(ground)ground=std::make_unique<Presentation::GroundHorizon>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));
             if(assets)assets=std::make_unique<Presentation::EffectAssets>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));
         } else if(visibility)visibility->reset();
-        feedback.clear();feedback_frame={};
+        feedback.clear();feedback_frame={};object_audio_frame={};
+        if(capture_object_audio_){object_audio.configure({active_rom().soundcpu.rom,active_rom().soundcpu.length},{active_rom().maincpu.rom,active_rom().maincpu.length});object_audio.prime([this](auto a){return feedback_word(a);});game.track_audio_objects(&object_audio);}
         presentation_ready = scene_ready = false;
         wide_clip_count=0;wide_clip_open=false;
         if(capture_wide)bind_wide_capture();
@@ -329,7 +352,10 @@ private:
         ++host.palette_gen;
         prepared_shuffle_position=position;
     }
-    void bind_feedback_capture(){if(!capture_feedback_&&!capture_wide&&!shuffle_view){game.board().phase={};game.board().presentation_phase=false;return;}game.board().presentation_phase=true;game.board().phase=[this](const auto& p){prepare_shuffle_palette(p);if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10);};}
+    // Sequence cues need carrier/base/nozzle and sound-latch writes excluded by
+    // the sprite presentation filter. Use the existing complete passive observer
+    // while feedback is enabled; this does not change CPU or device execution.
+    void bind_feedback_capture(){if(!capture_feedback_&&!capture_object_audio_&&!capture_wide&&!shuffle_view){game.board().phase={};game.board().presentation_phase=false;return;}game.board().presentation_phase=!(capture_feedback_||capture_object_audio_);game.board().phase=[this](const auto& p){prepare_shuffle_palette(p);if(capture_object_audio_)object_audio.observe_main(p,feedback_word(0x29c09c),[this](auto a){return feedback_word(a);});if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10,feedback_word(0x29c0b8));if(capture_feedback_&&Feedback::SequenceCapture::interesting(p))feedback.sequences.observe(p,feedback_word(0x29c09c),bool(feedback_word(0xffff90fe)&0x100));};}
     XBoardGame game;
     Roms& rom;
     Extensions extensions;

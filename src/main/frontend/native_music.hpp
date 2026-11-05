@@ -130,6 +130,11 @@ public:
                 const unsigned rate=block.chip?31250:62500;const float chip_gain=block.chip?.35f:.15f;
                 for(size_t i=0;i<block.music.size();++i){const auto at=(block.first+i)*48000/rate;const size_t index=at<=chunk.first?0:std::min<size_t>(at-chunk.first,native_music_envelope.size()-1);
                     const float gain=native_music_envelope[index]*chip_gain/32768.f;auto& stream=packet.streams[11+block.chip];stream.rate=rate;stream.pcm.push_back(XBoardSpeaker::pcm(block.music[i].left*gain));stream.pcm.push_back(XBoardSpeaker::pcm(block.music[i].right*gain));}
+                for(unsigned d=0;d<block.objects.size();++d){auto& stream=packet.streams[13+block.chip*ObjectAudio::directions+d];stream.rate=rate;stream.channels=1;
+                    for(size_t i=0;i<block.objects[d].size();++i){const auto at=(block.first+i)*48000/rate;
+                        const size_t index=at<=chunk.first?0:std::min<size_t>(at-chunk.first,effects_envelope.size()-1);
+                        stream.pcm.push_back(XBoardSpeaker::pcm(block.objects[d][i]*effects_envelope[index]*chip_gain/32768.f));}
+                }
                 for(unsigned g=0;g<3;++g)for(size_t i=0;i<block.groups[g].size();++i){
                     const auto at=(block.first+i)*48000/rate;
                     const size_t index=at<=chunk.first?0:std::min<size_t>(at-chunk.first,effects_envelope.size()-1);

@@ -27,7 +27,7 @@ python3 tools/workflow.py run quick       # alias for main
 python3 tools/workflow.py run integration # retained broad tests + Stage 1
 python3 tools/workflow.py run joint       # current 120-frame joint oracle
 python3 tools/workflow.py run full        # 600-frame joint + reset window
-python3 tools/workflow.py run required    # complete engine-change gate
+python3 tools/workflow.py run required    # only for native-execution/emulated-hardware changes
 python3 tools/workflow.py run oracle-subirq -j 4  # any focused make target
 ```
 
@@ -49,9 +49,12 @@ input, pacing, renderer, HUD/CRT, aircraft, filters, feedback, music/audio
 playback and the Arcade, Practice and Shuffle lifecycles. It omits the full
 oracle/mutation suite and complete stage/lifecycle sweeps. Add affected geometry,
 GPU, extended audio or package checks when those change. `test`, `verify-stage1`, `oracle-test` and all their fixtures
-remain intact. Full oracle/mutation runs are reserved for engine changes,
-including releases containing engine changes; other releases use `main`, affected
-checks and package validation. There is no periodic merge-count full-suite gate.
+remain intact. **Run the full gate only when a change affects native execution
+or emulated hardware behavior.** Engine-header edits, passive observers, metadata,
+frontend work, and test/fixture/comparison-only changes do not independently
+trigger it. Other work uses `main` plus affected checks; documentation-only work
+uses inspection. Releases add package validation and do not independently trigger
+the full gate. There is no periodic merge-count full-suite gate.
 Profiles do not automatically capture or regenerate missing fixtures.
 
 Choose gates and evidence reuse by the
@@ -934,13 +937,20 @@ ordinary ROM-backed integration does not. Ambiguous endpoint lines retain Origin
 ```sh
 python3 tools/workflow.py run test-native-haptics verify-feedback verify-feedback-fixture verify-feedback-mutations verify-native-menu -j 4
 # Regenerate compact passive MAME witnesses when needed:
-python3 tools/workflow.py run capture-feedback -j 4
+python3 tools/workflow.py run capture-feedback capture-feedback-details -j 4
+# Reuses the retained cold-boot natural ending input recording:
+python3 tools/workflow.py run capture-feedback-sequences -j 4
+python3 tools/workflow.py run verify-feedback-sequences verify-feedback-observer-mutation -j 4
 ```
 
 `test` includes virtual SDL output/mixer checks; `verify-stage1` includes the
 4,200-frame native RGB/PCM/time comparison. `oracle-test` includes MAME cue
 witnesses, the retained attract-mode bus fixture and feedback mutations.
-Captures stay in ignored `build/oracle/`; never commit them. Physical acceptance
+Sequence capture uses the retained `natural_ending_sequences.inputs` request file
+and records the actual MAME pins in `feedback_sequences.txt.inputs` for native
+replay. `verify-feedback-observer-mutation` runs the 17,000-frame native baseline
+then rejects restoring the limited presentation filter. Captures stay in ignored
+`build/oracle/`; never commit them. Physical acceptance
 is separate: test every exposed motor in Settings → Controls → Feedback, then
 exercise gameplay, pause, focus loss, restart and unplug on each target OS.
 macOS Xbox Bluetooth body and both triggers are confirmed; Windows/Linux and
@@ -969,3 +979,59 @@ through HRTF while comparing native RGB/PCM/time with an untapped board.
 re-primes and backend recoveries; these exclude hardware latency. The SDL-only
 target deliberately omits OpenAL headers/linking and checks truthful fallback,
 pause/resume, native PCM and profile switching.
+
+
+## Object audio tracking checks
+
+```sh
+python3 tools/workflow.py run test-object-audio oracle-object-audio verify-object-audio-mutations -j 4
+python3 tools/workflow.py run verify-object-audio verify-object-audio-wire-mutation -j 4
+# Regenerate only when the retained independent recording needs updating:
+python3 tools/workflow.py run capture-object-audio
+# Only changes affecting native execution or emulated hardware behavior
+# require this complete gate; passive ownership metadata uses focused checks:
+python3 tools/workflow.py run required -j 4
+```
+
+`capture-object-audio` reuses `build/oracle/natural_weapons.inputs` for 8,000
+frames and writes `build/oracle/object-audio/weapons-v4.txt` plus the actual
+MAME input-pin sidecar. The native integration uses that sidecar, not requested
+inputs. The capture checks main writes, sound execution, raw missile coordinates
+and frame timestamps; its header is `AB2OBJ02`. ROMs and recordings stay ignored.
+The oracle compares all 2,244,500 records, with no skipped rows. This recording
+contains `$D8` owned PCM launches, but no owned FM or `$6E/$6F` flyby commands;
+protocol-only coverage must not be reported as natural-path acceptance.
+
+`test-object-audio` is in `test`/`main`; `verify-object-audio` is in
+`verify-stage1`; the oracle and ten metadata mutations plus the detached native
+sound-observer mutation are in `oracle-test`. The wire mutation first requires
+the unchanged 8,000-frame native baseline. All controls use header overlays and
+retain full logs under `build/oracle/object-audio/mutations/`.
+
+
+## Final carrier landing feedback checks
+
+```sh
+python3 tools/workflow.py run test-native-haptics verify-feedback-finale verify-feedback-finale-mutations -j 4
+python3 tools/workflow.py run verify-feedback-finale-practice verify-feedback-finale-native verify-feedback-finale-wire-mutation -j 4
+# Regenerate the separate, complete natural-finale witness only when needed:
+python3 tools/workflow.py run capture-feedback-finale
+```
+
+The retained `feedback_sequences.txt` remains unchanged. The separate
+`build/oracle/feedback_finale.txt` (`AB2FINH1`) captures 74,452 natural frames and
+its actual-input sidecar. The fixture independently scans active finale aircraft
+and checks the contact-flag edge, repeated TAS suppression and post-flight
+rollout/stop. Native replay checks mode/time throughout and final-family
+motion/events wherever the independently scanned aircraft exists. The paired
+Practice cases exercise direct 23 and 22 → 23 with ordinary physical controls;
+the latter steers to avoid losing all three lives before the finale.
+
+`verify-feedback-finale-native` and `verify-feedback-finale-practice` are in
+`verify-stage1`. The new fixture, seven metadata controls and detached flags-export
+control are in `oracle-test`; the wire control first requires the passing
+Practice baseline. Logs stay under `build/haptics/finale-mutations/`.
+These passive presentation observers use `main` plus the affected checks above
+and a relevant build/smoke. Their location in engine headers does not trigger
+the full `required` gate; follow ROADMAP's core-execution boundary. Retain all
+existing fixtures and mutation targets in the aggregate gate.

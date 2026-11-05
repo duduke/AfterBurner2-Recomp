@@ -3,6 +3,7 @@
 #include "engine/mainbus.hpp"
 #include <array>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -12,11 +13,15 @@ void require(bool c,const char* m){if(!c)throw std::runtime_error(m);}
 struct Phase {unsigned cpu{};bool write{};unsigned address{},data{},mask{},pc{},space{};uint64_t ns{};};
 int main(int argc,char** argv)try {
     std::ifstream f(argc>1?argv[1]:"build/oracle/feedback.bin",std::ios::binary);char magic[8];read(f,magic,8);
-    if(!memcmp(magic,"AB2HAP01",8)) {
+    const bool details=!memcmp(magic,"AB2HAP02",8);
+    if(details || !memcmp(magic,"AB2HAP01",8)) {
+        std::deque<bool> sides,initialized_sides;unsigned left=0,right=0,damage=0;
         Feedback::Capture capture;std::array<unsigned,3> expected{},actual{};unsigned frames=0,boost=0,suppressed=0,unrelated=0;uint64_t seq=0;
         while(f.peek()!=EOF){const auto tag=f.get();if(tag==1){unsigned char b[25];read(f,b,25);
             Phase p{0,true,unsigned(be(b+12,4)),unsigned(be(b+16,2)),unsigned(be(b+18,2)),unsigned(be(b+8,4)),0,be(b,8)};
-            const auto mode=be(b+20,2);capture.observe(p,mode==0x10);
+            const auto mode=be(b+20,2);unsigned launches=0;
+            if(details){unsigned char extra[2];read(f,extra,2);launches=be(extra,2);}
+            capture.observe(p,mode==0x10,launches);
             // Independent MAME reference observes the active record's committed
             // 32-bit handler value, regardless of the producing instruction PC.
             int cue=p.data==0xa030?0:p.data==0x9f7c?1:p.data==0xe662?2:-1;
@@ -24,10 +29,18 @@ int main(int argc,char** argv)try {
                 if(mode==0x10)++expected[cue];else ++suppressed;
             }else ++unrelated;
         }else if(tag==2){unsigned char b[16];read(f,b,16);++frames;const auto ns=be(b+4,8),mode=be(b+12,2),throttle=be(b+14,2);
-            auto cues=capture.take(be(b,4),ns,mode,throttle);for(auto e:cues.events){require(e.sequence>seq,"MAME event sequence repeated");seq=e.sequence;++actual[unsigned(e.cue)];}
+            uint32_t handler=0;unsigned state=0;
+            if(details){unsigned char extra[6];read(f,extra,6);handler=be(extra,4);state=be(extra+4,2);}
+            auto cues=capture.take(be(b,4),ns,mode,throttle,handler,state);
+            if(details){const bool visible=mode==16 && (handler==0xe662 || (handler==0xe8d0&&state<5) || (handler==0xe94e&&!state));require(cues.damage==visible,"MAME damage lifetime differs");damage+=cues.damage;}for(auto e:cues.events){require(e.sequence>seq,"MAME event sequence repeated");seq=e.sequence;++actual[unsigned(e.cue)];if(details&&e.cue==Feedback::Cue::missile)sides.push_back(e.right);}
             const bool reference=mode==16 && int16_t(throttle)>=253;require(cues.boost==reference,"MAME throttle state differs");boost+=reference;
+        }else if(details&&tag==3){unsigned char b[4];read(f,b,4);
+            // Initialized missile X minus the live player X independently witnesses its side.
+            const int delta=int16_t(uint16_t(be(b,2)-be(b+2,2)));
+            require(delta==32||delta==-32,"unexpected launch offset");initialized_sides.push_back(delta>0);delta>0?++right:++left;
         }else throw std::runtime_error("invalid MAME feedback record");}
         std::cout<<"MAME feedback: "<<frames<<" frames, cannon/missile/impact="<<actual[0]<<'/'<<actual[1]<<'/'<<actual[2]<<", boost="<<boost<<", suppressed/unrelated="<<suppressed<<'/'<<unrelated<<"\n";
+        if(details){require(sides==initialized_sides,"MAME missile side differs");require(left&&right&&damage,"MAME direction/damage witnesses missing");std::cout<<"MAME detail: left/right="<<left<<'/'<<right<<", visible damage frames="<<damage<<"; 0 skipped\n";}
         require(actual==expected,"cue assignment differs from independent MAME handler witnesses");require(actual[0]&&actual[1]&&actual[2]&&boost&&suppressed&&unrelated,"MAME positive/negative witnesses missing");return 0;
     }
     require(!memcmp(magic,"AB2ARB10",8),"MAME fixture version mismatch");

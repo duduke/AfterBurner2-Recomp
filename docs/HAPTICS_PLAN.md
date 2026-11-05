@@ -1,25 +1,37 @@
 # SDL rumble and force feedback
 
 **Status: basic SDL rumble shipped in the macOS preview; advanced FFB planned.**
-Updated **2026-10-23** for
-[macOS Preview 3](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.3).
+Updated **2026-11-05** for local source; packaged previews require rebuilding.
 The shared adapter supports Windows, Linux and macOS through SDL 3.4.
 Capabilities and API results determine which outputs are available.
 
 ## Use
 
-**Options → Controls → Feedback** offers:
+**Settings → Controls → Feedback** offers:
 
 - Enabled (default Off) and explicit output-device selection.
-- Independent body/trigger strengths, four gameplay cue toggles and trigger swap.
+- Independent body/trigger strengths, seven gameplay effect levels (On / Low → On / Med → On / High → Off) and trigger swap.
 - Capability status, four finite motor tests and Stop All.
 
 Tests work with gameplay feedback Off and last 650 ms. They stop on leaving
-their row/menu or losing focus. Preferences use `AB2HAPTICS1` in
+their row/menu or losing focus. Preferences use `AB2HAPTICS3` (versions 1/2 migrate automatically; new sequence levels start at High) in
 `settings.cfg.haptics`; `--settings-file` changes the base path. GUID/type
 identifies the saved target; live instance ID routes output. Identical devices
 require explicit selection after an ambiguous reconnect. Editing an input
 profile does not change the feedback target.
+
+## Development validation
+
+Haptic tuning, motor routing and read-only cue observers use the main profile,
+affected motor/mixer/lifecycle checks and a relevant build/smoke. For a new or
+changed native cue, verify the affected sequence independently in MAME, reject
+relevant mutations and compare native RGB/PCM/time with capture enabled/disabled.
+Exercise the reported route (for example Practice 22 → 23); a broad passing suite
+cannot substitute for reaching that cue. Physical feel remains a separate check.
+
+Changing a passive hook in GameSession or an engine header does not by itself
+require the full engine gate. CPU, scheduling, emulated device/bus or native game
+logic changes still do. See [the authoritative cadence](ROADMAP.md#working-on-the-remaining-tasks-read-this-first).
 
 ## Motor mapping
 
@@ -29,11 +41,14 @@ the right body motor provides high-frequency, finer vibration. Default assignmen
 | Effect | Left body motor (low frequency) | Right body motor (high frequency) | Left trigger | Right trigger |
 | --- | --- | --- | --- | --- |
 | Cannon shot | Light recoil | Strong recoil | — | Recoil pulse |
-| Missile launch | Strong kick | Light kick | Launch pulse | — |
+| Missile launch | Strong on left launches | Strong on right launches | Left launch pulse | Right launch pulse |
 | Player impact/damage | Strong impact | Strong impact | Impact pulse | Impact pulse |
 | Full-throttle afterburner | Gentle vibration | Very light vibration | — | — |
+| Landing | Approach, wheel impact/rebound, speed-scaled rollout | Uneven runway texture | Wheel-impact accent | Wheel-impact accent |
+| Takeoff | Spool, launch kick, rising thrust, airborne fade | Deck/runway texture | Launch accent | Launch accent |
+| Refueling | Coupling jolt, individual reload bumps | Coupling/reload accents | Coupling/reload accents | Coupling/reload accents |
 
-**Swap Triggers** reverses the cannon and missile trigger assignments. Body and
+**Swap Triggers** reverses the trigger assignments, including directional missiles. Body and
 trigger strength settings independently scale these effects. Outputs require
 device support; simple-haptic fallback combines the two body channels.
 
@@ -44,11 +59,16 @@ device support; simple-haptic fallback combines the two body channels.
 | Cue | Original-ROM observation | Output |
 | --- | --- | --- |
 | Cannon | `$9EF6` commits Vulcan handler `$A030` after allocation | High body / right trigger |
-| Missile | `$9EBC` commits missile handler `$9F7C` after reserve/slot checks | Low body / left trigger |
-| Player impact | `$9C20` commits player damage handler `$E662` | Both body / both triggers |
+| Missile | `$9EBC` commits `$9F7C`; successful-launch count `$29C0B8 + 1` predicts the side selected at `$9FC2` | Corresponding body / trigger side |
+| Player impact | `$9C20` commits `$E662`; tracked player handler `$E8D0` states 0–4 or `$E94E` state 0 | Sustained both body / both triggers |
 | Afterburner | Flight selector `$29C09C == $10`, signed processed throttle `$29C0D2 >= $FD` | Gentle body rumble |
 
-All cues require active flight. Holding fire without a successful allocation,
+Weapon, impact and afterburner cues require active flight. Landing, takeoff
+and refueling use their verified carrier/airbase/nozzle states. The stage-23
+carrier finale has its own touchdown flag and continues rollout feedback into
+ending modes 17/18, then stops when the aircraft settles. Attract remains
+suppressed. Damage sustains through visible intact falling/rolling
+and breakup animation, stopping at the hidden decay states. Holding fire without a successful allocation,
 attract activity and enemy explosions produce no player recoil/impact. Warning
 cues remain disabled pending independent ROM verification. No inputs, bus
 transactions, RAM writes, CPU scheduling or original RGB/PCM are changed.
@@ -58,8 +78,22 @@ Feedback works independently of speaker availability and music replacement.
 continuous-state snapshot once per completed board frame. Restart clears the
 capture. `frontend/native_haptics.hpp` consumes events once, drops one-shots
 older than 100 ms of board time, and combines envelopes using the maximum per
-motor before applying gains. Cannon/missile/impact envelopes last 65/180/350 ms.
+motor before applying gains. Cannon/missile/initial-impact envelopes last 65/180/350 ms. Visible damage
+additionally holds continuous impact, refreshed by each board frame. High impact
+uses 1.5 body / 1.2 trigger gain before master scaling and saturation: default
+50% masters produce 75% body / 60% trigger output, versus the former initial
+45%/37.5% body and 22.5% triggers. Per-effect Low/Med/High scales are
+35%/65%/100%; Off is zero. Existing body/trigger master gains still apply.
 These strengths and envelopes are enhancement tuning, not arcade physics.
+
+Landing, Takeoff and Refueling are independent options under Cues. They use
+separate approach/contact/rollout, spool/acceleration/climb and coupling/reload
+layers. Wheel contact and nozzle capture produce finite impulses; refill bumps
+follow each actual `$9B` sound-command delivery, with no invented periodic timer.
+Refill pulses compensate the reported software playback queue so they do not
+lead buffered beeps; unavailable audio keeps them immediate. Separate pending
+pulses preserve the cadence, and pause/menu/focus stops discard them.
+See [sequence observations and validation](ENGINE_NOTES.md#layered-landing-takeoff-and-refueling-feedback-2026-11-05).
 
 Output refreshes at most every 20 ms, with finite 80 ms SDL watchdogs. Missing
 fresh board frames stop continuous feedback after 100 ms. Pause, menu entry,
@@ -121,7 +155,8 @@ References: [SDL Xbox HIDAPI driver](https://github.com/libsdl-org/SDL/blob/rele
 Automated coverage includes SDL virtual motor callbacks, overlap/gains,
 unsupported output, failures, stale/duplicate suppression, finite tests,
 focus/pause/restart, device switching/hotplug and persisted preferences.
-Independent MAME witnesses cover actual allocations, player hits, full throttle,
+Independent MAME witnesses cover actual allocations, initialized missile sides,
+visible damage states, player hits, full throttle,
 attract suppression and unrelated handler writes. Native enabled/disabled
 comparisons require identical RGB/PCM/time. Retain all fixtures and mutations;
 virtual callbacks prove calls, not physical feel. See

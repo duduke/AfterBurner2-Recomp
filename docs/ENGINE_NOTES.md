@@ -9751,6 +9751,163 @@ also pass (`build/oracle/horizon/revised-metal-smoke.log` and
 `revised-software-smoke.log`). These finite checks do not establish sustained
 peak-load acceptance.
 
+## Layered landing, takeoff and refueling feedback (2026-11-05)
+
+Controls → Feedback → Cues adds independent Landing, Takeoff and Refueling
+On / Low, On / Med, On / High and Off choices. Global Enabled and body/trigger
+masters still apply. `AB2HAPTICS3` appends these levels; versions 1 and 2 retain
+their earlier choices and initialize the new levels to High. Output remains
+optional presentation, with no emulated bus transactions or gameplay writes.
+
+The frontend uses separate layers instead of one sequence-long vibration:
+
+- Landing: light approach buffet; a heavy wheel-contact impulse, suspension
+  rebound and short settling tail; speed-scaled, uneven runway vibration during
+  rollout. Airbase parked time uses a light engine idle under Takeoff.
+- Takeoff: carrier spool buildup from the native wait counter, a launch kick,
+  speed-scaled low-frequency thrust plus faster high-motor deck/runway texture,
+  then a softer airborne fade. Airbase departure follows its own native
+  acceleration and liftoff threshold rather than the carrier's state numbers.
+- Refueling: a distinct heavy, rebounding coupling jolt at nozzle transfer,
+  followed by one short 34 ms bump for each actual `$9B` sound-latch delivery.
+  The captured refill spacing is about 65.5–73.7 ms, leaving gaps between bumps.
+  A full missile rack produces no invented refill pulses.
+
+These amplitudes, textures and envelopes are requested enhancement tuning,
+not claims of arcade force-feedback hardware or simulated aircraft physics.
+Native state/event observations select when the layers run:
+
+| Observation | Verified source |
+| --- | --- |
+| Carrier spool / departure / climb | Mode `$0F`, `$FFFF90B0` states 2 / 3–4 / 5–10; wait `$FFFF90AE`, speed `$29C0AA`; state 3 enters `$104F8` acceleration |
+| Airbase object | `$111A6` commits handler `$111BE`; `$1122E` dispatches object `+40` states 0/4/8/12/16 |
+| Landing arrival | `$11406` sets object `+60` bit 0 once at Y > `$84` and constructs the runway/carrier scenery through `$12540` |
+| Airbase departure / liftoff | `$114E8` changes state 8 → 12; `$11592` checks object `+54 >= $140` before lifting Y; state 16 hands back to flight |
+| Nozzle transfer | `$165A6` sets `$FFFF9102` bit 0 as nozzle animation 9 advances into transfer pose 10 |
+| Refill bump | `$16CF8` adds ammunition, `$16D00` queues `$9B`; feedback follows actual `$B81E → $E8017` delivery while the refueling flag is active |
+
+The airbase object must still be active and have a recognized sequence handler;
+retirement or slot reuse ends its feedback. Carrier mode 1/attract is suppressed.
+Pause/menu/focus loss/disable/restart/device changes and stale-frame/SDL watchdogs
+retain the previous stops. Events carry separate monotonic IDs and timestamps;
+duplicated frames/events and stale catch-up pulses do not replay sequence kicks.
+
+Independent passive MAME capture `feedback_sequences.txt` retains **30,000 of
+30,000 identical classified frames, 0 skipped**, with **1 wheel contact,
+2 launches (carrier plus airbase), 2 nozzle contacts and 50 refill deliveries**.
+All six motion phases appear, including **1,060 airbase-controller frames** and
+**1,000 refueling frames**. It reuses physical input from the retained
+`natural_ending_sequences.inputs`, without stage skips, RAM seeds or ROM edits.
+Capture and actual input pins: `build/workflow/20261105T071620.432929Z/`;
+current fixture replay: `build/workflow/20261105T074439.146142Z/02-verify-feedback-mutations.log`.
+All sixteen earlier feedback mutations plus eleven new sequence controls pass in
+`build/workflow/20261105T080159.280512Z/`: missing contact, wrong nozzle pose,
+refill before audio, early liftoff, flat spool, missing coupling kick, merged
+bumps, duplicate events, attract output, ignored levels and pulses ahead of queued
+audio are rejected.
+
+The native check replays MAME's actual pin sidecar (`feedback_sequences.txt.inputs`),
+not the requested inputs: MAME field updates have latency. **17,000 of 17,000
+sequence event/state frames match MAME, 0 skipped**, while separate capture-on/off
+hosts preserve **17,000 RGB/PCM/time frames**. This includes **1 landing arrival,
+2 departures, 1 nozzle contact and 50 actual refill-sound deliveries**. The
+original **4,200-frame** weapons/damage/boost capture-neutral check also passes.
+Native and retained fixture checks: `build/workflow/20261105T074439.146142Z/`.
+
+Enabled feedback uses the existing complete passive phase observer because the
+limited sprite presentation filter does not forward the additional sequence
+and sound writes. No engine execution, CPU timing or device implementation was
+changed. An additional observer-routing mutation restores the old filter and is
+rejected at the first carrier-launch event, against the passing native baseline
+above (`build/haptics/observer-mutation.log`). The full oracle target retains
+that baseline/mutation pair. Neutral phases publish no unused speed/timer RAM;
+only the operands actually used by the active haptic phase are compared.
+The landing image readbacks are retained as `build/haptics/landing-*.ppm`.
+
+Refill pulses additionally compensate the playback owner's reported buffered and
+pending software audio, plus the event's position within the current X-Board
+frame. A bounded pending-pulse queue preserves distinct future bumps; a later
+refill cannot replace an earlier queued pulse. Unavailable audio uses immediate
+tactile cues. Landing, launch and coupling impacts remain immediate. Stop,
+pause and restart discard delayed bumps, and stale-frame watchdogs still win.
+Virtual tests cover audio delay, within-frame alignment, separate queued bumps,
+gaps and cancellation. Hardware/transport latency is not inferred.
+
+The complete main profile passes in `build/workflow/20261105T075509.862857Z/`.
+After the final frontend-only playback compensation, `test-main`, all 27 regular
+feedback mutations, menu checks and the release build pass again in
+`build/workflow/20261105T080159.280512Z/`. Together with the observer-routing
+control, **28 mutations are rejected**. The earlier native/MAME and game-session,
+Practice and Shuffle passes remain applicable: their functional sources,
+transitive dependencies, fixtures and build options were not changed by that
+frontend mixer/main-loop adjustment. Menu image inspection confirms all three
+new choices fit with the existing scrollbar.
+A final 180-frame Stage 1 smoke with feedback enabled, dummy video/audio and an
+explicit unavailable output-device key passes at the native 59.637 Hz cadence
+with no audio underruns (`build/haptics/20261105-final-sequence-haptics-smoke.log`).
+This verifies the rebuilt application path without driving physical motors;
+it is not sustained GPU/controller performance acceptance.
+
+Updated controller feel and listening-to-rumble alignment on physical hardware
+remain open. Sound-command delivery supplies the synchronization point; backend,
+OS, audio-device and controller latency can still affect perceived alignment.
+This finite presentation work does not close whole-credit fidelity acceptance.
+
+## Stronger and directional controller feedback (2026-11-04)
+
+Local source adds On / Low → On / Med → On / High → Off for each of Cannon,
+Missiles, Player Impact and Afterburner under Controls → Feedback → Cues.
+Master body/trigger gains and global Enabled remain independent. Preferences
+save as `AB2HAPTICS2`; legacy `AB2HAPTICS1` cue On/Off migrates to High/Off.
+Low/Med/High scale each effect by 35%/65%/100%.
+
+High impact now supplies 1.5 body / 1.2 trigger gain before master scaling and
+saturation (75% body / 60% triggers with default 50% masters). The initial
+350 ms envelope remains, supplemented by continuous output during the visible
+native damage sequence: `$E662`, intact `$E8D0` states 0–4, and breakup `$E94E`
+state 0. The tracked player record comes from the completed hit-handler write;
+frame snapshots read its handler and `$FFFF9124` without issuing emulated bus
+transactions. Hidden decay, recovery, non-flight and existing stop/watchdog
+conditions end continuous output. These are enhancement strengths, not ROM
+physics or changes to the damage controllers.
+
+Missile allocation `$9EBC` precedes successful-launch increment `$9EC4` at
+`$29C0B8`. Initializer `$9FC2..$9FD2` uses the updated low bit to choose player
+X minus 32 (left) or plus 32 (right). Feedback predicts this from count + 1 at
+the original allocation observation, driving only the corresponding body motor
+and trigger. SDL body channels have different frequency characteristics, so
+left/right feel is asymmetric; simple-haptic hardware cannot express direction.
+Explicit Swap Triggers still reverses the trigger pair.
+
+The supplemental passive `capture-feedback-details` keeps the earlier captures
+and emits `feedback_details.bin` under ignored `build/oracle/`. Its independent
+initialized-X observations confirm **9 left / 8 right launches**; all **4,200
+damage-state frame observations match, 0 skipped**, including **688 visible damage frames**.
+Natural witnesses include intact states 0–4 plus hidden states 5–7, and breakup
+state 0 plus hidden states 1/7/8. The older **4,200-frame** cue fixture and
+**73,593,282-phase** attract fixture remain passing. Capture log:
+`build/workflow/20261104T174040.147386Z/01-capture-feedback-details.log`.
+All eleven earlier mutations plus five new controls are rejected, including
+shortened damage, reversed missile side, ignored level and hidden intact output.
+The native enabled/disabled comparison passes **4,200 identical RGB/PCM/time
+frames**, with **377 cannon / 20 missile / 2 hit events**, **588 visible damage
+frames** and **10 left / 10 right missiles**, plus pause/consumption/restart.
+These native and MAME input schedules are separate witnesses. Focused checks
+and the initial build use `build/workflow/20261104T174040.147386Z/`.
+The complete main profile passes in `build/workflow/20261104T174440.733339Z/`.
+The final frontend-only adjustment zeros the opposite missile body channel;
+`test-main`, all sixteen feedback mutations, native menu checks and the native
+release build pass again in
+`build/workflow/20261104T174804.294691Z/`. The prior game-session, Practice,
+Shuffle and capture-on/off results remain applicable: their sources, transitive
+dependencies, build options and fixtures are unchanged by that mixer adjustment.
+A 120-frame dummy-video/audio startup smoke also passes with temporary settings
+(`build/haptics/20261104-final-native-smoke.log`).
+
+Automated motor calls do not establish perceived strength or feel. Updated
+physical-controller acceptance on each platform remains open. This presentation
+work does not close whole-game fidelity or performance acceptance.
+
 ## SDL controller feedback (2026-10-14)
 
 Basic rumble is implemented in the native frontend with Controls → Feedback,
@@ -15910,3 +16067,187 @@ that issue, unsigned upstream DLLs, private-source access, GitHub-hosted build
 requirements and unconfirmed owner/MFA details. It has not been submitted.
 See [signing and publication steps](WINDOWS_SIGNING.md). Public Windows downloads
 remain withdrawn until real signatures and protected-package launches pass.
+
+
+### Passive object audio tracking (2026-11-05)
+
+`hwaudio/object_audio_tracking.hpp` adds optional metadata to `GameSession` and
+the sound-board trace. `capture_cockpit(true)` enables it; callers may request
+metadata alone with `capture_audio_objects(true)`. Frame snapshots contain live
+sources, epoch/generation/record IDs and physical FM/PCM ownership; audio packets
+carry timestamped ownership events. Original CPU execution, sound commands,
+chip output, exported stereo and fixed-category HRTF playback are unchanged.
+This does not implement moving sources or isolated per-voice audio streams.
+
+The physical main work pool `$3FA000..$3FDFFF` has 256 64-byte records. Flag
+byte bit 7 marks activity; longword +16 identifies the handler. Slot reuse
+advances generation; inactive slots, family transitions, reset/restart and
+capture disable/re-enable invalidate stale identities, including switches between
+Original and enhanced playback. Enhanced-to-enhanced profile changes keep valid
+source IDs; playback queue clearing remains the existing output policy. Lifetimes are timestamped
+because main writes can precede sound-CPU observation. The `$156CE` enemy-missile
+family supplies signed native 16.16 X/Y at +24/+30 and signed depth at +36;
+player words `$FFFF8D14/16/18` accompany them. These are raw values, with no
+assumed listener bearing, elevation mapping or attenuation policy.
+
+Main `$B868` queues at `$3F890C..$3F894B`; `$B81E` delivers the indexed byte to
+`$E8017`. The full passive phase observer retains instruction-entry A5, active
+SP and low-word D1, including interrupted producer calls. `$6E/$6F` accepts only
+the `$15716` caller (return `$1571C`) and active `$156CE` A5. `$D8` accepts only
+`$14D9A` (return `$14DA0`): A5 is the firing aircraft, while A1/A2 hold newly
+allocated weapon/shadow records. This validates shooter identity, not aircraft
+coordinates. Unsupported producers and ambiguous deliveries remain unowned.
+
+Timestamped latch delivery follows actual Z80 NMI `IN` at `$7A` and buffer store
+at `$7C`, dequeue at `$6EB/$702`, and observed LDIR copies at `$6F7/$70C`.
+`$C76` initializes 43-byte sequencer records from the command's actual ROM root;
+`$17A2` handles direct PCM allocation. Physical YM and SegaPCM writes attach or
+replace owners, including unknown replacement; key-off retains a release-tail
+owner until retirement or replacement. No one-shot is replayed or prolonged.
+Reset epochs and source lifetimes prevent ownership following a reused slot.
+
+The retained independent MAME fixture `build/oracle/object-audio/weapons-v4.txt`
+(`AB2OBJ02`) checks **2,244,500/2,244,500 records, zero skipped**, across 8,000
+frames: 202 raw missile-position samples (both X signs and player-depth sides),
+15 launch origins/owned PCM identities, 100,489 owned PCM observations, and
+24,665 generic slot reuses. The oracle separately reconstructs queue/voice
+ownership and reads raw MAME coordinates. MAME exposes active user stack as
+`USP`, supervisor stack as `SP`; the capture selects using SR bit `$2000`.
+An actual-input sidecar preserves the arcade input timing for native replay.
+
+The paired 8,000-frame native integration checks RGB, PCM, time and music/effects
+exports exactly, including toggling and restart epochs. Its positive metadata
+coverage is 202 coordinate samples, 636 owned PCM frame observations, 29 source
+identities and 167 exported events. Ten rejected metadata controls cover reuse,
+retirement, wrong caller/ring slot, future latch, lost Z80 copy, wrong descriptor
+root, voice replacement, X field and player depth. An additional native mutation
+detaches the sound observer and must fail the positive metadata coverage gate.
+See [reproduction commands](WORKFLOW.md#object-audio-tracking-checks).
+
+This finite recording contains **no natural `$6E/$6F` event and no positive
+owned FM**. Synthetic protocol checks cover these paths but do not close those
+natural-path gaps. World explosions, player-missile ownership, aircraft
+coordinates, chase state, attachments, listener mapping and moving rendering
+remain future work. All captures, overlay binaries and logs remain ignored;
+no ROM data is committed.
+
+Validation completed with the full `required` profile (`test`, `verify-stage1`,
+`oracle-test`), including every retained mutation and the 207-control CPU recovery
+batch, in `build/workflow/20261105T120346.213224Z/`. The main-functionality profile
+also passes in `build/workflow/20261105T135115.132143Z/`. Historical fixture
+exclusions remain declared in their existing comparisons; the new object-audio
+fixture has zero skipped records. CMake configures with both ROM/oracle test
+options and passes the two new unit/oracle tests in `build/cmake-object-audio/`.
+These are finite software checks, not moving-source or physical headphone
+acceptance.
+
+`native-release` passes in `build/workflow/20261105T135316.476572Z/`. A bounded
+120-frame flight smoke with the headphone profile, SDL dummy video and OpenAL
+null output exits successfully with active built-in HRTF. Both measured windows
+hold 59.6374 simulation/display FPS, approximately 6.05–6.17 ms board time, and
+zero underruns, re-primes or recoveries. Haptics are disabled only in the temporary
+smoke settings; user settings are untouched. Log:
+`build/object-audio-smoke/headphones.log`. This is a finite application startup
+and cadence check, not a physical listening or peak-load acceptance result.
+
+
+## Final carrier landing feedback correction (2026-11-05)
+
+The user reported no landing rumble after Practice 22 → 23. The earlier landing
+implementation observed the intermediate airbase family `$111BE/$1122E` only;
+its 30,000-frame fixture and 17,000-frame native replay stopped before the final
+carrier landing. Those passes did not establish finale coverage.
+
+The finale uses a separate controller. `$11B18` commits `$11B30` to the main
+record; its adjacent +64 aircraft record runs `$11E3E` then `$11F16`. At
+`$11F4C`, TAS of aircraft +24 sets bit 7 when the aircraft depth passes the
+carrier depth. The first clear-to-set edge is the touchdown kick; repeated TAS
+writes do not retrigger it. Aircraft +24 bit 6 ends the rollout; `$120AA` is the
+settled ending display. The carrier controller and plane continue through game
+modes `$11/$12` after normal flight mode `$10`, so restricting continuous feedback
+to flight would cut the landing short. No CPU/ROM behavior is changed.
+
+`SequenceCapture` now tracks that adjacent aircraft from the verified initializer.
+`GameSession` publishes its active handler/contact flags; the existing Landing
+approach, impact/rebound and speed-scaled rollout layers consume them. Rollout
+continues through modes 17/18 and stops at flag bit 6 or the settled display.
+Attract, disabled levels, restart and watchdog stops remain covered. No takeoff
+or refueling level is substituted for Landing.
+
+The separate passive MAME probe `capture_feedback_finale.lua` reuses the retained
+natural ending inputs without RAM/ROM edits or directed stage entry. It records
+actual input pins, the real initializer/TAS writes and an independent per-frame
+pool scan. `feedback_finale.txt` checks **74,452/74,452 classified frames, zero
+skipped**, with one touchdown from 83 TAS writes, 668 approach frames, 140 rollout
+frames (128 after normal flight), and 2,418 settled-display stop frames. The
+original sequence fixture is retained unchanged.
+
+Paired Practice integration now reaches direct 23 and the user's 22 → 23 route:
+**1,896 and 4,348 RGB/PCM/time frames identical, zero skipped**, respectively.
+Each produces one strong touchdown motor command and 140 nonzero rollout frames,
+including 128 post-flight frames, then zero Landing output after rollout. The
+22 route uses physical steering/fire/throttle to survive; the first stationary
+three-life test reached game-over before the finale and was correctly rejected
+by the positive-coverage gate. No fixture coverage was removed to bypass that
+failure. Ignored images at contact +2/+20 frames show the jet on the carrier deck.
+Seven controls reject wrong adjacent aircraft, missing/repeated/wrong-kind
+contact, flight-only cutoff, late stopping and attract feedback. CMake builds
+and passes the finale fixture and native haptics unit tests.
+
+The focused native natural replay checks **74,452/74,452 mode/time frames** and
+**3,250/3,250 independently observed finale motion/event frames**, zero skipped,
+including the exact contact timestamp and 128 post-flight rollout frames. Receipt:
+`build/haptics/finale-natural-probe.log`. The passing paired Practice receipt is
+`build/workflow/20261105T151308.653090Z/`; unit/MAME fixture receipts are
+`build/workflow/20261105T150513.970969Z/`. The seven controls and detached
+GameSession flags-export control pass in `build/haptics/finale-mutations-focused.log`
+and `build/haptics/finale-wire-focused.log`. The main profile passes in
+`build/workflow/20261105T151847.641612Z/`. Physical controller feel remains for
+user testing; these software motor-command assertions do not establish it.
+
+The complete `required` gate passes on the frozen fix in
+`build/workflow/20261105T152518.295359Z/`: regression tests, native integrations,
+and the complete retained oracle/mutation corpus, including all 207 recovery
+controls, all seven finale controls and the detached finale flags-export control.
+The gate reruns the full natural finale replay and both paired Practice routes.
+Historical core-fixture race exclusions remain declared; the new finale fixture
+and its native comparisons have zero skipped observations. The rebuilt release
+passes in `build/workflow/20261105T152306.800360Z/`.
+
+The rebuilt application completes a 2,100-frame Practice-23 smoke with feedback
+enabled and an intentionally unmatched output-device key, avoiding physical motor
+output and leaving user settings untouched. The quiet Original-SDL dummy-driver
+run (`build/haptics/finale-smoke/quiet.log`) reports zero underruns, re-primes and
+recoveries, with some headless audio-submit/backpressure windows below native
+cadence. The earlier concurrent-compile HRTF/null run (`application.log` beside
+it) exits successfully with active HRTF/native cadence but retains 26 source
+underruns and two synchronized re-primes. Both logs are retained. These finite
+headless startup/path checks do not establish physical playback performance or
+controller feel; the paired motor-command tests and independent MAME comparisons
+above establish the corrected cue and lifetime behavior.
+
+
+## Haptic validation scope correction (2026-11-05)
+
+At the user's direction, clarify the validation boundary after unnecessarily
+applying the full engine gate to passive haptic observations. The earlier full
+runs remain valid historical receipts. Future rumble tuning, routing, cue readers
+and passive presentation metadata use the main profile and affected cue,
+motor/mixer/lifecycle, MAME/mutation, paired native-output and build/smoke checks.
+Their presence in GameSession or an engine header is not a full-gate trigger.
+Core execution, timing, scheduler, emulated bus/device and native logic changes
+still require the complete engine gate. Existing fixtures, controls and aggregate
+Make targets are retained. This is a documentation-only workflow clarification;
+validation is diff, command and link/policy inspection.
+
+
+## Explicit full-gate trigger (2026-11-05)
+
+The user explicitly directs: perform full-gate testing only when a change affects
+native execution or emulated hardware behavior. Persist this in AGENTS, ROADMAP
+and WORKFLOW. File location, passive instrumentation/metadata, frontend features,
+fixture/comparison-only work, packaging and documentation do not independently
+trigger a complete run. Use main/affected checks, focused oracle/mutation evidence
+where relevant, and documentation inspection as appropriate. Retain all existing
+fixtures and aggregate targets. Earlier full-run receipts remain historical
+records, not automatic requirements for similar presentation work.

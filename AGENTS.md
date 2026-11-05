@@ -17,7 +17,9 @@ generated instruction tables into chat. See [docs/WORKFLOW.md](docs/WORKFLOW.md)
 Use `python3 tools/workflow.py run <profile-or-make-target>` for bounded
 output and full local logs. Start with focused targets, reuse existing
 captures, and use ROADMAP's validation cadence: main-functionality and affected
-checks for daily work and non-engine releases; full oracle/mutation checks only
-for engine changes. Documentation-only changes need diff and policy/command/link
+checks for daily work and releases. **Run the full gate only when the change
+affects native execution or emulated hardware behavior.** Classify by behavior,
+not file location: frontend/presentation work, passive observers, metadata,
+documentation, and test-only changes do not independently trigger it. Documentation-only changes need diff and policy/command/link
 inspection. Retain all fixtures and mutations. Do not treat a
 focused pass as whole-host acceptance or remove fixture coverage to save time.

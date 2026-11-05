@@ -1876,7 +1876,7 @@ verify-ground-fixture: build/ground_horizon_fixture
 oracle-test: verify-ground-fixture
 .PHONY: verify-ground-fixture
 
-build/native_haptics_regression: tests/native_haptics_regression.cpp src/main/frontend/native_haptics.hpp src/main/frontend/native_input.hpp src/main/engine/feedback_cues.hpp
+build/native_haptics_regression: tests/native_haptics_regression.cpp src/main/frontend/native_haptics.hpp src/main/frontend/native_input.hpp src/main/engine/feedback_cues.hpp src/main/engine/feedback_sequences.hpp src/main/frontend/sequence_haptics.hpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
 test-native-haptics: build/native_haptics_regression
@@ -1895,6 +1895,7 @@ build/feedback_fixture: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests
 verify-feedback-fixture: build/feedback_fixture
 	./build/feedback_fixture build/oracle/feedback.bin
 	./build/feedback_fixture build/oracle/whole_host_expanded.bin
+	./build/feedback_fixture build/oracle/feedback_details.bin
 oracle-test: verify-feedback-fixture
 -include build/native_obj/tests/feedback_fixture.d
 .PHONY: verify-feedback-fixture
@@ -2199,3 +2200,106 @@ test-android-benchmark:
 
 test-main: test-android-benchmark
 test: test-android-benchmark
+
+capture-feedback-details:
+	AB2_HAPTICS_DETAILS=1 AB2_ORACLE_GAMEPLAY=1 tools/oracle/capture.sh tools/oracle/capture_feedback.lua build/oracle/feedback_details.bin 4200 120
+.PHONY: capture-feedback-details
+
+HAPTIC_SEQUENCE_INPUT ?= build/oracle/natural_ending_sequences.inputs
+HAPTIC_SEQUENCE_FRAMES ?= 30000
+capture-feedback-sequences:
+	AB2_NATURAL_INPUT=$(HAPTIC_SEQUENCE_INPUT) tools/oracle/capture.sh tools/oracle/capture_feedback_sequences.lua build/oracle/feedback_sequences.txt $(HAPTIC_SEQUENCE_FRAMES) 600
+.PHONY: capture-feedback-sequences
+
+build/feedback_sequence_fixture: tests/feedback_sequence_fixture.cpp src/main/engine/feedback_sequences.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+verify-feedback-sequences: build/feedback_sequence_fixture
+	./build/feedback_sequence_fixture build/oracle/feedback_sequences.txt
+verify-feedback-fixture: verify-feedback-sequences
+.PHONY: verify-feedback-sequences
+
+build/feedback_sequence_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/feedback_sequence_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-feedback-sequences-native: build/feedback_sequence_integration
+	./build/feedback_sequence_integration
+-include build/native_obj/tests/feedback_sequence_integration.d
+.PHONY: verify-feedback-sequences-native
+
+verify-feedback-observer-mutation: verify-feedback-sequences-native
+	python3 tools/check_feedback_observer_mutation.py
+oracle-test: verify-feedback-observer-mutation
+.PHONY: verify-feedback-observer-mutation
+
+OBJECT_AUDIO_INPUT ?= build/oracle/natural_weapons.inputs
+OBJECT_AUDIO_FRAMES ?= 8000
+OBJECT_AUDIO_OUTPUT ?= build/oracle/object-audio/weapons-v4.txt
+capture-object-audio:
+	@mkdir -p build/oracle/object-audio
+	AB2_NATURAL_INPUT=$(OBJECT_AUDIO_INPUT) AB2_ORACLE_CALLER_SNAPSHOTS=1 tools/oracle/capture.sh tools/oracle/capture_object_audio.lua $(OBJECT_AUDIO_OUTPUT) $(OBJECT_AUDIO_FRAMES) 900
+.PHONY: capture-object-audio
+
+build/object_audio_tracking_regression: tests/object_audio_tracking_regression.cpp src/main/hwaudio/object_audio_tracking.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+test-object-audio: build/object_audio_tracking_regression
+	./build/object_audio_tracking_regression
+test-main: test-object-audio
+test: test-object-audio
+build/oracle_object_audio: tests/oracle_object_audio.cpp src/main/hwaudio/object_audio_tracking.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+oracle-object-audio: build/oracle_object_audio
+	./build/oracle_object_audio build/oracle/object-audio/weapons-v4.txt
+oracle-test: oracle-object-audio
+build/object_audio_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/object_audio_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-object-audio: build/object_audio_integration
+	./build/object_audio_integration
+verify-stage1: verify-object-audio
+-include build/native_obj/tests/object_audio_integration.d
+.PHONY: test-object-audio oracle-object-audio verify-object-audio
+verify-object-audio-mutations: test-object-audio oracle-object-audio
+	python3 tools/audio/check_object_audio_mutations.py
+verify-object-audio-wire-mutation: verify-object-audio
+	python3 tools/audio/check_object_audio_wire_mutation.py
+oracle-test: verify-object-audio-mutations verify-object-audio-wire-mutation
+.PHONY: verify-object-audio-mutations verify-object-audio-wire-mutation
+
+capture-feedback-finale:
+	AB2_NATURAL_INPUT=build/oracle/natural_ending_sequences.inputs tools/oracle/capture.sh tools/oracle/capture_feedback_finale.lua build/oracle/feedback_finale.txt 74452 1800
+build/feedback_finale_fixture: tests/feedback_finale_fixture.cpp src/main/engine/feedback_sequences.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+verify-feedback-finale: build/feedback_finale_fixture
+	./build/feedback_finale_fixture
+verify-feedback-fixture: verify-feedback-finale
+.PHONY: capture-feedback-finale verify-feedback-finale
+build/feedback_finale_integration: $(addprefix build/native_obj/,$(patsubst %.cpp,%.o,tests/feedback_finale_integration.cpp $(filter-out src/main/main.cpp,$(SRCS))))
+	$(CXX) $(NATIVE_CXXFLAGS) -pthread $^ -o $@ $(LIBS)
+verify-feedback-finale-native: build/feedback_finale_integration
+	./build/feedback_finale_integration natural
+verify-feedback-finale-practice: build/feedback_finale_integration
+	@mkdir -p build/haptics
+	./build/feedback_finale_integration practice
+verify-stage1: verify-feedback-finale-native verify-feedback-finale-practice
+-include build/native_obj/tests/feedback_finale_integration.d
+.PHONY: verify-feedback-finale-native verify-feedback-finale-practice
+verify-feedback-finale-mutations: test-native-haptics verify-feedback-finale
+	python3 tools/check_feedback_finale_mutations.py
+verify-feedback-finale-wire-mutation: verify-feedback-finale-practice
+	python3 tools/check_feedback_finale_wire_mutation.py
+oracle-test: verify-feedback-finale-mutations verify-feedback-finale-wire-mutation
+.PHONY: verify-feedback-finale-mutations verify-feedback-finale-wire-mutation
+# Object rendering uses the retained MAME world projection corpus as an
+# independent coordinate witness; this does not execute the full handler gate.
+verify-object-audio-world: build/oracle_world_visibility
+	./build/oracle_world_visibility build/oracle/world_directed.bin --object-audio-world-coverage
+oracle-test: verify-object-audio-world
+.PHONY: verify-object-audio-world
+oracle-object-audio-families: build/oracle_object_audio
+	./build/oracle_object_audio build/oracle/object-audio/families-v3.txt
+	./build/oracle_object_audio build/oracle/object-audio/world-v1.txt
+verify-object-audio-mutations: oracle-object-audio-families
+oracle-test: oracle-object-audio-families
+.PHONY: oracle-object-audio-families

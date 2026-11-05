@@ -11,6 +11,7 @@
 #include <tuple>
 #include <vector>
 #include "roms.hpp"
+#include "hwaudio/object_audio_rendering.hpp"
 #include "engine/omainobjects.hpp"
 #include "engine/omainhost.hpp"
 #include "hwvideo/wide_scenery.hpp"
@@ -51,6 +52,7 @@ int main(int argc, char** argv) try
     constexpr size_t N = MainBus::MEMORY_BYTES;
     std::vector<uint8_t> before(N), after(N), expected_w(N), other_w(N), reads(N), writes(N);
     unsigned scenery_kept=0,scenery_culled=0;unsigned total=0, identical=0, failed=0, skipped=0, reported=0, active=0;
+    unsigned object_audio_world=0;
     unsigned explosion_visible=0,explosion_hidden=0,explosion_retired=0;
     std::map<std::string,unsigned> explosion_paths;
     std::map<uint32_t,std::map<std::string,unsigned>> hit_effect_paths;
@@ -87,6 +89,21 @@ int main(int argc, char** argv) try
         }
         ++total;
         const uint32_t entry=be32(h+8);
+        if(entry==0x91c0){
+            auto word=[&](uint32_t a){const auto o=MainBus::memory_offset(a);if(o==MainBus::UNMAPPED||o+1>=after.size())throw std::runtime_error("world coordinate outside RAM fixture");return uint16_t(after[o]<<8|after[o+1]);};
+            const auto p=projection_entry.a[5];
+            if(expected_w[MainBus::memory_offset(p+4)]&&expected_w[MainBus::memory_offset(p+6)]){
+                const auto bearing=ObjectAudio::world_bearing(word,p);if(!bearing)throw std::runtime_error("world explosion bearing unavailable");
+                const auto zoom=int16_t(expected_r.d[7]);
+                const int sx=int16_t(word(p+4)-word(0x29c08e));
+                const int sy=int16_t(word(p+6)-112+word(0x29c08c));
+                const double x=std::floor(std::floor((*bearing)[0])*zoom/1024.0);
+                const double y=std::floor(std::floor(-(*bearing)[1])*zoom/1024.0);
+                if(std::abs(x-sx)>2||std::abs(y-sy)>2)throw std::runtime_error("world bearing disagrees with independent MAME projection");
+                ++object_audio_world;
+            }
+        }
+
         auto covered=std::find_if(entries.begin(),entries.end(),[&](auto e){return e.first==entry;});
         if (covered==entries.end()) entries.emplace_back(entry,1); else ++covered->second;
         std::copy(before.begin(),before.end(),memory.bytes.begin());
@@ -416,6 +433,10 @@ int main(int argc, char** argv) try
         if(!trail_effect_paths[0x14ee2]["age-limit"]||!trail_effect_paths[0x14ee2]["taper"]||!trail_effect_paths[0xfcb4]["animation-transition"]||!trail_effect_paths[0xfdfa]["animation-step"])
             throw std::runtime_error("Missing trail-effect age/animation coverage");
         if(skipped)throw std::runtime_error("Trail-effect coverage contains races");
+    }
+    if(argc==3&&std::string_view(argv[2])=="--object-audio-world-coverage"){
+        if(!object_audio_world)throw std::runtime_error("no MAME world explosion coordinate witnesses");
+        std::cout<<"Object audio world coordinates: "<<object_audio_world<<" independent MAME projections matched; native shared offsets, rotation, depth and elevation retained\n";
     }
     return total && identical && !failed ? 0 : 1;
 }

@@ -886,7 +886,13 @@ int main(int argc, char** argv)try
             const auto core_start=measure ? SDL_GetPerformanceCounter() : 0;
             const double scene_before=primary_scene_ms;
             advance(input);
-            feedback->consume(game.take_feedback());
+            const auto cues=game.take_feedback();
+            unsigned refill_delay=0;
+            if(std::any_of(cues.sequence_events.begin(),cues.sequence_events.end(),[](const auto& cue){return cue.cue==Feedback::SequenceCue::refill;})){
+                const auto playback=audio_output->status();
+                refill_delay=Frontend::refill_audio_delay_ms(playback.buffered,playback.pending,playback.ready);
+            }
+            feedback->consume(cues,SDL_GetTicks(),refill_delay);
             feedback->update(!input_manager->focused);
             const double scene_elapsed=primary_scene_ms-scene_before;
             profile_scene+=scene_elapsed;
