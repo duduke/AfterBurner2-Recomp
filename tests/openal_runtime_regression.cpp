@@ -5,7 +5,7 @@
 
 void require(bool value,const char* why){if(!value)throw std::runtime_error(why);}
 int main(int argc,char** argv)try{
-    require(argc==2,"supply a valid OpenAL Soft runtime for retry");
+    require(argc==2,"supply a valid OpenAL Soft runtime for retry, or --missing-only");
     SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"SDL_AUDIODRIVER","dummy",true);
     const char* bad[]={"/definitely-missing-ab2-openal-runtime",nullptr};
     for(const char* path:bad){
@@ -24,6 +24,10 @@ int main(int argc,char** argv)try{
         require(status.configuration>generation&&status.ready&&!status.openal,"missing/incompatible runtime did not fall back to SDL");
         require(status.text.find("OpenAL")!=std::string::npos,"fallback reason missing");
         require(!Frontend::OpenALRuntime::api().module,"failed module retained");
+    }
+    if(std::string(argv[1])=="--missing-only"){
+        std::cout<<"Optional OpenAL: original SDL and missing/incompatible runtime fallback passed.\n";
+        return 0;
     }
     // A successful retry in the same process must work after failed loads.
     SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"AB2_OPENAL_RUNTIME",argv[1],true);
