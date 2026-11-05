@@ -41,9 +41,6 @@ SRCS = \
 	src/main/hwaudio/arcade_audio.cpp \
 	src/third_party/ymfm/ymfm_opm.cpp \
 	src/main/hwaudio/xboard_sound_cpu.cpp \
-	src/main/hwaudio/soundchip.cpp \
-	src/main/hwaudio/segapcm.cpp \
-	src/main/hwaudio/ym2151.cpp \
 	src/main/engine/ohud.cpp \
 	src/main/engine/osprites.cpp \
 	src/main/engine/olevelobjs.cpp \
@@ -2199,3 +2196,16 @@ test-android-benchmark:
 
 test-main: test-android-benchmark
 test: test-android-benchmark
+
+# Optional-runtime tests deliberately omit OpenAL from the link command.
+build/openal_runtime_regression: tests/openal_runtime_regression.cpp src/main/frontend/openal_runtime.hpp src/main/frontend/audio_output.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPENAL_CFLAGS) -DAB2_OPENAL=1 -DAB2_OPENAL_DYNAMIC=1 -pthread $< -o $@ $(shell pkg-config --libs sdl3)
+build/spatial_audio_dynamic_regression: tests/spatial_audio_regression.cpp src/main/frontend/openal_runtime.hpp src/main/frontend/audio_output.hpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPENAL_CFLAGS) -DAB2_OPENAL=1 -DAB2_OPENAL_DYNAMIC=1 -pthread $< -o $@ $(shell pkg-config --libs sdl3)
+test-openal-runtime: build/openal_runtime_regression build/spatial_audio_dynamic_regression audio-test-fixtures
+	@test -n "$(AB2_TEST_OPENAL_RUNTIME)" || (echo 'Set AB2_TEST_OPENAL_RUNTIME to a compatible OpenAL Soft library'; exit 1)
+	./build/openal_runtime_regression "$(AB2_TEST_OPENAL_RUNTIME)"
+	AB2_OPENAL_RUNTIME="$(AB2_TEST_OPENAL_RUNTIME)" ./build/spatial_audio_dynamic_regression
+.PHONY: test-openal-runtime

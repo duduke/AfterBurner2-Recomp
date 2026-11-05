@@ -210,7 +210,7 @@ def main():
             "the pinned toolchain build scripts; licenses are in Notices/.\n"
         )
 
-    for relative in ("README.md", "roms/README.md", "roms/roms.txt", "LICENSE.txt"):
+    for relative in ("README.md", "roms/README.md", "roms/roms.txt", "LICENSE.txt", "COPYRIGHT.md"):
         shutil.copy2(ROOT / relative, package / relative)
     shutil.copytree(ROOT / "docs", package / "docs")
     shutil.copytree(ROOT / "LICENSES", package / "Notices/project")
@@ -221,7 +221,7 @@ def main():
     (package / "Notices/librashader").mkdir()
     for source in shader_notices:
         shutil.copy2(source, package / "Notices/librashader" / source.name)
-    for relative in ("src/main/frontend/scalers/SNES9X-LICENSE.txt", "src/main/frontend/scalers/scalefx.hpp",
+    for relative in ("src/main/frontend/scalers/scalefx.hpp",
                      "src/third_party/z80.h", "src/third_party/dr_flac/LICENSE", "src/third_party/miniz/LICENSE", "src/main/frontend/controllerdb/LICENSE"):
         shutil.copy2(ROOT / relative, package / "Notices" / relative.replace("/", "_"))
     for path in sources:

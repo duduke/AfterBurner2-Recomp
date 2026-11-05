@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include <vector>
 #include "frontend/native_settings.hpp"
-#include "frontend/scalers/sai.hpp"
 #include "frontend/scalers/scalefx.hpp"
 
 namespace Frontend {
@@ -64,9 +63,7 @@ public:
                             ((D==H && E!=I)||(H==F && E!=G))?H:E,H==F?F:E};
                     }
                 }
-            } else if(filter==SpriteFilter::sai || filter==SpriteFilter::super_sai) {
-                const auto b=filter==SpriteFilter::sai?SaI::sai(get):SaI::super_sai(get);
-                std::copy(b.begin(),b.end(),block.begin());
+
             }
             for(unsigned j=0;j<factor*factor;++j)filtered[(y*factor+j/factor)*width*factor+x*factor+j%factor]=block[j];
         }

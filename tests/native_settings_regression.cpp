@@ -108,6 +108,12 @@ int main() try {
         "unsupported filter must fall back without losing independent settings");
     {std::ofstream f(path);f<<"AB2SETTINGS1\nscaling=999\nstats=-1\nfullscreen=invalid\nsprites=xbrz\nlives=4\ndifficulty=-1\nviewport=32:9\nhud=unknown\ncrt=unknown\n";}
     require(Frontend::load_settings(path,true)==Frontend::Settings{},"malformed values must not enter runtime enums");
+    for (const char* removed : {"2xsai", "super2xsai"}) {
+        {std::ofstream f(path);f<<"AB2SETTINGS1\nsprites="<<removed<<"\nfullscreen=1\n";}
+        const auto migrated=Frontend::load_settings(path,true);
+        require(migrated.sprites==Frontend::SpriteFilter::none && migrated.fullscreen,
+            "removed filter must fall back to Off while preserving other preferences");
+    }
     {std::ofstream f(path);f<<"UNKNOWN VERSION\nfullscreen=1\n";}
     require(Frontend::load_settings(path,true)==Frontend::Settings{},"unknown format must preserve defaults");
     require(!Frontend::save_settings("build/nonexistent-settings-directory/test.cfg",chosen),"save failure must be reported");

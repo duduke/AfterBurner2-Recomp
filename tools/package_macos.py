@@ -24,11 +24,10 @@ LIBRASHADER_NOTICES = (
     "src/third_party/librashader/LICENSE.MPL-2.0",
 )
 PROJECT_NOTICES = (
-    "README.md", "Apache-2.0.txt", "Cannonball.txt", "CannonBall-SE.txt",
-    "MAME-Legacy.txt", "MAME-Audio.txt", "MAME-SegaPCM.txt", "YMFM.txt",
+    "README.md", "Apache-2.0.txt", "MAME-Devices.txt", "MAME-Audio.txt", "MAME-SegaPCM.txt", "YMFM.txt",
     "YMFM-Timers.txt", "Vulkan-Headers.txt", "Z80.txt", "SDL3.txt",
     "SDL_GameControllerDB.txt", "dr_flac.txt", "miniz.txt", "ScaleFX.txt",
-    "Snes9x.txt", "librashader-header.txt", "MPL-2.0.txt", "OpenAL-Soft.txt",
+    "librashader-header.txt", "MPL-2.0.txt", "OpenAL-Soft.txt",
     "OpenAL-BSD-3Clause.txt", "OpenAL-fmt.txt", "OpenAL-GSL.txt", "OpenAL-pffft.txt",
     "GCC-GPL-3.0.txt", "GCC-Runtime-Library-Exception.txt", "GCC-Runtime.txt",
 )
@@ -165,7 +164,7 @@ def main():
         run("codesign", "--force", "--sign", "-", str(target))
         run("codesign", "--verify", "--strict", str(target))
 
-    for relative in ("roms/README.md", "roms/roms.txt", "LICENSE.txt"):
+    for relative in ("roms/README.md", "roms/roms.txt", "LICENSE.txt", "COPYRIGHT.md"):
         shutil.copy2(ROOT / relative, package / relative)
     write_notices(package, sdl_license)
     for relative, source in aircraft_assets:

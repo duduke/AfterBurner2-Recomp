@@ -14,23 +14,12 @@ compares the adaptation with the upstream GLSL on macOS/OpenGL, including that
 explicit alpha change on the transparent fixtures. Fingerprints from that
 independent reference are also retained in the portable ROM-free test.
 
-`sai.hpp` adapts `_2xSaI` and `Super2xSaI` from Snes9x to premultiplied ARGB8888,
-clamped borders, and separate output pixels. Branch ordering is retained.
-The RGB565 reference (only indentation normalized) is `2xsai.reference.cpp`; it is compiled only
-by the regression test, using minimal test declarations in
-`tests/scalers_reference`. Both that reference and the adaptation are covered
-by `SNES9X-LICENSE.txt` (noncommercial, attribution retained).
-https://github.com/snes9xgit/snes9x/blob/master/filter/2xsai.cpp
-https://github.com/snes9xgit/snes9x/blob/master/LICENSE
-Retrieved 2026-10-12. These are the standard SaI-family modes agreed for the
-request's “CrispSal / SmoothSal”; they are not the unrelated Pilzprinz modes.
-
-xBRZ is not included: the published Zenju implementation is GPLv3 with named
-exceptions that do not include this project. The project's noncommercial
-license cannot simply be applied to that implementation. No approximation is
-exposed under the xBRZ name. Adding it requires a compatible implementation or
-permission from its rights holder; the repository license is unchanged.
-https://sourceforge.net/projects/xbrz/
+The noncommercial Snes9x 2xSaI and Super2xSaI filters were removed on
+2026-11-05 for the GPL release. Their implementations, upstream references,
+notices and validation fixtures remain on
+[archive/noncommercial-filters-and-audio](https://github.com/duduke/AfterBurner2-Recomp/tree/archive/noncommercial-filters-and-audio).
+Old preferences naming these filters fall back to Off; other settings persist.
+The current modes are Off, EPX, Scale3x and ScaleFX. xBRZ is not implemented.
 
 These files contain algorithms and synthetic references only. Runtime assets
 still come from the user's ROM files. All game image captures remain ignored.
@@ -42,6 +31,6 @@ SDL GPU handles dispatch/resource ownership. CPU ScaleFX contraction and Metal c
 Metal uses precise sqrt and shaders refine division with a fused residual to
 retain reference decision boundaries. The CPU filters,
 upstream references and fixtures remain intact. `verify-gpu-sprite-mutations`
-compares all five filters and proves the comparison rejects deliberate filter
+compares all three filters and proves the comparison rejects deliberate filter
 selection and protection errors. Vulkan/SPIR-V is supplied but not yet validated
 on a physical Vulkan device; DXIL/D3D12 shaders are not included.

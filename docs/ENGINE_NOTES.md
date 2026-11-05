@@ -15910,3 +15910,19 @@ that issue, unsigned upstream DLLs, private-source access, GitHub-hosted build
 requirements and unconfirmed owner/MFA details. It has not been submitted.
 See [signing and publication steps](WINDOWS_SIGNING.md). Public Windows downloads
 remain withdrawn until real signatures and protected-package launches pass.
+
+
+## GPL publication and Windows base packaging (2026-11-05)
+
+Original project code is now GPL-3.0-or-later and the repository is public.
+Noncommercial SaI and unused legacy audio implementations were removed from
+current source and retained, with their validation history and original terms,
+on `archive/noncommercial-filters-and-audio`. Live YMFM/X-Board audio and all
+native execution are unchanged. EPX, Scale3x and ScaleFX remain.
+
+Windows CMake builds load OpenAL optionally. The new base profile statically
+links SDL/compiler runtimes and excludes upstream DLLs. Cross-build and PE
+imports, main functionality and affected presentation/audio/license checks pass;
+trusted signing and protected final-package launch remain external prerequisites.
+See [the detailed validation record](WINDOWS_PERFORMANCE.md#public-source-and-standalone-signing-input--5-november-2026)
+and [current signing requirements](WINDOWS_SIGNING.md).
