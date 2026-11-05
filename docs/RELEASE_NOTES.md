@@ -17,12 +17,12 @@ whole-game hardware acceptance are still outstanding.
 ## v0.1.0-preview.7 — Linux and Vulkan Slang (2026-11-03)
 
 [Main repository release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
-· [Public downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
+· [Public downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
 
 - Add separate **Linux x86-64 / Steam Deck** and **Linux ARM64 desktop** packages
   with SDL3 3.4.16, OpenAL Soft 1.25.2, dependency notices, exact source companions
   and SHA-256 inventories. Full project source companions are retained locally
-  and in the private development release, not the public download repository.
+  and in the development release, which became public on 5 November 2026.
   x86-64 targets sniper / glibc 2.31; ARM64 targets
   Debian 12 / glibc 2.36. Builds use the existing worker-thread CPU continuation.
 - Add **native Vulkan composition for RetroArch Slang**, sharing the Windows
@@ -62,7 +62,7 @@ no 32-bit Android package is supplied.
 ## v0.1.0-preview.6 — Android and ultrawide (2026-11-01)
 
 [Main repository release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
-· [Public downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6)
+· [Public downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
 
 - Add an **Android ARM64 preview** for Android 8.0/API 26 or newer, with private
   ROM ZIP import, controller/remote navigation and Android TV launcher support.

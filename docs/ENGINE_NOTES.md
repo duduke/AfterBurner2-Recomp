@@ -15197,7 +15197,7 @@ Committed current work as `7ee7a11` and merged to main at
 custom-stage prototype remains separate at the user's explicit direction.
 Published `v0.1.0-preview.6` as a prerelease in both
 [the main repository](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
-and [the public releases repository](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6).
+and [the public releases repository](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6).
 Each has the same macOS runtime ZIP, Android sideload APK and their two checksum
 files. Earlier releases/assets remain intact; source companions remain local.
 The public README now points to Preview 6 and retains the Windows Preview 5 link.
@@ -15591,7 +15591,7 @@ published as prereleases:
 
 - [Private development release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7):
   12 assets, including both project source companions and their checksums.
-- [Public downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7):
+- [Public downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7):
   8 assets: both game archives, both optional runtime/source/notice archives,
   and their four SHA-256 sidecars. Full project source companions stay local
   and in the private development release, following the existing download policy.

@@ -80,7 +80,7 @@ def main():
     architecture = 'arm64' if arm64 else 'x86_64'
     slang_manifest, slang_files = load_slang_bundle(args.librashader_bundle, architecture)
     slang_source_name = args.librashader_bundle.name
-    slang_source_url = ('https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/'
+    slang_source_url = ('https://github.com/duduke/AfterBurner2-Recomp/releases/download/'
                         'v0.1.0-preview.7/' + slang_source_name)
     compiler = 'clang++-14' if arm64 else 'g++-14'
     maximum_glibc = (2, 36) if arm64 else (2, 31)

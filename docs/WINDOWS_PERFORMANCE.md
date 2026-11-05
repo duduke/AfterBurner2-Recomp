@@ -352,3 +352,10 @@ Validation in the isolated `build/public-source-worktree` checkout:
 The [signing requirements](WINDOWS_SIGNING.md) and
 [provider follow-up draft](SIGNPATH_APPLICATION.md) distinguish completed source,
 build and dependency work from external approval/signing still required.
+
+
+The first GitHub-hosted base build, [run 42081690714](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42081690714),
+succeeded from public main `9f3ace2`: pinned dependency build, system-only import
+and license checks, unsigned runtime ZIP and corresponding-source ZIP. Runtime
+ZIP SHA-256: `203ccfa0a26689f630e9072fd64e7260233ea474381aba34c0a335289350031c`.
+This is unsigned CI input, not a public Windows release or protected launch.
