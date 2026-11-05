@@ -73,8 +73,9 @@ SignPath integration and artifact rules still require provider/owner setup.
 After provider approval, sign the project's EXE through the approved service.
 For a CA-issued key already available through a Windows certificate provider,
 `tools/windows/sign_release.ps1` signs only `afterburner2.exe`. It rejects
-unsigned upstream files before any signing operation. Both scripts default to
-`-Profile base`; the verifier requires timestamped Authenticode, an approved
+unsigned upstream files before any signing operation. Both scripts use the adjacent `signing_environment.ps1` bootstrap to load
+commands/providers from their active PowerShell installation. Keep those files
+together. They default to `-Profile base`; the verifier requires timestamped Authenticode, an approved
 public root and the exact flat inventory. It rejects locally trusted ad-hoc
 certificates. Neither script changes certificate trust or security policy.
 
@@ -99,7 +100,8 @@ The packager checks exact PE inventory, signed file hashes and a passing full
 receipt. It compares signed and original PE payloads, allowing only signing
 metadata/checksum/padding differences. Imports must be Windows OS libraries;
 unsigned external runtime imports are rejected. The matching source companion
-includes project and statically linked dependency sources/notices. Receipts
+includes project, statically linked dependency and Vulkan API-header
+sources/notices. Receipts
 are pipeline evidence, not cryptographic attestations.
 
 Before publication, extract the final signed ZIP and launch with Smart App

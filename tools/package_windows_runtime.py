@@ -13,7 +13,7 @@ import subprocess
 import tarfile
 import zipfile
 
-from package_windows import SOURCES_NATIVE, SOURCES_CROSS, SYSTEM_DLLS
+from package_windows import SOURCES_NATIVE, SOURCES_BASE, SYSTEM_DLLS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -210,9 +210,7 @@ def main():
     companion.mkdir()
     command('git','archive','--format=tar.gz','--prefix=AfterBurner2/',
             '--output='+str(companion/'AfterBurner2-source.tar.gz'),'HEAD')
-    source_map = dict(SOURCES_NATIVE)
-    if base:
-        source_map.update({n:h for n,h in SOURCES_CROSS.items() if not n.startswith('SDL3-')})
+    source_map = SOURCES_BASE if base else SOURCES_NATIVE
     for filename, expected in source_map.items():
         path = deps/filename
         if digest(path) != expected:

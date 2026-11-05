@@ -8,11 +8,12 @@ param(
     # Public CA roots confirmed out of band with the signing provider, not roots
     # created/imported for development. AuthRoot members are accepted by default.
     [ValidatePattern('^[A-Fa-f0-9]{40}$')][string[]]$ApprovedRootThumbprint=@(),
-    # Only for dependency/negative-control checks; never a full-runtime receipt.
     [ValidateSet('base','legacy')][string]$Profile='base',
+    # Only for dependency/negative-control checks; never a full-runtime receipt.
     [switch]$FilesOnly
 )
 $ErrorActionPreference='Stop'
+. ([IO.Path]::Combine($PSScriptRoot,'signing_environment.ps1'))
 if(Test-Path -LiteralPath $ReceiptPath){throw 'Preserve the previous receipt; choose a new path'}
 $directory=Get-Item -LiteralPath $RuntimeDirectory
 if(-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)){
@@ -73,7 +74,9 @@ foreach($file in $files | Sort-Object Name){
         Failures=$failures}
 }
 $passed=@($results | Where-Object {-not $_.Passed}).Count -eq 0
-$policy=Get-ItemPropertyValue 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' VerifiedAndReputablePolicyState -ErrorAction SilentlyContinue
+# Windows Server/older hosts may have no SAC value. Null means unavailable,
+# never On or Off. This metadata does not replace protected launch acceptance.
+$policy=[Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\CI\Policy','VerifiedAndReputablePolicyState',$null)
 $receipt=[PSCustomObject]@{Schema=1;UTC=[DateTime]::UtcNow.ToString('o');Passed=$passed;
     FullRuntime=(-not [bool]$FilesOnly);Profile=$Profile;SmartAppControlState=$policy;Files=$results;
     Scope='Authenticode, timestamps and approved public roots; launch/shader acceptance is separate'}

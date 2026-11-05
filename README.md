@@ -218,11 +218,23 @@ python tools/deps/fetch_librashader.py
 ```
 
 Set `SDL3_DIR`, `OpenAL_DIR`, and `AB2_VULKAN_INCLUDE_DIR` when these dependencies
-are outside CMake's search paths. CMake copies SDL/OpenAL and available
-LLVM-MinGW runtime DLLs beside the game. `AB2_REQUIRE_IPO=ON` fails configuration
+are outside CMake's search paths. For shared SDL builds, CMake copies SDL and available LLVM-MinGW runtime DLLs
+beside the game. Windows OpenAL is loaded on demand and is not copied by default. `AB2_REQUIRE_IPO=ON` fails configuration
 if LTO cannot actually compile and link. [Windows shader setup](docs/CRT_DISPLAY.md#windows-vulkan)
 includes validation commands and the scope of newer source-only optimizations.
 Windows Preview 5 includes the shared ROM startup, menu and widescreen features.
+
+For the standalone Windows signing input, use the pinned builder on Windows:
+
+```sh
+python tools/windows/build_base.py --package-sources
+```
+
+It statically links SDL/compiler runtimes and checks startup and optional OpenAL
+fallback. The [manual hosted workflow](.github/workflows/windows-base.yml)
+produces unsigned input and corresponding sources. See
+[signing requirements](docs/WINDOWS_SIGNING.md) before packaging or publication;
+provider approval and a protected final-package launch remain required.
 
 Multi-configuration generators require `--config Release` at build time; their
 default build is Debug. Use a compiler that supports the engine requirements

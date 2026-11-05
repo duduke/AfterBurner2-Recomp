@@ -16,10 +16,11 @@ import tempfile
 import tarfile
 import urllib.request
 import zipfile
+import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'tools'))
-from package_windows import SOURCES_CROSS, SOURCES_NATIVE
+from package_windows import SOURCES_CROSS, SOURCES_NATIVE, SOURCES_BASE
 
 TOOLCHAIN = 'llvm-mingw-20261006-ucrt-x86_64'
 INPUTS = {
@@ -34,7 +35,7 @@ INPUTS = {
         SOURCES_NATIVE['openal-soft-1.25.2.tar.gz']),
     'Vulkan-Headers-1.4.341.tar.gz': (
         'https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.341',
-        '8876aad926b2e72bdefddc34885472d5332e2d20aa3ed57313466f0bc982cf3f'),
+        SOURCES_BASE['Vulkan-Headers-1.4.341.tar.gz']),
 }
 SOURCE_URLS = {
     'llvm-project-23.1.3.src.tar.xz': 'https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/llvm-project-23.1.3.src.tar.xz',
@@ -67,6 +68,12 @@ def main():
     parser.add_argument('--package-sources',action='store_true')
     args=parser.parse_args()
     if os.name!='nt':parser.error('Run this hosted-build entry point on Windows')
+    # PowerShell 7's inherited PSModulePath must not select its module in a
+    # Windows PowerShell 5 child. Verify each available host before downloading
+    # or compiling; the scripts use the active host's own built-in manifest.
+    hosts=list(dict.fromkeys(p for name in ('pwsh','powershell') if (p:=shutil.which(name))))
+    if not hosts:raise SystemExit('A Windows PowerShell host is required')
+    for host in hosts:run(host,'-NoProfile','-NonInteractive','-File',ROOT/'tools/windows/signing_environment.ps1')
     deps=args.deps.resolve();build=args.build.resolve();deps.mkdir(parents=True,exist_ok=True)
     for name,(url,sha) in INPUTS.items():
         archive=fetch(deps,name,url,sha)
@@ -110,14 +117,15 @@ def main():
         # An unsigned negative control must fail without altering system trust.
         (directory/'Launch.cmd').write_text('@echo off\n')
         shutil.copy2(ROOT/'LICENSE.txt',directory/'LICENSES.txt')
-        receipt=build/'unsigned-negative-control.json'
-        result=subprocess.run(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',
-            str(ROOT/'tools/windows/verify_release_signatures.ps1'),
-            '-RuntimeDirectory',str(directory),'-ReceiptPath',str(receipt)],timeout=60)
-        audit=json.loads(receipt.read_text(encoding='utf-8-sig'))
-        if (result.returncode!=1 or audit['Passed'] or not audit['FullRuntime'] or
-                len(audit['Files'])!=1 or audit['Files'][0]['Status']!='NotSigned'):
-            raise SystemExit('Unsigned base negative control was not rejected')
+        for host in hosts:
+            receipt=build/('unsigned-negative-control-'+uuid.uuid4().hex+'.json')
+            result=subprocess.run([host,'-NoProfile','-ExecutionPolicy','Bypass','-File',
+                str(ROOT/'tools/windows/verify_release_signatures.ps1'),
+                '-RuntimeDirectory',str(directory),'-ReceiptPath',str(receipt)],timeout=60)
+            audit=json.loads(receipt.read_text(encoding='utf-8-sig'))
+            if (result.returncode!=1 or audit['Passed'] or not audit['FullRuntime'] or
+                    len(audit['Files'])!=1 or audit['Files'][0]['Status']!='NotSigned'):
+                raise SystemExit('Unsigned base negative control was not rejected')
     environment=dict(os.environ,AB2_TEST_INCOMPATIBLE_RUNTIME=str(Path(os.environ['SystemRoot'])/'System32/kernel32.dll'))
     subprocess.run([str(build/'openal_runtime_regression.exe'),'--missing-only'],
                    cwd=ROOT,env=environment,check=True,timeout=30)

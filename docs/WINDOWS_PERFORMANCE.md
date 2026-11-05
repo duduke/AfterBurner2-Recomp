@@ -340,9 +340,10 @@ Validation in the isolated `build/public-source-worktree` checkout:
   retaining six independent ScaleFX reference fingerprints and 583,443 terminal
   fragment foreground/background comparisons. Removed filter settings migrate
   to Off while preserving independent preferences.
-- Dynamic OpenAL: `build/workflow/20261105T180203.912779Z/` passes missing and
+- Dynamic OpenAL: `build/workflow/20261105T183358.214776Z/` passes missing and
   incompatible-module fallback, original SDL without loading OpenAL, failed-load
-  cleanup/retry, and the existing 13-source/60 sample-second loopback suite.
+  cleanup/retry, explicit dummy-driver preconditions, and the existing
+  13-source/60 sample-second loopback suite.
   These macOS loader checks do not substitute for protected Windows acceptance.
 - Retained fragment baseline and all three fragment mutations pass:
   `build/workflow/20261105T180517.770268Z/`.
@@ -359,3 +360,58 @@ succeeded from public main `9f3ace2`: pinned dependency build, system-only impor
 and license checks, unsigned runtime ZIP and corresponding-source ZIP. Runtime
 ZIP SHA-256: `203ccfa0a26689f630e9072fd64e7260233ea474381aba34c0a335289350031c`.
 This is unsigned CI input, not a public Windows release or protected launch.
+
+
+The added native startup smoke passed in [run 42083424626](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42083424626)
+from `7f4072b`: the EXE reached its command-line parser from an otherwise empty
+folder. That run then exposed a verifier initialization issue: fresh
+`powershell -NoProfile` had not loaded the `Cert:` provider. Both signing scripts
+now import the built-in security manifest from the active `$PSHOME` before
+store access and preflight both available PowerShell hosts. A subsequent
+name-only import in run 42085759296 produced duplicate type data on the mixed
+PowerShell 5/7 runner; the explicit manifest avoids selecting another host's
+module. No trust store or policy changes are made. Failed runs are retained
+and are not counted as passing signature/fallback acceptance.
+
+
+Both PowerShell provider preflights passed in run 42087123706. Its unsigned
+signature audit then reached an absent Smart App Control registry value on
+Windows Server. That field is metadata, not a signature criterion. The verifier
+now uses a read-only registry query returning null for an absent value; null
+means unavailable, never protection On or Off. Protected Windows 11 launch
+acceptance remains a separate required step after actual signing.
+
+
+Run 42088491624 successfully rejected the actual unsigned base EXE under
+PowerShell 7. Windows PowerShell 5 then lacked `Get-FileHash` in its inherited
+module environment. Both signing scripts now use a shared bootstrap importing
+Management, Utility and Security from the active installation, and preflight
+all required commands in both hosts before compilation. The successful scoped
+PowerShell 7 control does not replace the complete hosted gate.
+
+
+### Complete Windows base gate passed
+
+[Run 42090148787](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42090148787)
+passes from candidate `170d9103a401a1703a28749dca836d1ab1cfe04c`:
+
+- Required commands/providers load under PowerShell **7.6.9** and Windows
+  PowerShell **5.1.26100.33648**, using each installation's own modules.
+- The actual EXE starts from an otherwise empty directory and reaches its CLI
+  parser. This tests startup imports, not gameplay or protected Windows 11.
+- Both PowerShell hosts correctly reject the actual EXE as `NotSigned` and
+  produce failed, full-inventory negative-control receipts. No trusted signature
+  is claimed; the failed receipts are retained in the CI artifact.
+- Original SDL and missing/incompatible OpenAL fallback pass with the dummy
+  audio driver explicitly selected and verified. Real device/HRTF and externally
+  signed optional runtimes remain separate acceptance work.
+- License checks, exact three-file runtime inventory, x64/system-only imports,
+  complete pinned source companion and artifact upload all pass.
+
+Unsigned runtime ZIP: 3,288,059 bytes, SHA-256
+`db0048be8b92c8cbc5fa9fdce28e0c176b2b5c7662c4f728adfdfce07cbd5413`.
+Corresponding-source ZIP: 219,322,013 bytes, SHA-256
+`c4857dc60aa538f2062b77368b70aa4b13b8132543c4f742214ace8512160205`.
+These are explicitly unsigned signing inputs, not restored public Windows
+release downloads. Documentation recording this result does not change the
+tested application/build/verifier inputs.

@@ -15,7 +15,17 @@ The owner subsequently authorized these changes:
 - Standalone base: static SDL/compiler runtimes; no upstream DLLs bundled.
   Spatial audio and Slang are optional external runtimes with graceful fallback.
 
-## Revised inquiry draft — not sent
+## Follow-up sent — 5 November 2026
+
+The owner explicitly authorized the revised inquiry, which was emailed as a
+reply to SignPath on 5 November. It linked the public source, license scope,
+historical branch and successful [hosted unsigned build](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42081690714).
+It also disclosed earlier branches/releases retaining their original terms,
+asked about static-library eligibility and the public-release prerequisite, and
+made clear that separate installation does not make unsigned external DLLs
+trusted. No provider approval or new response is claimed.
+
+The follow-up raised these points:
 
 Thank you for clarifying the Foundation requirements. We have published the
 source repository, licensed our original code GPL-3.0-or-later and removed the

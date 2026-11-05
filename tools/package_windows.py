@@ -24,6 +24,11 @@ SOURCES_NATIVE = {
     "SDL3-3.4.18.tar.gz": "9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3",
     "openal-soft-1.25.2.tar.gz": "fb27e5839aa11f0e5b9d33756965291fad5d6909ab928ea1f796f4a1a6877894",
 }
+# Complete inputs for the standalone base, including non-system API headers.
+SOURCES_BASE = dict(SOURCES_NATIVE, **{n:h for n,h in SOURCES_CROSS.items()
+                                      if not n.startswith("SDL3-")})
+SOURCES_BASE["Vulkan-Headers-1.4.341.tar.gz"] = "8876aad926b2e72bdefddc34885472d5332e2d20aa3ed57313466f0bc982cf3f"
+
 SYSTEM_DLLS = {
     "advapi32.dll", "avrt.dll", "gdi32.dll", "imm32.dll", "kernel32.dll", "msvcrt.dll",
     "ole32.dll", "oleaut32.dll", "setupapi.dll", "shell32.dll", "user32.dll",

@@ -10,6 +10,7 @@ param(
     [string]$SignToolPath
 )
 $ErrorActionPreference='Stop'
+. ([IO.Path]::Combine($PSScriptRoot,'signing_environment.ps1'))
 if(Test-Path -LiteralPath $ReceiptPath){throw 'Preserve the previous receipt; choose a new path'}
 $cert=$null
 $machine=$false

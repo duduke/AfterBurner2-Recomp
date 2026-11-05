@@ -6,7 +6,7 @@
 void require(bool value,const char* why){if(!value)throw std::runtime_error(why);}
 int main(int argc,char** argv)try{
     require(argc==2,"supply a valid OpenAL Soft runtime for retry, or --missing-only");
-    SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"SDL_AUDIODRIVER","dummy",true);
+    require(SDL_SetHint(SDL_HINT_AUDIO_DRIVER,"dummy"),SDL_GetError());
     const char* bad[]={"/definitely-missing-ab2-openal-runtime",nullptr};
     for(const char* path:bad){
         // An existing incompatible library exercises symbol resolution failure.
@@ -17,6 +17,8 @@ int main(int argc,char** argv)try{
         for(int i=0;i<400 && !output.status().ready;++i)SDL_Delay(5);
         require(output.status().ready&&!Frontend::OpenALRuntime::api().module,
             "original SDL audio tried to load OpenAL");
+        const char* driver=SDL_GetCurrentAudioDriver();
+        require(driver&&std::string(driver)=="dummy","test must use SDL's dummy audio driver");
         Frontend::OutputSettings settings;settings.profile=Frontend::AudioProfile::headphones;
         auto generation=output.status().configuration;output.configure(settings);
         for(int i=0;i<400 && output.status().configuration<=generation;++i)SDL_Delay(5);
