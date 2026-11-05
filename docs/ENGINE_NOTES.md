@@ -15354,7 +15354,7 @@ Committed current work as `7ee7a11` and merged to main at
 custom-stage prototype remains separate at the user's explicit direction.
 Published `v0.1.0-preview.6` as a prerelease in both
 [the main repository](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
-and [the public releases repository](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6).
+and [the public releases repository](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6).
 Each has the same macOS runtime ZIP, Android sideload APK and their two checksum
 files. Earlier releases/assets remain intact; source companions remain local.
 The public README now points to Preview 6 and retains the Windows Preview 5 link.
@@ -15748,7 +15748,7 @@ published as prereleases:
 
 - [Private development release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7):
   12 assets, including both project source companions and their checksums.
-- [Public downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7):
+- [Public downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7):
   8 assets: both game archives, both optional runtime/source/notice archives,
   and their four SHA-256 sidecars. Full project source companions stay local
   and in the private development release, following the existing download policy.
@@ -16251,3 +16251,17 @@ trigger a complete run. Use main/affected checks, focused oracle/mutation eviden
 where relevant, and documentation inspection as appropriate. Retain all existing
 fixtures and aggregate targets. Earlier full-run receipts remain historical
 records, not automatic requirements for similar presentation work.
+## GPL publication and Windows base packaging (2026-11-05)
+
+Original project code is now GPL-3.0-or-later and the repository is public.
+Noncommercial SaI and unused legacy audio implementations were removed from
+current source and retained, with their validation history and original terms,
+on `archive/noncommercial-filters-and-audio`. Live YMFM/X-Board audio and all
+native execution are unchanged. EPX, Scale3x and ScaleFX remain.
+
+Windows CMake builds load OpenAL optionally. The new base profile statically
+links SDL/compiler runtimes and excludes upstream DLLs. Cross-build and PE
+imports, main functionality and affected presentation/audio/license checks pass;
+trusted signing and protected final-package launch remain external prerequisites.
+See [the detailed validation record](WINDOWS_PERFORMANCE.md#public-source-and-standalone-signing-input--5-november-2026)
+and [current signing requirements](WINDOWS_SIGNING.md).

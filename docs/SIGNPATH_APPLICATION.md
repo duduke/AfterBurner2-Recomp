@@ -1,88 +1,58 @@
-# SignPath eligibility inquiry — prepared draft
+# SignPath application status
 
-**Status: eligibility inquiry emailed to SignPath on 4 November 2026; not approved.** The current project does not satisfy the
-published OSI-license requirement. This draft discloses that issue; it must not
-be submitted as a declaration that all eligibility conditions are met. No
-certificate, signing subscription or sponsorship is claimed.
+The original eligibility inquiry was emailed on 4 November 2026. SignPath's
+5 November reply declined the noncommercial project and confirmed there is no
+Foundation exception for its license or permission to sign upstream DLLs.
 
-## Project details
+The owner subsequently authorized these changes:
 
-- Project: AfterBurner2-Recomp, a C++ reimplementation of the After Burner II
-  arcade host with translated 68000 routines and a shared SDL frontend.
-- Project owner and proposed maintainer/reviewer/signing approver:
-  [@duduke](https://github.com/duduke), subject to the owner's confirmation.
-- Public download/index repository:
-  <https://github.com/duduke/AfterBurner2-Recomp-Releases>.
-- Development repository (currently private):
-  <https://github.com/duduke/AfterBurner2-Recomp>.
-- Contact email: to be supplied by the owner in the provider's application.
-- Distribution: portable Windows x64 ZIP; matching project/dependency sources
-  and notices accompany releases. No ROM images, game artwork or audio from
-  the arcade ROMs are distributed. Users supply their own ROMs locally.
+- Public source: https://github.com/duduke/AfterBurner2-Recomp
+- Original code: GPL-3.0-or-later, with the full text in `LICENSE.txt` and
+  scope in `COPYRIGHT.md`. No third-party license was changed.
+- Remove Snes9x 2xSaI/Super2xSaI and unused Cannonball/MAME-legacy audio classes
+  from current source/builds. Original code, fixtures and notices remain on
+  `archive/noncommercial-filters-and-audio` under their original terms.
+- Standalone base: static SDL/compiler runtimes; no upstream DLLs bundled.
+  Spatial audio and Slang are optional external runtimes with graceful fallback.
 
-## Eligibility questions for SignPath
+## Follow-up sent — 5 November 2026
 
-The project and retained Cannonball/MAME-legacy/Snes9x components include
-noncommercial restrictions; see [the project license](../LICENSE.txt),
-[license inventory](../LICENSES/README.md) and
-[component notices](THIRD-PARTY-NOTICES.md). These are not all OSI-approved
-licenses. We recognize that this does not meet your current published terms.
-We are not proposing to relabel these components or change third-party licenses.
-Is there any supported no-cost route for this project under its actual terms?
-If not, we will not claim eligibility for the Foundation program.
+The owner explicitly authorized the revised inquiry, which was emailed as a
+reply to SignPath on 5 November. It linked the public source, license scope,
+historical branch and successful [hosted unsigned build](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42081690714).
+It also disclosed earlier branches/releases retaining their original terms,
+asked about static-library eligibility and the public-release prerequisite, and
+made clear that separate installation does not make unsigned external DLLs
+trusted. No provider approval or new response is claimed.
 
-The intended runtime also bundles upstream SDL3 3.4.18, OpenAL Soft 1.25.2,
-librashader 0.12.0 and LLVM-MinGW runtime DLLs. Five of those DLLs are unsigned.
-Their maintainers are separate teams. We understand that a Foundation
-subscription cannot simply sign upstream binaries with our project's
-certificate. Signing only our EXE would leave the demonstrated DLL blocks
-unresolved. What supported upstream-signing or packaging arrangement, if any,
-would make this distribution suitable for the program?
+The follow-up raised these points:
 
-## Proposed policy, conditional on acceptance
+Thank you for clarifying the Foundation requirements. We have published the
+source repository, licensed our original code GPL-3.0-or-later and removed the
+noncommercial third-party components from the current source and build.
+The removed components remain only in an explicitly historical branch, under
+their original terms. Would that historical branch affect eligibility for new
+releases whose source and binary inputs exclude those components?
 
-Only project release binaries built from the specified source revision through
-an approved, GitHub-hosted workflow would be submitted. Local diagnostic builds,
-user-provided ROMs/assets and unrelated software would never be signed.
-Each release would require approval by the owner's designated signing approver.
-Upstream DLLs would retain their upstream identities/signatures; no exception
-to the provider's rules is assumed.
+Our revised Windows base statically links SDL (zlib) and LLVM/MinGW runtimes
+under their upstream licenses and exceptions. It bundles only our own EXE,
+launcher and notices. Optional OpenAL Soft/librashader are externally supplied
+and loaded only when requested, with fallback if unavailable or blocked. We
+will not submit upstream DLLs for signing with our identity. Does this revised
+distribution satisfy the licensing and component-identity requirements?
 
-The game frontend uses local ROMs, settings and optional media/assets. The
-frontend source review found no runtime upload, telemetry or network-fetch API
-calls. Build/dependency-fetch scripts access upstream distribution sites;
-these are separate from gameplay. The owner should confirm the final privacy
-statement, including the chosen upstream runtime distribution, before publishing
-it as a signing policy.
+We understand eligible artifacts must originate in an approved GitHub-hosted
+workflow, with required source review and signing approval. Please advise the
+next application steps and any source/build policy requirements for this layout.
 
-The portable runtime is uninstalled by deleting its extracted directory; local
-preferences can also be removed from SDL's per-user
-`AfterBurner2-Recomp/AfterBurner2` preferences directory. An explicitly supplied
-`--settings-file` uses the operator's chosen location instead. No certificate
-trust changes or security-policy changes are part of installation.
+## Still required
 
-## Owner/provider steps before this becomes an application
+Provider confirmation and account approval; owner-controlled account/MFA and
+signing roles; approved GitHub integration and artifact rules; a trusted hosted
+build; actual signing; Windows validation with protection On. No signing
+credentials or approval exist yet. Do not announce Foundation sponsorship or
+restore Windows downloads before those steps succeed.
 
-1. Resolve the stated license eligibility and upstream-signing questions. Do
-   not mark the OSI-license condition as satisfied under the present licenses.
-2. Confirm contact details, signing roles and MFA for each account. MFA status
-   has not been verified by the preparation scripts.
-3. If SignPath confirms a supported route, create/access the approved account,
-   install its GitHub integration with only the required repository access,
-   and configure its project, artifact rules and manual-approval policy. This
-   grants a provider access to private source; the owner must perform or
-   explicitly authorize that account connection.
-4. Add the required public **Code signing policy** link and any provider credit
-   only when accurate. Do not announce free signing as already provided.
-5. Build on GitHub-hosted runners. The current locally built performance EXE is
-   a validation reference, not a GitHub-origin artifact eligible for submission.
-   Pin product/version metadata and allow only the actual project release files.
-6. Resolve signed upstream dependencies, obtain the signatures, run the
-   [signature/package/launch checks](WINDOWS_SIGNING.md), then publish.
-
-Prepared from [Foundation eligibility terms](https://signpath.org/terms) and
-[GitHub build-origin requirements](https://docs.signpath.io/trusted-build-systems/github).
-The owner authorized sending this eligibility inquiry, which was emailed to
-SignPath's published general contact on 4 November 2026. This is not a formal
-Foundation application or approval. No provider account or repository integration
-has been created.
+References: [Foundation terms](https://signpath.org/terms),
+[GitHub build origin](https://docs.signpath.io/trusted-build-systems/github),
+[signature and package checks](WINDOWS_SIGNING.md).

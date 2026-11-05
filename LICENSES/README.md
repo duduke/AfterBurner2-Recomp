@@ -18,17 +18,14 @@ its source archives; see `docs/WORKFLOW.md` for each packaging path.
 | YMFM live YM2151 core | [YMFM.txt](YMFM.txt), BSD-3-Clause |
 | YMFM/MAME timer behavior | [YMFM-Timers.txt](YMFM-Timers.txt), BSD-3-Clause |
 | Live MAME-derived SegaPCM | [MAME-SegaPCM.txt](MAME-SegaPCM.txt), BSD-3-Clause |
+| MAME-derived video/math/I/O/CPU timing references | [MAME-Devices.txt](MAME-Devices.txt), BSD-3-Clause |
 | Live MAME-derived audio scheduling | [MAME-Audio.txt](MAME-Audio.txt), BSD-3-Clause |
-| Retained Cannonball sound classes | [Cannonball.txt](Cannonball.txt), noncommercial/source redistribution terms |
-| Retained CannonBall-SE modifications | [CannonBall-SE.txt](CannonBall-SE.txt), additional upstream terms |
-| Historical MAME sound code carried through Cannonball | [MAME-Legacy.txt](MAME-Legacy.txt), historical noncommercial/source redistribution terms |
 | Andre Weissflog's Z80 core | [Z80.txt](Z80.txt), zlib/libpng notice extracted verbatim from `src/third_party/z80.h` |
 | SDL3 | [SDL3.txt](SDL3.txt), zlib |
 | SDL_GameControllerDB | [SDL_GameControllerDB.txt](SDL_GameControllerDB.txt), zlib |
 | dr_flac | [dr_flac.txt](dr_flac.txt), upstream dual license; this project selects MIT No Attribution |
 | miniz | [miniz.txt](miniz.txt), MIT |
 | ScaleFX | [ScaleFX.txt](ScaleFX.txt), MIT notice extracted verbatim from `scalefx.hpp` |
-| Snes9x SaI filters | [Snes9x.txt](Snes9x.txt), Snes9x terms |
 | librashader public C header | [librashader-header.txt](librashader-header.txt), MIT |
 | Optional external librashader runtime | [MPL-2.0.txt](MPL-2.0.txt), MPL option; runtime not bundled |
 | OpenAL Soft | [OpenAL-Soft.txt](OpenAL-Soft.txt), LGPL-2.0-or-later; [OpenAL-BSD-3Clause.txt](OpenAL-BSD-3Clause.txt) for applicable upstream files |
@@ -86,3 +83,20 @@ When updating a dependency, update its notices here and at its original source
 location together. Preserve upstream texts verbatim. Packaging-specific
 notices must match the libraries actually shipped; copying this directory
 does not replace source-redistribution requirements.
+
+## Historical notices only
+
+The following texts document components removed from the current source and
+runtime builds. Their code and validation fixtures remain, under their original
+terms, on [archive/noncommercial-filters-and-audio](https://github.com/duduke/AfterBurner2-Recomp/tree/archive/noncommercial-filters-and-audio).
+They are not included in the current runtime notice selection.
+
+| Historical component | Original terms |
+| --- | --- |
+| Retained Cannonball sound classes | [Cannonball.txt](Cannonball.txt), noncommercial/source redistribution terms |
+| Retained CannonBall-SE modifications | [CannonBall-SE.txt](CannonBall-SE.txt), additional upstream terms |
+| Historical MAME sound code carried through Cannonball | [MAME-Legacy.txt](MAME-Legacy.txt), historical noncommercial/source redistribution terms |
+| Snes9x SaI filters | [Snes9x.txt](Snes9x.txt), Snes9x terms |
+
+The earlier original-code grant is retained in
+[AfterBurner2-original-noncommercial.txt](AfterBurner2-original-noncommercial.txt).

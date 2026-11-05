@@ -24,6 +24,44 @@
 #include <AL/al.h>
 #include <AL/alc.h>
 #include <AL/alext.h>
+#ifdef AB2_OPENAL_DYNAMIC
+#include "frontend/openal_runtime.hpp"
+#define alBufferData Frontend::OpenALRuntime::api().alBufferData
+#define alDeleteBuffers Frontend::OpenALRuntime::api().alDeleteBuffers
+#define alDeleteSources Frontend::OpenALRuntime::api().alDeleteSources
+#define alDistanceModel Frontend::OpenALRuntime::api().alDistanceModel
+#define alDopplerFactor Frontend::OpenALRuntime::api().alDopplerFactor
+#define alGenBuffers Frontend::OpenALRuntime::api().alGenBuffers
+#define alGenSources Frontend::OpenALRuntime::api().alGenSources
+#define alGetError Frontend::OpenALRuntime::api().alGetError
+#define alGetIntegerv Frontend::OpenALRuntime::api().alGetIntegerv
+#define alGetProcAddress Frontend::OpenALRuntime::api().alGetProcAddress
+#define alGetSourcef Frontend::OpenALRuntime::api().alGetSourcef
+#define alGetSourcei Frontend::OpenALRuntime::api().alGetSourcei
+#define alGetString Frontend::OpenALRuntime::api().alGetString
+#define alIsExtensionPresent Frontend::OpenALRuntime::api().alIsExtensionPresent
+#define alListener3f Frontend::OpenALRuntime::api().alListener3f
+#define alListenerfv Frontend::OpenALRuntime::api().alListenerfv
+#define alSource3f Frontend::OpenALRuntime::api().alSource3f
+#define alSourcePausev Frontend::OpenALRuntime::api().alSourcePausev
+#define alSourcePlayv Frontend::OpenALRuntime::api().alSourcePlayv
+#define alSourceQueueBuffers Frontend::OpenALRuntime::api().alSourceQueueBuffers
+#define alSourceRewind Frontend::OpenALRuntime::api().alSourceRewind
+#define alSourceRewindv Frontend::OpenALRuntime::api().alSourceRewindv
+#define alSourceStopv Frontend::OpenALRuntime::api().alSourceStopv
+#define alSourceUnqueueBuffers Frontend::OpenALRuntime::api().alSourceUnqueueBuffers
+#define alSourcef Frontend::OpenALRuntime::api().alSourcef
+#define alSourcei Frontend::OpenALRuntime::api().alSourcei
+#define alcCloseDevice Frontend::OpenALRuntime::api().alcCloseDevice
+#define alcCreateContext Frontend::OpenALRuntime::api().alcCreateContext
+#define alcDestroyContext Frontend::OpenALRuntime::api().alcDestroyContext
+#define alcGetIntegerv Frontend::OpenALRuntime::api().alcGetIntegerv
+#define alcGetProcAddress Frontend::OpenALRuntime::api().alcGetProcAddress
+#define alcGetString Frontend::OpenALRuntime::api().alcGetString
+#define alcIsExtensionPresent Frontend::OpenALRuntime::api().alcIsExtensionPresent
+#define alcMakeContextCurrent Frontend::OpenALRuntime::api().alcMakeContextCurrent
+#define alcOpenDevice Frontend::OpenALRuntime::api().alcOpenDevice
+#endif
 #endif
 
 namespace Frontend {
@@ -214,6 +252,9 @@ private:
     double latency(){reap();double n=0;for(unsigned i=0;i<sources.size();++i){double sum=0;for(auto q:queued[i])sum+=q.seconds;ALfloat offset=0;alGetSourcef(sources[i],AL_SEC_OFFSET,&offset);n=std::max(n,sum-offset);}return n;}
     void clear_al(){if(!context)return;alSourceStopv(int(sources.size()),sources.data());for(unsigned i=0;i<sources.size();++i){while(!queued[i].empty()){ALuint b=0;alSourceUnqueueBuffers(sources[i],1,&b);alDeleteBuffers(1,&b);queued[i].pop_front();}}alSourceRewindv(int(sources.size()),sources.data());started=al_paused=repriming=false;starved_sources=0;check();}
     void open_al(const OutputSettings& s,Status& info){
+#ifdef AB2_OPENAL_DYNAMIC
+        OpenALRuntime::api().load();
+#endif
         const bool enumerate=alcIsExtensionPresent(nullptr,"ALC_ENUMERATE_ALL_EXT");
         if(const auto* p=alcGetString(nullptr,enumerate?ALC_ALL_DEVICES_SPECIFIER:ALC_DEVICE_SPECIFIER))while(*p){info.devices.emplace_back(p);p+=std::strlen(p)+1;}
         if(loopback){auto open=reinterpret_cast<LPALCLOOPBACKOPENDEVICESOFT>(alcGetProcAddress(nullptr,"alcLoopbackOpenDeviceSOFT"));if(!open)throw std::runtime_error("OpenAL loopback unavailable");device=open(nullptr);}
@@ -398,3 +439,41 @@ private:
     }
 };
 }
+
+#ifdef AB2_OPENAL_DYNAMIC
+#undef alBufferData
+#undef alDeleteBuffers
+#undef alDeleteSources
+#undef alDistanceModel
+#undef alDopplerFactor
+#undef alGenBuffers
+#undef alGenSources
+#undef alGetError
+#undef alGetIntegerv
+#undef alGetProcAddress
+#undef alGetSourcef
+#undef alGetSourcei
+#undef alGetString
+#undef alIsExtensionPresent
+#undef alListener3f
+#undef alListenerfv
+#undef alSource3f
+#undef alSourcePausev
+#undef alSourcePlayv
+#undef alSourceQueueBuffers
+#undef alSourceRewind
+#undef alSourceRewindv
+#undef alSourceStopv
+#undef alSourceUnqueueBuffers
+#undef alSourcef
+#undef alSourcei
+#undef alcCloseDevice
+#undef alcCreateContext
+#undef alcDestroyContext
+#undef alcGetIntegerv
+#undef alcGetProcAddress
+#undef alcGetString
+#undef alcIsExtensionPresent
+#undef alcMakeContextCurrent
+#undef alcOpenDevice
+#endif

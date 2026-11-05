@@ -53,15 +53,15 @@ and sustained peak-load performance remain open.
 
 ## Linux and Steam Deck
 
-[Linux Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
+[Linux Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
 include separate ROM-free x86-64 and ARM64 packages and checksums. SDL3/OpenAL and the Vulkan Slang runtime are bundled. Full project source
 companions remain local and in the private development release; corresponding runtime
 source and notices remain available separately.
 
 | Platform | Download |
 | --- | --- |
-| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-x86_64-SteamDeck-preview.tar.gz) |
-| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-arm64-preview.tar.gz) |
+| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-x86_64-SteamDeck-preview.tar.gz) |
+| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-arm64-preview.tar.gz) |
 
 Extract the game and run `Launch.sh`. For Steam Deck, add the x86-64 `Launch.sh`
 as a Non-Steam Game and use a Gamepad template; first-run settings use
@@ -88,7 +88,7 @@ the measured VMs do not sustain arcade speed. See the
 | Shuffle | [Shuffle mode](docs/SHUFFLE_MODE.md): stages 1–22 in random order with stage 23 as the finale, continuous score/lives, same-order F5 retry and fresh New Shuffle |
 | Widescreen | Experimental 16:9 (398×224) and 16:10 (358×224) viewports: additional road/tiles, recovered hidden sprites and retained side scenery, world explosions, hit effects, player/enemy missile smoke and player damage emissions with live roll projection; extended horizon and takeoff wave field; dynamic presentation lists recover requests dropped by native queue/depth limits; centered HUD and existing effects; Original remains the default. Both widths use the integrated renderer in macOS Preview 5; current source also adds experimental 21:9 (522×224) |
 | Display | Nearest, Linear, Integer and supported Pixel Art window scaling; high-DPI/fullscreen output; optional Original / Sharp 3x / Custom text-plane HUD ([atlas format](docs/HUD_PRESENTATION.md)); FPS and frame/core/filter/presentation timing |
-| Sprite filters | Off, EPX, Scale3x, 2xSaI, Super2xSaI and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
+| Sprite filters | Off, EPX, Scale3x and ScaleFX; SDL GPU compute/composition with a CPU/software fallback |
 | CRT display | Off / Subtle / Arcade presets with independent scanline and RGB-mask strength; optional RetroArch `.slangp` presets on macOS Metal and Windows/Linux Vulkan (runtime bundled on Linux; shader packs downloaded separately); readable frontend menus; [setup and scope](docs/CRT_DISPLAY.md) |
 | Player aircraft prototype | Optional [registered neutral/gentle-bank HD pack](docs/SPRITE_REPLACEMENT.md), included in macOS Preview 3; unsupported poses retain the original art |
 | Ground/horizon | Corrected mode is the default on every platform and removes misplaced ground-color wedges during rolls; widescreen also extends verified ground/sea fill behind translucent clouds and handles clipped horizon edges. Original remains selectable |
@@ -129,8 +129,8 @@ validation and sustained ultrawide performance remain open. See the
 
 ## Build and play
 
-Download [Linux Preview 7](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7),
-[macOS or Android Preview 6](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6)
+Download [Linux Preview 7](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7),
+[macOS or Android Preview 6](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
 and extract the complete desktop archive. Put your own extracted ROM files or
 `aburner2.zip` in its `roms/` directory, or select a ZIP on startup. Android uses
 the sideload APK and imports a ROM ZIP through its document picker; see
@@ -218,11 +218,23 @@ python tools/deps/fetch_librashader.py
 ```
 
 Set `SDL3_DIR`, `OpenAL_DIR`, and `AB2_VULKAN_INCLUDE_DIR` when these dependencies
-are outside CMake's search paths. CMake copies SDL/OpenAL and available
-LLVM-MinGW runtime DLLs beside the game. `AB2_REQUIRE_IPO=ON` fails configuration
+are outside CMake's search paths. For shared SDL builds, CMake copies SDL and available LLVM-MinGW runtime DLLs
+beside the game. Windows OpenAL is loaded on demand and is not copied by default. `AB2_REQUIRE_IPO=ON` fails configuration
 if LTO cannot actually compile and link. [Windows shader setup](docs/CRT_DISPLAY.md#windows-vulkan)
 includes validation commands and the scope of newer source-only optimizations.
 Windows Preview 5 includes the shared ROM startup, menu and widescreen features.
+
+For the standalone Windows signing input, use the pinned builder on Windows:
+
+```sh
+python tools/windows/build_base.py --package-sources
+```
+
+It statically links SDL/compiler runtimes and checks startup and optional OpenAL
+fallback. The [manual hosted workflow](.github/workflows/windows-base.yml)
+produces unsigned input and corresponding sources. See
+[signing requirements](docs/WINDOWS_SIGNING.md) before packaging or publication;
+provider approval and a protected final-package launch remain required.
 
 Multi-configuration generators require `--config Release` at build time; their
 default build is Debug. Use a compiler that supports the engine requirements
@@ -351,3 +363,5 @@ future proposals. [Engine notes](docs/ENGINE_NOTES.md) retain the
 ROM evidence and verification history; [enhancement architecture](docs/ENHANCEMENT_ARCHITECTURE.md)
 describes extension contracts. The Three.js prototype is retained only on
 [`codex/threejs-game-engine`](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/threejs-game-engine).
+
+See [COPYRIGHT.md](COPYRIGHT.md) for the original-code grant and third-party scope.

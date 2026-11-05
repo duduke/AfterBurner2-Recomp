@@ -1,6 +1,6 @@
 # Linux x86-64 / ARM64 previews
 
-[Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
+[Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
 include both game architectures with the Vulkan Slang runtime already bundled,
 runtime covered-source/notice archives, and SHA-256 files. Full project source companions remain local
 and in the private development release, following the existing public-download

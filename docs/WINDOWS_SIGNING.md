@@ -15,14 +15,14 @@ the Windows `codex` account. The existing ad-hoc certificate is not a public
 release identity. A signing provider must perform its identity/issuance process;
 this cannot be replaced by generating another local certificate.
 
-The [SignPath Foundation terms](https://signpath.org/terms) require OSI-approved
-licenses. The project's [license](../LICENSE.txt) prohibits commercial use, and
-retained dependencies also have noncommercial terms. Consequently the project
-does not meet the published free-program requirements in its current form.
-At the owner's request, a [candid eligibility-inquiry draft](SIGNPATH_APPLICATION.md)
-was prepared and emailed to SignPath on 4 November 2026 with the owner's
-explicit authorization. No formal application, approval or change of license is claimed. Foundation restrictions on
-signing upstream DLLs would also need resolving before choosing that route.
+SignPath declined the original inquiry on 5 November 2026 because of the
+noncommercial licensing, and confirmed that upstream DLLs must be signed by
+their own maintainers. The source repository is now public, original code is
+GPL-3.0-or-later, and the noncommercial filters and unused legacy audio classes
+have been removed from the current tree. They remain on the explicitly
+historical branch under their original terms. This addresses the identified
+license/public-source prerequisites; **SignPath has not approved the revised
+project**. See [application status](SIGNPATH_APPLICATION.md).
 
 Use an existing publicly trusted CA-issued certificate/HSM or an approved
 cloud signing account. [Microsoft's signing options](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options)
@@ -30,50 +30,54 @@ describe identity validation and geographic eligibility; provider enrollment
 remains an external prerequisite. Do not put private keys or passwords in chat,
 source files, artifacts or GitHub workflow text.
 
-## Current candidate and audit
+## Standalone base and optional runtimes
 
-`build/windows-signing-release/unsigned-runtime/` is an isolated signing input:
-11 PE files, `Launch.cmd` and `LICENSES.txt`, with no ROMs, tests or settings.
-It reuses the checksum-verified original runtime's dependencies and notices,
-replacing only the EXE with the validated performance build:
-`c56180f74d4bd0026a1577778a5dc661d3f5d803242c8351e79a688ea9e79524`.
-This is **unsigned staging**, not a completed release package or source companion.
+The current compact packager defaults to `--profile base`. Its only PE is
+`afterburner2.exe`; SDL and compiler runtimes must be linked statically.
+The exact runtime inventory is the EXE, `Launch.cmd` and `LICENSES.txt`.
+OpenAL Soft is loaded only when spatial audio is requested. A missing, blocked
+or incompatible runtime reports a reason and falls back to SDL stereo.
+`AB2_OPENAL_RUNTIME` selects an explicit compatible runtime path; otherwise the
+loader checks beside the executable. The Slang host already loads librashader
+optionally and reports an unavailable runtime without preventing base gameplay.
+Built-in sprite filters and CRT effects do not require librashader.
 
-The Windows audit finds these six unsigned files:
+No OpenAL, librashader, SDL, compiler-runtime or Microsoft redistributable DLL
+is bundled in the base. Protected Windows still requires trusted signatures
+on external DLLs when those optional features load them. Installing an unsigned
+DLL separately does not solve that feature's trust requirement. Obtain a
+compatible signed distribution from its upstream maintainer; do not disable
+Smart App Control or sign their DLLs with this project's identity.
 
-- `afterburner2.exe`
-- `SDL3.dll`
-- `OpenAL32.dll`
-- `librashader.dll`
-- `libc++.dll`
-- `libunwind.dll`
+The earlier eleven-PE diagnostic distribution and failed-signature controls
+remain archived locally under `build/windows-signing-release/`. They are not
+the new base release. `--profile legacy` retains its exact inventory for
+historical checks, not an approved publication route.
 
-The three Microsoft C++ runtime DLLs and two Microsoft DirectX DLLs already have
-valid timestamped signatures. Preserve those signatures. The five-file vendor
-control passes verification; unsigned, locally trusted ad-hoc and tampered
-controls fail. The complete unsigned runtime correctly fails. All checks run
-with Smart App Control On, without changing trust or security policies.
-Evidence and negative-control files remain under `build/windows-signing-release/`
-and `C:\Games\AB2-signing-release`.
+## Hosted unsigned build
 
-## Sign and verify
+`.github/workflows/windows-base.yml` is a manual GitHub-hosted build. It pins
+checkout/upload actions and the LLVM-MinGW distribution, SDL, OpenAL headers and
+Vulkan headers by immutable commit or SHA-256. `tools/windows/build_base.py`
+builds static SDL and the app, then the compact packager audits imports and
+creates explicitly unsigned input plus corresponding sources. It also starts
+the EXE from an otherwise empty folder, exercises missing/incompatible OpenAL
+fallback on Windows, and requires the signature verifier to reject an unsigned
+base negative control. These hosted checks do not establish Smart App Control
+acceptance on the user's Windows 11 PC. The workflow
+has read-only repository permission, no signing keys and no release publishing.
+SignPath integration and artifact rules still require provider/owner setup.
 
-For a CA-issued key already installed in a Windows certificate provider/HSM,
-with the Windows SDK Signing Tools installed:
+## Sign, verify and package
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\sign_release.ps1 `
-  -RuntimeDirectory C:\path\to\staged-runtime `
-  -CertificateThumbprint PROVIDER_CERTIFICATE_THUMBPRINT `
-  -ReceiptPath C:\path\to\new-signature-receipt.json
-```
-
-The script rejects a self-signed signing identity, preserves already valid vendor
-signatures, signs remaining files using SHA-256 and an RFC 3161 timestamp, then
-verifies the complete runtime. It uses the provider's existing key without
-exporting it. No successful production signing run is claimed until a provider
-is available. For a cloud signer that does not expose a Windows certificate,
-sign through that provider first, then run verification separately:
+After provider approval, sign the project's EXE through the approved service.
+For a CA-issued key already available through a Windows certificate provider,
+`tools/windows/sign_release.ps1` signs only `afterburner2.exe`. It rejects
+unsigned upstream files before any signing operation. Both scripts use the adjacent `signing_environment.ps1` bootstrap to load
+commands/providers from their active PowerShell installation. Keep those files
+together. They default to `-Profile base`; the verifier requires timestamped Authenticode, an approved
+public root and the exact flat inventory. It rejects locally trusted ad-hoc
+certificates. Neither script changes certificate trust or security policy.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\verify_release_signatures.ps1 `
@@ -81,41 +85,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\verify_release
   -ReceiptPath C:\path\to\new-signature-receipt.json
 ```
 
-Verification requires valid Authenticode, timestamps, approved public roots and
-an exact flat runtime inventory. It rejects ad-hoc signatures even if locally
-trusted. Windows AuthRoot entries and Microsoft's published built-in 2010/2011
-root fingerprints are recognized. If necessary, `-ApprovedRootThumbprint` pins a
-public CA root independently confirmed with the provider; never use it to admit
-a development root. Root fingerprints are listed in
-[Microsoft's PKI repository](https://www.microsoft.com/pkiops/docs/repository.htm).
-`-FilesOnly` is solely for scoped controls and never produces a full-runtime
-receipt. Existing receipts are not overwritten.
-
-## Package and publish
-
-The compact packager now requires an explicit signing mode. For preparatory
-artifacts, add `--unsigned-signing-input`; their names include
-`UNSIGNED-signing-input`. For the actual release, from a clean committed tree
-with the existing pinned build dependencies/notices restored:
+From a clean committed source tree, prepare explicitly unsigned input with
+`--unsigned-signing-input`. It must not be published as a signed release.
+After signing and Windows verification:
 
 ```sh
 python3 tools/package_windows_runtime.py "$AB2_VERSION" --label "$AB2_LABEL" \
-  --build build/win --msvc-redist "$AB2_MSVC_REDIST" \
+  --build build/win --profile base \
   --verified-runtime "$AB2_SIGNED_RUNTIME" \
   --signature-receipt "$AB2_SIGNATURE_RECEIPT"
 ```
 
-The packager checks a passing full-runtime receipt and each signed file's digest
-before copying it. It also compares PE payloads with the original build,
-allowing only Authenticode metadata/checksum/padding changes. It records signing evidence and final signed hashes in the
-matching runtime/source manifests. A receipt is local pipeline evidence, not a
-cryptographic attestation; obtain it by running the checker on the actual signed
-files. A changed or incomplete payload must be verified again.
+The packager checks exact PE inventory, signed file hashes and a passing full
+receipt. It compares signed and original PE payloads, allowing only signing
+metadata/checksum/padding differences. Imports must be Windows OS libraries;
+unsigned external runtime imports are rejected. The matching source companion
+includes project, statically linked dependency and Vulkan API-header
+sources/notices. Receipts
+are pipeline evidence, not cryptographic attestations.
 
-Extract the resulting ZIP to a fresh directory. With Smart App Control On,
-launch normal SDL audio, HRTF/OpenAL and Slang presets so every optional DLL path
-is exercised; inspect new Code Integrity blocks. Keep the game window in front,
-using its SDL window title/handle rather than its console PID. Retain logs,
-package/source identities, notices and checksums. Only then upload the runtime,
-matching source companion and checksums and restore public download links.
-Existing whole-game performance/recording limits remain in the release notes.
+Before publication, extract the final signed ZIP and launch with Smart App
+Control On. Verify base gameplay with both optional libraries absent, persisted
+spatial/shader settings, and clear fallback messages. Optional features require
+separate compatible trusted-runtime launch checks; no provider approval or
+protected Windows launch is claimed from cross-build/import checks alone.
+Publish only after trusted signing and extracted-package validation pass.
