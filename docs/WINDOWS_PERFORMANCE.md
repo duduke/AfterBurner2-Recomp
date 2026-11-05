@@ -340,9 +340,10 @@ Validation in the isolated `build/public-source-worktree` checkout:
   retaining six independent ScaleFX reference fingerprints and 583,443 terminal
   fragment foreground/background comparisons. Removed filter settings migrate
   to Off while preserving independent preferences.
-- Dynamic OpenAL: `build/workflow/20261105T180203.912779Z/` passes missing and
+- Dynamic OpenAL: `build/workflow/20261105T183358.214776Z/` passes missing and
   incompatible-module fallback, original SDL without loading OpenAL, failed-load
-  cleanup/retry, and the existing 13-source/60 sample-second loopback suite.
+  cleanup/retry, explicit dummy-driver preconditions, and the existing
+  13-source/60 sample-second loopback suite.
   These macOS loader checks do not substitute for protected Windows acceptance.
 - Retained fragment baseline and all three fragment mutations pass:
   `build/workflow/20261105T180517.770268Z/`.
