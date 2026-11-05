@@ -53,15 +53,15 @@ and sustained peak-load performance remain open.
 
 ## Linux and Steam Deck
 
-[Linux Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7)
+[Linux Preview 7 downloads](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7)
 include separate ROM-free x86-64 and ARM64 packages and checksums. SDL3/OpenAL and the Vulkan Slang runtime are bundled. Full project source
 companions remain local and in the private development release; corresponding runtime
 source and notices remain available separately.
 
 | Platform | Download |
 | --- | --- |
-| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-x86_64-SteamDeck-preview.tar.gz) |
-| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-arm64-preview.tar.gz) |
+| x86-64 / Steam Deck | [Linux x86-64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-x86_64-SteamDeck-preview.tar.gz) |
+| ARM64 desktop | [Linux ARM64](https://github.com/duduke/AfterBurner2-Recomp/releases/download/v0.1.0-preview.7/AfterBurner2-v0.1.0-preview.7-20261103.1-Linux-arm64-preview.tar.gz) |
 
 Extract the game and run `Launch.sh`. For Steam Deck, add the x86-64 `Launch.sh`
 as a Non-Steam Game and use a Gamepad template; first-run settings use
@@ -129,8 +129,8 @@ validation and sustained ultrawide performance remain open. See the
 
 ## Build and play
 
-Download [Linux Preview 7](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.7),
-[macOS or Android Preview 6](https://github.com/duduke/AfterBurner2-Recomp-Releases/releases/tag/v0.1.0-preview.6)
+Download [Linux Preview 7](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.7),
+[macOS or Android Preview 6](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.6)
 and extract the complete desktop archive. Put your own extracted ROM files or
 `aburner2.zip` in its `roms/` directory, or select a ZIP on startup. Android uses
 the sideload APK and imports a ROM ZIP through its document picker; see

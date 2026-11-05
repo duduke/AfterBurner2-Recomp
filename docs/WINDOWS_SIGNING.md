@@ -60,7 +60,11 @@ historical checks, not an approved publication route.
 checkout/upload actions and the LLVM-MinGW distribution, SDL, OpenAL headers and
 Vulkan headers by immutable commit or SHA-256. `tools/windows/build_base.py`
 builds static SDL and the app, then the compact packager audits imports and
-creates explicitly unsigned input plus corresponding sources. The workflow
+creates explicitly unsigned input plus corresponding sources. It also starts
+the EXE from an otherwise empty folder, exercises missing/incompatible OpenAL
+fallback on Windows, and requires the signature verifier to reject an unsigned
+base negative control. These hosted checks do not establish Smart App Control
+acceptance on the user's Windows 11 PC. The workflow
 has read-only repository permission, no signing keys and no release publishing.
 SignPath integration and artifact rules still require provider/owner setup.
 

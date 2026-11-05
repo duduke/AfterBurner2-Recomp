@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import shutil
+import tempfile
 import tarfile
 import urllib.request
 import zipfile
@@ -46,7 +48,6 @@ def fetch(directory, name, url, sha):
     if not destination.exists():
         temporary=destination.with_suffix(destination.suffix+'.partial')
         with urllib.request.urlopen(url) as source, temporary.open('wb') as output:
-            import shutil
             shutil.copyfileobj(source, output)
         temporary.rename(destination)
     if hashlib.sha256(destination.read_bytes()).hexdigest()!=sha:
@@ -88,13 +89,38 @@ def main():
     run('cmake','--build',deps/'sdl-static-build','--parallel','4')
     run('cmake','--install',deps/'sdl-static-build')
     run('cmake','-S',ROOT,'-B',build,'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',
-        '-DCMAKE_C_COMPILER=clang','-DCMAKE_CXX_COMPILER=clang++','-DBUILD_TESTING=OFF',
+        '-DCMAKE_C_COMPILER=clang','-DCMAKE_CXX_COMPILER=clang++','-DBUILD_TESTING=ON',
         '-DAB2_REQUIRE_IPO=ON','-DAB2_STATIC_SDL=ON','-DAB2_STATIC_COMPILER_RUNTIME=ON',
         '-DAB2_OPENAL_DYNAMIC=ON','-DAB2_ENABLE_OPENAL=ON',
         '-DAB2_OPENAL_INCLUDE_DIR='+str(deps/'openal-soft-1.25.2/include'),
         '-DSDL3_DIR='+str(sdk/'lib/cmake/SDL3'),
         '-DAB2_VULKAN_INCLUDE_DIR='+str(deps/'Vulkan-Headers-1.4.341/include'))
-    run('cmake','--build',build,'--target','afterburner2','--parallel','4')
+    run('cmake','--build',build,'--target','afterburner2','openal_runtime_regression','--parallel','4')
+    # Start the real EXE from an otherwise empty directory. The invalid option
+    # returns before SDL/ROM selection, but Windows must resolve startup imports.
+    with tempfile.TemporaryDirectory(prefix='ab2-base-smoke-') as temporary:
+        directory=Path(temporary)
+        executable=directory/'afterburner2.exe'
+        shutil.copy2(build/'afterburner2.exe',executable)
+        result=subprocess.run([str(executable),'--dependency-smoke'],cwd=directory,
+                              capture_output=True,text=True,timeout=20)
+        if result.returncode!=1 or 'Usage: afterburner2' not in result.stderr:
+            raise SystemExit('Standalone Windows loader smoke failed: '+str(result.returncode)+' '+result.stderr)
+        print('Standalone Windows startup import smoke passed',flush=True)
+        # An unsigned negative control must fail without altering system trust.
+        (directory/'Launch.cmd').write_text('@echo off\n')
+        shutil.copy2(ROOT/'LICENSE.txt',directory/'LICENSES.txt')
+        receipt=build/'unsigned-negative-control.json'
+        result=subprocess.run(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',
+            str(ROOT/'tools/windows/verify_release_signatures.ps1'),
+            '-RuntimeDirectory',str(directory),'-ReceiptPath',str(receipt)],timeout=60)
+        audit=json.loads(receipt.read_text(encoding='utf-8-sig'))
+        if (result.returncode!=1 or audit['Passed'] or not audit['FullRuntime'] or
+                len(audit['Files'])!=1 or audit['Files'][0]['Status']!='NotSigned'):
+            raise SystemExit('Unsigned base negative control was not rejected')
+    environment=dict(os.environ,AB2_TEST_INCOMPATIBLE_RUNTIME=str(Path(os.environ['SystemRoot'])/'System32/kernel32.dll'))
+    subprocess.run([str(build/'openal_runtime_regression.exe'),'--missing-only'],
+                   cwd=ROOT,env=environment,check=True,timeout=30)
     (build/'pinned-inputs.json').write_text(json.dumps(INPUTS,indent=2)+'\n')
 
 
