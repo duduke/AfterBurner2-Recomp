@@ -12,6 +12,17 @@ import package_windows_runtime as runtime
 
 
 class WindowsBase(unittest.TestCase):
+    def test_cache_and_toolchain_compiler_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            self.assertEqual(runtime.compiler_path(root,'CMAKE_CXX_COMPILER:FILEPATH=/compiler/clang++'),Path('/compiler/clang++'))
+            generated=root/'CMakeFiles/4.2.0/CMakeCXXCompiler.cmake'
+            generated.parent.mkdir(parents=True)
+            generated.write_text('set(CMAKE_CXX_COMPILER "/toolchain/clang++")\n')
+            self.assertEqual(runtime.compiler_path(root,''),Path('/toolchain/clang++'))
+            generated.unlink()
+            with self.assertRaisesRegex(SystemExit,'compiler identity'):runtime.compiler_path(root,'')
+
     def test_import_allowlist(self):
         for dependency in ('SDL3.dll','OpenAL32.dll','librashader.dll','libc++.dll',
                            'libunwind.dll','VCRUNTIME140.dll','D3DX9_43.dll',

@@ -67,6 +67,21 @@ def verified_signatures(runtime, receipt_path, originals):
     return receipt
 
 
+def compiler_path(build, cache):
+    match = re.search(r'^CMAKE_CXX_COMPILER:(?:FILEPATH|STRING|UNINITIALIZED)=(.+)$', cache, re.M)
+    if match:
+        return Path(match[1])
+    # Toolchain files may set a normal variable instead of a cache entry.
+    candidates = set()
+    for path in (build/'CMakeFiles').glob('*/CMakeCXXCompiler.cmake'):
+        match = re.search(r'set\(CMAKE_CXX_COMPILER "([^"]+)"\)', path.read_text())
+        if match:
+            candidates.add(match[1])
+    if len(candidates) != 1:
+        raise SystemExit('Missing or ambiguous CMake compiler identity')
+    return Path(candidates.pop())
+
+
 def audit_imports(runtime, binaries, compiler, base):
     allowed_os = SYSTEM_DLLS | {'bcryptprimitives.dll','d3dcompiler_47.dll','ntdll.dll','combase.dll','d3d9.dll','d3dcompiler_43.dll','d3dx9_43.dll'}
     if base:
@@ -120,7 +135,7 @@ def main():
     elif not args.msvc_redist:
         parser.error('Legacy profile requires --msvc-redist')
     deps = args.deps.resolve()
-    compiler = Path(re.search(r'^CMAKE_CXX_COMPILER:(?:FILEPATH|STRING)=(.+)$', cache, re.M)[1])
+    compiler = compiler_path(build, cache)
     if not base:
         dx = deps/'microsoft.dxsdk.d3dx-9.29.952.8'
         if digest(deps/'microsoft.dxsdk.d3dx.9.29.952.8.nupkg') != 'ead0906ae8a26c18a7525da7490127a2110f7c58f18293738283e30e97c6ea4b':
