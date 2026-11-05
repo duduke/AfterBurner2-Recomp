@@ -16372,3 +16372,18 @@ these revisions; later differences are tests, CI, packaging and documentation.
 Local release receipts are retained under `build/release-preview8/`. Natural
 positive $6E/$6F flybys, natural world-explosion producer coverage, headphone
 listening and physical rumble feel remain open as described above.
+
+
+Preview 8 publication completed on 5 November 2026: [PR #27](https://github.com/duduke/AfterBurner2-Recomp/pull/27)
+merged at `83c58e2fdec4bf3c758a6857c2cae00271c80eb9`, with release tag
+`v0.1.0-preview.8`. The [public prerelease](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.8)
+contains five runtime packages, four source companions, nine checksum files and
+the Windows manifest: **all 19 uploaded sizes and GitHub SHA-256 digests match
+local assets**. Existing older releases were preserved. The
+[itch project page](https://duduke.itch.io/afterburner-2-arcade-recomp) now describes
+Preview 8 and supplies all five current runtime choices, including the clearly
+labeled unsigned Windows base. The free-download path was checked. The
+[Preview 8 devlog](https://duduke.itch.io/afterburner-2-arcade-recomp/devlog/1756138/preview-8-deeper-rumble-and-moving-cockpit-audio)
+is published. Existing page images/video/support links were retained. Local
+publication proof and the complete asset inventory are retained under
+`build/release-preview8/`; no capture, ROM or credential was published.
