@@ -29,9 +29,10 @@ jobs:
       - name: Verify license scope
         run: python tests/test_license_notices.py
       - name: Check object audio and haptic presentation
+        timeout-minutes: 3
         run: |
           cmake --build build/windows-base-hosted --target object_audio_tracking_regression native_haptics_regression --parallel 4
-          ctest --test-dir build/windows-base-hosted -R "^(object_audio_tracking_regression|native_haptics_regression)$" --output-on-failure
+          ctest --test-dir build/windows-base-hosted -R "^(object_audio_tracking_regression|native_haptics_regression)$" --output-on-failure --timeout 60 -V
       - name: Package explicitly selected unsigned artifact and corresponding sources
         shell: python
         env:

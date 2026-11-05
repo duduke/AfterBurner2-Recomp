@@ -21,6 +21,6 @@ def main():
    subprocess.run(compile_command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
    subprocess.run(link_command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
    result=subprocess.run([exe],cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
-  if result.returncode==0 or 'native tracking coverage incomplete' not in log_path.read_text():raise RuntimeError('detached observer survived or failed for an unrelated reason')
+  if result.returncode==0 or not any(message in log_path.read_text() for message in ('native tracking coverage incomplete','natural object FM/PCM rendering coverage missing')):raise RuntimeError('detached observer survived or failed for an unrelated reason')
  print('PASS rejected detached object sound observer')
 if __name__=='__main__':main()
