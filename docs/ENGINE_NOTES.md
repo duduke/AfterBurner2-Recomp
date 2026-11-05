@@ -16314,3 +16314,61 @@ cover queued left/right changes, front/rear/elevation, 61-source starvation,
 pause/clear, six-packet backpressure and fallback. Final integrated-source and
 platform/package receipts are recorded below as they finish. No complete engine
 gate is required: these changes are passive observers and presentation taps.
+
+
+### Preview 8 integrated validation and packages (2026-11-05)
+
+The complete local main profile passes (`build/workflow/20261105T202223.233558Z`):
+main units, 781 game-session frames, Practice's 375 exact RGB/PCM/time frames
+and 2,280 hidden callbacks, and Shuffle's 660 capture-neutral frames plus
+16 restores. The final 8,000-frame paired object export is exact for
+RGB/PCM/time/music/effects, with 509,840 rendered FM and 2,288,754 rendered PCM
+samples (`20261105T202751.610831Z`). All 19 retained metadata/geometry controls
+reject deliberate faults; the detached-observer control also rejects its
+fault. Its diagnostic classifier was updated to accept the new earlier
+coverage failure, without changing the comparison. Playback mutations and
+optional OpenAL lifecycle/fallback checks pass. Production HRTF loopback across
+8,000 natural frames produces 6,438,721 stereo frames, no clipping and no
+steady-state underruns, with peak queue 62.11 ms. Finite end-of-stream drain
+is outside that steady-state measurement. No full engine gate was rerun.
+
+Preview 8 runtime packages and exact source companions are ROM/capture-free.
+Their manifests retain the tested source revisions: Linux/Android `1e8363d`,
+macOS `00b1c6d`, Windows `05f0d67`. Game and asset contents are identical across
+these revisions; later differences are tests, CI, packaging and documentation.
+
+- macOS ARM64: SDL 3.4.20 and OpenAL Soft 1.25.2; archive hashes and extracted
+  ad-hoc signatures pass. A real-display extracted-package Practice 23 HRTF
+  launch runs 2,100 frames, zero underruns/reprimes/recoveries; normal pacing
+  samples are 59.6374 FPS (last partial sample 58.9255). This is not Developer
+  ID signing/notarization or physical controller/listening acceptance.
+- Linux x86-64 and ARM64: fresh source builds in the pinned sniper / Debian 12
+  SDKs, respectively. Both pass object tracking, virtual haptics, HRTF, main
+  units and the 781-frame game-session check. Duplicate slow VM Practice runs
+  were explicitly stopped; VM Shuffle was not repeated. Partial receipts and
+  logs are retained, and neither VM is reported as a complete main-profile
+  pass for this release. The complete main profile passed locally. Both fresh
+  extracted packages pass ROM startup/ZIP/remembered selection, hashes,
+  dependency floors, saved preferences and finite SDK/host launches. Real VM
+  X11 and Wayland launches pass. Vulkan pixels: **882/882 identical,
+  126,977,550 pixels, zero skips per architecture**, including both queued-read
+  sync modes. Initial dummy-video Vulkan failures are retained separately.
+  These are finite VM checks; physical Deck/ARM64 performance remains open.
+- Windows x64: native hosted Windows CI [run 42107017537](https://github.com/duduke/AfterBurner2-Recomp/actions/runs/42107017537)
+  passes standalone startup, optional-runtime fallback, object/haptic units,
+  package/license checks and the unsigned negative control. Earlier unit
+  executables depended on absent libc++/libunwind DLLs and stalled before main;
+  the static compiler-runtime option now applies to those tests too. The game
+  executable was already statically linked. Extracted base imports are OS-only;
+  the archive contains the executable, launcher and notices, with no DLLs.
+  The owner explicitly authorized unsigned publication. Trusted signing and
+  Smart App Control acceptance remain open. Direct SSH to the physical Windows
+  host failed; hosted CI does not establish its performance or a keep-awake lease.
+- Android ARM64: version code 3 / 0.1.0-preview.8 builds and passes manifest,
+  JNI, debug signature and 16 KiB ZIP/ELF alignment checks. No ADB device was
+  attached, so no new device installation/rumble test is claimed. SDL audio
+  remains the Android path; desktop HRTF is not included.
+
+Local release receipts are retained under `build/release-preview8/`. Natural
+positive $6E/$6F flybys, natural world-explosion producer coverage, headphone
+listening and physical rumble feel remain open as described above.

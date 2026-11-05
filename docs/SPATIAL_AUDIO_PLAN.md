@@ -86,7 +86,8 @@ and semantic effect placement remain presentation choices. The native reference
 stays stereo. This verifies the documented 420-5812 wiring; unchanged wiring
 in an After Burner II cabinet revision still needs primary evidence.
 
-## Object-based HRTF (planned)
+<a name="object-based-hrtf-planned"></a>
+## Object-based HRTF: implementation and remaining work
 
 Added 2026-10-26. Extend the current fixed front/rear sound categories with
 moving sources tied to verified game objects. This is an opt-in presentation

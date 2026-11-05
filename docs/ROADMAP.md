@@ -18,7 +18,7 @@ Original remains the regression reference. See
 | --- | --- | --- |
 | 1 | [Arcade fidelity](FIDELITY_PLAN.md) | Record standard single-credit completion; extend continuous MAME CPU/device/RGB/audio and remaining lifecycle coverage |
 | 2 | [Widescreen](WIDESCREEN_PLAN.md) | Extend shared-renderer performance and controller/scene audits; retain snapshot comparisons and sustained 16:9/16:10/21:9 checks and separate physical ultrawide acceptance |
-| 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification; [object-based HRTF](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned), starting with missile flybys and positioned explosions |
+| 3 | [Controls/feedback](HAPTICS_PLAN.md) and [audio](SPATIAL_AUDIO_PLAN.md) | Windows/Linux hardware acceptance, HOTAS calibration, physical speaker/HRTF tests and remaining sound classification; [object-based HRTF](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned), with rendering implemented for supported sources; positive natural flybys, additional families and listening remain |
 | 4 | Performance and distribution | Measure peak-load pacing/latency; establish additional GPU/platform and macOS packaging compatibility; [Android / Android TV port and real-device ADB testing](#android--android-tv-port-initial-implementation); [Linux x86-64 / ARM64 builds and remote testing](#linux-x86-64--arm64-builds-and-remote-testing) |
 | 5 | [Display and assets](ENHANCEMENT_PLAN.md#display-and-assets) | [Offline sprite extraction/mapping](SPRITE_EXTRACTION.md), [CRT scanlines/RGB mask and optional external presets](CRT_DISPLAY.md) and an opt-in [registered HD neutral/gentle-bank aircraft pack](SPRITE_REPLACEMENT.md); full replacement animation, built-in CRT glow/curvature, pacing and optional HUD improvements remain |
 | 6 | [Gameplay extensions](ENHANCEMENT_PLAN.md#gameplay-and-content) | Extend the Practice/Shuffle interfaces for additional arranged rules; verify object/state contracts before new stages, save states or multiplayer |
@@ -232,8 +232,7 @@ the decoder needs extending; in a data table it's expected.
 - Custom stage experiments remain isolated on
   [codex/custom-stage-prototype](https://github.com/duduke/AfterBurner2-Recomp/tree/codex/custom-stage-prototype).
   Android/TV host implementation is in progress. Linux Preview 7 x86-64/ARM64
-  packages are available; hardware/performance acceptance and moving object-based
-  HRTF remain open below.
+  packages are available; hardware/performance acceptance and remaining object-audio coverage stay open below.
 
 Dated implementation details and earlier checkpoints remain in
 [Engine Notes](ENGINE_NOTES.md), [release notes](RELEASE_NOTES.md) and the
@@ -277,25 +276,24 @@ MAME comparisons cover 100,000 frame observations across all stages, ending,
 ranking and attract. See [Practice](PRACTICE_MODE.md), [Shuffle](SHUFFLE_MODE.md)
 and their linked evidence for exact finite scope.
 
-## Object-based spatial audio (planned)
+<a name="object-based-spatial-audio-planned"></a>
+## Object-based spatial audio
 
-Added 2026-10-26. Extend the fixed front/rear cockpit categories with opt-in
-moving HRTF sources. Start with missile flybys and positioned world explosions,
-then enemy weapon launches, player missiles and verified aircraft/rear threats;
-keep player propulsion anchored behind the listener. A chasing plane should
-sound from its actual rear bearing only after its relative position, chase
-state and sound ownership are verified. Continuous enemy engine audio requires
-an appropriate native voice or a separately specified optional added sound.
+Experimental rendering is implemented for supported sources (5 November 2026).
+Owned FM/PCM contributions use a bounded 24-direction grid per chip, with causal
+movement carried in queued samples. Native PCM, sound triggers and clock/device
+behavior stay unchanged. Player missiles, firing aircraft and target-lock
+attachments have natural ownership/trajectory evidence; world explosion
+coordinates have independent directed MAME projection witnesses.
 
-Passive tracking is implemented for raw `$156CE` missile coordinates and
-`$D8` firing-aircraft ownership through sound delivery and physical voice
-allocation, with generation/epoch IDs and unknown fallback. The 8,000-frame
-MAME fixture verifies 202 trajectory samples and 15 owned PCM launch identities;
-natural flyby and owned-FM coverage remain open. Native RGB/PCM/time is unchanged.
-Moving rendering still requires per-family listener-coordinate contracts and
-separate voice exports. See [tracking evidence](ENGINE_NOTES.md#passive-object-audio-tracking-2026-11-05)
-and the ordered rendering/listening work in the
-[spatial audio plan](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned).
+Natural FM/PCM coverage passes across 8,000- and 12,000-frame recordings, with
+paired native RGB/PCM/time and production loopback comparisons. The 12,000-frame
+recording observes 355 real flyby comparisons and zero eligible unsigned depth
+conditions. Positive natural `$6E/$6F` remains open; no command or engine loop is
+invented to fill it. Remaining work includes additional typed families,
+verified pursuer/voice contracts, listening and physical platform acceptance.
+See [rendering evidence](ENGINE_NOTES.md#playback-aligned-object-hrtf-rendering-2026-11-05)
+and the [spatial audio plan](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned).
 
 ## Android / Android TV port (initial implementation)
 
