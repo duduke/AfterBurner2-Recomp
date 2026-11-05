@@ -173,8 +173,8 @@ def main():
         notice(path.name, path.read_text(encoding='utf-8-sig', errors='replace'))
     file_notice(ROOT/'LICENSE.txt')
     file_notice(ROOT/'COPYRIGHT.md')
-    for name in package_macos.PROJECT_NOTICES:
-        file_notice(ROOT/'LICENSES'/name)
+    for notice_name in package_macos.PROJECT_NOTICES:
+        file_notice(ROOT/'LICENSES'/notice_name)
     for relative in ('src/third_party/dr_flac/LICENSE', 'src/third_party/miniz/LICENSE',
                      'src/main/frontend/controllerdb/LICENSE',
                      'src/third_party/librashader/LICENSE.MPL-2.0'):
