@@ -380,3 +380,11 @@ Windows Server. That field is metadata, not a signature criterion. The verifier
 now uses a read-only registry query returning null for an absent value; null
 means unavailable, never protection On or Off. Protected Windows 11 launch
 acceptance remains a separate required step after actual signing.
+
+
+Run 42088491624 successfully rejected the actual unsigned base EXE under
+PowerShell 7. Windows PowerShell 5 then lacked `Get-FileHash` in its inherited
+module environment. Both signing scripts now use a shared bootstrap importing
+Management, Utility and Security from the active installation, and preflight
+all required commands in both hosts before compilation. The successful scoped
+PowerShell 7 control does not replace the complete hosted gate.

@@ -73,8 +73,7 @@ def main():
     # or compiling; the scripts use the active host's own built-in manifest.
     hosts=list(dict.fromkeys(p for name in ('pwsh','powershell') if (p:=shutil.which(name))))
     if not hosts:raise SystemExit('A Windows PowerShell host is required')
-    preflight="$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1'); Get-PSDrive -Name Cert | Out-Null; Write-Output ('Certificate provider ready: '+$PSVersionTable.PSVersion.ToString())"
-    for host in hosts:run(host,'-NoProfile','-NonInteractive','-Command',preflight)
+    for host in hosts:run(host,'-NoProfile','-NonInteractive','-File',ROOT/'tools/windows/signing_environment.ps1')
     deps=args.deps.resolve();build=args.build.resolve();deps.mkdir(parents=True,exist_ok=True)
     for name,(url,sha) in INPUTS.items():
         archive=fetch(deps,name,url,sha)
