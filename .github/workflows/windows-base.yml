@@ -28,11 +28,20 @@ jobs:
         run: python tools/windows/build_base.py --package-sources
       - name: Verify license scope
         run: python tests/test_license_notices.py
-      - name: Check object audio and haptic presentation
+      - name: Check standalone test imports, object audio and haptic presentation
         timeout-minutes: 3
+        shell: python
         run: |
-          cmake --build build/windows-base-hosted --target object_audio_tracking_regression native_haptics_regression --parallel 4
-          ctest --test-dir build/windows-base-hosted -R "^(object_audio_tracking_regression|native_haptics_regression)$" --output-on-failure --timeout 60 -V
+          import pathlib, subprocess, sys
+          sys.path.insert(0, 'tools')
+          import package_windows_runtime as runtime
+          build = pathlib.Path('build/windows-base-hosted')
+          tests = ['object_audio_tracking_regression', 'native_haptics_regression']
+          subprocess.run(['cmake', '--build', str(build), '--target', *tests, '--parallel', '4'], check=True)
+          compiler = runtime.compiler_path(build, (build/'CMakeCache.txt').read_text())
+          runtime.audit_imports(build, [name+'.exe' for name in tests], compiler, True)
+          subprocess.run(['ctest', '--test-dir', str(build), '-R', '^('+'|'.join(tests)+')$',
+                          '--output-on-failure', '--timeout', '60', '-V'], check=True, timeout=150)
       - name: Package explicitly selected unsigned artifact and corresponding sources
         shell: python
         env:
