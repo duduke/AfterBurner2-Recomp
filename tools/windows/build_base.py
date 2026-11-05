@@ -19,7 +19,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'tools'))
-from package_windows import SOURCES_CROSS, SOURCES_NATIVE
+from package_windows import SOURCES_CROSS, SOURCES_NATIVE, SOURCES_BASE
 
 TOOLCHAIN = 'llvm-mingw-20261006-ucrt-x86_64'
 INPUTS = {
@@ -34,7 +34,7 @@ INPUTS = {
         SOURCES_NATIVE['openal-soft-1.25.2.tar.gz']),
     'Vulkan-Headers-1.4.341.tar.gz': (
         'https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.341',
-        '8876aad926b2e72bdefddc34885472d5332e2d20aa3ed57313466f0bc982cf3f'),
+        SOURCES_BASE['Vulkan-Headers-1.4.341.tar.gz']),
 }
 SOURCE_URLS = {
     'llvm-project-23.1.3.src.tar.xz': 'https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/llvm-project-23.1.3.src.tar.xz',

@@ -99,7 +99,8 @@ The packager checks exact PE inventory, signed file hashes and a passing full
 receipt. It compares signed and original PE payloads, allowing only signing
 metadata/checksum/padding differences. Imports must be Windows OS libraries;
 unsigned external runtime imports are rejected. The matching source companion
-includes project and statically linked dependency sources/notices. Receipts
+includes project, statically linked dependency and Vulkan API-header
+sources/notices. Receipts
 are pipeline evidence, not cryptographic attestations.
 
 Before publication, extract the final signed ZIP and launch with Smart App
