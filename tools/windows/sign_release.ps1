@@ -12,7 +12,7 @@ param(
 $ErrorActionPreference='Stop'
 # A fresh -NoProfile process may not have registered the Cert: provider yet.
 # Load its built-in module explicitly before any certificate-store access.
-Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
 if(Test-Path -LiteralPath $ReceiptPath){throw 'Preserve the previous receipt; choose a new path'}
 $cert=$null
 $machine=$false

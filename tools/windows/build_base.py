@@ -68,6 +68,13 @@ def main():
     parser.add_argument('--package-sources',action='store_true')
     args=parser.parse_args()
     if os.name!='nt':parser.error('Run this hosted-build entry point on Windows')
+    # PowerShell 7's inherited PSModulePath must not select its module in a
+    # Windows PowerShell 5 child. Verify each available host before downloading
+    # or compiling; the scripts use the active host's own built-in manifest.
+    hosts=list(dict.fromkeys(p for name in ('pwsh','powershell') if (p:=shutil.which(name))))
+    if not hosts:raise SystemExit('A Windows PowerShell host is required')
+    preflight="$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1'); Get-PSDrive -Name Cert | Out-Null; Write-Output ('Certificate provider ready: '+$PSVersionTable.PSVersion.ToString())"
+    for host in hosts:run(host,'-NoProfile','-NonInteractive','-Command',preflight)
     deps=args.deps.resolve();build=args.build.resolve();deps.mkdir(parents=True,exist_ok=True)
     for name,(url,sha) in INPUTS.items():
         archive=fetch(deps,name,url,sha)
@@ -111,14 +118,15 @@ def main():
         # An unsigned negative control must fail without altering system trust.
         (directory/'Launch.cmd').write_text('@echo off\n')
         shutil.copy2(ROOT/'LICENSE.txt',directory/'LICENSES.txt')
-        receipt=build/('unsigned-negative-control-'+uuid.uuid4().hex+'.json')
-        result=subprocess.run(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',
-            str(ROOT/'tools/windows/verify_release_signatures.ps1'),
-            '-RuntimeDirectory',str(directory),'-ReceiptPath',str(receipt)],timeout=60)
-        audit=json.loads(receipt.read_text(encoding='utf-8-sig'))
-        if (result.returncode!=1 or audit['Passed'] or not audit['FullRuntime'] or
-                len(audit['Files'])!=1 or audit['Files'][0]['Status']!='NotSigned'):
-            raise SystemExit('Unsigned base negative control was not rejected')
+        for host in hosts:
+            receipt=build/('unsigned-negative-control-'+uuid.uuid4().hex+'.json')
+            result=subprocess.run([host,'-NoProfile','-ExecutionPolicy','Bypass','-File',
+                str(ROOT/'tools/windows/verify_release_signatures.ps1'),
+                '-RuntimeDirectory',str(directory),'-ReceiptPath',str(receipt)],timeout=60)
+            audit=json.loads(receipt.read_text(encoding='utf-8-sig'))
+            if (result.returncode!=1 or audit['Passed'] or not audit['FullRuntime'] or
+                    len(audit['Files'])!=1 or audit['Files'][0]['Status']!='NotSigned'):
+                raise SystemExit('Unsigned base negative control was not rejected')
     environment=dict(os.environ,AB2_TEST_INCOMPATIBLE_RUNTIME=str(Path(os.environ['SystemRoot'])/'System32/kernel32.dll'))
     subprocess.run([str(build/'openal_runtime_regression.exe'),'--missing-only'],
                    cwd=ROOT,env=environment,check=True,timeout=30)

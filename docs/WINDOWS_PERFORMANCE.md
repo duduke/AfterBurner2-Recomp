@@ -366,6 +366,9 @@ The added native startup smoke passed in [run 42083424626](https://github.com/du
 from `7f4072b`: the EXE reached its command-line parser from an otherwise empty
 folder. That run then exposed a verifier initialization issue: fresh
 `powershell -NoProfile` had not loaded the `Cert:` provider. Both signing scripts
-now explicitly import the built-in `Microsoft.PowerShell.Security` module before
-store access; no trust store or policy changes are made. The earlier failed
-run is retained and is not counted as passing signature/fallback acceptance.
+now import the built-in security manifest from the active `$PSHOME` before
+store access and preflight both available PowerShell hosts. A subsequent
+name-only import in run 42085759296 produced duplicate type data on the mixed
+PowerShell 5/7 runner; the explicit manifest avoids selecting another host's
+module. No trust store or policy changes are made. Failed runs are retained
+and are not counted as passing signature/fallback acceptance.
