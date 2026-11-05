@@ -2,17 +2,7 @@
 #include "hwvideo/sprite_scene.hpp"
 #include <chrono>
 #include <iostream>
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#endif
-#include "frontend/scalers/2xsai.reference.cpp"
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 void require(bool value,const char* message){if(!value)throw std::runtime_error(message);}
-uint16_t rgb565(uint32_t p){return ((p>>8)&0xf800)|((p>>5)&0x07e0)|((p>>3)&31);}
-uint32_t argb(uint16_t p){return 0xff000000u|uint32_t(p&0xf800)<<8|uint32_t(p&0x07e0)<<5|uint32_t(p&31)<<3;}
 int main(int argc,char** argv)try{
  // Full linked lists are the independent reference for terminal compaction.
  // Interleave pixels so accidental sharing/reuse of another head is visible.
@@ -74,22 +64,7 @@ int main(int argc,char** argv)try{
  }
  bool rejected=false;try{scaler.compose({},empty,3,3,SpriteFilter::epx);}catch(const std::invalid_argument&){rejected=true;}
  require(rejected,"invalid sprite planes were accepted");
- // Compare adaptations to unchanged upstream 16-bit Snes9x entry points.
- constexpr int w=16,h=12,stride=w+3;std::vector<uint32_t> pixels(w*h),bg(w*h,0xff000000);
- std::vector<uint16_t> padded((h+3)*stride),expected(w*h*4);
- uint32_t random=0x19283746;
- for(int pattern=0;pattern<12;++pattern){
-  for(int y=0;y<h;++y)for(int x=0;x<w;++x){random=random*1664525+1013904223;
-   const uint16_t colors[]{0,0xffff,0xf800,0x07e0,0x001f,0x84f1};
-   const int c=pattern<4?((x+pattern*y)/std::max(1,pattern)%6):(random>>24)%6;pixels[y*w+x]=argb(colors[c]);}
-  for(int y=-1;y<h+2;++y)for(int x=-1;x<w+2;++x)padded[(y+1)*stride+x+1]=rgb565(pixels[std::clamp(y,0,h-1)*w+std::clamp(x,0,w-1)]);
-  for(auto filter:{SpriteFilter::sai,SpriteFilter::super_sai}){
-   auto* src=reinterpret_cast<uint8_t*>(padded.data()+stride+1);auto* dst=reinterpret_cast<uint8_t*>(expected.data());
-   if(filter==SpriteFilter::sai)_2xSaI(src,stride*2,dst,w*4,w,h);else Super2xSaI(src,stride*2,dst,w*4,w,h);
-   const auto actual=scaler.compose(bg,pixels,w,h,filter);
-   for(size_t i=0;i<actual.size();++i)require(rgb565(actual[i])==expected[i],"SaI differs from unmodified upstream RGB565 reference");
-  }
- }
+ // Removed SaI implementations/fixtures remain in the named historical branch.
  // Fixed fingerprints from the independent upstream OpenGL reference tool.
  // First four use unchanged GLSL; last two use only the documented alpha metric.
  const uint64_t hashes[]{0xf9a9b8673bad49a4ull,0x02e5a4970c3d8665ull,0xbb646f9e5f2a067dull,
@@ -108,7 +83,11 @@ int main(int argc,char** argv)try{
   require(hash==hashes[pattern],"ScaleFX differs from retained independent GLSL reference");
  }
  // All filters must preserve input spans, including opaque black sprites.
- const auto before=pixels;scaler.compose(bg,pixels,w,h,SpriteFilter::scalefx);require(pixels==before,"filter mutated native input");
+ const auto before=fx;
+ for(int f=0;f<Frontend::sprite_filter_count;++f){
+  scaler.compose(fxbg,fx,32,24,static_cast<SpriteFilter>(f));
+  require(fx==before,"filter mutated native input");
+ }
  // Finite CPU cost measurement; includes scaling + composition, excludes core.
  std::vector<uint32_t> large(320*224,0),ground(320*224,0xff404080);
  for(unsigned y=30;y<200;++y)for(unsigned x=40;x<280;++x)if((x+y)%7<4)large[y*320+x]=0xff60c080;
@@ -118,6 +97,6 @@ int main(int argc,char** argv)try{
   const auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/20;
   std::cout<<Frontend::sprite_filter_labels[f]<<" synthetic CPU presentation: "<<ms<<" ms/frame\n";
  }
- std::cout<<"Sprite filters passed: transparent/solid borders, priority protection, ScaleNx corners, alpha, invalid planes, upstream SaI/ScaleFX comparisons and input isolation.\n";
+ std::cout<<"Sprite filters passed: transparent/solid borders, priority protection, ScaleNx corners, alpha, invalid planes, independent ScaleFX comparisons and input isolation.\n";
  return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

@@ -19,7 +19,6 @@ class LicenseNotices(unittest.TestCase):
             "dr_flac.txt": "src/third_party/dr_flac/LICENSE",
             "miniz.txt": "src/third_party/miniz/LICENSE",
             "SDL_GameControllerDB.txt": "src/main/frontend/controllerdb/LICENSE",
-            "Snes9x.txt": "src/main/frontend/scalers/SNES9X-LICENSE.txt",
             "MPL-2.0.txt": "src/third_party/librashader/LICENSE.MPL-2.0",
         }
         for dest, source in copies.items():
@@ -44,6 +43,25 @@ class LicenseNotices(unittest.TestCase):
         for target in re.findall(r"\]\(([^)]+)\)", text):
             if not target.startswith("https://"):
                 self.assertTrue((ROOT / "LICENSES" / target).is_file(), target)
+
+    def test_current_distribution_excludes_restricted_components(self):
+        historical = {"Cannonball.txt", "CannonBall-SE.txt", "MAME-Legacy.txt",
+                      "Snes9x.txt", "AfterBurner2-original-noncommercial.txt"}
+        self.assertFalse(historical.intersection(package_macos.PROJECT_NOTICES))
+        for name in historical:
+            self.assertTrue((ROOT / "LICENSES" / name).is_file())
+        for path in ("src/main/frontend/scalers/sai.hpp",
+                     "src/main/frontend/scalers/2xsai.reference.cpp",
+                     "src/main/hwaudio/soundchip.cpp",
+                     "src/main/hwaudio/segapcm.cpp", "src/main/hwaudio/ym2151.cpp"):
+            self.assertFalse((ROOT / path).exists(), path)
+            for build_file in ("CMakeLists.txt", "Makefile"):
+                self.assertNotIn(path, (ROOT / build_file).read_text())
+        for path in (ROOT / "src/main/frontend/scalers").glob("sprite_pass*.comp"):
+            self.assertNotRegex(path.read_text(), r"(?i)snes9x|2xsai|super2xsai")
+        self.assertEqual((ROOT / "LICENSE.txt").read_bytes(),
+                         (ROOT / "LICENSES/GCC-GPL-3.0.txt").read_bytes())
+        self.assertIn("GPL-3.0-or-later", (ROOT / "COPYRIGHT.md").read_text())
 
     def test_missing_central_notice_stops_preflight(self):
         with tempfile.TemporaryDirectory() as directory:

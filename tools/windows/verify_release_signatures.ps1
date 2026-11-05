@@ -9,6 +9,7 @@ param(
     # created/imported for development. AuthRoot members are accepted by default.
     [ValidatePattern('^[A-Fa-f0-9]{40}$')][string[]]$ApprovedRootThumbprint=@(),
     # Only for dependency/negative-control checks; never a full-runtime receipt.
+    [ValidateSet('base','legacy')][string]$Profile='base',
     [switch]$FilesOnly
 )
 $ErrorActionPreference='Stop'
@@ -20,6 +21,7 @@ if(-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttrib
 $expected=@('afterburner2.exe','SDL3.dll','OpenAL32.dll','libc++.dll','libunwind.dll',
     'librashader.dll','MSVCP140.dll','VCRUNTIME140.dll','VCRUNTIME140_1.dll',
     'D3DX9_43.dll','D3DCompiler_43.dll')
+if($Profile -eq 'base'){$expected=@('afterburner2.exe')}
 $entries=@(Get-ChildItem -LiteralPath $directory.FullName -Force)
 if($entries | Where-Object {$_.PSIsContainer -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)}){
     throw 'Runtime must be flat and contain no directories or links'
@@ -73,7 +75,7 @@ foreach($file in $files | Sort-Object Name){
 $passed=@($results | Where-Object {-not $_.Passed}).Count -eq 0
 $policy=Get-ItemPropertyValue 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' VerifiedAndReputablePolicyState -ErrorAction SilentlyContinue
 $receipt=[PSCustomObject]@{Schema=1;UTC=[DateTime]::UtcNow.ToString('o');Passed=$passed;
-    FullRuntime=(-not [bool]$FilesOnly);SmartAppControlState=$policy;Files=$results;
+    FullRuntime=(-not [bool]$FilesOnly);Profile=$Profile;SmartAppControlState=$policy;Files=$results;
     Scope='Authenticode, timestamps and approved public roots; launch/shader acceptance is separate'}
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ReceiptPath -Encoding UTF8
 $results | Select-Object File,Passed,Status | Format-Table -AutoSize

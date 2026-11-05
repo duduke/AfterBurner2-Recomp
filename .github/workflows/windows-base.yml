@@ -1,0 +1,33 @@
+name: Windows base signing input
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build pinned unsigned base
+        run: python tools/windows/build_base.py --package-sources
+      - name: Verify license scope
+        run: python tests/test_license_notices.py
+      - name: Package unsigned input and corresponding sources
+        run: >-
+          python tools/package_windows_runtime.py v0.1.0
+          --label ci-${{ github.run_id }} --profile base
+          --build build/windows-base-hosted --deps build/windows-base-inputs
+          --unsigned-signing-input
+      # No provider credentials or signing/publication step until approval.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-base-UNSIGNED-signing-input
+          if-no-files-found: error
+          path: |
+            build/releases/*.zip
+            build/releases/*.sha256
+            build/releases/*.manifest.json
+            build/windows-base-hosted/pinned-inputs.json

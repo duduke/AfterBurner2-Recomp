@@ -159,9 +159,14 @@ the decoder needs extending; in a data table it's expected.
   Signing, sustained whole-game acceptance, the Windows recording header bug
   and two user-reported graphical issues remain open. See
   [Windows evidence and exact scope](WINDOWS_PERFORMANCE.md#final-development-build-validation).
-  Trusted-signature checks and an honest [SignPath eligibility inquiry](SIGNPATH_APPLICATION.md)
-  are prepared; noncommercial-license eligibility and upstream DLL signing block
-  the requested free-provider release. No replacement has been published.
+  2026-11-05: source is public and original code is GPL-3.0-or-later.
+  Noncommercial SaI filters and unused legacy audio were removed from current
+  source and retained on a named historical branch. A standalone Windows base
+  statically links SDL/compiler runtimes and makes OpenAL optional, removing
+  unsigned upstream DLL startup dependencies. Main/affected checks and the
+  cross-build/import audit pass; provider approval, trusted signing and protected
+  final-package launch remain open. Windows downloads remain withdrawn. See
+  [the revised signing path](WINDOWS_SIGNING.md).
 
 - 2026-11-01: **Corrected ground is the shared default on every platform**.
   Fresh settings and files without a ground preference select Corrected; explicit

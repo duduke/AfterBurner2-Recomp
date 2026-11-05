@@ -25,17 +25,24 @@ ABI-compatible local builds. See the [release workflow](WORKFLOW.md#macos-previe
 
 ## Experimental Windows preview dependencies
 
-The native Windows x64 ZIP bundles dynamically linked SDL3 3.4.18 (`SDL3.dll`,
-zlib license) and OpenAL Soft 1.25.2 (`OpenAL32.dll`, LGPL-2.0-or-later), built
-with w64devkit GCC 16.2.0 (`libstdc++`/`libgcc` linked statically). `Notices/`
-contains the SDL3, OpenAL Soft (including fmt/GSL/pffft) and MinGW-w64 runtime
-licenses, plus the GCC GPLv3 and Runtime Library Exception notices for the
-statically linked GCC runtimes; `Sources/` includes the complete project tree, SDL3 source archive and
-OpenAL Soft source archive. When built via the alternative macOS LLVM-MinGW
-cross-build path, the ZIP instead bundles SDL3 3.4.16 and LLVM 23.1.3
-`libc++.dll`/`libunwind.dll` alongside their upstream source archives. Microsoft
-system/MSVCRT DLLs are provided by Windows and are not bundled. See the
-[Windows release workflow](WORKFLOW.md#experimental-windows-preview-release).
+The revised Windows base statically links SDL3 3.4.18 and the LLVM-MinGW
+compiler runtimes. Its only PE is the project's EXE; no upstream DLL is bundled.
+The source companion contains the pinned SDL, LLVM, MinGW and toolchain sources,
+with complete compiler notices and runtime exceptions. OpenAL Soft and
+librashader are optional external runtimes; their own upstream licenses apply.
+The older withdrawn previews bundled shared runtimes and have a different
+inventory. See [current signing/package requirements](WINDOWS_SIGNING.md).
+
+## MAME video and device references
+
+Road, tile, sprite, palette and screen algorithms reference Aaron Giles's
+BSD-3-Clause MAME Sega video devices. Math/compare-timer and scheduler references
+also credit Aaron Giles; bounded 68000 completion/IRQ references credit Olivier
+Galibert. ADC0804 and CXD1095 I/O behavior references credit AJR. Their source
+headers retain provenance; [MAME device notice](../LICENSES/MAME-Devices.txt)
+collects the BSD notice for binary packages. No MAME CPU core is linked.
+Cannonball is architectural inspiration for the original ROM loader and bus
+interface; the removed noncommercial audio classes are catalogued separately.
 
 ## Native audio path
 
@@ -51,8 +58,9 @@ system/MSVCRT DLLs are provided by Windows and are not bundled. See the
 
 ## Retained Cannonball-derived code
 
-The older generic sound classes remain in the repository; they do not describe
-the live YMFM synthesis owner:
+The older generic sound classes were removed from current source and both
+build systems on 2026-11-05. Their source, notices and validation history remain
+on [archive/noncommercial-filters-and-audio](https://github.com/duduke/AfterBurner2-Recomp/tree/archive/noncommercial-filters-and-audio):
 
 - `src/main/hwaudio/ym2151.cpp` / `.hpp` — Yamaha YM2151 FM synthesis chip
   emulator. Original author: Jarek Burczynski, 1997-2002, distributed as
@@ -76,8 +84,7 @@ The complete [Cannonball terms](../LICENSES/Cannonball.txt), additional
 files must not be labeled BSD merely because modern MAME components use BSD.
 The historical MAME notice is from MAME 0.146; source/license retrieval
 references are in the central inventory. This is separate from the live YMFM
-and X-Board device implementations described above. Both build systems still
-compile the legacy classes, and the source archive includes them.
+and X-Board device implementations described above. Current builds use only the live BSD-licensed audio implementations.
 
 ## Vulkan headers (Windows)
 
@@ -105,9 +112,10 @@ MAME CPU core is not vendored or copied into this project.
 
 ## GPU sprite filters
 
-Generated GPU shaders retain ScaleFX's MIT notice and the SaI adaptations'
-Snes9x attribution/license references alongside the retained source notices in
-`src/main/frontend/scalers/`. Shader conversion uses glslang and SPIRV-Cross
+Generated GPU shaders retain ScaleFX's MIT notice. The noncommercial Snes9x
+2xSaI and Super2xSaI adaptations and their independent references were removed
+from current source; the complete implementations and fixtures remain on the
+historical branch linked above, under their original terms. Shader conversion uses glslang and SPIRV-Cross
 as development tools; no compiler libraries are linked into the application.
 
 The Three.js dependency and its notices are retained on the dedicated

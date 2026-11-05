@@ -379,7 +379,7 @@ statistics during play. Detailed statistics show simulated and displayed FPS,
 wall time per displayed frame, CPU time per simulated frame, sprite filter/upload
 time and presentation time (including vsync wait). Values refresh once per second.
 
-The Graphics → Sprite Filter row selects Off (default), EPX 2x, Scale3x, 2xSaI, Super2xSaI or
+The Graphics → Sprite Filter row selects Off (default), EPX 2x, Scale3x or
 ScaleFX 3x. These filter the visible hardware sprite plane after native zoom,
 then compose it over nearest-scaled road/tiles. Sprite-drawn scenery is included;
 foreground tile/text coverage and palette shadows remain native. Window scaling

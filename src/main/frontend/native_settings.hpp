@@ -10,10 +10,10 @@
 
 namespace Frontend {
 enum class Scaling { nearest, linear, integer, pixel_art };
-enum class SpriteFilter { none, epx, scale3x, sai, super_sai, scalefx };
-inline constexpr const char* sprite_filter_keys[]{"none","epx","scale3x","2xsai","super2xsai","scalefx"};
-inline constexpr const char* sprite_filter_labels[]{"OFF","EPX 2X","SCALE3X","2XSAI","SUPER2XSAI","SCALEFX 3X"};
-inline constexpr int sprite_filter_count=6;
+enum class SpriteFilter { none, epx, scale3x, scalefx };
+inline constexpr const char* sprite_filter_keys[]{"none","epx","scale3x","scalefx"};
+inline constexpr const char* sprite_filter_labels[]{"OFF","EPX 2X","SCALE3X","SCALEFX 3X"};
+inline constexpr int sprite_filter_count=4;
 // MAME segaxbd.cpp, aburner2 IO1PORTD / SWB:4,5 and SWB:7,8.
 inline constexpr uint8_t lives_bits[]{0x18,0x10,0x08,0x00};
 inline constexpr uint8_t difficulty_bits[]{0x80,0xc0,0x40,0x00};

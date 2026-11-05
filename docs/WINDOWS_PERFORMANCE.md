@@ -305,3 +305,50 @@ The current noncommercial project/dependency licenses do not satisfy SignPath
 Foundation's published OSI-license requirement. No signing identity has been
 configured and no replacement has been published; see
 [the signing prerequisite, candidate and publication steps](WINDOWS_SIGNING.md).
+
+
+## Public-source and standalone signing input — 5 November 2026
+
+The noncommercial eligibility blocker above describes the withdrawn previews.
+Current original code is GPL-3.0-or-later and the source repository is public.
+The current tree excludes Snes9x SaI and unused Cannonball/MAME-legacy audio;
+the exact historical implementations/fixtures remain on
+`archive/noncommercial-filters-and-audio` at `d080e1d` under their original terms.
+
+A Release/O3/LTO LLVM-MinGW cross-build with SDL3 3.4.18 static and static
+compiler runtimes imports only Windows system DLLs. OpenAL is genuinely loaded
+on demand, with missing/incompatible runtime fallback to SDL. The base packages
+only the project's EXE, launcher and notices; librashader and its redistributable
+chain are excluded. This does not certify external unsigned runtimes or establish
+SignPath approval. No protected Windows launch is claimed for the unsigned
+candidate. The earlier performance results remain scoped to their tested EXE;
+static-link changes require the final signed-package launch/smoke.
+
+Validation in the isolated `build/public-source-worktree` checkout:
+
+- Main profile: `build/workflow/20261105T175400.755711Z/`: all four targets pass,
+  including 781 exact game-session RGB frames, 375 Practice RGB/PCM/time checks,
+  660 Shuffle capture-neutral frames and the 7,118-frame natural Shuffle window.
+- Native menu: `build/workflow/20261105T175402.585343Z/01-verify-native-menu.log`
+  passes, including 781 CRT native RGB/PCM/time frames.
+- Remaining GPU filters: `build/workflow/20261105T175636.260456Z/`: 420/420
+  comparisons, 35,026,194 pixels identical, zero skipped; all six retained GPU
+  mutations rejected. Initial sandboxed attempt had no displays; the actual
+  Metal comparison ran with desktop access.
+- Settings: `build/workflow/20261105T175027.329964Z/` passes. Final CPU filters
+  and fragment mutations: `build/workflow/20261105T180517.770268Z/` pass,
+  retaining six independent ScaleFX reference fingerprints and 583,443 terminal
+  fragment foreground/background comparisons. Removed filter settings migrate
+  to Off while preserving independent preferences.
+- Dynamic OpenAL: `build/workflow/20261105T180203.912779Z/` passes missing and
+  incompatible-module fallback, original SDL without loading OpenAL, failed-load
+  cleanup/retry, and the existing 13-source/60 sample-second loopback suite.
+  These macOS loader checks do not substitute for protected Windows acceptance.
+- Retained fragment baseline and all three fragment mutations pass:
+  `build/workflow/20261105T180517.770268Z/`.
+- License inventory and signed-payload/import negative controls pass. Full
+  engine oracle/regression was not run: no native/emulated execution changed.
+
+The [signing requirements](WINDOWS_SIGNING.md) and
+[provider follow-up draft](SIGNPATH_APPLICATION.md) distinguish completed source,
+build and dependency work from external approval/signing still required.
