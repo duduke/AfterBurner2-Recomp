@@ -16,6 +16,7 @@ import tempfile
 import tarfile
 import urllib.request
 import zipfile
+import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -110,7 +111,7 @@ def main():
         # An unsigned negative control must fail without altering system trust.
         (directory/'Launch.cmd').write_text('@echo off\n')
         shutil.copy2(ROOT/'LICENSE.txt',directory/'LICENSES.txt')
-        receipt=build/'unsigned-negative-control.json'
+        receipt=build/('unsigned-negative-control-'+uuid.uuid4().hex+'.json')
         result=subprocess.run(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',
             str(ROOT/'tools/windows/verify_release_signatures.ps1'),
             '-RuntimeDirectory',str(directory),'-ReceiptPath',str(receipt)],timeout=60)
