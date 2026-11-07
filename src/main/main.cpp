@@ -41,6 +41,9 @@
 #include "frontend/native_touch.hpp"
 #include "frontend/frame_timings.hpp"
 #include "frontend/frame_pacing.hpp"
+#ifdef SDL_PLATFORM_ANDROID
+#include "frontend/android_content_import.hpp"
+#endif
 
 namespace
 {
@@ -142,6 +145,9 @@ int main(int argc, char** argv)try
         if (char* path=SDL_GetPrefPath("AfterBurner2-Recomp","AfterBurner2")) {
             settings_path=std::string(path)+"settings.cfg"; SDL_free(path);
         }
+#ifdef SDL_PLATFORM_ANDROID
+        if(settings_path.empty())throw std::runtime_error("Private application storage unavailable");
+#endif
     }
     const auto saved_rom_path = settings_path.empty() ? std::string{} : settings_path + ".roms";
     bool roms_loaded = false;
@@ -321,7 +327,13 @@ int main(int argc, char** argv)try
     if (!SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST))
         throw std::runtime_error(std::string("SDL texture scaling failed: ") + SDL_GetError());
 
+#ifdef SDL_PLATFORM_ANDROID
+    const auto private_content_root=std::filesystem::path(settings_path).parent_path();
+    auto content_imports=std::make_unique<Frontend::AndroidContentImports>(private_content_root);
+    music_player=std::make_unique<Frontend::NativeMusic>(settings_path+".audio",private_content_root/"soundtrack");
+#else
     music_player=std::make_unique<Frontend::NativeMusic>(settings_path.empty()?"":settings_path+".audio");
+#endif
     Frontend::load_controller_database();
     auto input_manager=std::make_unique<Frontend::NativeInput>(settings_path.empty()?"":settings_path+".inputs");
     Frontend::NativeTouch touch;
@@ -485,6 +497,22 @@ int main(int argc, char** argv)try
         SDL_ShowOpenFileDialog(shader_dialog_result,raw,window,&filter,1,
             raw->initial_path.empty()?nullptr:raw->initial_path.c_str(),false);
     };
+#ifdef SDL_PLATFORM_ANDROID
+    menu->shader_library=Frontend::imported_shader_presets(private_content_root/"shaders");
+    menu->import_status="SLANG PLAYBACK UNAVAILABLE ON ANDROID";
+    menu->choose_shader=[&]{menu->open_shader_library();};
+    menu->import_music=[&]{
+        if(content_imports->choose(Frontend::AndroidContentImports::Kind::music,window))
+            music_player->notice="CHOOSE FILES - IMPORTING INTO LIBRARY";
+    };
+    menu->import_shaders=[&]{
+        if(content_imports->choose(Frontend::AndroidContentImports::Kind::shaders,window))
+            menu->import_status="CHOOSE ZIP - IMPORTING INTO LIBRARY";
+    };
+    menu->select_imported_shader=[&](const std::string&) {
+        menu->import_status="IMPORTED - SLANG PLAYBACK UNAVAILABLE";
+    };
+#endif
     const auto prepare_fullscreen=[&](const Frontend::Settings& value) {
 #ifdef _WIN32
         if(!value.fullscreen)return;
@@ -579,7 +607,11 @@ int main(int argc, char** argv)try
         SDL_SetRenderViewport(renderer,nullptr);
         SDL_Surface* preview=SDL_RenderReadPixels(renderer,nullptr);
         if(!preview || !SDL_SaveBMP(preview,menu_preview.c_str())) throw std::runtime_error(SDL_GetError());
-        SDL_DestroySurface(preview);shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);release_sprite_scalers();SDL_DestroyTexture(texture);
+        SDL_DestroySurface(preview);
+#ifdef SDL_PLATFORM_ANDROID
+        content_imports.reset();
+#endif
+        shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);release_sprite_scalers();SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);if(gpu_device)SDL_DestroyGPUDevice(gpu_device);SDL_DestroyWindow(window);SDL_Quit();return 0;
     }
     if(!frame_limit && !boot_to_flight && !start_stage && !practice_start_stage && !shuffle_start) menu->open(game);
@@ -865,6 +897,16 @@ int main(int argc, char** argv)try
                 pending_shader_settings=std::move(candidate);
             }
         }
+#ifdef SDL_PLATFORM_ANDROID
+        if(auto imported=content_imports->poll()) {
+            auto message=imported->cancelled?"IMPORT CANCELLED":std::to_string(imported->imported)+" IMPORTED";
+            if(imported->failed)message+=" / "+std::to_string(imported->failed)+" FAILED";
+            if(!imported->content.error.empty())message+=" - "+imported->content.error;
+            if(imported->kind==Frontend::AndroidContentImports::Kind::music){music_player->refresh();music_player->notice=message;}
+            else {menu->shader_library=Frontend::imported_shader_presets(private_content_root/"shaders");
+                menu->import_status=message+(imported->content.error.empty() && !imported->cancelled?" - SLANG PLAYBACK UNAVAILABLE":"");}
+        }
+#endif
         apply_pending_shader();
         if(input_manager->menu_pressed()) {
             if(menu->is_open())menu_action(menu->key(SDLK_ESCAPE));
@@ -1090,6 +1132,10 @@ int main(int argc, char** argv)try
     }
 
     music_player->output=nullptr;menu->audio=nullptr;audio_output.reset();
+
+#ifdef SDL_PLATFORM_ANDROID
+    content_imports.reset();
+#endif
     shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();
     if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);
     release_sprite_scalers();

@@ -59,7 +59,11 @@ public:
     std::string notice;
     // The frontend owns file dialogs and asynchronous callback lifetime. This
     // callback is invoked only by an explicit selection on the menu thread.
-    std::function<void()> choose_shader;
+    std::function<void()> choose_shader,import_music,import_shaders;
+    std::function<void(const std::string&)> select_imported_shader;
+    std::vector<std::string> shader_library;
+    std::string import_status;
+    void open_shader_library(){visit(Page::shader_library);}
     std::string shader_status;
     NativeInput* input{};
     NativeMusic* music{};AudioOutput* audio{};
@@ -72,7 +76,7 @@ public:
     std::function<bool(const Settings&)> apply;
     enum class Page { root, modes, settings, display, graphics, effects, crt, diagnostics,
         controls, bindings, analog, monitor, feedback, cues, feedback_tests,
-        audio, music, volumes, output, arcade, practice, shuffle };
+        audio, music, volumes, output, arcade, practice, shuffle, shader_library };
     Page page() const {return current;}
     int row_count() const {return int(rows().size());}
     std::string row_label(int row) const {return rows().at(row).label;}
@@ -125,6 +129,9 @@ public:
         if(in_video() || current==Page::diagnostics){
             if(row.id==14){if(enter){if(choose_shader)choose_shader();else notice="SHADER PICKER UNAVAILABLE";}}
             else adjust(row.id,direction);
+        } else if(current==Page::shader_library){
+            if(enter && row.id==0 && import_shaders)import_shaders();
+            else if(enter && row.id>0 && select_imported_shader)select_imported_shader(shader_library.at(row.id-1));
         } else if(current==Page::arcade){
             auto changed=settings;
             if(row.id==0)changed.lives^=1;
@@ -149,6 +156,7 @@ public:
             else if(enter)music->defaults();
         } else if(current==Page::music || current==Page::volumes){
             if(row.id<6){if(current==Page::music)music->cycle(row.id,direction);else music->track_volume(row.id,direction);}
+            else if(enter && row.id==7 && import_music)import_music();
             else if(enter){if(current==Page::music)music->originals();else {music->settings.track_volume.fill(100);music->track_volume(0,0);}}
         } else if(current==Page::output){
             if(row.id==0)audio->cycle_profile(direction);
@@ -275,6 +283,7 @@ private:
         case Page::root:return active_practice_stage?"PAUSED - PRACTICE "+std::to_string(active_practice_stage):shuffle_active?"PAUSED - SHUFFLE":"PAUSED - ARCADE";
         case Page::modes:return "CHANGE MODE";case Page::settings:return "SETTINGS";
         case Page::display:return "DISPLAY";case Page::graphics:return "GRAPHICS";case Page::effects:return "TRANSPARENCY EFFECTS";
+        case Page::shader_library:return "IMPORTED SHADER PRESETS";
         case Page::crt:return "CRT AND SHADERS";case Page::diagnostics:return "DIAGNOSTICS";
         case Page::controls:return "CONTROLS";case Page::bindings:return "BUTTON BINDINGS";case Page::analog:return "ANALOG SETTINGS";
         case Page::monitor:return "INPUT MONITOR";case Page::feedback:return "CONTROLLER FEEDBACK";
@@ -295,6 +304,7 @@ private:
         return "SETTINGS / "+page_title();
     }
     std::string page_help()const {
+        if(current==Page::shader_library)return import_status;
         if(current==Page::practice)return "F5 RETRIES ACTIVE PRACTICE STAGE";
         if(current==Page::shuffle)return "F5 RESTARTS THE SAME ORDER";
         if(current==Page::bindings)return input->status.empty()?"ENTER REMAP - BACKSPACE CLEAR":input->status;
@@ -346,7 +356,8 @@ private:
             setting(11,"CRT MODE",crt_labels[unsigned(settings.crt)],shader_status.empty()?"PRESETS RESET BOTH STRENGTHS":shader_status);
             setting(12,"SCANLINES",retro?"IN PRESET":std::to_string(settings.crt_scanlines)+"%",retro?"CONTROLLED BY THE SHADER PRESET":"",!retro);
             setting(13,"RGB MASK",retro?"IN PRESET":std::to_string(settings.crt_mask)+"%",retro?"CONTROLLED BY THE SHADER PRESET":"",!retro);
-            setting(14,"SHADER PRESET",settings.shader_preset.empty()?"CHOOSE...":std::filesystem::path(settings.shader_preset).filename().string(),"ENTER CHOOSES A .SLANGP PRESET");back();break;
+            setting(14,"SHADER PRESET",settings.shader_preset.empty()?"CHOOSE...":std::filesystem::path(settings.shader_preset).filename().string(),import_shaders?"BROWSE IMPORTED SHADER PACKS":"ENTER CHOOSES A .SLANGP PRESET");
+            if(import_shaders)link("SHADER PACKS",Page::shader_library);back();break;
         }
         case Page::diagnostics:{const char* stats[]{"OFF","FPS","DETAILED"};setting(7,"PERFORMANCE",stats[int(settings.stats)],"F3 CYCLES THIS DURING PLAY");back();break;}
         case Page::controls:
@@ -373,7 +384,18 @@ private:
             if(audio)link("OUTPUT SETUP",Page::output);link("MUSIC TRACKS",Page::music);link("TRACK VOLUMES",Page::volumes);setting(4,"RESET VOLUMES");back();break;
         case Page::music:case Page::volumes:
             for(int i=0;i<6;++i)setting(i,music_titles[i],current==Page::music?music->selection(i):std::to_string(music->settings.track_volume[i])+"%");
-            setting(6,current==Page::music?"ALL ORIGINAL":"RESET VOLUMES");back();break;
+            setting(6,current==Page::music?"ALL ORIGINAL":"RESET VOLUMES");
+            if(current==Page::music && import_music)setting(7,"IMPORT WAV / FLAC");back();break;
+        case Page::shader_library:
+            setting(0,"IMPORT SHADER PACK ZIP");
+            for(unsigned i=0;i<shader_library.size();++i) {
+                auto marker=shader_library[i].find("/shaders/");
+                auto name=marker==std::string::npos?std::filesystem::path(shader_library[i]).filename().string():shader_library[i].substr(marker+9);
+                // Use the existing uppercase value field and scrolling detail;
+                // arbitrary provider names must not become ROM-font labels.
+                setting(int(i)+1,"PRESET "+std::to_string(i+1),name);
+            }
+            back();break;
         case Page::output: {
             setting(0,"PROFILE",audio_profiles[int(audio->settings.profile)]);
             auto device=audio->settings.profile==AudioProfile::original?"SDL DEFAULT":audio->settings.device.empty()?"DEFAULT":audio->settings.device;

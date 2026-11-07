@@ -2,6 +2,23 @@
 
 ## v0.1.0-preview.8 — Haptics and object audio (2026-11-05)
 
+### Android refresh (2026-11-07)
+
+Android `0.1.0-preview.8-android.1` (version code 4) adds private music and
+shader-pack imports. Use **Settings → Audio → Music Tracks → Import WAV / FLAC**
+for custom music, or **Settings → CRT and Shaders → Shader Packs** to import
+a ZIP with its presets, includes and textures. Duplicate music names preserve
+existing files and assignments. External Slang playback remains unavailable
+on Android; the imported library does not activate unsupported shaders.
+
+The ARM64 debug-signed APK replaces the Android download in Preview 8, with
+matching source and checksum companions. Other platform packages retain their
+existing versions. Existing data is preserved when updating the installed app.
+At the owner's direction, this publication runs no new tests, oracle checks
+or regressions; implementation validation is recorded in Engine Notes.
+Physical phone/TV document-provider acceptance remains open.
+
+
 This preview combines today's public GPL source/standalone Windows changes with
 layered controller feedback and experimental object-based spatial rendering.
 

@@ -17,6 +17,16 @@ public final class GameActivity extends SDLActivity {
         return super.getArguments();
     }
 
+    // content:// URI paths are provider identifiers, not user filenames.
+    public byte[] getImportDisplayName(String source) {
+        android.net.Uri uri = android.net.Uri.parse(source);
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[] { android.provider.OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) return cursor.getString(0).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } catch (RuntimeException ignored) { }
+        return new byte[0];
+    }
+
     @Override protected String[] getLibraries() {
         return new String[] { "SDL3", "main" };
     }

@@ -61,6 +61,44 @@ app preference directory. Uninstalling clears these files and the imported ROM.
 Native high-score/NVRAM persistence is still an open shared-host acceptance
 item; this preview does not add a guessed board-state save format.
 
+## Custom soundtrack and shader pack imports
+
+Available in `0.1.0-preview.8-android.1` (version code 4), the 7 November 2026
+Android refresh of Preview 8. Install it over the existing debug preview to
+retain private imports and settings.
+
+Open **Settings → Audio → Music Tracks → Import WAV / FLAC** to select up to
+64 files with Android's document picker. Imports are copied into the private
+`soundtrack` library and appear in the existing per-track selection controls.
+Choose a replacement for each track and preview it there. WAV/FLAC filenames
+and container signatures are checked during import; full audio decoding still
+occurs when selecting a track. Each file is limited to 256 MiB. Duplicate names
+receive a numeric suffix, preserving existing files and track assignments.
+The desktop `soundtrack/` behavior is unchanged.
+
+Open **Settings → CRT and Shaders → Shader Packs → Import Shader Pack ZIP**
+to copy a ZIP into the private shader library. Presets and their relative
+folders, includes and textures are retained together. Imported `.slangp` presets
+are listed after import and on later launches. **This Android build does not
+include the external Slang renderer:** importing or selecting a listed preset
+does not activate it or change the CRT setting. The menu reports that playback
+is unavailable; the built-in CRT modes remain the usable Android effects.
+
+ZIP imports allow at most 128 MiB compressed, 256 MiB expanded, 32 MiB per file
+and 4,096 entries. They reject traversal, absolute/drive paths, symlinks,
+case-insensitive duplicate paths, unsupported/encrypted entries and invalid
+ZIP data/CRC. A pack must contain at least one `.slangp`. Packs publish only
+when the complete extraction succeeds; filenames alone do not prove shader
+compatibility or that every preset dependency is present.
+
+Copying/extraction runs on a frontend worker, with cancellation, failures and
+partial music-import counts reported in the menu. Original files remain in
+their selected provider; no broad storage permission is added. Private imports
+survive app updates and restarts but are removed by uninstalling or clearing
+app data. Keep the original files for re-import. Phone/TV provider interaction,
+cloud/USB imports and background/resume during copying still need physical
+device acceptance. Host tests and an APK cross-build do not close those checks.
+
 On a touchscreen, the lower-left gamepad-style joystick steers. Its small
 round cap follows the thumb and returns to center on release. Round GUN and
 MSL buttons sit side by side above it and fire independently. The far-right
