@@ -545,6 +545,29 @@ int main(int argc,char** argv) try {
         menu.key(SDLK_ESCAPE);
         const auto before=game.info();require(!game.advance({}) && game.info().time_ns==before.time_ns,"audio menu advanced native board");
         menu.close(game);music.output=nullptr;menu.audio=nullptr;std::filesystem::remove(config);
+        {
+            Frontend::NativeMenu imports(renderer,roms,{},Frontend::pixel_art_available());imports.music=&music;
+            unsigned music_calls=0,shader_calls=0,selections=0;
+            imports.import_music=[&]{++music_calls;};imports.import_shaders=[&]{++shader_calls;};
+            imports.shader_library={"/private/shaders/pack/crt.slangp","/private/shaders/pack/other.slangp"};
+            imports.select_imported_shader=[&](const std::string& path){require(path==imports.shader_library[0],"wrong imported preset selected");++selections;};
+            auto before=game.info();auto settings=imports.settings;
+            imports.open(game);navigate(imports,{"SETTINGS","AUDIO","MUSIC TRACKS"});
+            enter(imports,"IMPORT WAV / FLAC");require(music_calls==1,"music import menu action failed");
+            imports.key(SDLK_LEFT);require(music_calls==1,"music import triggered on directional input");
+            imports.key(SDLK_ESCAPE);imports.key(SDLK_ESCAPE); // Settings.
+            enter(imports,"CRT AND SHADERS");enter(imports,"SHADER PACKS");
+            require(imports.page()==Frontend::NativeMenu::Page::shader_library,"shader library navigation failed");
+            imports.key(SDLK_RETURN);require(shader_calls==1,"shader pack import action failed");
+            imports.key(SDLK_DOWN);imports.key(SDLK_RETURN);require(selections==1,"imported preset action failed");
+            imports.import_status="SLANG PLAYBACK UNAVAILABLE ON ANDROID";imports.draw();
+            auto* image=SDL_RenderReadPixels(renderer,nullptr);require(image,"Import library readback failed");
+            require(SDL_SaveBMP(image,"build/oracle/android-import-library.bmp"),"Import library image save failed");SDL_DestroySurface(image);
+            require(imports.settings==settings && game.info().number==before.number && game.info().time_ns==before.time_ns,"import UI changed native time or display settings");
+            imports.key(SDLK_ESCAPE);require(imports.page()==Frontend::NativeMenu::Page::crt,"shader library Back failed");
+            imports.close(game);
+            std::cout<<"Android import menus: music/ZIP actions, direction guard, preset browsing, Back and native frame/time isolation passed.\n";
+        }
         const auto input_config=(folder/"menu-navigation.inputs").string();
         Frontend::NativeInput input(input_config);
         for(unsigned present=0;present<4;++present) {

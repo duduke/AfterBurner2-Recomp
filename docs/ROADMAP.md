@@ -297,6 +297,12 @@ and the [spatial audio plan](SPATIAL_AUDIO_PLAN.md#object-based-hrtf-planned).
 
 ## Android / Android TV port (initial implementation)
 
+2026-11-07: Android music and shader ZIP imports now copy selected provider files
+into private libraries. Host import/menu/lifecycle checks and ARM64 packaging
+are recorded in [the import record](ENGINE_NOTES.md#android-content-imports-2026-11-07).
+External Slang playback remains unavailable on Android; physical provider and
+phone/TV import acceptance remain open.
+
 2026-11-02 TCL TV check: wireless ADB pairing/connection succeeded, but the
 Android 14 G08 OS supports only 32-bit ARM and rejects the ARM64 Preview 6 APK
 with `INSTALL_FAILED_NO_MATCHING_ABIS`. Add and validate `armeabi-v7a` packaging

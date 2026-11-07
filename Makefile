@@ -2312,3 +2312,16 @@ test-openal-runtime: build/openal_runtime_regression build/spatial_audio_dynamic
 	./build/openal_runtime_regression "$(AB2_TEST_OPENAL_RUNTIME)"
 	AB2_OPENAL_RUNTIME="$(AB2_TEST_OPENAL_RUNTIME)" ./build/spatial_audio_dynamic_regression
 .PHONY: test-openal-runtime
+
+build/content_import_regression: tests/content_import_regression.cpp src/main/frontend/content_import.hpp src/main/frontend/android_content_import.hpp src/main/frontend/music_settings.hpp src/main/romloader.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -pthread tests/content_import_regression.cpp src/main/romloader.cpp -o $@ $(LIBS)
+test-content-import:
+	$(MAKE) build/content_import_regression
+	python3 tests/test_content_import.py build/content_import_regression
+test-main: test-content-import
+test: test-content-import
+.PHONY: test-content-import
+verify-content-import-mutations: test-content-import
+	python3 tools/check_content_import_mutations.py --compiler '$(CXX)' --flags '$(CXXFLAGS) $(INCLUDES)' --libs '$(LIBS)'
+.PHONY: verify-content-import-mutations

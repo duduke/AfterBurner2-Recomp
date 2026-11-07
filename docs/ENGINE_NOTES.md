@@ -16387,3 +16387,82 @@ labeled unsigned Windows base. The free-download path was checked. The
 is published. Existing page images/video/support links were retained. Local
 publication proof and the complete asset inventory are retained under
 `build/release-preview8/`; no capture, ROM or credential was published.
+
+## Android content imports (2026-11-07)
+
+Android now offers **Settings → Audio → Music Tracks → Import WAV / FLAC**
+and **Settings → CRT and Shaders → Shader Packs → Import Shader Pack ZIP**.
+SDL's existing document picker supplies provider URIs; a small Activity helper
+queries `OpenableColumns.DISPLAY_NAME` as UTF-8 bytes rather than treating the
+URI basename as a filename. SDL IO copies provider data to the private SDL
+preference directory. No storage permission or bundled user content is added.
+Desktop soundtrack discovery and desktop preset selection remain unchanged.
+
+A frontend async worker performs bounded copies/extraction without touching
+board execution or audio-device state. The owner joins its worker before
+`SDL_Quit`; picker callbacks hold weak state and can arrive after menu/host
+shutdown. A busy guard excludes concurrent imports. Music accepts up to 64
+WAV/FLAC selections, verifies basic container signatures, reports partial
+success and refreshes the existing track assignment list. Full decode remains
+in NativeMusic's existing selection/preview path. Existing files and mappings
+are preserved by assigning numeric suffixes to duplicate names.
+
+ZIP extraction uses the retained miniz reader, preserves relative pack paths,
+and stages a whole pack before publishing it. It bounds compressed bytes
+(128 MiB), expanded bytes (256 MiB), each file (32 MiB), entries (4,096) and
+filename length (1,023 bytes). Traversal, absolute/drive/backslash paths,
+repeated separators, control characters, symlinks, case-insensitive duplicate
+paths, unsupported entries and bad ZIP data/CRC reject the pack with staging
+cleanup. At least one `.slangp` is required. Interrupted staging directories
+are excluded from discovery and reused/cleaned by the next import.
+
+Imported presets are rediscovered on launch and browsable with keyboard,
+controller or touch using the existing scrollable menu. The browser uses the
+existing uppercase value/detail rendering for filenames. Status lines show
+cancellation, errors and imported counts. **Android still builds the Slang
+stub**: imported presets cannot activate an external shader, and selecting one
+reports this limitation without changing CRT settings. Import does not prove
+preset compatibility or dependency completeness. Uninstall/clear-data removes
+private libraries; users should retain their originals.
+
+Validation (presentation/storage only; no native execution/hardware changes):
+
+- Main profile: `build/workflow/20261107T082022.774831Z/` passes test-main,
+  game-session (781 native frames), Practice (375 RGB/PCM/time comparisons),
+  and Shuffle (660 capture-neutral frames, 16 restoration frames and a
+  7,118-frame natural three-position window). After the final import guard and
+  file-close changes, the focused import tests/mutations are rerun separately;
+  other main-profile dependencies are unchanged. This is finite main coverage,
+  not whole-host acceptance and not a full oracle gate.
+- Final menu check: `build/workflow/20261107T082237.275552Z/` passes music/ZIP
+  actions, direction guard, preset selection/Back, frame/time and display
+  settings isolation, plus retained menu/CRT checks. The imported-library
+  readback was inspected locally; no captures are committed.
+- Import regressions generate their own temporary audio/ZIP fixtures. They
+  cover Unicode/colliding names, copy and extraction bounds, multiple presets
+  with relative includes/textures, invalid signatures, traversal/symlink/
+  duplicate paths, entry/expanded-size limits, CRC failures and rollback.
+  Picker tests cover cancel/error/busy, multi-select/partial success, the
+  selection limit, late callbacks and worker joining during shutdown.
+  `verify-content-import-mutations` retains four rejected mutations: archive
+  traversal, symlink, per-entry size and audio-signature guards.
+- `python3 tools/android.py build` cross-builds the ARM64 debug APK and passes
+  manifest, native entrypoint, signature and 16 KiB ZIP/ELF checks. Gradle needs
+  its local daemon socket outside the sandbox. Logs remain under
+  `build/android-content-import-build.log` and `build/workflow/`.
+- Physical document-provider, cloud/USB, restart and background/resume checks
+  remain open for phones and TVs. ADB enumeration failed with a server protocol
+  error in this session; no device install or physical import success is claimed.
+
+
+### Android import publication refresh (2026-11-07)
+
+The owner requested commit/merge and Android publication with no further
+_tests, oracle or regression_ runs. Android version code increases from 3 to 4,
+with version name `0.1.0-preview.8-android.1`, so existing installations can be
+updated in place. Publication rebuilds from the committed/merged source to
+embed its exact revision, supplies a matching tracked-source ZIP and SHA-256
+sidecars, and refreshes only the Android assets in the Preview 8 release.
+The earlier implementation checks above are retained evidence, not rerun
+publication checks. APK packaging/identity and upload receipts are separate
+from gameplay or physical-device acceptance.
