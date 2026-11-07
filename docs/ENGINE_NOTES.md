@@ -16466,3 +16466,19 @@ sidecars, and refreshes only the Android assets in the Preview 8 release.
 The earlier implementation checks above are retained evidence, not rerun
 publication checks. APK packaging/identity and upload receipts are separate
 from gameplay or physical-device acceptance.
+
+Publication completed: [PR #28](https://github.com/duduke/AfterBurner2-Recomp/pull/28)
+merged as `3cf39ea6d70dd81c4deb2022423a6ef86764ad23`. The clean merged source
+was rebuilt with Android version code 4 and published to the existing
+[Preview 8 release](https://github.com/duduke/AfterBurner2-Recomp/releases/tag/v0.1.0-preview.8).
+The Android APK SHA-256 is
+`4ed1b32965b9feafa0ac146a83ce3f532fae6aca380dc4d74fbf016de15b89f7`.
+Its embedded revision and empty working-tree digest match the merged source.
+The APK, checksum, matching source ZIP, source checksum and build manifest
+are uploaded: all five GitHub sizes/SHA-256 digests match their local files.
+Other platform asset IDs/digests are unchanged. Release notes identify the
+Android-only refresh and retained external-Slang/physical-device limitations.
+Build and publication receipts remain in
+`build/android-content-import-release-build.log` and
+`build/release-android-imports-20261107/`. No new tests, oracle checks or
+regressions were run for this publication.
