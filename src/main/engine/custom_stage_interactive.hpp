@@ -211,6 +211,7 @@ public:
     bool flare_seen{};
     unsigned flare_frames{};
     unsigned flare_last_delta{};
+    double flare_k{};
     const char* message = "ENTER / START TO BEGIN";
 
     explicit InteractiveController(Definition def = Definition::preset(1))
@@ -238,6 +239,7 @@ public:
         flare_seen = false;
         flare_frames = 0u;
         flare_last_delta = 0u;
+        flare_k = 0.0;
         message = "ENTER / START TO BEGIN";
     }
 
@@ -480,17 +482,25 @@ public:
             return;
         }
         const double stick = std::isfinite(input.stick_y) ? std::clamp(double(input.stick_y), -1.0, 1.0) : 0.0;
-        const int cur = int(peek16(memory, p + 36u));
+        const auto q_of = [](int depth) { return double(depth - 0x20) / double(rom_sink_delta); };
+        const int cur = int(int16_t(peek16(memory, p + 36u)));
         if (flare_seen && flare_frames < flare_frame_limit) {
             // ROM already removed rom_sink_delta this frame; replace it with the player's.
             const int wanted = int(std::lround(double(rom_sink_delta) * (1.0 - stick)));
             const int delta = std::clamp(wanted, -int(rom_sink_delta), 2 * int(rom_sink_delta));
-            const int next = std::clamp(cur + int(rom_sink_delta) - delta, 0x30, 0x400);
+            const int next = std::clamp(cur + int(rom_sink_delta) - delta, 0, 0x400);
             seed16(memory, p + 36u, uint16_t(next));
+            // $1139E..$113AE integrates +44 -= +44/q (q = (+36-$20)/$40), which only
+            // telescopes to +44 ~ q for exact $40 steps. Keep the same proportionality
+            // for arbitrary steps so the plane's screen height tracks +36.
+            const double q = std::max(0.0, q_of(next));
+            seed16(memory, p + 44u, uint16_t(int(std::lround(flare_k * q))));
             flare_last_delta = delta > 0 ? unsigned(delta) : 0u;
             message = stick > 0.2 ? "FLARING / EASE DOWN" : stick < -0.2 ? "STEEP SINK" : "HOLD PITCH / LAND";
         } else if (!flare_seen) {
             phase = Phase::approach;
+            const double q0 = q_of(cur);
+            flare_k = q0 > 0.0 ? double(int16_t(peek16(memory, p + 44u))) / q0 : 0.0;
         }
         flare_seen = true;
         ++flare_frames;
