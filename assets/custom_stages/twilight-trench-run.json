@@ -6,7 +6,7 @@
   "environment": "canyon",
   "slot": 8,
   "source_stage": 8,
-  "enemy_stage": 12,
+  "enemy_stage": 8,
   "scenery_stage": 8,
   "music": "city_202",
   "replace_events": false,
@@ -48,14 +48,6 @@
       "tick": 80,
       "command": "clear_horizon_flags",
       "params": [0, 0, 0, 0, 0]
-    }
-  ],
-  "enemy_waves": [
-    {
-      "tick": 20,
-      "command": "standard",
-      "formation": 1,
-      "params": [0, 0, 0, 0]
     }
   ]
 }
