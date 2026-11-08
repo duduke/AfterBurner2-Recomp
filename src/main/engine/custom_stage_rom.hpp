@@ -92,19 +92,6 @@ inline std::array<uint8_t, 8> encode_hud_title(std::string_view name) {
     return out;
 }
 
-inline std::array<uint8_t, 32> encode_stage_banner(std::string_view name) {
-    std::array<uint8_t, 32> out;
-    out.fill(0x20u);
-    size_t pos = 0;
-    for (unsigned char ch : name) {
-        if (pos >= out.size()) break;
-        if (ch >= 'a' && ch <= 'z') ch = static_cast<unsigned char>(ch - 'a' + 'A');
-        if (ch >= 0x20u && ch <= 0x5au)
-            out[pos++] = ch;
-    }
-    return out;
-}
-
 inline bool stage_has_command18(const Roms& canonical, unsigned stage_number) {
     if (stage_number <= 1u || stage_number > StageCatalog::count(canonical))
         return false;
@@ -193,13 +180,15 @@ public:
             previous_music = music;
         }
 
-        // 3. Stage HUD title ($2B6AC, 8 bytes) and banner ($2EA16, 32 bytes).
+        // 3. Stage HUD title ($2B6AC, 8 bytes) and donor 32-byte inline palette row ($2EA16).
+        // $2EA16 is copied by OMainPalette::animate ($13FB8) directly to palette RAM $121E22
+        // (Palette $F1); it must preserve the donor stage's 32-byte palette row.
         StageCatalog::Detail::range(canonical, 0x2b6acu, count * 8u);
         StageCatalog::Detail::range(canonical, 0x2ea16u, count * 32u);
         const auto title8 = Detail::encode_hud_title(def.name);
-        const auto banner32 = Detail::encode_stage_banner(def.name);
         std::copy(title8.begin(), title8.end(), owned.maincpu.rom + 0x2b6acu + target_pos * 8u);
-        std::copy(banner32.begin(), banner32.end(), owned.maincpu.rom + 0x2ea16u + target_pos * 32u);
+        std::copy_n(canonical.maincpu.rom + 0x2ea16u + donor_pos * 32u, 32u,
+                    owned.maincpu.rom + 0x2ea16u + target_pos * 32u);
 
         // 4. Relocate all 5 indexed palette blocks into upper ROM (0x40000+) before
         // touching cold-start aliases, then apply custom ocean/atmosphere colors.
@@ -214,13 +203,15 @@ public:
                 const uint32_t source_addr = StageCatalog::Detail::pointer(canonical, base + src * 4u);
                 const uint32_t relocated = append(canonical, source_addr, bytes, cursor);
                 if (pos == target_pos && def.custom_ocean && base == 0x140dau) {
-                    // Populate the 14-word horizon/sea gradient at offset +34 (bytes 34..61)
-                    // and primary sky/ground words so the Sub-CPU road generator uses them.
+                    // Populate both the initial (+2) and target (+34) 14-word horizon/sea
+                    // gradients in the 64-byte 0x140da block used by OMainPalette::blend.
                     for (unsigned w = 0; w < 14u; ++w) {
                         const RGBColor c = (w < 7u)
                             ? def.ocean.sky_at(double(w) / 6.0)
                             : def.ocean.sea_at(double(w - 7u) / 6.0);
-                        Shuffle::Detail::write16(owned, relocated + 34u + w * 2u, c.rgb555());
+                        const uint16_t color = c.rgb555();
+                        Shuffle::Detail::write16(owned, relocated + 2u + w * 2u, color);
+                        Shuffle::Detail::write16(owned, relocated + 34u + w * 2u, color);
                     }
                 }
                 Shuffle::Detail::write32(owned, base + pos * 4u, relocated);
@@ -242,18 +233,33 @@ public:
 
             const uint32_t descriptor = append(canonical, source.descriptor, 20u, cursor);
             if (pos == target_pos && def.custom_ocean) {
-                // Clone the 24-byte alternate/primary sky-ground descriptor block
-                // referenced by descriptor+0 and descriptor+4 and install ocean RGB555.
+                // Clone the 8-byte primary sky-ground block at descriptor+0 and the
+                // 24-byte alternate sky-ground block at descriptor+4 ($13D10 / $13DF0)
+                // and install custom X-Board RGB555 colors.
+                const uint16_t sky555 = def.ocean.sky.rgb555();
+                const uint16_t haze555 = def.ocean.haze.rgb555();
+                const uint16_t sea555 = def.ocean.water.rgb555();
                 const uint32_t primary_pal = StageCatalog::Detail::pointer(canonical, source.descriptor);
                 if (primary_pal + 8u <= canonical.maincpu.length) {
                     const uint32_t custom_pal = append(canonical, primary_pal, 8u, cursor);
-                    const uint16_t sky555 = def.ocean.sky.rgb555();
-                    const uint16_t sea555 = def.ocean.water.rgb555();
                     Shuffle::Detail::write16(owned, custom_pal, sky555);
                     Shuffle::Detail::write16(owned, custom_pal + 2u, sky555);
                     Shuffle::Detail::write16(owned, custom_pal + 4u, sea555);
                     Shuffle::Detail::write16(owned, custom_pal + 6u, sea555);
                     Shuffle::Detail::write32(owned, descriptor, custom_pal);
+                }
+                const uint32_t alt_pal = StageCatalog::Detail::pointer(canonical, source.descriptor + 4u);
+                if (alt_pal + 24u <= canonical.maincpu.length) {
+                    const uint32_t custom_alt = append(canonical, alt_pal, 24u, cursor);
+                    Shuffle::Detail::write16(owned, custom_alt + 0u, haze555);
+                    Shuffle::Detail::write16(owned, custom_alt + 2u, haze555);
+                    Shuffle::Detail::write16(owned, custom_alt + 4u, sky555);
+                    Shuffle::Detail::write16(owned, custom_alt + 6u, sky555);
+                    for (unsigned w = 0; w < 8u; ++w) {
+                        const uint16_t stripe = def.ocean.sea_at(double(w) / 7.0).rgb555();
+                        Shuffle::Detail::write16(owned, custom_alt + 8u + w * 2u, stripe);
+                    }
+                    Shuffle::Detail::write32(owned, descriptor + 4u, custom_alt);
                 }
             }
 
@@ -452,4 +458,27 @@ private:
     }
 };
 
+// Installs settled custom sky, sea, and 14-word horizon gradient colors into
+// the primary road palette bank ($122F00, $122E40..$122E5E, $122E00..$122E0E,
+// $121D02..$121D1C) at $138FE / $13CE8 when a custom stage uses custom_ocean
+// on a non-alternate stage donor.
+inline void prepare_primary_ocean_palette(MainBus& bus, const Roms& active, unsigned position) {
+    const auto stage = StageCatalog::get(active, position + 1);
+    const auto primary = StageCatalog::Detail::pointer(active, stage.descriptor);
+    const auto gradient = StageCatalog::Detail::pointer(active, 0x140da + position * 4);
+    StageCatalog::Detail::range(active, primary, 8);
+    StageCatalog::Detail::range(active, gradient, 62);
+    const uint32_t sky = StageCatalog::Detail::pointer(active, primary);
+    const uint32_t ground = StageCatalog::Detail::pointer(active, primary + 4);
+    bus.write16(0x122f00, uint16_t(sky >> 16));
+    for (unsigned i = 0; i < 8; ++i)
+        bus.write32(0x122e40 + i * 4, sky);
+    for (unsigned i = 0; i < 4; ++i)
+        bus.write32(0x122e00 + i * 4, ground);
+    for (unsigned word = 0; word < 14; ++word)
+        bus.write16(0x121d02 + word * 2,
+                    StageCatalog::Detail::word(active, gradient + 34 + word * 2));
+}
+
 } // namespace CustomStage
+

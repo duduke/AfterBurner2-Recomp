@@ -4,7 +4,7 @@
   "name": "CANYON / AMBUSH",
   "objective": "combat",
   "environment": "canyon",
-  "slot": 1,
+  "slot": 8,
   "source_stage": 8,
   "enemy_stage": 16,
   "scenery_stage": 8,

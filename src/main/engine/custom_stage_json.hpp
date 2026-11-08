@@ -267,12 +267,19 @@ struct Json {
 struct RGBColor {
     uint8_t r{}, g{}, b{};
     constexpr bool operator==(const RGBColor&) const = default;
-    // X-Board 16-bit palette word: 0000 BBBB BGGG GGRR RRR0 (or standard 5-5-5 low bits).
-    // HWPalette::pen decodes 5-bit channels from bits 0..4 (R), 5..9 (G), 10..14 (B).
+    // SEGA X-Board 16-bit palette word: sBGR BBBB GGGG RRRR (bit 12 = R0,
+    // bit 13 = G0, bit 14 = B0, bits 8..11 = B4..B1, bits 4..7 = G4..G1,
+    // bits 0..3 = R4..R1), matching HWPalette::write_changed and OMainPalette::blend.
     constexpr uint16_t rgb555() const {
-        return uint16_t(((uint16_t(b >> 3) & 0x1fu) << 10) |
-                        ((uint16_t(g >> 3) & 0x1fu) << 5) |
-                        (uint16_t(r >> 3) & 0x1fu));
+        const uint16_t r5 = (uint16_t(r) >> 3) & 0x1fu;
+        const uint16_t g5 = (uint16_t(g) >> 3) & 0x1fu;
+        const uint16_t b5 = (uint16_t(b) >> 3) & 0x1fu;
+        return uint16_t(((r5 & 1u) << 12) |
+                        ((g5 & 1u) << 13) |
+                        ((b5 & 1u) << 14) |
+                        ((b5 >> 1) << 8) |
+                        ((g5 >> 1) << 4) |
+                        (r5 >> 1));
     }
 };
 
@@ -491,12 +498,40 @@ struct Definition {
         if (objective == Objective::refuel)
             return tanker_variant ? tanker_variant : 3u;
         switch (environment) {
-        case Environment::carrier: return 1u;
-        case Environment::runway:  return 5u;
-        case Environment::jungle:  return 13u;
-        case Environment::sea:     return 3u;
-        case Environment::canyon:  return 8u;
-        case Environment::night:   return 9u;
+        case Environment::carrier:
+            return objective == Objective::landing ? 13u : 1u;
+        case Environment::runway:
+        case Environment::jungle:
+            return 5u;
+        case Environment::sea:
+            return 3u;
+        case Environment::canyon:
+            return 8u;
+        case Environment::night:
+            return 4u;
+        }
+        return 1u;
+    }
+
+    // Default 1-based stage slot (1..22) when omitted from JSON or presets.
+    // Stage 5 ($29C060 == 4) is checked explicitly by $012540/$013090 for the
+    // land airbase runway; Stage 13 ($29C060 == 12) is the carrier landing slot;
+    // Stage 8 ($29C060 == 7) is the canyon combat slot.
+    unsigned default_slot() const {
+        if (objective == Objective::refuel)
+            return 3u;
+        switch (environment) {
+        case Environment::carrier:
+            return objective == Objective::landing ? 13u : 1u;
+        case Environment::runway:
+        case Environment::jungle:
+            return 5u;
+        case Environment::sea:
+            return 3u;
+        case Environment::canyon:
+            return 8u;
+        case Environment::night:
+            return 4u;
         }
         return 1u;
     }
@@ -615,6 +650,8 @@ struct Definition {
 
         if (const auto* sl = doc.find("slot"))
             def.slot = static_cast<unsigned>(sl->integer(1, 22));
+        else
+            def.slot = def.default_slot();
         if (const auto* src = doc.find("source_stage"))
             def.source_stage = static_cast<unsigned>(src->integer(1, 64));
         if (const auto* es = doc.find("enemy_stage"))
@@ -843,13 +880,18 @@ struct Definition {
             d.environment = Environment::canyon;
             d.music_cmd = 0x84u; // Super Stripe
             d.custom_events = {
-                {16, 11, {0, 0, 0, 0, 0}}, // Special canyon road enter ($E074)
-                {32, 2,  {1, 0, 0, 0, 0}}, // Enemy wave spawn
-                {64, 3,  {2, 0, 0, 0, 0}}, // Scenery formation
-                {96, 10, {0, 0, 0, 0, 0}}, // Special road exit ($E062)
+                {16, 17, {0, 0, 0, 0, 0}}, // Special canyon road enter ($E074)
+                {32, 11, {2, 0, 0, 0, 0}}, // Cloud control ($DFBC -> $FFFF8D6A = 2)
+                {64, 20, {0, 0, 128, 0, 0}}, // Horizon scroll ($DF7E -> $FFFF8D38 = 0x0080)
+                {96, 16, {0, 0, 0, 0, 0}}, // Special road exit ($E062)
+            };
+            d.custom_enemy_waves = {
+                {16, 0, {6, 0, 0, 0, 0}},
+                {48, 0, {8, 0, 0, 0, 0}},
             };
             break;
         }
+        d.slot = d.default_slot();
         return d;
     }
 

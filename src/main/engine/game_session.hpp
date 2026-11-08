@@ -81,7 +81,7 @@ public:
         input.analog = physical.analog;
         scene_ready=false;if(capture_wide)wide_clip_count=0;
         game.tick(input);
-        if (custom_stage_controller_)
+        if (custom_stage_controller_ && !entering_custom_stage_)
             custom_stage_controller_->sync_board(game.board(), active_rom(), controls);
         if(primary_completed)primary_completed(info().number);
         if(capture_feedback_){
@@ -161,6 +161,43 @@ public:
             throw std::runtime_error("Custom stage retry requires an active custom stage");
         const auto def = custom_stage_view->definition();
         start_custom_stage(def);
+    }
+    // Advance a freshly started custom stage past the Stage 1 carrier takeoff
+    // cutscene ($29C09C == 15) and into the target custom stage slot ($29C09C == 16),
+    // or stop at carrier catapult state 2 when the custom stage itself is a
+    // Stage 1 carrier-takeoff sequence.
+    void enter_custom_stage(const std::function<void()>& after_frame = {}) {
+        if (!custom_stage_view)
+            throw std::runtime_error("Custom stage entry requires an active custom stage");
+        const auto& def = custom_stage_view->definition();
+        struct RestoreEntering {
+            bool& flag;
+            ~RestoreEntering() { flag = false; }
+        } restore{entering_custom_stage_};
+        entering_custom_stage_ = true;
+
+        auto step_frame = [&] {
+            advance({});
+            if (after_frame) after_frame(); else take_audio();
+        };
+
+        if (def.slot == 1u &&
+            def.objective == CustomStage::Definition::Objective::takeoff &&
+            def.environment == CustomStage::Definition::Environment::carrier) {
+            for (unsigned f = 0; f < 1800u; ++f) {
+                if (feedback_word(0x29c09c) == 15u && feedback_word(0xffff90b0) >= 2u)
+                    break;
+                step_frame();
+            }
+            if (feedback_word(0x29c09c) != 15u)
+                throw std::runtime_error("Carrier takeoff sequence not reached after cold start");
+        } else {
+            NativeStageSkip::enter(game.board(), active_rom(), def.slot, step_frame);
+        }
+        if (custom_stage_controller_) {
+            custom_stage_controller_->reset();
+            custom_stage_controller_->start();
+        }
     }
     bool shuffled() const { return bool(shuffle_view); }
     const Shuffle::Plan* shuffle_plan() const { return shuffle_plan_.get(); }
@@ -348,6 +385,7 @@ private:
     }
     void restarted(bool changed_rom) {
         prepared_shuffle_position = UINT32_MAX;
+        entering_custom_stage_ = false;
         if (changed_rom) {
             auto& source = active_rom();
             if(visibility)visibility=std::make_unique<Presentation::WideVisibility>(source,(wide_width-320)/2);
@@ -377,7 +415,10 @@ private:
         const unsigned stage_limit=shuffle_plan_?unsigned(shuffle_plan_->stages.size()):stage_count();
         if(position>=stage_limit || position==prepared_shuffle_position)return;
         const bool needed=custom_stage_view?custom_stage_view->needs_alternate_palette(position):shuffle_view->needs_alternate_palette(position);
-        if(!needed){
+        const bool custom_primary = custom_stage_view && !needed &&
+            position + 1u == custom_stage_view->definition().slot &&
+            custom_stage_view->definition().custom_ocean;
+        if(!needed && !custom_primary){
             prepared_shuffle_position=position;
             return;
         }
@@ -391,7 +432,10 @@ private:
                 ~RestoreTrace(){bus.trace=previous;}
             } restore{host.bus,host.bus.trace};
             host.bus.trace=nullptr;
-            Shuffle::prepare_alternate_palette(host.bus,active_rom(),position);
+            if(needed)
+                Shuffle::prepare_alternate_palette(host.bus,active_rom(),position);
+            else
+                CustomStage::prepare_primary_ocean_palette(host.bus,active_rom(),position);
         }
         ++host.palette_gen;
         prepared_shuffle_position=position;
@@ -404,6 +448,7 @@ private:
     Roms& rom;
     Extensions extensions;
     bool paused_ = false;
+    bool entering_custom_stage_ = false;
     std::vector<int16_t> audio;
     bool capture_sprites{}, presentation_ready{},capture_scene{},scene_ready{},capture_ground{};
     std::unique_ptr<Presentation::GroundHorizon> ground;

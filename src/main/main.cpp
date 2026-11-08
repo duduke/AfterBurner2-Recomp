@@ -218,7 +218,15 @@ int main(int argc, char** argv)try
             advance(input);
             take_audio();game.take_feedback();
         }
-        if (start_stage) {
+        if (game.custom_stage_active()) {
+            SDL_PumpEvents();
+            game.enter_custom_stage([&] { SDL_PumpEvents(); take_audio(); game.take_feedback(); });
+            if (music_player) music_player->mix({}, game.take_music());
+            SDL_PumpEvents();
+            std::cout << "Custom stage ready: " << game.custom_stage_definition()->name
+                      << " (slot " << game.custom_stage_definition()->slot
+                      << ", donor " << game.custom_stage_definition()->donor_stage() << ")" << std::endl;
+        } else if (start_stage) {
             SDL_PumpEvents();
             game.debug_skip_to_stage(start_stage);if(music_player)music_player->mix({},game.take_music());
             SDL_PumpEvents();
@@ -745,8 +753,7 @@ int main(int argc, char** argv)try
         try {
             if(new_custom || retry_custom) {
                 if(new_custom)game.start_custom_stage(*new_custom);else game.retry_custom_stage();
-                game.set_dip_switches(switches);practice={};
-                start_stage=game.custom_stage_definition()->slot>1?game.custom_stage_definition()->slot:0u;
+                game.set_dip_switches(switches);practice={};start_stage=0;
                 std::cout<<"Custom stage compiled: "<<game.custom_stage_definition()->name
                          <<" (slot "<<game.custom_stage_definition()->slot<<")"<<std::endl;
                 startup();

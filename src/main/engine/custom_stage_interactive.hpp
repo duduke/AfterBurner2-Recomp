@@ -472,23 +472,26 @@ public:
     // is active in GameSession. Holds pre-takeoff state counters in place for
     // the full-throttle gate instead of buffering RGB frames.
     void sync_memory(MainBus::Memory& memory, const Roms& rom, const GameControls& input) {
-        if (phase == Phase::briefing) start();
-        tick(input);
-
         const uint16_t mode = peek16(memory, 0x29c09cu);
         if (rom.maincpu.rom && 0x3218au + 2u <= rom.maincpu.length)
             missile_max = std::max<unsigned>(1u, StageCatalog::Detail::word(rom, 0x3218au));
         board_gate_held = false;
+        if (mode != 15u && mode != 16u) return;
+
+        if (phase == Phase::briefing) start();
+        tick(input);
 
         // 1. Carrier sequence ($29C09C == 15): hold state 2 ($104D2) wait timer
         // ($FFFF90AE) at 0 while waiting for full throttle, then release to 19.
         if (mode == 15u) {
-            const uint16_t carrier_state = peek16(memory, 0xffff90b0u);
-            if (carrier_state == 2u && (phase == Phase::ready || servicing())) {
-                seed16(memory, 0xffff90aeu, 0u);
-                board_gate_held = true;
-            } else if (carrier_state == 2u && phase == Phase::accelerating) {
-                seed16(memory, 0xffff90aeu, 19u);
+            if (definition.objective == Objective::takeoff && definition.environment == Environment::carrier) {
+                const uint16_t carrier_state = peek16(memory, 0xffff90b0u);
+                if (carrier_state == 2u && (phase == Phase::ready || servicing())) {
+                    seed16(memory, 0xffff90aeu, 0u);
+                    board_gate_held = true;
+                } else if (carrier_state == 2u && phase == Phase::accelerating) {
+                    seed16(memory, 0xffff90aeu, 19u);
+                }
             }
             return;
         }

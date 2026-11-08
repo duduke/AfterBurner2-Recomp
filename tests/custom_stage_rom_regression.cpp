@@ -388,11 +388,22 @@ void test_rom_view_compilation(const Roms& canonical) {
                 "CustomStage::RomView did not deep-clone non-maincpu ROM regions");
     }
 
-    // Check HUD title ($2B6AC) and stage banner ($2EA16) for slot 1 (pos 0)
+    // Verify SEGA X-Board sBGR BBBB GGGG RRRR 16-bit palette word encoding
+    {
+        const CustomStage::RGBColor sample{28, 112, 240};
+        const uint16_t data = sample.rgb555();
+        const uint8_t r5 = ((data >> 12) & 0x01u) | ((data << 1) & 0x1eu);
+        const uint8_t g5 = ((data >> 13) & 0x01u) | ((data >> 3) & 0x1eu);
+        const uint8_t b5 = ((data >> 14) & 0x01u) | ((data >> 7) & 0x1eu);
+        require(r5 == (sample.r >> 3) && g5 == (sample.g >> 3) && b5 == (sample.b >> 3),
+                "RGBColor::rgb555() did not encode SEGA X-Board sBGR BBBB GGGG RRRR format");
+    }
+
+    // Check HUD title ($2B6AC) and preserved 32-byte donor inline palette row ($2EA16) for slot 1 (pos 0)
     require(!std::memcmp(active.maincpu.rom + 0x2b6ac, "CRIMSON ", 8),
             "CustomStage::RomView did not write 8-byte HUD title at $2B6AC");
-    require(!std::memcmp(active.maincpu.rom + 0x2ea16, "CRIMSON CANYON                  ", 32),
-            "CustomStage::RomView did not write 32-byte banner at $2EA16");
+    require(!std::memcmp(active.maincpu.rom + 0x2ea16, canonical.maincpu.rom + 0x2ea16 + 3 * 32, 32),
+            "CustomStage::RomView did not copy donor 32-byte inline palette row at $2EA16");
 
     // Check inherited music resolution at $2B604 for pos 0 from donor stage 4 (pos 3)
     uint8_t expected_music = canonical.maincpu.rom[0x2b604 + 3];
@@ -425,7 +436,8 @@ void test_rom_view_compilation(const Roms& canonical) {
     // Check relocated palette blocks and custom ocean RGB555 gradient
     const uint32_t pal0 = StageCatalog::Detail::pointer(active, 0x140da + 0);
     require(pal0 >= 0x40000, "CustomStage::RomView did not relocate palette block 0 into upper ROM");
-    require(StageCatalog::Detail::word(active, pal0 + 34) == def.ocean.sky.rgb555(),
+    require(StageCatalog::Detail::word(active, pal0 + 2) == def.ocean.sky.rgb555() &&
+            StageCatalog::Detail::word(active, pal0 + 34) == def.ocean.sky.rgb555(),
             "CustomStage::RomView did not compile sky RGB555 into relocated palette");
     require(StageCatalog::Detail::word(active, pal0 + 34 + 13 * 2) == def.ocean.water.rgb555(),
             "CustomStage::RomView did not compile water RGB555 into relocated palette");
@@ -438,6 +450,13 @@ void test_rom_view_compilation(const Roms& canonical) {
     const auto entry = StageCatalog::get(active, 1);
     require(entry.descriptor >= 0x40000 && entry.events >= 0x40000,
             "CustomStage::RomView did not relocate stage descriptor and event list to upper ROM");
+    const uint32_t alt_pal = StageCatalog::Detail::pointer(active, entry.descriptor + 4u);
+    require(alt_pal >= 0x40000u &&
+            StageCatalog::Detail::word(active, alt_pal + 0u) == def.ocean.haze.rgb555() &&
+            StageCatalog::Detail::word(active, alt_pal + 4u) == def.ocean.sky.rgb555() &&
+            StageCatalog::Detail::word(active, alt_pal + 8u) == def.ocean.sea_at(0.0).rgb555() &&
+            StageCatalog::Detail::word(active, alt_pal + 22u) == def.ocean.water.rgb555(),
+            "CustomStage::RomView did not compile custom ocean colors into descriptor+4 alternate palette block");
     const auto scenery_donor_entry = StageCatalog::get(canonical, 3);
     require(StageCatalog::Detail::pointer(active, entry.descriptor + 12u) ==
             StageCatalog::Detail::pointer(canonical, scenery_donor_entry.descriptor + 12u),

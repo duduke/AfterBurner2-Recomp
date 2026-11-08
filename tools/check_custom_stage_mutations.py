@@ -21,8 +21,23 @@ ROM_MUTATIONS = [
     ),
     (
         "skip-ocean-palette-write",
-        "Shuffle::Detail::write16(owned, relocated + 34u + w * 2u, c.rgb555());",
-        "(void)c;",
+        "Shuffle::Detail::write16(owned, relocated + 34u + w * 2u, color);",
+        "(void)color;",
+    ),
+    (
+        "skip-initial-gradient-write",
+        "Shuffle::Detail::write16(owned, relocated + 2u + w * 2u, color);",
+        "(void)color;",
+    ),
+    (
+        "skip-alternate-palette-block",
+        "Shuffle::Detail::write32(owned, descriptor + 4u, custom_alt);",
+        "(void)custom_alt;",
+    ),
+    (
+        "wrong-inline-palette-row",
+        "canonical.maincpu.rom + 0x2ea16u + donor_pos * 32u, 32u,",
+        "canonical.maincpu.rom + 0x2ea16u + target_pos * 32u, 32u,",
     ),
     (
         "missing-event-sentinel",

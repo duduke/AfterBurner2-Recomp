@@ -4,7 +4,7 @@
   "name": "AUTUMN RUNWAY / LANDING",
   "objective": "landing",
   "environment": "runway",
-  "slot": 1,
+  "slot": 5,
   "source_stage": 5,
   "length": 2200,
   "width": 45,

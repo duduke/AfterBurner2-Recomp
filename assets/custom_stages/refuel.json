@@ -4,7 +4,7 @@
   "name": "TANKER / RENDEZVOUS",
   "objective": "refuel",
   "environment": "sea",
-  "slot": 1,
+  "slot": 3,
   "source_stage": 3,
   "length": 2200,
   "width": 45,
