@@ -140,6 +140,7 @@
     "glideslope": { "type": "number", "minimum": 0.01, "maximum": 0.2 },
     "tanker_span": { "type": "number", "minimum": 20, "maximum": 100 },
     "seamless_takeoff": { "type": "boolean" },
+    "player_landing": { "type": "boolean" },
     "presentation": {
       "type": "object",
       "additionalProperties": false,

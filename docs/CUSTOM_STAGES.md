@@ -65,6 +65,7 @@ Launch a built-in preset or JSON stage file directly from `afterburner2`:
 ./afterburner2 --custom-stage refuel
 ./afterburner2 --custom-stage carrier-landing
 ./afterburner2 --custom-stage runway-landing
+./afterburner2 --custom-stage assets/custom_stages/player-runway-landing.json
 ./afterburner2 --custom-stage jungle-landing
 ./afterburner2 --custom-stage runway-takeoff
 ./afterburner2 --custom-stage carrier-takeoff
@@ -160,3 +161,16 @@ python3 tools/workflow.py run verify-custom-stages-rom
 
 - [`tests/custom_stage_rom_regression.cpp`](../tests/custom_stage_rom_regression.cpp): Verifies `CustomStage::RomView` canonical ROM immutability, upper-ROM allocation, setup/DIP/music/title/banner tables, RGB555 ocean palette compilation, event and enemy wave stream sorting/splicing/replacement, real 68000 execution (`OMainIrqService::caller_step` stepping through `$00DE68..$00DE8E` and `$008122..$0082FA`) across all 19 `$00DE90` control commands and all `assets/custom_stages/*.json` definitions, full `GameSession` execution when ROMs are available, `Shuffle::prepare_alternate_palette` compatibility, `VariantPicker` non-repeating cycles, `InteractiveController` autopilot completion, full-throttle gate, live 68000 RAM synchronization (`$FFFF90AE` and `$1122E` `+42`), and `Guidance`/`ShadowState` math.
 - [`tools/check_custom_stage_mutations.py`](../tools/check_custom_stage_mutations.py): Verifies that 8 deliberate mutations across `custom_stage_rom.hpp`, `custom_stage_json.hpp`, and `custom_stage_interactive.hpp` (including mapping `special_road_enter` to command `11` or allowing unported command `2`) are rejected.
+
+## Player-controlled flare (`player_landing`)
+
+With `"player_landing": true` on a slot-5 runway landing, the native sequence
+model is bypassed and the stick drives the ROM's own flare. In the airbase
+object's state 4 (`$1134A`) the ROM subtracts `$40` from `+36(A5)` each frame
+and derives the plane's height (`+44`) from it; touchdown is `+36 <= $20`.
+After each frame the host replaces that `$40` with `$40 * (1 - stick_y)`
+(neutral stick = ROM behaviour; pull back slows or reverses the sink; push
+forward sinks faster). Touchdown with a sink delta above `$60` is reported as a
+hard landing. Rollout, rearm and takeoff then run in the ROM unchanged.
+Not yet driven: lateral position and throttle (player X and the speed fields
+have not been identified in the ROM).

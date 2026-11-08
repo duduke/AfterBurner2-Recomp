@@ -207,6 +207,10 @@ public:
     unsigned missiles{50}, missile_max{100}, ticks{};
     uint32_t board_sequence_owner{};
     bool board_gate_held{};
+    // Player-flare state (ROM airbase object, handler $1122E state 4).
+    bool flare_seen{};
+    unsigned flare_frames{};
+    unsigned flare_last_delta{};
     const char* message = "ENTER / START TO BEGIN";
 
     explicit InteractiveController(Definition def = Definition::preset(1))
@@ -231,6 +235,9 @@ public:
         ticks = 0u;
         board_sequence_owner = 0u;
         board_gate_held = false;
+        flare_seen = false;
+        flare_frames = 0u;
+        flare_last_delta = 0u;
         message = "ENTER / START TO BEGIN";
     }
 
@@ -450,6 +457,46 @@ public:
             end(false, "STAGE TIME LIMIT");
     }
 
+    // Player-controlled flare. In state 4 ($1134A) before touchdown the ROM
+    // subtracts $40 from +36(A5) every frame ($113B2) and derives the plane's
+    // screen height (+44) from it; touchdown is +36 <= $20 ($11372). At the
+    // frame boundary we undo the ROM's $40 and apply a pitch-scaled delta
+    // instead: neutral stick == ROM behaviour, pull back slows the sink (or
+    // climbs), push forward sinks faster. Touchdown with a last-frame sink
+    // delta above hard_sink_delta is a hard landing.
+    static constexpr unsigned rom_sink_delta = 0x40u;
+    static constexpr unsigned hard_sink_delta = 0x60u;
+    static constexpr unsigned flare_frame_limit = 900u;
+
+    void player_flare(MainBus::Memory& memory, uint32_t p, uint16_t state, const GameControls& input) {
+        const uint8_t flags27 = memory.bytes.at(MainBus::memory_offset(p + 27u));
+        const bool airborne = state == 4u && !(flags27 & 1u);
+        if (!airborne) {
+            if (flare_seen && state == 4u && (flags27 & 1u)) {
+                phase = flare_last_delta > hard_sink_delta ? Phase::failed : Phase::rollout;
+                message = flare_last_delta > hard_sink_delta ? "HARD LANDING" : "TOUCHDOWN / BRAKING";
+            }
+            if (state != 4u) flare_seen = false;
+            return;
+        }
+        const double stick = std::isfinite(input.stick_y) ? std::clamp(double(input.stick_y), -1.0, 1.0) : 0.0;
+        const int cur = int(peek16(memory, p + 36u));
+        if (flare_seen && flare_frames < flare_frame_limit) {
+            // ROM already removed rom_sink_delta this frame; replace it with the player's.
+            const int wanted = int(std::lround(double(rom_sink_delta) * (1.0 - stick)));
+            const int delta = std::clamp(wanted, -int(rom_sink_delta), 2 * int(rom_sink_delta));
+            const int next = std::clamp(cur + int(rom_sink_delta) - delta, 0x30, 0x400);
+            seed16(memory, p + 36u, uint16_t(next));
+            flare_last_delta = delta > 0 ? unsigned(delta) : 0u;
+            message = stick > 0.2 ? "FLARING / EASE DOWN" : stick < -0.2 ? "STEEP SINK" : "HOLD PITCH / LAND";
+        } else if (!flare_seen) {
+            phase = Phase::approach;
+        }
+        flare_seen = true;
+        ++flare_frames;
+        board_sequence_owner = p;
+    }
+
     static uint16_t peek16(const MainBus::Memory& memory, uint32_t address) {
         const auto offset = MainBus::memory_offset(address);
         if (offset == MainBus::UNMAPPED) throw std::runtime_error("Unmapped custom-stage observation");
@@ -479,7 +526,8 @@ public:
         if (mode != 15u && mode != 16u) return;
 
         if (phase == Phase::briefing) start();
-        tick(input);
+        if (!definition.player_landing)
+            tick(input);
 
         // 1. Carrier sequence ($29C09C == 15): hold state 2 ($104D2) wait timer
         // ($FFFF90AE) at 0 while waiting for full throttle, then release to 19.
@@ -509,6 +557,8 @@ public:
             if (handler == 0x111beu || handler == 0x1122eu) {
                 board_sequence_owner = p;
                 const uint16_t base_state = peek16(memory, p + 40u);
+                if (definition.player_landing && handler == 0x1122eu)
+                    player_flare(memory, p, base_state, input);
                 const uint16_t reload_pending = peek16(memory, 0xffff9100u);
                 const uint8_t reload_active = memory.bytes.at(MainBus::memory_offset(0xffff90ffu));
                 if (handler == 0x1122eu && base_state == 8u && !reload_pending && !reload_active) {

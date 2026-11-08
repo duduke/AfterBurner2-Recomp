@@ -481,6 +481,9 @@ struct Definition {
     double slope = 0.06;
     double tanker_span = 50.0;
     bool seamless_takeoff = true;
+    // Host-driven flare on the ROM airbase landing object ($1134A state 4): the
+    // player's stick pitch offsets the ROM's per-frame +36(A5) descent.
+    bool player_landing = false;
 
     // Presentation & layer options:
     bool rom_environment = true;
@@ -615,7 +618,7 @@ struct Definition {
             "music", "road_setup", "sky_setup", "curve_setup",
             "replace_events", "events", "replace_enemy_waves", "enemy_waves",
             "length", "width", "start_distance", "start_height",
-            "speed", "glideslope", "tanker_span", "seamless_takeoff",
+            "speed", "glideslope", "tanker_span", "seamless_takeoff", "player_landing",
             "presentation", "layers"
         });
         const auto* ver = doc.find("version");
@@ -770,6 +773,8 @@ struct Definition {
         range_num("tanker_span", def.tanker_span, 20.0, 100.0);
         if (const auto* st = doc.find("seamless_takeoff"))
             def.seamless_takeoff = st->flag();
+        if (const auto* pl = doc.find("player_landing"))
+            def.player_landing = pl->flag();
 
         if (const auto* pres = doc.find("presentation")) {
             pres->keys({"rom_environment", "ocean", "player_shadow", "tanker_variant", "clouds", "hud"});
