@@ -1,0 +1,64 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "LAYERED RUNWAY / APPROACH",
+  "objective": "landing",
+  "environment": "runway",
+  "slot": 1,
+  "source_stage": 5,
+  "length": 2200,
+  "width": 45,
+  "start_distance": 1400,
+  "start_height": 88,
+  "speed": 80,
+  "glideslope": 0.06,
+  "seamless_takeoff": true,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true,
+    "clouds": true,
+    "hud": true
+  },
+  "layers": [
+    {
+      "name": "horizon-haze",
+      "order": -10,
+      "space": "screen",
+      "elements": [
+        {
+          "type": "rectangle",
+          "x": 480,
+          "y": 196,
+          "width": 960,
+          "height": 28,
+          "color": [255, 196, 128, 64]
+        }
+      ]
+    },
+    {
+      "name": "approach-markers",
+      "order": 20,
+      "space": "world",
+      "elements": [
+        {
+          "type": "rectangle",
+          "x": -26,
+          "y": 0,
+          "z": 120,
+          "width": 4,
+          "height": 12,
+          "color": [255, 210, 64, 220]
+        },
+        {
+          "type": "rectangle",
+          "x": 26,
+          "y": 0,
+          "z": 120,
+          "width": 4,
+          "height": 12,
+          "color": [255, 210, 64, 220]
+        }
+      ]
+    }
+  ]
+}

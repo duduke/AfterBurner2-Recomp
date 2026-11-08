@@ -1,0 +1,21 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "AUTUMN RUNWAY / TAKEOFF",
+  "objective": "takeoff",
+  "environment": "runway",
+  "slot": 1,
+  "source_stage": 5,
+  "length": 2200,
+  "width": 45,
+  "start_distance": 0,
+  "start_height": 0,
+  "speed": 0,
+  "glideslope": 0.06,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true,
+    "clouds": true,
+    "hud": true
+  }
+}
