@@ -406,7 +406,8 @@ void test_json_assets_and_validation(const Roms& canonical) {
         "assets/custom_stages/carrier-takeoff.json",
         "assets/custom_stages/jungle-takeoff.json",
         "assets/custom_stages/layered-runway.json",
-        "assets/custom_stages/canyon-combat.json"
+        "assets/custom_stages/canyon-combat.json",
+        "assets/custom_stages/twilight-trench-run.json"
     };
     for (const auto& path : files) {
         const auto def = CustomStage::Definition::load(path);
@@ -446,6 +447,66 @@ void test_json_assets_and_validation(const Roms& canonical) {
     }, "Accepted reserved event command 18");
 }
 
+void inspect_custom_stage(const Roms& canonical, const std::string& arg) {
+    std::error_code ec;
+    const auto def = std::filesystem::exists(arg, ec)
+        ? CustomStage::Definition::load(arg)
+        : CustomStage::Definition::preset_by_name(arg);
+    CustomStage::RomView view(canonical, def);
+    const Roms& active = view.rom();
+    const unsigned pos = def.slot - 1u;
+    const auto entry = StageCatalog::get(active, def.slot);
+    const uint32_t pal0 = StageCatalog::Detail::pointer(active, 0x140da + pos * 4u);
+
+    const std::string title8(reinterpret_cast<const char*>(active.maincpu.rom + 0x2b6ac + pos * 8u), 8);
+    const std::string banner32(reinterpret_cast<const char*>(active.maincpu.rom + 0x2ea16 + pos * 32u), 32);
+
+    std::cout << "=== Compiled CustomStage::RomView ===\n"
+              << "  Stage Name   : " << def.name << "\n"
+              << "  Target Slot  : " << def.slot << " (donor stage " << def.donor_stage() << ")\n"
+              << "  HUD Title    : [" << title8 << "] @ $2B6AC\n"
+              << "  Stage Banner : [" << banner32 << "] @ $2EA16\n"
+              << "  Music Byte   : 0x" << std::hex << unsigned(active.maincpu.rom[0x2b604 + pos]) << std::dec << " @ $2B604\n"
+              << "  Descriptor   : 0x" << std::hex << entry.descriptor << " (events @ 0x" << entry.events << ", palette0 @ 0x" << pal0 << ")\n"
+              << "  Ocean RGB555 : sky=0x" << StageCatalog::Detail::word(active, pal0 + 34)
+              << " horizon=0x" << StageCatalog::Detail::word(active, pal0 + 34 + 6 * 2)
+              << " water=0x" << StageCatalog::Detail::word(active, pal0 + 34 + 13 * 2) << std::dec << "\n"
+              << "  Scene Layers : " << def.layers.size() << "\n"
+              << "  Event Stream :\n";
+
+    for (uint32_t cur = entry.events;; cur += 8u) {
+        const uint16_t t = StageCatalog::Detail::word(active, cur);
+        if (t == 0xffffu) {
+            std::cout << "    [0x" << std::hex << cur << "] SENTINEL 0xFFFF" << std::dec << "\n";
+            break;
+        }
+        const uint8_t cmd = active.maincpu.rom[cur + 2u];
+        std::cout << "    [0x" << std::hex << cur << std::dec << "] tick=" << t
+                  << " cmd=" << unsigned(cmd)
+                  << " params=[" << unsigned(active.maincpu.rom[cur + 3u])
+                  << "," << unsigned(active.maincpu.rom[cur + 4u])
+                  << "," << unsigned(active.maincpu.rom[cur + 5u])
+                  << "," << unsigned(active.maincpu.rom[cur + 6u])
+                  << "," << unsigned(active.maincpu.rom[cur + 7u]) << "]\n";
+    }
+
+    CustomStage::InteractiveController ctrl(def);
+    ctrl.start();
+    auto last_phase = ctrl.phase;
+    std::cout << "  Autopilot Simulation :\n"
+              << "    frame 0: phase=" << int(ctrl.phase) << " (" << ctrl.message << ")\n";
+    for (unsigned step = 1; step <= 3600 && !ctrl.finished(); ++step) {
+        ctrl.tick(ctrl.demo());
+        if (ctrl.phase != last_phase) {
+            last_phase = ctrl.phase;
+            std::cout << "    frame " << step << ": phase=" << int(ctrl.phase)
+                      << " range=" << int(ctrl.range) << "m height=" << int(ctrl.height)
+                      << "m speed=" << int(ctrl.speed) << " (" << ctrl.message << ")\n";
+        }
+    }
+    std::cout << "    result: " << ctrl.message << " (missiles=" << ctrl.missiles << "/" << ctrl.missile_max << ")\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv) try {
@@ -458,6 +519,10 @@ int main(int argc, char** argv) try {
     test_json_assets_and_validation(synthetic);
 
     for (int i = 1; i < argc; ++i) {
+        if (std::string_view(argv[i]) == "--inspect" && i + 1 < argc) {
+            inspect_custom_stage(synthetic, argv[++i]);
+            continue;
+        }
         if (std::string_view(argv[i]) == "--roms") {
             if (i + 1 < argc) RomLoader::set_source(argv[++i]);
             Roms real_roms;

@@ -70,6 +70,7 @@ Launch a built-in preset or JSON stage file directly from `afterburner2`:
 ./afterburner2 --custom-stage canyon-combat
 
 # Load a declarative JSON stage file:
+./afterburner2 --custom-stage assets/custom_stages/twilight-trench-run.json
 ./afterburner2 --custom-stage assets/custom_stages/canyon-combat.json
 ./afterburner2 --custom-stage assets/custom_stages/layered-runway.json
 ```
@@ -126,6 +127,9 @@ python3 tools/workflow.py run test-custom-stages check-custom-stage-mutations
 
 # Verify against the user's CRC-checked aburner2 ROM set when available:
 python3 tools/workflow.py run verify-custom-stages-rom
+
+# Inspect the compiled upper-ROM layout, RGB555 words, event bytecode, and autopilot timeline of a stage:
+./build/custom_stage_rom_regression --inspect assets/custom_stages/twilight-trench-run.json
 ```
 
 - [`tests/custom_stage_rom_regression.cpp`](../tests/custom_stage_rom_regression.cpp): Verifies `CustomStage::RomView` canonical ROM immutability, upper-ROM allocation, setup/DIP/music/title/banner tables, RGB555 ocean palette compilation, event stream sorting/splicing/replacement and terminal `command == 12` + `0xFFFF` invariants, `Shuffle::prepare_alternate_palette` compatibility, `VariantPicker` non-repeating cycles, `InteractiveController` autopilot completion across all presets, full-throttle gate, live 68000 RAM synchronization (`$FFFF90AE` and `$1122E` `+42`), `Guidance`/`ShadowState` math, and all `assets/custom_stages/*.json` definitions.

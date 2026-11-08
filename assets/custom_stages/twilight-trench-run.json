@@ -1,0 +1,114 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "TWILIGHT / TRENCH RUN",
+  "objective": "landing",
+  "environment": "runway",
+  "slot": 1,
+  "source_stage": 5,
+  "music": "city_202",
+  "road_setup": 2,
+  "sky_setup": 1,
+  "curve_setup": 3,
+  "replace_events": false,
+  "length": 2400,
+  "width": 44,
+  "start_distance": 1350,
+  "start_height": 84,
+  "speed": 82,
+  "glideslope": 0.06,
+  "seamless_takeoff": true,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true,
+    "clouds": true,
+    "hud": true,
+    "ocean": {
+      "sky": [28, 18, 68],
+      "haze": [255, 112, 88],
+      "water": [18, 32, 58]
+    }
+  },
+  "events": [
+    {
+      "tick": 12,
+      "command": "special_road_enter",
+      "params": [0, 0, 0, 0, 0]
+    },
+    {
+      "tick": 24,
+      "command": "enemy_wave",
+      "params": [2, 0, 0, 0, 0]
+    },
+    {
+      "tick": 48,
+      "command": "scenery",
+      "params": [1, 0, 0, 0, 0]
+    },
+    {
+      "tick": 80,
+      "command": "special_road_exit",
+      "params": [0, 0, 0, 0, 0]
+    }
+  ],
+  "layers": [
+    {
+      "name": "twilight-horizon-band",
+      "order": -10,
+      "space": "screen",
+      "elements": [
+        {
+          "type": "rectangle",
+          "x": 480,
+          "y": 194,
+          "width": 960,
+          "height": 24,
+          "color": [255, 112, 88, 72]
+        }
+      ]
+    },
+    {
+      "name": "trench-threshold-gates",
+      "order": 15,
+      "space": "world",
+      "elements": [
+        {
+          "type": "rectangle",
+          "x": -28,
+          "y": 8,
+          "z": 240,
+          "width": 5,
+          "height": 18,
+          "color": [64, 224, 255, 220]
+        },
+        {
+          "type": "rectangle",
+          "x": 28,
+          "y": 8,
+          "z": 240,
+          "width": 5,
+          "height": 18,
+          "color": [64, 224, 255, 220]
+        },
+        {
+          "type": "rectangle",
+          "x": -24,
+          "y": 4,
+          "z": 60,
+          "width": 4,
+          "height": 12,
+          "color": [255, 212, 64, 235]
+        },
+        {
+          "type": "rectangle",
+          "x": 24,
+          "y": 4,
+          "z": 60,
+          "width": 4,
+          "height": 12,
+          "color": [255, 212, 64, 235]
+        }
+      ]
+    }
+  ]
+}
