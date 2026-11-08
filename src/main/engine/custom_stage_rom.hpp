@@ -134,6 +134,10 @@ public:
         const unsigned donor = def.donor_stage();
         if (!donor || donor > count)
             throw std::runtime_error("Custom stage donor stage out of range");
+        if (def.enemy_stage && (!*def.enemy_stage || *def.enemy_stage > count))
+            throw std::runtime_error("Custom stage enemy_stage out of range");
+        if (def.scenery_stage && (!*def.scenery_stage || *def.scenery_stage > count))
+            throw std::runtime_error("Custom stage scenery_stage out of range");
         if (canonical.maincpu.length > 0x40000u)
             throw std::runtime_error("CustomStage::RomView requires an unmodified canonical main ROM");
 
@@ -204,7 +208,7 @@ public:
             {0x140dau, 64u}, {0x1413au, 256u}, {0x14196u, 256u},
             {0x141f2u, 256u}, {0x1424eu, 256u}
         }};
-        for (const auto [base, bytes] : palette_tables) {
+        for (const auto& [base, bytes] : palette_tables) {
             for (unsigned pos = 0; pos < count; ++pos) {
                 const unsigned src = (pos == target_pos) ? donor_pos : pos;
                 const uint32_t source_addr = StageCatalog::Detail::pointer(canonical, base + src * 4u);
@@ -213,7 +217,6 @@ public:
                     // Populate the 14-word horizon/sea gradient at offset +34 (bytes 34..61)
                     // and primary sky/ground words so the Sub-CPU road generator uses them.
                     for (unsigned w = 0; w < 14u; ++w) {
-                        const double t = double(w) / 13.0;
                         const RGBColor c = (w < 7u)
                             ? def.ocean.sky_at(double(w) / 6.0)
                             : def.ocean.sea_at(double(w - 7u) / 6.0);
@@ -254,6 +257,24 @@ public:
                 }
             }
 
+            if (pos == target_pos) {
+                if (def.scenery_stage) {
+                    const auto sc_donor = StageCatalog::get(canonical, *def.scenery_stage);
+                    const uint32_t sc_ptr = StageCatalog::Detail::pointer(canonical, sc_donor.descriptor + 12u);
+                    Shuffle::Detail::write32(owned, descriptor + 12u, sc_ptr);
+                }
+                const unsigned enemy_donor_stage = def.enemy_stage ? *def.enemy_stage : donor;
+                const auto en_donor = StageCatalog::get(canonical, enemy_donor_stage);
+                const uint32_t donor_enemies = StageCatalog::Detail::pointer(canonical, en_donor.descriptor + 8u);
+                if (!def.custom_enemy_waves.empty() || def.replace_enemy_waves) {
+                    const uint32_t enemies_addr = cursor;
+                    compile_target_enemy_waves(canonical, donor_enemies, cursor);
+                    Shuffle::Detail::write32(owned, descriptor + 8u, enemies_addr);
+                } else if (def.enemy_stage) {
+                    Shuffle::Detail::write32(owned, descriptor + 8u, donor_enemies);
+                }
+            }
+
             const uint32_t events_addr = cursor;
             if (pos == target_pos) {
                 compile_target_events(canonical, source.events, cursor);
@@ -287,6 +308,11 @@ public:
 
     uint32_t compiled_events_address() const {
         return StageCatalog::get(owned, def.slot).events;
+    }
+
+    uint32_t compiled_enemy_waves_address() const {
+        const auto stage = StageCatalog::get(owned, def.slot);
+        return StageCatalog::Detail::pointer(owned, stage.descriptor + 8u);
     }
 
 private:
@@ -361,14 +387,17 @@ private:
                 found_donor_terminal = true;
                 break;
             }
-            if (!def.replace_events && rec.command != 18u)
+            if (!def.replace_events && rec.command != 18u) {
+                rec.validate_control();
                 stream.push_back(rec);
+            }
         }
         if (!found_donor_terminal)
             throw std::runtime_error("Donor stage has no terminal event");
 
         bool explicit_terminal = false;
         for (const auto& custom : def.custom_events) {
+            custom.validate_control();
             if (custom.command == 12u) {
                 terminal_record = custom;
                 explicit_terminal = true;
@@ -390,6 +419,36 @@ private:
             emit_record(rec, cursor);
         emit_record(terminal_record, cursor);
         emit_record(sentinel_record, cursor);
+    }
+
+    void compile_target_enemy_waves(const Roms& canonical, uint32_t donor_waves, uint32_t& cursor) {
+        std::vector<EventRecord> stream;
+        if (!def.replace_enemy_waves && donor_waves + 8u <= canonical.maincpu.length) {
+            for (unsigned record = 0; record < 8192u && donor_waves + 8u <= canonical.maincpu.length; ++record, donor_waves += 8u) {
+                const uint16_t word0 = StageCatalog::Detail::word(canonical, donor_waves);
+                if (word0 == 0xffffu) break;
+                EventRecord rec;
+                rec.tick = word0;
+                rec.command = canonical.maincpu.rom[donor_waves + 2u];
+                for (unsigned i = 0; i < 5u; ++i)
+                    rec.params[i] = canonical.maincpu.rom[donor_waves + 3u + i];
+                stream.push_back(rec);
+            }
+        }
+        for (const auto& custom : def.custom_enemy_waves) {
+            custom.validate_enemy_wave();
+            const uint32_t form_entry = 0x3f000u + uint32_t(custom.params[0]) * 8u;
+            StageCatalog::Detail::range(canonical, form_entry, 8u);
+            const uint32_t wave_ptr = StageCatalog::Detail::pointer(canonical, form_entry);
+            StageCatalog::Detail::range(canonical, wave_ptr, 4u);
+            stream.push_back(custom);
+        }
+        std::stable_sort(stream.begin(), stream.end(), [](const EventRecord& a, const EventRecord& b) {
+            return a.tick < b.tick;
+        });
+        for (const auto& rec : stream)
+            emit_record(rec, cursor);
+        emit_record(EventRecord{0xffffu, 0u, {0, 0, 0, 0, 0}}, cursor);
     }
 };
 

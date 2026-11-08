@@ -1,5 +1,7 @@
 #include "engine/custom_stage_rom.hpp"
 #include "engine/custom_stage_interactive.hpp"
+#include "engine/game_session.hpp"
+#include "engine/omainirqservice.hpp"
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -39,6 +41,15 @@ constexpr std::array<std::pair<uint32_t, unsigned>, 5> palettes{{
     {0x140da, 64}, {0x1413a, 256}, {0x14196, 256}, {0x141f2, 256}, {0x1424e, 256}
 }};
 
+void write32_be(MainBus& bus, uint32_t addr, uint32_t val) {
+    bus.write16(addr, uint16_t(val >> 16));
+    bus.write16(addr + 2u, uint16_t(val));
+}
+
+uint32_t read32_be(MainBus& bus, uint32_t addr) {
+    return (uint32_t(bus.read16(addr)) << 16) | uint32_t(bus.read16(addr + 2u));
+}
+
 void build_synthetic_rom(Roms& rom) {
     rom.maincpu.init(0x40000);
     for (unsigned i = 1; i < regions.size(); ++i) {
@@ -64,6 +75,27 @@ void build_synthetic_rom(Roms& rom) {
     rom.maincpu.rom[0x2b604 + 2] = 0x83;
     rom.maincpu.rom[0x2b604 + 3] = 0x80;
 
+    // Minimal valid $0137E2 text descriptors at $2B8BA and $3253E for command 12 ($DFC4)
+    for (const uint32_t text_addr : {0x2b8bau, 0x3253eu}) {
+        rom.maincpu.rom[text_addr + 0] = 0;
+        rom.maincpu.rom[text_addr + 1] = 0;
+        rom.maincpu.rom[text_addr + 2] = 0;
+        rom.maincpu.rom[text_addr + 3] = 0;
+        rom.maincpu.rom[text_addr + 4] = 0x20;
+    }
+
+    // Populate $3F000 enemy formation table (entries 0..31 -> $3E000 + i*16) for $8122..$82FA
+    for (unsigned i = 0; i < 32; ++i) {
+        const uint32_t form_data = 0x3e000u + i * 16u;
+        for (unsigned b = 0; b < 16; ++b)
+            rom.maincpu.rom[form_data + b] = uint8_t(i + b + 1u);
+        Shuffle::Detail::write32(rom, 0x3f000u + i * 8u, form_data);
+        rom.maincpu.rom[0x3f000u + i * 8u + 4u] = uint8_t(i + 1u);
+        rom.maincpu.rom[0x3f000u + i * 8u + 5u] = uint8_t(i + 2u);
+        rom.maincpu.rom[0x3f000u + i * 8u + 6u] = uint8_t(i + 3u);
+        rom.maincpu.rom[0x3f000u + i * 8u + 7u] = uint8_t(i + 4u);
+    }
+
     Shuffle::Detail::write16(rom, 0x3218a, 100); // missile max
     Shuffle::Detail::write16(rom, 0x32480, 23);
     uint32_t palette_cursor = 0x18000;
@@ -79,12 +111,16 @@ void build_synthetic_rom(Roms& rom) {
         const auto events = 0x36000 + stage * 32;
         const auto alternate = 0x37000 + stage * 24;
         const auto primary = 0x37400 + stage * 8;
+        const auto waves = 0x38000 + stage * 24;
+        const auto scenery = 0x38400 + stage * 24;
         rom.maincpu.rom[0x32482 + stage] = uint8_t(stage);
         for (unsigned byte = 0; byte < 20; ++byte)
             rom.maincpu.rom[descriptor + byte] = uint8_t(stage * 11 + byte);
         Shuffle::Detail::write32(rom, 0x3249a + stage * 4, descriptor);
         Shuffle::Detail::write32(rom, descriptor + 0, primary);
         Shuffle::Detail::write32(rom, descriptor + 4, alternate);
+        Shuffle::Detail::write32(rom, descriptor + 8, waves);
+        Shuffle::Detail::write32(rom, descriptor + 12, scenery);
         Shuffle::Detail::write32(rom, descriptor + 16, events);
         for (unsigned byte = 0; byte < 24; ++byte)
             rom.maincpu.rom[alternate + byte] = uint8_t(stage * 5 + byte * 3);
@@ -95,12 +131,217 @@ void build_synthetic_rom(Roms& rom) {
                 rom.maincpu.rom[events + record * 8 + byte] = uint8_t(stage + record + byte);
             Shuffle::Detail::write16(rom, events + record * 8, uint16_t((record + 1) * 10));
         }
-        rom.maincpu.rom[events + 2] = (stage == 2 || stage == 8 || stage == 10 || stage == 15 || stage == 18 || stage == 20) ? 14 : 2;
+        rom.maincpu.rom[events + 2] = (stage == 2 || stage == 8 || stage == 10 || stage == 15 || stage == 18 || stage == 20) ? 14 : 17;
         rom.maincpu.rom[events + 10] = 18; // command 18 must be stripped
         rom.maincpu.rom[events + 18] = 12; // terminal command 12
         Shuffle::Detail::write16(rom, events + 24, 0xffff);
+
+        // Populate donor enemy wave stream (2 records + 0xFFFF sentinel)
+        Shuffle::Detail::write16(rom, waves + 0, 12);
+        rom.maincpu.rom[waves + 2] = 0;
+        rom.maincpu.rom[waves + 3] = uint8_t((stage % 8) + 1);
+        Shuffle::Detail::write16(rom, waves + 8, 28);
+        rom.maincpu.rom[waves + 10] = 1;
+        rom.maincpu.rom[waves + 11] = uint8_t((stage % 8) + 2);
+        Shuffle::Detail::write16(rom, waves + 12, 0x0010);
+        Shuffle::Detail::write16(rom, waves + 16, 0xffff);
+
+        // Populate donor scenery stream (1 record + 0xFFFF sentinel)
+        Shuffle::Detail::write16(rom, scenery + 0, 16);
+        rom.maincpu.rom[scenery + 2] = 0;
+        Shuffle::Detail::write16(rom, scenery + 8, 0xffff);
     }
     rom.maincpu.loaded = true;
+}
+
+// Step the real translated 68000 stage control event dispatcher ($00DE68..$00DE8E)
+// across every record in the compiled event stream and verify hardware side effects.
+void execute_control_event_stream_68k(const Roms& active, unsigned slot) {
+    MainBus::Memory memory{};
+    MainBus bus(active.maincpu.rom, active.maincpu.length,
+                active.subcpu.rom, active.subcpu.length, memory);
+    const auto entry = StageCatalog::get(active, slot);
+    write32_be(bus, 0xffff8a08u, entry.events);
+    bus.write16(0x29c060u, uint16_t(slot - 1u));
+    bus.write16(0x29c00eu, 0u);
+
+    uint32_t cursor = entry.events;
+    unsigned executed_batches = 0;
+    while (true) {
+        const uint16_t tick = StageCatalog::Detail::word(active, cursor);
+        if (tick == 0xffffu) break;
+
+        // Collect all consecutive records sharing this tick
+        std::vector<CustomStage::EventRecord> batch;
+        while (StageCatalog::Detail::word(active, cursor) == tick) {
+            CustomStage::EventRecord rec;
+            rec.tick = tick;
+            rec.command = active.maincpu.rom[cursor + 2u];
+            for (size_t i = 0; i < 5u; ++i)
+                rec.params[i] = active.maincpu.rom[cursor + 3u + i];
+            batch.push_back(rec);
+            cursor += 8u;
+        }
+
+        write32_be(bus, 0x29c006u, uint32_t(tick) << 4);
+        OMainIrqService irq_service;
+        OMainIrqService::Context ctx{};
+        ctx.boundary_ns = 0;
+        ctx.interrupted_pc = 0x00de68u;
+        ctx.return_pc = 0x00de68u;
+        ctx.supervisor_sp = 0xfffffc00u;
+        ctx.sr = 0x2000u;
+        write32_be(bus, ctx.supervisor_sp, 0x0000de8eu);
+
+        unsigned steps = 0;
+        while (ctx.supervisor_sp <= 0xfffffc00u) {
+            const uint32_t pc_before = ctx.return_pc;
+            try {
+                const auto step = irq_service.caller_step(
+                    bus, ctx, [](uint64_t) {}, [](uint64_t) { return 0u; });
+                ctx.registers = step.state.registers;
+                ctx.return_pc = step.state.pc;
+                ctx.interrupted_pc = step.state.pc;
+                ctx.supervisor_sp = step.state.sp;
+                ctx.sr = step.state.sr;
+                ctx.boundary_ns = step.state.ns;
+            } catch (const std::exception& e) {
+                throw std::runtime_error(
+                    "68000 stage control event execution failed at PC " +
+                    std::to_string(pc_before) + ": " + e.what());
+            }
+            require(++steps <= 4096u, "68000 stage control event handler exceeded step budget");
+        }
+
+        // Verify $FFFF8A08 advanced to cursor
+        require(read32_be(bus, 0xffff8a08u) == cursor,
+                "68000 $00DE68 dispatcher did not advance $FFFF8A08 past executed tick batch");
+
+        // Verify hardware side effect of the final command in this tick batch
+        const auto& last = batch.back();
+        switch (last.command) {
+        case 1u:
+        case 3u:
+            require((bus.read8(0x29c201u) & 0x01u) == 0u &&
+                    (bus.read8(0xffff8d36u) & 0x01u) == 0u,
+                    "68000 clear_horizon_flags (cmd 1/3) did not clear bit 0 of $29C201 and $FFFF8D36");
+            break;
+        case 4u:
+            require((bus.read8(0x29c201u) & 0x01u) != 0u,
+                    "68000 set_horizon_flag (cmd 4) did not set bit 0 of $29C201");
+            break;
+        case 7u:
+            require(bus.read16(0x29c07cu) == last.word4(),
+                    "68000 set_horizon_target (cmd 7) did not write word 4(A0) to $29C07C");
+            break;
+        case 8u:
+            require((bus.read8(0xffff8b6fu) & 0x02u) != 0u,
+                    "68000 set_ground_flag (cmd 8) did not set bit 1 of $FFFF8B6F");
+            break;
+        case 9u:
+            require((bus.read8(0xffff8b6fu) & 0x02u) == 0u,
+                    "68000 clear_ground_flag (cmd 9) did not clear bit 1 of $FFFF8B6F");
+            break;
+        case 10u:
+            require(bus.read8(0x29c0a1u) == last.params[0],
+                    "68000 set_scroll_state (cmd 10) did not write byte 3(A0) to $29C0A1");
+            break;
+        case 11u:
+            require(bus.read8(0xffff8d6au) == last.params[0],
+                    "68000 set_cloud_control (cmd 11) did not write byte 3(A0) to $FFFF8D6A");
+            break;
+        case 13u:
+            require(bus.read8(0x29c0efu) == last.params[0] &&
+                    bus.read16(0x29c0e6u) == last.word4() &&
+                    bus.read16(0x29c0e8u) == last.word6(),
+                    "68000 set_camera_bounds (cmd 13) did not write 3(A0)/4(A0)/6(A0) to $29C0EF/$29C0E6/$29C0E8");
+            break;
+        case 14u:
+            require(bus.read16(0x29c0ccu) == 0u,
+                    "68000 refuel (cmd 14) did not clear $29C0CC");
+            break;
+        case 15u:
+            require(bus.read16(0x29c0ccu) == last.word4(),
+                    "68000 set_stage_mode/landing (cmd 15) did not write word 4(A0) to $29C0CC");
+            break;
+        case 16u:
+            require(bus.read16(0x29c320u) == 0x0402u &&
+                    (bus.read8(0x29c200u) & 0x20u) != 0u,
+                    "68000 special_road_exit (cmd 16) did not set $29C320=$0402 and bit 5 of $29C200");
+            break;
+        case 17u:
+            require(bus.read16(0x29c320u) == 0x0480u &&
+                    (bus.read8(0x29c200u) & 0x20u) == 0u,
+                    "68000 special_road_enter (cmd 17) did not set $29C320=$0480 and clear bit 5 of $29C200");
+            break;
+        case 19u:
+            require(bus.read8(0xffff8d7eu) == last.params[0],
+                    "68000 set_bank_drift_flag (cmd 19) did not write byte 3(A0) to $FFFF8D7E");
+            break;
+        case 20u:
+            require((bus.read8(0x29c201u) & 0x01u) != 0u &&
+                    (bus.read8(0xffff8d36u) & 0x01u) != 0u &&
+                    bus.read16(0xffff8d38u) == last.word4(),
+                    "68000 set_horizon_scroll (cmd 20) did not set horizon flags and write word 4(A0) to $FFFF8D38");
+            break;
+        default:
+            break;
+        }
+        ++executed_batches;
+    }
+    require(executed_batches >= 1u, "Compiled stage control stream had no executable events");
+}
+
+// Step the real translated 68000 enemy wave dispatcher ($008122..$0082FA)
+// across every record in the stage's descriptor+8 enemy wave stream.
+void execute_enemy_wave_stream_68k(const Roms& active, unsigned slot) {
+    MainBus::Memory memory{};
+    MainBus bus(active.maincpu.rom, active.maincpu.length,
+                active.subcpu.rom, active.subcpu.length, memory);
+    const auto entry = StageCatalog::get(active, slot);
+    const uint32_t waves_ptr = StageCatalog::Detail::pointer(active, entry.descriptor + 8u);
+    write32_be(bus, 0xffff8a00u, waves_ptr);
+
+    uint32_t cursor = waves_ptr;
+    while (true) {
+        const uint16_t tick = StageCatalog::Detail::word(active, cursor);
+        if (tick == 0xffffu) break;
+        while (StageCatalog::Detail::word(active, cursor) == tick) {
+            cursor += 8u;
+        }
+
+        write32_be(bus, 0x29c006u, uint32_t(tick) << 4);
+        OMainIrqService irq_service;
+        OMainIrqService::Context ctx{};
+        ctx.registers.a[5] = 0xffffa000u;
+        ctx.boundary_ns = 0;
+        ctx.interrupted_pc = 0x008122u;
+        ctx.return_pc = 0x008122u;
+        ctx.supervisor_sp = 0xfffffc00u;
+        ctx.sr = 0x2000u;
+
+        unsigned steps = 0;
+        while (ctx.return_pc != 0x0082fcu) {
+            const uint32_t pc_before = ctx.return_pc;
+            try {
+                const auto step = irq_service.caller_step(
+                    bus, ctx, [](uint64_t) {}, [](uint64_t) { return 0u; });
+                ctx.registers = step.state.registers;
+                ctx.return_pc = step.state.pc;
+                ctx.interrupted_pc = step.state.pc;
+                ctx.supervisor_sp = step.state.sp;
+                ctx.sr = step.state.sr;
+                ctx.boundary_ns = step.state.ns;
+            } catch (const std::exception& e) {
+                throw std::runtime_error(
+                    "68000 enemy wave execution failed at PC " +
+                    std::to_string(pc_before) + ": " + e.what());
+            }
+            require(++steps <= 1024u, "68000 enemy wave handler exceeded step budget");
+        }
+        require(read32_be(bus, 0xffff8a00u) == cursor,
+                "68000 $008122 enemy wave dispatcher did not advance $FFFF8A00 to expected record");
+    }
 }
 
 void test_rom_view_compilation(const Roms& canonical) {
@@ -110,6 +351,8 @@ void test_rom_view_compilation(const Roms& canonical) {
     def.name = "CRIMSON CANYON";
     def.slot = 1;
     def.source_stage = 4; // 1-based stage 4 (pos 3) has 0x80 music -> inherits from predecessor when music_cmd is unset
+    def.enemy_stage = 2;
+    def.scenery_stage = 3;
     def.music_cmd.reset();
     def.road_setup = 5;
     def.sky_setup = 3;
@@ -120,8 +363,13 @@ void test_rom_view_compilation(const Roms& canonical) {
     def.ocean.water = {48, 24, 16};
     def.replace_events = false;
     def.custom_events = {
-        {15, 3, {2, 0, 0, 0, 0}},
-        {5,  2, {1, 0, 0, 0, 0}}
+        {15, 11, {2, 0, 0, 0, 0}},
+        {5,  17, {0, 0, 0, 0, 0}}
+    };
+    def.replace_enemy_waves = false;
+    def.custom_enemy_waves = {
+        {8, 0, {1, 0, 0, 0, 0}},
+        {22, 1, {2, 0, 24, 0, 0}}
     };
 
     CustomStage::RomView view(canonical, def);
@@ -186,10 +434,17 @@ void test_rom_view_compilation(const Roms& canonical) {
     require(!std::memcmp(active.maincpu.rom + 0x2bc60, active.maincpu.rom + pal0 + 34, 28),
             "CustomStage::RomView did not sync cold-start palette alias at $2BC60");
 
-    // Check relocated stage descriptor and compiled event stream
+    // Check relocated stage descriptor, compiled event stream, enemy_stage, and scenery_stage
     const auto entry = StageCatalog::get(active, 1);
     require(entry.descriptor >= 0x40000 && entry.events >= 0x40000,
             "CustomStage::RomView did not relocate stage descriptor and event list to upper ROM");
+    const auto scenery_donor_entry = StageCatalog::get(canonical, 3);
+    require(StageCatalog::Detail::pointer(active, entry.descriptor + 12u) ==
+            StageCatalog::Detail::pointer(canonical, scenery_donor_entry.descriptor + 12u),
+            "CustomStage::RomView did not wire descriptor+12 scenery stream from scenery_stage donor");
+    const uint32_t compiled_waves = StageCatalog::Detail::pointer(active, entry.descriptor + 8u);
+    require(compiled_waves >= 0x40000u,
+            "CustomStage::RomView did not relocate customized enemy wave stream at descriptor+8");
 
     // Verify event stream ordering, command-18 removal, custom event splicing, and 0xFFFF sentinel
     std::vector<std::pair<uint16_t, uint8_t>> compiled_events;
@@ -205,15 +460,19 @@ void test_rom_view_compilation(const Roms& canonical) {
         compiled_events.emplace_back(t, cmd);
     }
     require(compiled_events.size() >= 4, "CustomStage::RomView lost spliced custom events");
-    require(compiled_events.front().first == 5 && compiled_events.front().second == 2,
-            "CustomStage::RomView did not splice custom event (tick=5, cmd=2) at start");
+    require(compiled_events.front().first == 5 && compiled_events.front().second == 17,
+            "CustomStage::RomView did not splice custom event (tick=5, cmd=17) at start");
     require(compiled_events.back().second == 12,
             "CustomStage::RomView event stream does not end with stage-completion command 12");
+
+    // Execute both compiled streams through the real 68000 instruction port
+    execute_control_event_stream_68k(active, 1);
+    execute_enemy_wave_stream_68k(active, 1);
 
     // Check replace_events mode automatically appends terminal command 12 if omitted
     auto def_replace = def;
     def_replace.replace_events = true;
-    def_replace.custom_events = {{10, 2, {1, 0, 0, 0, 0}}, {25, 3, {2, 0, 0, 0, 0}}};
+    def_replace.custom_events = {{10, 17, {0, 0, 0, 0, 0}}, {25, 11, {2, 0, 0, 0, 0}}};
     CustomStage::RomView view_replace(canonical, def_replace);
     const auto rep_entry = StageCatalog::get(view_replace.rom(), 1);
     require(StageCatalog::Detail::word(view_replace.rom(), rep_entry.events + 0) == 10,
@@ -224,6 +483,38 @@ void test_rom_view_compilation(const Roms& canonical) {
             "replace_events did not append terminal command 12");
     require(StageCatalog::Detail::word(view_replace.rom(), rep_entry.events + 24) == 0xffff,
             "replace_events did not append 0xFFFF sentinel");
+    execute_control_event_stream_68k(view_replace.rom(), 1);
+
+    // Exercise all 19 valid $00DE90 stage control commands through 68000 caller_step
+    {
+        auto def_all_cmds = def;
+        def_all_cmds.replace_events = true;
+        def_all_cmds.custom_events = {
+            {2,  0,  {0, 0, 0, 0, 0}},       // music_transition sub 0
+            {4,  0,  {0, 0, 4, 0, 0}},       // music_transition sub 4
+            {6,  0,  {0, 0, 8, 0, 0}},       // music_transition sub 8
+            {8,  0,  {0, 0, 12, 0, 0}},      // music_transition sub 12
+            {10, 4,  {0, 0, 0, 0, 0}},       // set_horizon_flag
+            {12, 1,  {0, 0, 0, 0, 0}},       // clear_horizon_flags
+            {14, 20, {0, 1, 2, 0, 0}},       // set_horizon_scroll ($0102)
+            {16, 3,  {0, 0, 0, 0, 0}},       // clear_horizon_flags_alt
+            {18, 5,  {0, 0, 0, 0, 0}},       // nop_5
+            {20, 6,  {0, 0, 0, 0, 0}},       // nop_6
+            {22, 7,  {0, 0, 64, 0, 0}},      // set_horizon_target ($0040)
+            {24, 8,  {0, 0, 0, 0, 0}},       // set_ground_flag
+            {26, 9,  {0, 0, 0, 0, 0}},       // clear_ground_flag
+            {28, 10, {3, 0, 0, 0, 0}},       // set_scroll_state (3)
+            {30, 11, {5, 0, 0, 0, 0}},       // set_cloud_control (5)
+            {32, 13, {2, 0, 32, 0, 48}},     // set_camera_bounds (2, $0020, $0030)
+            {34, 15, {0, 0, 2, 0, 0}},       // set_stage_mode / landing ($0002)
+            {36, 14, {0, 0, 0, 0, 0}},       // refuel (clears $29C0CC)
+            {38, 17, {0, 0, 0, 0, 0}},       // special_road_enter ($0480, BCLR #5)
+            {40, 16, {0, 0, 0, 0, 0}},       // special_road_exit ($0402, BSET #5)
+            {42, 19, {7, 0, 0, 0, 0}}        // set_bank_drift_flag (7)
+        };
+        CustomStage::RomView view_all(canonical, def_all_cmds);
+        execute_control_event_stream_68k(view_all.rom(), 1);
+    }
 
     // Verify Shuffle::prepare_alternate_palette works seamlessly with CustomStage::RomView
     MainBus::Memory memory{};
@@ -413,6 +704,8 @@ void test_json_assets_and_validation(const Roms& canonical) {
         const auto def = CustomStage::Definition::load(path);
         CustomStage::RomView view(canonical, def);
         require(view.rom().maincpu.loaded, "Compiled asset ROM not marked loaded");
+        execute_control_event_stream_68k(view.rom(), def.slot);
+        execute_enemy_wave_stream_68k(view.rom(), def.slot);
         CustomStage::InteractiveController ctrl(def);
         ctrl.start();
         for (unsigned step = 0; step < 3600 && !ctrl.finished(); ++step) {
@@ -423,6 +716,52 @@ void test_json_assets_and_validation(const Roms& canonical) {
                     "Asset interactive stage failed demo() completion");
         }
     }
+
+    // Verify symbolic command mapping and round-trip against the $00DE90 ROM dispatch table
+    const std::pair<const char*, uint8_t> expected_control_names[] = {
+        {"music_transition", 0},
+        {"clear_horizon_flags", 1},
+        {"clear_horizon_flags_alt", 3},
+        {"set_horizon_flag", 4},
+        {"nop_5", 5},
+        {"nop_6", 6},
+        {"set_horizon_target", 7},
+        {"set_ground_flag", 8},
+        {"clear_ground_flag", 9},
+        {"set_scroll_state", 10},
+        {"set_cloud_control", 11},
+        {"stage_advance", 12},
+        {"set_camera_bounds", 13},
+        {"refuel", 14},
+        {"set_stage_mode", 15},
+        {"special_road_exit", 16},
+        {"special_road_enter", 17},
+        {"set_bank_drift_flag", 19},
+        {"set_horizon_scroll", 20}
+    };
+    for (const auto& [name, cmd] : expected_control_names) {
+        require(CustomStage::EventRecord::parse_control_command(name) == cmd,
+                "Symbolic control command mapped to wrong $00DE90 index");
+        require(CustomStage::EventRecord::parse_control_command(
+                    std::string(CustomStage::EventRecord::control_command_name(cmd))) == cmd,
+                "Control command name round-trip mismatch");
+    }
+
+    const auto trench = CustomStage::Definition::load("assets/custom_stages/twilight-trench-run.json");
+    require(trench.custom_events.size() == 4 &&
+            trench.custom_events[0].command == 11 &&
+            trench.custom_events[1].command == 20 &&
+            trench.custom_events[2].command == 10 &&
+            trench.custom_events[3].command == 1,
+            "twilight-trench-run.json symbolic events did not map to [11, 20, 10, 1]");
+
+    const auto canyon = CustomStage::Definition::load("assets/custom_stages/canyon-combat.json");
+    require(canyon.custom_events.size() == 4 &&
+            canyon.custom_events[0].command == 17 &&
+            canyon.custom_events[1].command == 11 &&
+            canyon.custom_events[2].command == 20 &&
+            canyon.custom_events[3].command == 16,
+            "canyon-combat.json symbolic events did not map to [17, 11, 20, 16]");
 
     rejects([] { CustomStage::Json::parse("{bad json"); }, "Accepted malformed JSON");
     rejects([] {
@@ -443,8 +782,44 @@ void test_json_assets_and_validation(const Roms& canonical) {
     }, "Accepted out-of-range RGB component");
     rejects([] {
         CustomStage::Definition::from_json(CustomStage::Json::parse(
+            R"({"version":1,"name":"X","objective":"combat","environment":"canyon","events":[{"tick":10,"command":2}]})"));
+    }, "Accepted unported event command 2 ($DE98)");
+    rejects([] {
+        CustomStage::Definition::from_json(CustomStage::Json::parse(
             R"({"version":1,"name":"X","objective":"combat","environment":"canyon","events":[{"tick":10,"command":18}]})"));
     }, "Accepted reserved event command 18");
+    rejects([] {
+        CustomStage::Definition::from_json(CustomStage::Json::parse(
+            R"({"version":1,"name":"X","objective":"combat","environment":"canyon","events":[{"tick":10,"command":21}]})"));
+    }, "Accepted out-of-range event command 21");
+    rejects([] {
+        CustomStage::Definition::from_json(CustomStage::Json::parse(
+            R"({"version":1,"name":"X","objective":"combat","environment":"canyon","events":[{"tick":10,"command":"music_transition","params":[0,0,2,0,0]}]})"));
+    }, "Accepted invalid music_transition subcommand word 2");
+    rejects([] {
+        CustomStage::Definition::from_json(CustomStage::Json::parse(
+            R"({"version":1,"name":"X","objective":"combat","environment":"canyon","enemy_waves":[{"tick":10,"command":10}]})"));
+    }, "Accepted out-of-range enemy_waves command 10");
+}
+
+void test_real_game_session(Roms& real_roms) {
+    for (const char* path : {"assets/custom_stages/twilight-trench-run.json",
+                             "assets/custom_stages/canyon-combat.json"}) {
+        const auto def = CustomStage::Definition::load(path);
+        GameSession session(real_roms);
+        session.start_custom_stage(def);
+        require(session.custom_stage_active() && session.custom_stage_controller() != nullptr,
+                "GameSession::start_custom_stage did not activate custom stage controller");
+
+        for (unsigned f = 0; f < 960; ++f) {
+            GameControls c = session.custom_stage_controller()->demo();
+            c.coin = (f >= 360 && f < 372);
+            c.start = (f >= 420 && f < 432);
+            require(session.advance(c), "CustomStage GameSession failed to advance frame");
+        }
+        require(session.info().number == 960u,
+                "Real GameSession did not complete 960 frames of custom stage execution");
+    }
 }
 
 void inspect_custom_stage(const Roms& canonical, const std::string& arg) {
@@ -457,22 +832,28 @@ void inspect_custom_stage(const Roms& canonical, const std::string& arg) {
     const unsigned pos = def.slot - 1u;
     const auto entry = StageCatalog::get(active, def.slot);
     const uint32_t pal0 = StageCatalog::Detail::pointer(active, 0x140da + pos * 4u);
+    const uint32_t waves = StageCatalog::Detail::pointer(active, entry.descriptor + 8u);
 
     const std::string title8(reinterpret_cast<const char*>(active.maincpu.rom + 0x2b6ac + pos * 8u), 8);
     const std::string banner32(reinterpret_cast<const char*>(active.maincpu.rom + 0x2ea16 + pos * 32u), 32);
 
     std::cout << "=== Compiled CustomStage::RomView ===\n"
               << "  Stage Name   : " << def.name << "\n"
-              << "  Target Slot  : " << def.slot << " (donor stage " << def.donor_stage() << ")\n"
+              << "  Target Slot  : " << def.slot << " (donor stage " << def.donor_stage()
+              << ", enemy donor " << def.enemy_stage.value_or(def.donor_stage())
+              << ", scenery donor " << def.scenery_stage.value_or(def.donor_stage()) << ")\n"
               << "  HUD Title    : [" << title8 << "] @ $2B6AC\n"
               << "  Stage Banner : [" << banner32 << "] @ $2EA16\n"
               << "  Music Byte   : 0x" << std::hex << unsigned(active.maincpu.rom[0x2b604 + pos]) << std::dec << " @ $2B604\n"
-              << "  Descriptor   : 0x" << std::hex << entry.descriptor << " (events @ 0x" << entry.events << ", palette0 @ 0x" << pal0 << ")\n"
+              << "  Descriptor   : 0x" << std::hex << entry.descriptor
+              << " (events @ 0x" << entry.events
+              << ", waves @ 0x" << waves
+              << ", palette0 @ 0x" << pal0 << ")\n"
               << "  Ocean RGB555 : sky=0x" << StageCatalog::Detail::word(active, pal0 + 34)
               << " horizon=0x" << StageCatalog::Detail::word(active, pal0 + 34 + 6 * 2)
               << " water=0x" << StageCatalog::Detail::word(active, pal0 + 34 + 13 * 2) << std::dec << "\n"
               << "  Scene Layers : " << def.layers.size() << "\n"
-              << "  Event Stream :\n";
+              << "  Control Events ($DE68 -> $DE90) :\n";
 
     for (uint32_t cur = entry.events;; cur += 8u) {
         const uint16_t t = StageCatalog::Detail::word(active, cur);
@@ -482,13 +863,17 @@ void inspect_custom_stage(const Roms& canonical, const std::string& arg) {
         }
         const uint8_t cmd = active.maincpu.rom[cur + 2u];
         std::cout << "    [0x" << std::hex << cur << std::dec << "] tick=" << t
-                  << " cmd=" << unsigned(cmd)
+                  << " cmd=" << unsigned(cmd) << " (" << CustomStage::EventRecord::control_command_name(cmd) << ")"
                   << " params=[" << unsigned(active.maincpu.rom[cur + 3u])
                   << "," << unsigned(active.maincpu.rom[cur + 4u])
                   << "," << unsigned(active.maincpu.rom[cur + 5u])
                   << "," << unsigned(active.maincpu.rom[cur + 6u])
                   << "," << unsigned(active.maincpu.rom[cur + 7u]) << "]\n";
     }
+
+    execute_control_event_stream_68k(active, def.slot);
+    execute_enemy_wave_stream_68k(active, def.slot);
+    std::cout << "  68000 Stream Execution : verified ($00DE68 control + $008122 enemy waves)\n";
 
     CustomStage::InteractiveController ctrl(def);
     ctrl.start();
@@ -530,6 +915,7 @@ int main(int argc, char** argv) try {
             test_rom_view_compilation(real_roms);
             test_variant_picker(real_roms);
             test_json_assets_and_validation(real_roms);
+            test_real_game_session(real_roms);
         }
     }
 

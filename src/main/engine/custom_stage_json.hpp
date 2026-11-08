@@ -322,10 +322,33 @@ struct SceneLayer {
     std::vector<LayerElement> elements;
 };
 
-// Native 8-byte X-Board event record ($DE68..$DE8C).
-// Bytes 0..1: 16-bit stage timer tick (shifted left 4 when compared against $29C006).
-// Byte 2: event command index (0..20, where 12 is stage advance and 18 is palette blend).
-// Bytes 3..7: command-specific parameters (formation ID, scenery table index, etc.).
+// Native 8-byte X-Board timed stream record ($DE68..$DE8C at descriptor+16, or
+// $8122..$82FA enemy wave stream at descriptor+8).
+// Bytes 0..1: 16-bit stage timer tick (compared against $29C006 >> 4).
+// Byte 2: command index.
+//   For stage control events ($DE68 -> JSR $DE90(PC,D0.W)):
+//     0  = music_transition    ($DE90 -> $DEE4: JMP $DEEC(PC,D0.W), word 4(A0) in {0,4,8,12})
+//     1  = clear_horizon_flags ($DE94 -> $DF64: BCLR #0,$29C201; BCLR #0,$FFFF8D36)
+//     2  = UNPORTED / UNUSED   ($DE98: not used by canonical ROM; rejected)
+//     3  = clear_horizon_flags_alt ($DE9C -> $DF64: BCLR #0,$29C201; BCLR #0,$FFFF8D36)
+//     4  = set_horizon_flag    ($DEA0 -> $DF74: BSET #0,$29C201)
+//     5  = nop_5               ($DEA4 -> $DF94: RTS)
+//     6  = nop_6               ($DEA8 -> $DF96: RTS)
+//     7  = set_horizon_target  ($DEAC -> $DF98: MOVE.W 4(A0),$29C07C)
+//     8  = set_ground_flag     ($DEB0 -> $DFA2: BSET #1,$FFFF8B6F)
+//     9  = clear_ground_flag   ($DEB4 -> $DFAA: BCLR #1,$FFFF8B6F)
+//     10 = set_scroll_state    ($DEB8 -> $DFB2: MOVE.B 3(A0),$29C0A1)
+//     11 = set_cloud_control   ($DEBC -> $DFBC: MOVE.B 3(A0),$FFFF8D6A)
+//     12 = stage_advance       ($DEC0 -> $DFC4: CLR.L $29C006; ADDQ.W #1,$29C060; ...)
+//     13 = set_camera_bounds   ($DEC4 -> $E022: 3(A0)->$29C0EF, 4(A0)->$29C0E6, 6(A0)->$29C0E8)
+//     14 = refuel              ($DEC8 -> $E03C: CLR.W $29C0CC)
+//     15 = set_stage_mode      ($DECC -> $E044: MOVE.W 4(A0),$29C0CC)
+//     16 = special_road_exit   ($DED0 -> $E062: MOVE.W #$0402,$29C320; BSET #5,$29C200)
+//     17 = special_road_enter  ($DED4 -> $E074: MOVE.W #$0480,$29C320; BCLR #5,$29C200)
+//     18 = preload_next_stage  ($DED8 -> $E086: reserved for boundary palette installation)
+//     19 = set_bank_drift_flag ($DEDC -> $E0A6: MOVE.B 3(A0),$FFFF8D7E)
+//     20 = set_horizon_scroll  ($DEE0 -> $DF7E: BSET #0,$29C201; BSET #0,$FFFF8D36; MOVE.W 4(A0),$FFFF8D38)
+// Bytes 3..7: command-specific parameters (3(A0)..7(A0)).
 struct EventRecord {
     uint16_t tick{};
     uint8_t command{};
@@ -338,6 +361,86 @@ struct EventRecord {
             params[0], params[1], params[2], params[3], params[4]
         };
     }
+
+    constexpr uint16_t word4() const {
+        return static_cast<uint16_t>((uint16_t(params[1]) << 8) | uint16_t(params[2]));
+    }
+
+    constexpr uint16_t word6() const {
+        return static_cast<uint16_t>((uint16_t(params[3]) << 8) | uint16_t(params[4]));
+    }
+
+    void validate_control() const {
+        if (tick == 0xffffu)
+            throw std::runtime_error("Event tick 0xFFFF is reserved for the stream sentinel");
+        if (command == 2u)
+            throw std::runtime_error("Stage control command 2 ($DE98) is unused in canonical ROM and unported");
+        if (command == 18u)
+            throw std::runtime_error("Event command 18 is reserved for boundary palette installation");
+        if (command > 20u)
+            throw std::runtime_error("Stage control command out of $DE90 jump table range (0..20)");
+        if (command == 0u) {
+            const uint16_t sub = word4();
+            if (sub != 0u && sub != 4u && sub != 8u && sub != 12u)
+                throw std::runtime_error("music_transition (command 0) requires word 4(A0) in {0, 4, 8, 12}");
+        }
+    }
+
+    void validate_enemy_wave() const {
+        if (tick == 0xffffu)
+            throw std::runtime_error("Enemy wave tick 0xFFFF is reserved for the stream sentinel");
+        if (command > 2u)
+            throw std::runtime_error("Enemy wave command out of supported $815C range (0..2)");
+    }
+
+    static uint8_t parse_control_command(const std::string& c) {
+        if (c == "music_transition") return 0u;
+        if (c == "clear_horizon_flags") return 1u;
+        if (c == "clear_horizon_flags_alt") return 3u;
+        if (c == "set_horizon_flag") return 4u;
+        if (c == "nop_5") return 5u;
+        if (c == "nop_6") return 6u;
+        if (c == "set_horizon_target") return 7u;
+        if (c == "set_ground_flag") return 8u;
+        if (c == "clear_ground_flag") return 9u;
+        if (c == "set_scroll_state") return 10u;
+        if (c == "set_cloud_control") return 11u;
+        if (c == "stage_advance") return 12u;
+        if (c == "set_camera_bounds") return 13u;
+        if (c == "refuel") return 14u;
+        if (c == "set_stage_mode" || c == "landing") return 15u;
+        if (c == "special_road_exit") return 16u;
+        if (c == "special_road_enter") return 17u;
+        if (c == "set_bank_drift_flag") return 19u;
+        if (c == "set_horizon_scroll") return 20u;
+        throw std::runtime_error("Unknown stage control event command: " + c);
+    }
+
+    static std::string_view control_command_name(uint8_t cmd) {
+        switch (cmd) {
+        case 0u:  return "music_transition";
+        case 1u:  return "clear_horizon_flags";
+        case 3u:  return "clear_horizon_flags_alt";
+        case 4u:  return "set_horizon_flag";
+        case 5u:  return "nop_5";
+        case 6u:  return "nop_6";
+        case 7u:  return "set_horizon_target";
+        case 8u:  return "set_ground_flag";
+        case 9u:  return "clear_ground_flag";
+        case 10u: return "set_scroll_state";
+        case 11u: return "set_cloud_control";
+        case 12u: return "stage_advance";
+        case 13u: return "set_camera_bounds";
+        case 14u: return "refuel";
+        case 15u: return "set_stage_mode";
+        case 16u: return "special_road_exit";
+        case 17u: return "special_road_enter";
+        case 18u: return "preload_next_stage";
+        case 19u: return "set_bank_drift_flag";
+        case 20u: return "set_horizon_scroll";
+        default:  return "unknown";
+        }
+    }
 };
 
 struct Definition {
@@ -349,14 +452,18 @@ struct Definition {
     Environment environment = Environment::carrier;
 
     // Native ROM compilation targets:
-    unsigned slot = 1;                  // 1-based stage slot in the ROM progression (1..22)
-    unsigned source_stage = 0;          // 0 = auto-select donor stage from environment/objective
-    std::optional<uint8_t> music_cmd;   // Optional override for $2B604 music command byte
-    std::optional<uint16_t> road_setup; // Optional override for $32196 road word
-    std::optional<uint16_t> sky_setup;  // Optional override for $32324 setup word
-    std::optional<uint16_t> curve_setup;// Optional override for $32452 setup word
-    bool replace_events = false;        // True = replace donor events with custom_events; False = splice
+    unsigned slot = 1;                        // 1-based stage slot in the ROM progression (1..22)
+    unsigned source_stage = 0;                // 0 = auto-select donor stage from environment/objective
+    std::optional<unsigned> enemy_stage;      // Optional donor stage (1..23) for descriptor+8 ($FFFF8A00 enemy stream)
+    std::optional<unsigned> scenery_stage;    // Optional donor stage (1..23) for descriptor+12 ($FFFF8A04 scenery stream)
+    std::optional<uint8_t> music_cmd;         // Optional override for $2B604 music command byte
+    std::optional<uint16_t> road_setup;       // Optional override for $32196 road word
+    std::optional<uint16_t> sky_setup;        // Optional override for $32324 setup word
+    std::optional<uint16_t> curve_setup;      // Optional override for $32452 setup word
+    bool replace_events = false;              // True = replace donor $DE68 events; False = splice
     std::vector<EventRecord> custom_events;
+    bool replace_enemy_waves = false;         // True = replace donor $8122 enemy waves; False = splice
+    std::vector<EventRecord> custom_enemy_waves;
 
     // Interactive flight/sequence parameters:
     double length = 300.0;
@@ -469,8 +576,9 @@ struct Definition {
     static Definition from_json(const Json& doc) {
         doc.keys({
             "$schema", "version", "name", "objective", "environment",
-            "slot", "source_stage", "music", "road_setup", "sky_setup", "curve_setup",
-            "replace_events", "events",
+            "slot", "source_stage", "enemy_stage", "scenery_stage",
+            "music", "road_setup", "sky_setup", "curve_setup",
+            "replace_events", "events", "replace_enemy_waves", "enemy_waves",
             "length", "width", "start_distance", "start_height",
             "speed", "glideslope", "tanker_span", "seamless_takeoff",
             "presentation", "layers"
@@ -509,6 +617,10 @@ struct Definition {
             def.slot = static_cast<unsigned>(sl->integer(1, 22));
         if (const auto* src = doc.find("source_stage"))
             def.source_stage = static_cast<unsigned>(src->integer(1, 64));
+        if (const auto* es = doc.find("enemy_stage"))
+            def.enemy_stage = static_cast<unsigned>(es->integer(1, 64));
+        if (const auto* scs = doc.find("scenery_stage"))
+            def.scenery_stage = static_cast<unsigned>(scs->integer(1, 64));
         if (const auto* mus = doc.find("music")) {
             if (mus->kind == Json::Kind::number) {
                 def.music_cmd = static_cast<uint8_t>(mus->integer(0, 255));
@@ -546,25 +658,61 @@ struct Definition {
                 if (cmd_node->kind == Json::Kind::number) {
                     rec.command = static_cast<uint8_t>(cmd_node->integer(0, 255));
                 } else {
-                    const auto c = cmd_node->text();
-                    if (c == "enemy_wave") rec.command = 2u;
-                    else if (c == "scenery") rec.command = 3u;
-                    else if (c == "special_road_exit") rec.command = 10u;
-                    else if (c == "special_road_enter") rec.command = 11u;
-                    else if (c == "stage_advance") rec.command = 12u;
-                    else if (c == "refuel") rec.command = 14u;
-                    else if (c == "landing") rec.command = 15u;
-                    else throw std::runtime_error("Unknown event command: " + c);
+                    rec.command = EventRecord::parse_control_command(cmd_node->text());
                 }
-                if (rec.command == 18u)
-                    throw std::runtime_error("Event command 18 is reserved for boundary palette installation");
                 if (const auto* p_node = ev_node.find("params")) {
                     if (p_node->kind != Json::Kind::array || p_node->array.size() > 5u)
                         throw std::runtime_error("Event params must be an array of at most 5 bytes");
                     for (size_t i = 0; i < p_node->array.size(); ++i)
                         rec.params[i] = static_cast<uint8_t>(p_node->array[i].integer(0, 255));
                 }
+                rec.validate_control();
                 def.custom_events.push_back(rec);
+            }
+        }
+        if (const auto* rew = doc.find("replace_enemy_waves"))
+            def.replace_enemy_waves = rew->flag();
+        if (const auto* waves = doc.find("enemy_waves")) {
+            if (waves->kind != Json::Kind::array)
+                throw std::runtime_error("enemy_waves must be a JSON array");
+            for (const auto& w_node : waves->array) {
+                w_node.keys({"tick", "command", "formation", "params"});
+                const auto* tick_node = w_node.find("tick");
+                if (!tick_node)
+                    throw std::runtime_error("Enemy wave requires tick");
+                EventRecord rec;
+                rec.tick = static_cast<uint16_t>(tick_node->integer(0, 0xfffeu));
+                if (const auto* cmd_node = w_node.find("command")) {
+                    if (cmd_node->kind == Json::Kind::number) {
+                        rec.command = static_cast<uint8_t>(cmd_node->integer(0, 255));
+                    } else {
+                        const auto c = cmd_node->text();
+                        if (c == "standard" || c == "formation_0" || c == "enemy_wave") rec.command = 0u;
+                        else if (c == "parameterized" || c == "formation_1") rec.command = 1u;
+                        else if (c == "dual_param" || c == "formation_2") rec.command = 2u;
+                        else if (c == "formation_3") rec.command = 3u;
+                        else if (c == "formation_4") rec.command = 4u;
+                        else if (c == "wave_param_5") rec.command = 5u;
+                        else if (c == "wave_param_6") rec.command = 6u;
+                        else if (c == "wave_param_7") rec.command = 7u;
+                        else if (c == "wave_param_8") rec.command = 8u;
+                        else if (c == "wave_nop_9") rec.command = 9u;
+                        else throw std::runtime_error("Unknown enemy wave command: " + c);
+                    }
+                }
+                const auto* form_node = w_node.find("formation");
+                if (form_node)
+                    rec.params[0] = static_cast<uint8_t>(form_node->integer(0, 255));
+                if (const auto* p_node = w_node.find("params")) {
+                    const size_t base = form_node ? 1u : 0u;
+                    const size_t max_len = 5u - base;
+                    if (p_node->kind != Json::Kind::array || p_node->array.size() > max_len)
+                        throw std::runtime_error("Enemy wave params array exceeds 8-byte record capacity");
+                    for (size_t i = 0; i < p_node->array.size(); ++i)
+                        rec.params[base + i] = static_cast<uint8_t>(p_node->array[i].integer(0, 255));
+                }
+                rec.validate_enemy_wave();
+                def.custom_enemy_waves.push_back(rec);
             }
         }
 

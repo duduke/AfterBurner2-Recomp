@@ -14,7 +14,7 @@ Instead of replacing `GameSession` with a separate floating-point renderer or pr
 | --- | --- | --- |
 | **Execution Owner** | Separate `CustomStage::Session` & `CustomStageView` bypassing `GameSession` in `afterburner2` | Runs directly inside [`GameSession`](../src/main/engine/game_session.hpp) on the live 68000 Main/Sub CPUs |
 | **Stage Compilation** | JSON only configures a standalone 60 Hz float simulation | [`CustomStage::RomView`](../src/main/engine/custom_stage_rom.hpp) compiles JSON stages into an isolated `0x80000` upper-ROM view (`0x40000..0x80000`) |
-| **Event Bytecode** | Not connected to X-Board `$DE68` event streams | Compiles custom 8-byte X-Board event records (`enemy_wave`, `scenery`, `special_road_enter`, `special_road_exit`, `refuel`, `landing`, `stage_advance`) |
+| **Event & Wave Bytecode** | Not connected to X-Board `$DE68` or `$8122` streams | Compiles verified 8-byte `$DE68` -> `$DE90` control events (`special_road_enter`, `special_road_exit`, `set_cloud_control`, `set_horizon_scroll`, `set_scroll_state`, `clear_horizon_flags`, `set_camera_bounds`, `music_transition`, `refuel`, `landing`, `stage_advance`) and `$8122` -> `$815C` enemy wave streams (`enemy_waves`, `enemy_stage`, `scenery_stage`) |
 | **Palettes & Ocean** | Drawn as 2D SDL rectangles | Compiles RGB888 ocean/sky colors into 15-bit X-Board RGB555 words in relocated `$140DA` palette blocks and cold-start aliases (`$2BC60`) |
 | **HUD Title & Banner** | Custom SDL text only | Encodes stage name into the native 8-byte `$2B6AC` HUD title and 32-byte `$2EA16` stage banner in ROM |
 | **Pre-Takeoff Gate** | Pre-runs `XBoardGame` for 600 frames and caches `vector<vector<RGB888>>` | [`InteractiveController::sync_board`](../src/main/engine/custom_stage_interactive.hpp) holds the live 68000 sequence timer in place (`$FFFF90AE` for carrier state 2; `$1122E` `+42` for airbase state 8) until full throttle |
@@ -32,7 +32,9 @@ Extending the proven [`Shuffle::RomView`](../src/main/engine/shuffle_rom.hpp) pa
 2. **Music Continuity (`$2B604`)**: Resolves `0x80` ("continue predecessor song") against the canonical stage order or writes an explicit track command (`maximum_power`, `final_take_off`, `red_out`, `super_stripe`, `after_burner`, `city_202`).
 3. **Native Tilemap Text (`$2B6AC` & `$2EA16`)**: Encodes the custom stage name into the 8-byte HUD stage title table at `$2B6AC` and the 32-byte stage-intro banner table at `$2EA16`.
 4. **Relocated Palette Blocks & Custom Ocean RGB555 (`$140DA..$1424E`)**: Relocates all five per-stage palette blocks into `0x40000+`. When `presentation.ocean` is specified, converts `sky`, `haze`, and `water` RGB888 triples into X-Board 15-bit RGB555 words across the 14-word horizon/sea gradient (`+34..+61`) and primary sky/ground descriptor words, then updates cold-start palette aliases (`$2BC60`, `$2CFF4`, `$2DBF4`, `$2BF60`).
-5. **Compiled 8-Byte Event Bytecode (`$3249A` -> Descriptor `+16`)**: Filters out old-adjacency `command == 18` records, splices or replaces custom 8-byte event records sorted by 16-bit stage timer tick, guarantees a terminal `command == 12` stage-advance record, and appends the `0xFFFF` sentinel.
+5. **Compiled 8-Byte Stage Control (`descriptor + 16` -> `$FFFF8A08`) & Enemy Wave (`descriptor + 8` -> `$FFFF8A00`) Streams**:
+   - **Control Events (`$00DE68` -> `$00DE90` jump table)**: Validates every command against the translated 68000 `$00DE90` jump table (`0, 1, 3..17, 19, 20`; explicitly rejecting unported command `2` at `$DE98` and reserved boundary-preload command `18`), splices or replaces custom 8-byte event records sorted by 16-bit stage timer tick (`$29C006 >> 4`), guarantees a terminal `command == 12` (`stage_advance`) record, and appends the `0xFFFF` sentinel.
+   - **Enemy Waves (`$008122` -> `$00815C` jump table) & Scenery (`$006874` -> `$0068D2`)**: Supports selecting independent donor stages via `enemy_stage` (`descriptor + 8`) and `scenery_stage` (`descriptor + 12`), plus splicing or replacing 8-byte enemy wave records (`enemy_waves`) targeting the `$0003F000` formation table.
 
 ### Pillar 2: Live Board-Synchronized Interactive Controller ([`CustomStage::InteractiveController`](../src/main/engine/custom_stage_interactive.hpp))
 
@@ -92,10 +94,9 @@ Custom stages are validated against [`assets/custom_stages/stage.schema.json`](.
   "environment": "canyon",
   "slot": 1,
   "source_stage": 8,
+  "enemy_stage": 16,
+  "scenery_stage": 8,
   "music": "super_stripe",
-  "road_setup": 2,
-  "sky_setup": 1,
-  "curve_setup": 2,
   "replace_events": false,
   "presentation": {
     "rom_environment": true,
@@ -110,12 +111,37 @@ Custom stages are validated against [`assets/custom_stages/stage.schema.json`](.
   },
   "events": [
     { "tick": 16, "command": "special_road_enter", "params": [0, 0, 0, 0, 0] },
-    { "tick": 32, "command": "enemy_wave",         "params": [1, 0, 0, 0, 0] },
-    { "tick": 64, "command": "scenery",            "params": [2, 0, 0, 0, 0] },
+    { "tick": 32, "command": "set_cloud_control",  "params": [1, 0, 0, 0, 0] },
+    { "tick": 64, "command": "set_horizon_scroll", "params": [0, 0, 1, 0, 0] },
     { "tick": 96, "command": "special_road_exit",  "params": [0, 0, 0, 0, 0] }
+  ],
+  "enemy_waves": [
+    { "tick": 24, "command": "standard",      "formation": 1, "params": [0, 0, 0, 0] },
+    { "tick": 56, "command": "parameterized", "formation": 2, "params": [0, 16, 0, 0] }
   ]
 }
 ```
+
+### Verified `$00DE90` Stage Control Commands (`events`)
+
+| Command | Name | 68000 Handler | Parameter Contract & Hardware Register Effect |
+| --- | --- | --- | --- |
+| `0` | `music_transition` | `$DE90` -> `$DEE4` | `4(A0)` word in `{0, 4, 8, 12}` selects `$DEEC + D0.W` sound/flag transition |
+| `1`, `3` | `clear_horizon_flags`, `clear_horizon_flags_alt` | `$DE94` / `$DE9C` -> `$DF64` | `BCLR #0,($29C201).L; BCLR #0,($8D36).W` |
+| `4` | `set_horizon_flag` | `$DEA0` -> `$DF74` | `BSET #0,($29C201).L` |
+| `5`, `6` | `nop_5`, `nop_6` | `$DEA4` / `$DEA8` -> `$DF94` / `$DF96` | No-op (`RTS`) |
+| `7` | `set_horizon_target` | `$DEAC` -> `$DF98` | Writes 16-bit word `4(A0)` to `$29C07C` |
+| `8`, `9` | `set_ground_flag`, `clear_ground_flag` | `$DEB0` / `$DEB4` -> `$DFA2` / `$DFAA` | `BSET` / `BCLR #1,($8B6F).W` |
+| `10` | `set_scroll_state` | `$DEB8` -> `$DFB2` | Writes byte `3(A0)` to `$29C0A1` |
+| `11` | `set_cloud_control` | `$DEBC` -> `$DFBC` | Writes byte `3(A0)` to `$FFFF8D6A` |
+| `12` | `stage_advance` | `$DEC0` -> `$DFC4` | Clears `$29C006`, increments `$29C060`, advances stage |
+| `13` | `set_camera_bounds` | `$DEC4` -> `$E022` | Writes byte `3(A0)` -> `$29C0EF`, word `4(A0)` -> `$29C0E6`, word `6(A0)` -> `$29C0E8` |
+| `14` | `refuel` | `$DEC8` -> `$E03C` | `CLR.W ($29C0CC).L` |
+| `15` | `set_stage_mode` (`landing`) | `$DECC` -> `$E044` | Writes 16-bit word `4(A0)` to `$29C0CC` |
+| `16` | `special_road_exit` | `$DED0` -> `$E062` | `MOVE.W #$0402,($29C320).L; BSET #5,($29C200).L` |
+| `17` | `special_road_enter` | `$DED4` -> `$E074` | `MOVE.W #$0480,($29C320).L; BCLR #5,($29C200).L` |
+| `19` | `set_bank_drift_flag` | `$DEDC` -> `$E0A6` | Writes byte `3(A0)` to `$FFFF8D7E` |
+| `20` | `set_horizon_scroll` | `$DEE0` -> `$DF7E` | `BSET #0,($29C201).L; BSET #0,($8D36).W; MOVE.W 4(A0),($8D38).W` |
 
 ---
 
@@ -125,12 +151,12 @@ Custom stages are validated against [`assets/custom_stages/stage.schema.json`](.
 # Run the ROM-free custom stage regression & mutation suite:
 python3 tools/workflow.py run test-custom-stages check-custom-stage-mutations
 
-# Verify against the user's CRC-checked aburner2 ROM set when available:
+# Verify against the user's CRC-checked aburner2 ROM set (including 960-frame GameSession execution):
 python3 tools/workflow.py run verify-custom-stages-rom
 
-# Inspect the compiled upper-ROM layout, RGB555 words, event bytecode, and autopilot timeline of a stage:
+# Inspect the compiled upper-ROM layout, RGB555 words, event bytecode, 68000 execution, and autopilot timeline:
 ./build/custom_stage_rom_regression --inspect assets/custom_stages/twilight-trench-run.json
 ```
 
-- [`tests/custom_stage_rom_regression.cpp`](../tests/custom_stage_rom_regression.cpp): Verifies `CustomStage::RomView` canonical ROM immutability, upper-ROM allocation, setup/DIP/music/title/banner tables, RGB555 ocean palette compilation, event stream sorting/splicing/replacement and terminal `command == 12` + `0xFFFF` invariants, `Shuffle::prepare_alternate_palette` compatibility, `VariantPicker` non-repeating cycles, `InteractiveController` autopilot completion across all presets, full-throttle gate, live 68000 RAM synchronization (`$FFFF90AE` and `$1122E` `+42`), `Guidance`/`ShadowState` math, and all `assets/custom_stages/*.json` definitions.
-- [`tools/check_custom_stage_mutations.py`](../tools/check_custom_stage_mutations.py): Verifies that 6 deliberate mutations across `custom_stage_rom.hpp` and `custom_stage_interactive.hpp` are rejected.
+- [`tests/custom_stage_rom_regression.cpp`](../tests/custom_stage_rom_regression.cpp): Verifies `CustomStage::RomView` canonical ROM immutability, upper-ROM allocation, setup/DIP/music/title/banner tables, RGB555 ocean palette compilation, event and enemy wave stream sorting/splicing/replacement, real 68000 execution (`OMainIrqService::caller_step` stepping through `$00DE68..$00DE8E` and `$008122..$0082FA`) across all 19 `$00DE90` control commands and all `assets/custom_stages/*.json` definitions, full `GameSession` execution when ROMs are available, `Shuffle::prepare_alternate_palette` compatibility, `VariantPicker` non-repeating cycles, `InteractiveController` autopilot completion, full-throttle gate, live 68000 RAM synchronization (`$FFFF90AE` and `$1122E` `+42`), and `Guidance`/`ShadowState` math.
+- [`tools/check_custom_stage_mutations.py`](../tools/check_custom_stage_mutations.py): Verifies that 8 deliberate mutations across `custom_stage_rom.hpp`, `custom_stage_json.hpp`, and `custom_stage_interactive.hpp` (including mapping `special_road_enter` to command `11` or allowing unported command `2`) are rejected.

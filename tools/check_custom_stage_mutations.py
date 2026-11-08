@@ -31,6 +31,19 @@ ROM_MUTATIONS = [
     ),
 ]
 
+JSON_MUTATIONS = [
+    (
+        "allow-unported-command-2",
+        "if (command == 2u)\n            throw std::runtime_error(\"Stage control command 2 ($DE98) is unused in canonical ROM and unported\");",
+        "(void)0;",
+    ),
+    (
+        "swap-special-road-enter-to-cmd-11",
+        "if (c == \"special_road_enter\") return 17u;",
+        "if (c == \"special_road_enter\") return 11u;",
+    ),
+]
+
 INTERACTIVE_MUTATIONS = [
     (
         "bypass-full-throttle-gate",
@@ -49,13 +62,19 @@ def main():
     logs = ROOT / "build/oracle/custom_stage_mutations"
     logs.mkdir(parents=True, exist_ok=True)
     rom_source = (ROOT / "src/main/engine/custom_stage_rom.hpp").read_text()
+    json_source = (ROOT / "src/main/engine/custom_stage_json.hpp").read_text()
     interactive_source = (ROOT / "src/main/engine/custom_stage_interactive.hpp").read_text()
     compiler = shlex.split(os.environ.get("CXX", "c++"))
     flags = shlex.split(os.environ.get("CXXFLAGS", "-std=c++20 -Wall -Wextra -O2"))
+    prebuilt_objs = sorted(str(p) for p in (ROOT / "build/check_obj/src").rglob("*.o"))
+    if not prebuilt_objs:
+        raise RuntimeError("Missing build/check_obj/src/*.o; run make test-custom-stages first")
 
     cases = [("baseline", None, "", "")]
     for name, before, after in ROM_MUTATIONS:
         cases.append((name, "rom", before, after))
+    for name, before, after in JSON_MUTATIONS:
+        cases.append((name, "json", before, after))
     for name, before, after in INTERACTIVE_MUTATIONS:
         cases.append((name, "interactive", before, after))
 
@@ -63,35 +82,39 @@ def main():
         overlay = Path(temporary)
         (overlay / "engine").mkdir()
         rom_header = overlay / "engine/custom_stage_rom.hpp"
+        json_header = overlay / "engine/custom_stage_json.hpp"
         interactive_header = overlay / "engine/custom_stage_interactive.hpp"
 
         for name, target, before, after in cases:
+            rom_header.write_text(rom_source)
+            json_header.write_text(json_source)
+            interactive_header.write_text(interactive_source)
             if target == "rom":
                 if rom_source.count(before) != 1:
                     raise RuntimeError(f"{name}: mutation anchor changed in custom_stage_rom.hpp")
                 rom_header.write_text(rom_source.replace(before, after))
-                interactive_header.write_text(interactive_source)
+            elif target == "json":
+                if json_source.count(before) != 1:
+                    raise RuntimeError(f"{name}: mutation anchor changed in custom_stage_json.hpp")
+                json_header.write_text(json_source.replace(before, after))
             elif target == "interactive":
                 if interactive_source.count(before) != 1:
                     raise RuntimeError(f"{name}: mutation anchor changed in custom_stage_interactive.hpp")
-                rom_header.write_text(rom_source)
                 interactive_header.write_text(interactive_source.replace(before, after))
-            else:
-                rom_header.write_text(rom_source)
-                interactive_header.write_text(interactive_source)
 
             binary = overlay / name
-            command = compiler + flags + [
-                "-I" + str(overlay),
-                "-Isrc/main",
-                "tests/custom_stage_rom_regression.cpp",
-                "src/main/roms.cpp",
-                "src/main/romloader.cpp",
-                "src/main/engine/mainbus.cpp",
-                "src/main/engine/subbus.cpp",
-                "-o",
-                str(binary),
-            ]
+            command = (
+                compiler
+                + flags
+                + [
+                    "-pthread",
+                    "-I" + str(overlay),
+                    "-Isrc/main",
+                    "tests/custom_stage_rom_regression.cpp",
+                ]
+                + prebuilt_objs
+                + ["-o", str(binary)]
+            )
             with (logs / f"{name}-build.log").open("w") as log:
                 subprocess.run(command, cwd=ROOT, check=True, stdout=log, stderr=subprocess.STDOUT)
             result = subprocess.run([str(binary)], cwd=ROOT, capture_output=True, text=True)

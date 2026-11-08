@@ -1396,9 +1396,9 @@ test: test-shuffle-rom
 verify-stage1: verify-shuffle-rom
 
 # Custom stages compile into an isolated upper-ROM view alongside interactive sequence control.
-build/custom_stage_rom_regression: tests/custom_stage_rom_regression.cpp src/main/engine/custom_stage_json.hpp src/main/engine/custom_stage_rom.hpp src/main/engine/custom_stage_interactive.hpp src/main/engine/shuffle_rom.hpp src/main/engine/stage_catalog.hpp src/main/roms.cpp src/main/romloader.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp
+build/custom_stage_rom_regression: $(call check_objs,tests/custom_stage_rom_regression.cpp $(filter-out src/main/main.cpp,$(SRCS)))
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Isrc/main tests/custom_stage_rom_regression.cpp src/main/roms.cpp src/main/romloader.cpp src/main/engine/mainbus.cpp src/main/engine/subbus.cpp -o $@
+	$(CXX) $(CXXFLAGS) -pthread $^ -o $@
 test-custom-stages: build/custom_stage_rom_regression
 	./build/custom_stage_rom_regression
 verify-custom-stages-rom: build/custom_stage_rom_regression

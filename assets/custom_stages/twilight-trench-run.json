@@ -6,10 +6,9 @@
   "environment": "runway",
   "slot": 1,
   "source_stage": 5,
+  "enemy_stage": 2,
+  "scenery_stage": 5,
   "music": "city_202",
-  "road_setup": 2,
-  "sky_setup": 1,
-  "curve_setup": 3,
   "replace_events": false,
   "length": 2400,
   "width": 44,
@@ -32,23 +31,31 @@
   "events": [
     {
       "tick": 12,
-      "command": "special_road_enter",
-      "params": [0, 0, 0, 0, 0]
+      "command": "set_cloud_control",
+      "params": [1, 0, 0, 0, 0]
     },
     {
       "tick": 24,
-      "command": "enemy_wave",
-      "params": [2, 0, 0, 0, 0]
+      "command": "set_horizon_scroll",
+      "params": [0, 0, 2, 0, 0]
     },
     {
       "tick": 48,
-      "command": "scenery",
+      "command": "set_scroll_state",
       "params": [1, 0, 0, 0, 0]
     },
     {
       "tick": 80,
-      "command": "special_road_exit",
+      "command": "clear_horizon_flags",
       "params": [0, 0, 0, 0, 0]
+    }
+  ],
+  "enemy_waves": [
+    {
+      "tick": 20,
+      "command": "standard",
+      "formation": 1,
+      "params": [0, 0, 0, 0]
     }
   ],
   "layers": [
