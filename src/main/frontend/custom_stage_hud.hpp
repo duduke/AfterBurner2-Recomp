@@ -10,9 +10,10 @@
 
 namespace Frontend {
 
-// Passive SDL3 overlay for custom stage declarative layers and interactive
-// guidance symbology (Ace Combat ILS localizer/glideslope bars, velocity vector,
-// refueling contact diamonds, and service progress). Never writes board state.
+// Passive SDL3 overlay for interactive guidance symbology (Ace Combat ILS
+// localizer/glideslope bars, velocity vector, refueling contact diamonds, and
+// service progress). Stage layers are drawn by NativeCustomStage. Never writes
+// board state.
 class CustomStageHud {
 public:
     static void draw(SDL_Renderer* renderer,const GameSession& game) {
@@ -26,8 +27,7 @@ public:
         SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
 
         const CustomStage::Camera cam{ctrl->x,ctrl->height,198.0-ctrl->pitch*42.0,480.0,34.0};
-        draw_scene_layers(renderer,*def,*ctrl,cam);
-        if(!ctrl->combat()) {
+        if(!ctrl->combat() && game.custom_stage_in_slot()) {
             draw_guidance_symbology(renderer,*def,*ctrl,cam);
         }
 
@@ -53,29 +53,6 @@ private:
         SDL_RenderLine(renderer,cx+radius,cy,cx,cy+radius);
         SDL_RenderLine(renderer,cx,cy+radius,cx-radius,cy);
         SDL_RenderLine(renderer,cx-radius,cy,cx,cy-radius);
-    }
-
-    static void draw_scene_layers(SDL_Renderer* renderer,const CustomStage::Definition& def,const CustomStage::InteractiveController& ctrl,const CustomStage::Camera& cam) {
-        for(const auto& layer:def.layers) {
-            for(const auto& el:layer.elements) {
-                if(layer.space==CustomStage::SceneLayer::Space::screen) {
-                    const float sx=float(el.x/3.0);
-                    const float sy=float(el.y*224.0/600.0);
-                    const float sw=std::max(1.f,float(el.width/3.0));
-                    const float sh=std::max(1.f,float(el.height*224.0/600.0));
-                    draw_rect(renderer,sx-sw*0.5f,sy-sh*0.5f,sw,sh,el.color[0],el.color[1],el.color[2],el.color[3]);
-                } else {
-                    const double rel_z=el.z+ctrl.surface_start();
-                    const auto proj=cam.project(el.x,el.y,rel_z);
-                    if(!proj.visible)continue;
-                    const float sx=proj.x/3.0f;
-                    const float sy=proj.y*224.0f/600.0f;
-                    const float sw=std::max(1.f,float(cam.span(el.width,rel_z)/3.0));
-                    const float sh=std::max(1.f,float(cam.span(el.height,rel_z)*224.0/600.0));
-                    draw_rect(renderer,sx-sw*0.5f,sy-sh*0.5f,sw,sh,el.color[0],el.color[1],el.color[2],el.color[3]);
-                }
-            }
-        }
     }
 
     static void draw_guidance_symbology(SDL_Renderer* renderer,const CustomStage::Definition& def,const CustomStage::InteractiveController& ctrl,const CustomStage::Camera& cam) {

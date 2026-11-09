@@ -52,37 +52,256 @@ Rendered as a non-intrusive SDL3 overlay inside `afterburner2`'s safe viewport w
 
 - **Ace Combat-Style ILS Symbology**: Localizer vertical bar, glideslope horizontal bar, fixed reference cross, and flight-path velocity vector ring.
 - **Refueling Capture Diamonds**: Fixed probe diamond and dynamic tanker offset diamond that expands as closure approaches contact distance (`12.0 m`) and locks green on capture.
-- **Declarative Screen & World Layers**: Sorted by `order`, supporting `screen` and `world` projection spaces (`rectangle` and `image` elements).
+- **Declarative Screen & World Layers**: Sorted by `order`, supporting `screen` and `world` projection spaces (`rectangle` and `image` elements), drawn by [`Frontend::NativeCustomStage`](../src/main/frontend/native_custom_stage.hpp). See [External Stages and Assets](#4-external-stages-and-assets).
 
 ---
 
-## 3. Running Custom Stages
+## 3. Loading Custom Stages
 
-Launch a built-in preset or JSON stage file directly from `afterburner2`:
+### From the menu
+
+Choose **Custom Stage** at startup, or **Change Mode → Custom Stage** in the pause
+menu. The page has one row per job:
+
+| Row | What it does |
+| --- | --- |
+| **Stage** | Left/Right picks a stage: the built-in presets plus anything found in the folders listed below |
+| **Open Stage File** | File dialog for a stage `.json` or a stage pack `.zip` |
+| **Open Stage Folder** | Folder dialog for a folder holding `stage.json` |
+| **Add Assets Folder / Zip** | Adds extra art and audio for the stage to use. Add as many as you like; the newest one wins when two contain the same file |
+| **Asset Packs** | Shows what is added. Enter clears the list |
+| **Start Custom Stage** | Validates everything, then starts. A bad stage leaves your current run untouched and shows a **Load Error** row with the reason |
+
+Stages are listed from `custom_stages/` next to where you run the game,
+`assets/custom_stages/`, `assets/custom_stages/packs/`, and `custom_stages/` in the
+game's preferences folder.
+
+During play, **F5 reloads the stage and all its assets from disk** and restarts it,
+so you can edit a file and see the result immediately. If the edited stage has a
+problem, the reason goes to the console and the last good version restarts instead.
+
+Starting a stage takes several seconds: it boots the board and flies the opening
+frames hidden, as Practice does.
+
+### From the command line
 
 ```bash
 # Built-in presets:
 ./afterburner2 --custom-stage refuel
 ./afterburner2 --custom-stage carrier-landing
 ./afterburner2 --custom-stage runway-landing
-./afterburner2 --custom-stage assets/custom_stages/player-runway-landing.json
 ./afterburner2 --custom-stage jungle-landing
 ./afterburner2 --custom-stage runway-takeoff
 ./afterburner2 --custom-stage carrier-takeoff
 ./afterburner2 --custom-stage jungle-takeoff
 ./afterburner2 --custom-stage canyon-combat
 
-# Load a declarative JSON stage file:
+# A stage file, a stage folder, or a stage pack ZIP:
 ./afterburner2 --custom-stage assets/custom_stages/twilight-trench-run.json
-./afterburner2 --custom-stage assets/custom_stages/canyon-combat.json
-./afterburner2 --custom-stage assets/custom_stages/layered-runway.json
-```
+./afterburner2 --custom-stage assets/custom_stages/packs/sunset-strike
+./afterburner2 --custom-stage my-stage.zip
 
-During play, press `F5` to retry the active custom stage from a fresh board start.
+# Plus extra assets. Repeat for more; the last one has priority:
+./afterburner2 --custom-stage my-stage.zip --stage-assets shared-art/ --stage-assets reskin.zip
+```
 
 ---
 
-## 4. JSON Stage Format & Schema
+## 4. External Stages and Assets
+
+A custom stage can use art and audio from outside the game's ROMs. Try
+[`assets/custom_stages/packs/sunset-strike`](../assets/custom_stages/packs/sunset-strike),
+which uses most of it, and
+[`assets/custom_stages/packs/iron-trench`](../assets/custom_stages/packs/iron-trench),
+a run down a metal trench. Their files come from
+[`make_example_stage_pack.py`](../tools/assets/make_example_stage_pack.py) and
+[`make_trench_stage_pack.py`](../tools/assets/make_trench_stage_pack.py), so they
+contain no ROM data.
+
+### Stage packs
+
+A stage pack is a folder or ZIP with `stage.json` plus its files:
+
+```text
+my-stage/
+  stage.json
+  art/sky.png
+  art/sprites/crystals.png
+  audio/theme.flac
+```
+
+A ZIP can hold those at its root or inside one top-level folder. Asset paths are
+relative to a pack and cannot be absolute or use `..`. Use forward slashes and match
+the file's upper and lower case, because folders are case-sensitive on Linux.
+
+Files are searched in this order; the first match wins:
+
+1. Asset packs added when loading, newest first (the menu or `--stage-assets`).
+2. `asset_packs` listed in `stage.json`, relative to that file, such as
+   `"../shared-art"`. A stage inside a ZIP cannot use this. Note that this lets a stage
+   folder read images and audio from elsewhere on disk to display or play them.
+3. The stage's own folder or ZIP.
+
+Since packs added at load time come first, one can reskin a stage by supplying files
+with the same names, without editing it.
+
+### What external assets can do
+
+**Sky backdrop** (`presentation.backdrop`). A PNG or BMP replaces the stage's sky,
+behind every sprite. It works in every display mode, including widescreen and the
+sprite filters. Ground, scenery, enemies and the HUD stay on top.
+
+```json
+"presentation": {
+  "backdrop": {
+    "asset": "art/sky.png",
+    "parallax": [0.25, 0.4],
+    "drift": [3, 0],
+    "follow_roll": true
+  }
+}
+```
+
+The image repeats sideways, so make its left and right edges match. It is scaled so
+that its height is 1.4 times the screen height, leaving room to move vertically.
+`parallax` is how far it moves with the camera, `drift` adds constant scrolling in
+native pixels per second, and `follow_roll` tilts it with the horizon as you bank.
+
+**Image layers** (`layers`). Elements with `"type": "image"` draw a PNG or BMP with
+full color and alpha. Elements use a 960×600 canvas, and `x`/`y` give the center.
+
+| Field | Meaning |
+| --- | --- |
+| `order` | Below `0`: behind gameplay, inside the sky. `0` and above: on top of the finished frame, including the arcade HUD |
+| `space` | `screen`, or `world` to place it in meters through the stage's flight model camera. That camera approximates the view and is not the arcade's own projection, so world elements can drift against ROM scenery |
+| `rotation` | Degrees, about the element's center |
+| `repeat` | `[columns, rows]` tile grid running right and down from the first tile |
+| `color` | `[r, g, b, a]` tint and opacity |
+| `filter` | `linear` (default), or `nearest` for pixel art |
+| `ticks` | `[begin, end]` show only during this part of the stage timer, which runs at about 776 ticks per second. Entering a stage takes about 1,150 ticks of fly-in |
+
+**Replacement sprites** (`sprites`). An image replaces a sprite frame in this
+session's private copy of the sprite ROM. Enemies, scenery and effects then draw it
+as a real hardware sprite, in every display mode.
+
+```json
+"sprites": [
+  { "frame": "0x11530", "asset": "art/sprites/flying-wing.png" },
+  { "frame": "0x165f0", "asset": "art/sprites/crystals.png", "own_colors": true }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `frame` | Frame record, `"0x165f0"` or `"sub_0165f0"`. Name the largest frame of a family |
+| `asset` | PNG or BMP of any size. Alpha below 50% is transparent |
+| `palette` | `"auto"` (default) matches the image to the palette the game draws that frame with. A number forces a hardware palette |
+| `own_colors` | Rewrites that palette with the image's best 14 colors. **Anything else using the palette changes too** |
+| `lods` | Also rewrites the four smaller distance versions (default `true`) |
+| `fit` | `contain` (default) keeps the aspect ratio; `stretch` fills the frame |
+
+To find frames, run the stage with a sprite log. It lists each frame the game draws
+in your stage, with its palette and size:
+
+```bash
+./afterburner2 --custom-stage my-stage --stage-sprite-log frames.csv
+```
+
+Then see what they look like with [the sprite extractor](SPRITE_EXTRACTION.md), whose
+preview names match. An aircraft or object usually has many frames, one for each
+angle, and each one you want changed needs its own entry.
+
+**Stage music** (`music_file`). A WAV or FLAC plays instead of the stage's track. It
+uses the Music Volume setting and returns to the normal music once the stage ends.
+
+**ROM data patches** (`rom_patches`). Overwrites part of this session's copy of the
+`tiles`, `sprites`, `road` or `pcm` data with a binary file, for changes the other
+options do not cover, such as ground patterns or sound samples. You need to know the
+data format, which [HARDWARE](HARDWARE.md) describes. Program code cannot be patched.
+
+```json
+"rom_patches": [ { "region": "road", "offset": 0, "asset": "data/road-rows.bin" } ]
+```
+
+### Ground layouts and air enemies
+
+**Scenery patterns** (`scenery_patterns`) let a stage author its own ground layout,
+using the same grid format the ROM's stages use. Each pattern is 16 rows of 16 cells.
+One cell spawns per bit of distance flown, left to right and top to bottom, so a grid
+lasts about 992 ticks; after that its last row keeps repeating until the next pattern.
+The column is the object's position across the ground, and center is between columns
+7 and 8.
+
+```json
+"replace_enemy_waves": true,
+"scenery_patterns": [
+  {
+    "tick": 1184,
+    "objects": { "2": "0x3b", "4": "0x3c", "1": "0xcd" },
+    "rows": [ "....2.1....4....", "....2......4...." ]
+  }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `tick` | When the pattern starts |
+| `rows` | 1 to 16 strings. `.` is empty, and `1`..`F` name an entry in `objects`. With fewer than 16 rows, the last one repeats |
+| `objects` | Maps each digit to an entry in the ROM's object table at `$3F000`. Objects `0x3b` and `0x3c` are the canyon walls, `0xcd` a building. Most have collision |
+| `flip` | `none` (default), `columns`, `rows` or `both` |
+
+Without `replace_enemy_waves` your patterns are mixed in with the donor stage's. With
+it, the donor's layout is dropped, and any records you still want go in `enemy_waves`.
+
+Two existing names are misleading, because of what the ROM turned out to do:
+
+| Name | What it actually controls |
+| --- | --- |
+| `enemy_stage`, `enemy_waves` | The stream at descriptor+8: **ground objects and scenery**, not aircraft |
+| `scenery_stage` | The stream at descriptor+12: **air enemy waves**, not scenery. Stage 8 has none |
+| `music_transition` | Also switches air enemies. Sub-code 12 (the third param) turns them off, and 0 turns them on. It restarts the stage's music command either way |
+
+So to add fighters to a stage that has none, as
+[`iron-trench`](../assets/custom_stages/packs/iron-trench/stage.json) does:
+
+```json
+"scenery_stage": 2,
+"events": [ { "tick": 0, "command": "music_transition", "params": [0, 0, 0, 0, 0] } ]
+```
+
+With a backdrop, `presentation.ocean.water` sets the ground color and
+`water_band` adds a second one for scrolling bands.
+
+### Limits
+
+- A replacement sprite cannot be larger than the frame it replaces. The ROM banks are
+  about 99% full, so frames are rewritten in place. It is scaled to fit, and it is
+  limited to the 14 drawable colors of a hardware sprite palette.
+- Sprite and ROM changes last for the whole run, including stages after your slot.
+  The backdrop, layers and music apply only inside the stage's slot.
+- A frame is rewritten the first time the game draws it, since that names its palette,
+  so with `"palette": "auto"` it can be invisible for that one frame.
+- Only the sky can be replaced with an image. The ground comes from the road hardware.
+- A layer below order 0 replaces the sky even without a backdrop. The sky then becomes
+  one flat color, `presentation.ocean.sky` or the donor stage's sky color, and the
+  stage's original horizon gradient is lost.
+- Layers at `order` 0 and above are drawn after the CRT and shader passes, so those
+  effects do not apply to them. Below 0 they do, being part of the game image.
+- The Sharp HUD and the menus always use the original font, whatever `tiles` patches do.
+- Android cannot open folders, so it takes stage packs as ZIPs. That path has not been
+  run on a device yet.
+
+### How the sky works
+
+With a backdrop or a layer below order 0, the stage's sky palette entries are compiled
+to a reserved color. Each frame, pixels of exactly that color on the background and
+sprite planes, before they are composited, are replaced with the image. The horizon
+gradient's two lists are blended position by position, so a position counts as ground
+if either list has a ground color there.
+
+---
+
+## 5. JSON Stage Format & Schema
 
 Custom stages are validated against [`assets/custom_stages/stage.schema.json`](../assets/custom_stages/stage.schema.json) by the strict parser in [`src/main/engine/custom_stage_json.hpp`](../src/main/engine/custom_stage_json.hpp). Example ([`assets/custom_stages/canyon-combat.json`](../assets/custom_stages/canyon-combat.json)):
 
@@ -146,7 +365,7 @@ Custom stages are validated against [`assets/custom_stages/stage.schema.json`](.
 
 ---
 
-## 5. Verification & Mutation Controls
+## 6. Verification & Mutation Controls
 
 ```bash
 # Run the ROM-free custom stage regression & mutation suite:

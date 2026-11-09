@@ -34,6 +34,8 @@ public:
         if(!enabled && state->music_enabled){capture_cockpit(false);state->sound.disable_music_presentation();state->music.clear();state->music_enabled=false;state->music_samples=0;}
     }
     std::vector<AudioPresentation> take_music(){auto out=std::move(state->music);state->music.clear();return out;}
+    // The sprite renderer keeps a decoded copy; call after rewriting owned sprite data.
+    void refresh_sprite_rom(){state->sprites.refresh_rom(rom->sprites.rom,rom->sprites.length);}
     Host& board(){return state->host;}
     const Host& board()const{return state->host;}
     HWTiles::FrameRegisters video_registers()const{return state->tiles.frame_registers();}

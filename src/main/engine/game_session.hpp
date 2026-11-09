@@ -81,6 +81,8 @@ public:
         input.analog = physical.analog;
         scene_ready=false;if(capture_wide)wide_clip_count=0;
         game.tick(input);
+        if (custom_stage_view && custom_stage_view->sprite_overrides.pending())
+            update_custom_sprites();
         if (custom_stage_controller_ && !entering_custom_stage_)
             custom_stage_controller_->sync_board(game.board(), active_rom(), controls);
         if(primary_completed)primary_completed(info().number);
@@ -147,6 +149,51 @@ public:
         restarted(true);
     }
     bool custom_stage_active() const { return bool(custom_stage_view); }
+    // True while the run is inside the slot the custom stage was compiled into.
+    // Completing it continues the run into the following arcade stage.
+    bool custom_stage_in_slot() const {
+        return custom_stage_view && feedback_word(0x29c060) + 1u == custom_stage_view->definition().slot;
+    }
+    // Same timer the stage's event stream is compared against ($29C006 >> 4).
+    uint16_t custom_stage_tick() const {
+        return uint16_t(((uint32_t(feedback_word(0x29c006)) << 16) | feedback_word(0x29c008)) >> 4);
+    }
+    // Live values a keyed sky needs each frame. Colors follow any palette fade,
+    // so the key still matches and the image can dim along with the scene.
+    struct SkyState {
+        bool active{};
+        // While a stage transition blends the old sky toward the key, sky pixels
+        // carry the live blended color, so both values count as sky.
+        RGB888 key{}, blending_key{}, fill{};
+        float brightness{1.f};
+        int16_t camera_x{}, camera_y{};
+        uint8_t roll{};
+    };
+    SkyState custom_stage_sky() const {
+        SkyState state;
+        if (!custom_stage_in_slot() || !custom_stage_view->definition().sky_keyed()) return state;
+        const uint16_t expected = CustomStage::RomView::sky_key_color().rgb555();
+        uint16_t live = feedback_word(0x122f00);
+        for (const uint32_t address : {0x122f00u, 0x122e40u, 0x121d02u, 0x122f02u})
+            if (feedback_word(address) == expected) { live = expected; break; }
+        const auto weight = [](uint16_t w) {
+            return ((w >> 12) & 1) + ((w >> 13) & 1) + ((w >> 14) & 1) +
+                   ((w & 15) << 1) + (((w >> 4) & 15) << 1) + (((w >> 8) & 15) << 1);
+        };
+        HWPalette dac(1);
+        dac.write(0, live);
+        state.active = true;
+        state.key = dac.pen(0);
+        dac.write(0, feedback_word(0x122f00));
+        state.blending_key = dac.pen(0);
+        dac.write(0, custom_stage_view->sky_fill_word());
+        state.fill = dac.pen(0);
+        state.brightness = std::clamp(float(weight(live)) / float(weight(expected)), 0.f, 1.f);
+        state.camera_x = int16_t(feedback_word(0x29c08a));
+        state.camera_y = int16_t(feedback_word(0x29c088));
+        state.roll = uint8_t(feedback_word(0x29c09e));
+        return state;
+    }
     const CustomStage::Definition* custom_stage_definition() const {
         return custom_stage_view ? &custom_stage_view->definition() : nullptr;
     }
@@ -199,6 +246,14 @@ public:
             custom_stage_controller_->start();
         }
     }
+    // ROM data the board is currently running from. Presentation code must read
+    // sprite pixels through this, since a custom stage can rewrite its own copy.
+    const Roms& current_rom() const {
+        return custom_stage_view ? custom_stage_view->rom() : shuffle_view ? shuffle_view->rom() : rom;
+    }
+    std::span<const uint8_t> published_sprites() const { return game.board().memory.sprite_buffer; }
+    // Called whenever a restart changes which ROM view is current.
+    std::function<void(const Roms&)> rom_changed;
     bool shuffled() const { return bool(shuffle_view); }
     const Shuffle::Plan* shuffle_plan() const { return shuffle_plan_.get(); }
     unsigned shuffle_position() const {
@@ -391,6 +446,7 @@ private:
             if(visibility)visibility=std::make_unique<Presentation::WideVisibility>(source,(wide_width-320)/2);
             if(ground)ground=std::make_unique<Presentation::GroundHorizon>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));
             if(assets)assets=std::make_unique<Presentation::EffectAssets>(std::span(source.maincpu.rom,source.maincpu.length),std::span(source.subcpu.rom,source.subcpu.length));
+            if(rom_changed)rom_changed(source);
         } else if(visibility)visibility->reset();
         feedback.clear();feedback_frame={};object_audio_frame={};
         if(capture_object_audio_){object_audio.configure({active_rom().soundcpu.rom,active_rom().soundcpu.length},{active_rom().maincpu.rom,active_rom().maincpu.length});object_audio.prime([this](auto a){return feedback_word(a);});game.track_audio_objects(&object_audio);}
@@ -402,6 +458,28 @@ private:
         audio.clear();
         paused_=false;
         if(extensions.restarted)extensions.restarted();
+    }
+    // Writes external sprite art the first time the game draws each frame, using
+    // the palette that request names. Bus writes reuse the untraced path below.
+    void update_custom_sprites() {
+        auto& host=game.board();
+        CustomStage::SpriteOverrides::PaletteAccess palette;
+        palette.read=[this](unsigned index){
+            CustomStage::SpriteOverrides::PaletteWords words{};
+            for(unsigned i=0;i<16;++i)words[i]=feedback_word(0x120000u+index*32u+i*2u);
+            return words;
+        };
+        palette.write=[&host](unsigned index,const CustomStage::SpriteOverrides::PaletteWords& words){
+            struct RestoreTrace {
+                MainBus& bus; MainBus::Trace* previous;
+                ~RestoreTrace(){bus.trace=previous;}
+            } restore{host.bus,host.bus.trace};
+            host.bus.trace=nullptr;
+            for(unsigned i=1;i<15;++i)host.bus.write16(0x120000u+index*32u+i*2u,words[i]);
+            ++host.palette_gen;
+        };
+        if(custom_stage_view->sprite_overrides.observe(host.memory.sprite_buffer,custom_stage_view->rom(),palette))
+            game.refresh_sprite_rom();
     }
     void prepare_shuffle_palette(const XBoardGame::Host::Phase& phase) {
         if((!shuffle_view && !custom_stage_view) || phase.cpu || !phase.entry)return;
@@ -417,7 +495,7 @@ private:
         const bool needed=custom_stage_view?custom_stage_view->needs_alternate_palette(position):shuffle_view->needs_alternate_palette(position);
         const bool custom_primary = custom_stage_view && !needed &&
             position + 1u == custom_stage_view->definition().slot &&
-            custom_stage_view->definition().custom_ocean;
+            (custom_stage_view->definition().custom_ocean || custom_stage_view->definition().sky_keyed());
         if(!needed && !custom_primary){
             prepared_shuffle_position=position;
             return;
@@ -475,7 +553,7 @@ private:
                 ground_indices.assign(indices.begin(),indices.end());
                 const auto peek=[&](uint32_t a){const auto o=MainBus::memory_offset(a);return uint16_t(game.board().memory.bytes[o]<<8|game.board().memory.bytes[o+1]);};
                 if(peek(0x29c09c)==0x10)ground->apply(ground_indices,priority,game.board().memory.road_buffer,game.board().memory.road_control,
-                    game.board().memory.sprite_buffer,std::span(rom.sprites.rom,rom.sprites.length),top,bottom,uint8_t(peek(0x29c09e)),*assets);
+                    game.board().memory.sprite_buffer,std::span(current_rom().sprites.rom,current_rom().sprites.length),top,bottom,uint8_t(peek(0x29c09e)),*assets);
                 indices=std::span<const uint16_t>(ground_indices);
             }
             if(capture_ground)for(unsigned i=top*width;i<(bottom+1)*width;++i)ground_shadows[i]=argb(palette.pen(indices[i]+palette.num_entries()));
@@ -484,7 +562,7 @@ private:
                 const auto peek=[&](uint32_t address){const auto offset=MainBus::memory_offset(address);return uint16_t(game.board().memory.bytes[offset]<<8|game.board().memory.bytes[offset+1]);};
                 const bool full_throttle=Presentation::full_throttle_flame(peek(0x29c09c),peek(0x29c0d2));
                 for(unsigned y=top;y<=bottom;++y){scene_rows[y].clear();row_heads[y].fill(UINT32_MAX);}
-                Presentation::decode(game.board().memory.sprite_buffer,std::span(rom.sprites.rom,rom.sprites.length),top,bottom,*assets,
+                Presentation::decode(game.board().memory.sprite_buffer,std::span(current_rom().sprites.rom,current_rom().sprites.length),top,bottom,*assets,
                     [&](unsigned x,unsigned y,uint16_t raw,Presentation::Effect kind){const unsigned i=y*width+x;
                         if(kind==Presentation::Effect::afterburner && !full_throttle)kind=Presentation::Effect::opaque;
                         const bool visible=(1<<((raw>>12)&3))>priority[i];

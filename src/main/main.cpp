@@ -40,6 +40,7 @@
 #include "frontend/native_rom_picker.hpp"
 #include "frontend/native_touch.hpp"
 #include "frontend/custom_stage_hud.hpp"
+#include "frontend/native_custom_stage.hpp"
 #include "frontend/frame_timings.hpp"
 #include "frontend/frame_pacing.hpp"
 #ifdef SDL_PLATFORM_ANDROID
@@ -48,6 +49,26 @@
 
 namespace
 {
+    // One outstanding custom stage file/folder dialog. Replies can arrive on
+    // another thread, so the result is held here until the main loop collects it.
+    enum class StageDialogKind {stage_path,assets_path};
+    struct StageDialogReply {StageDialogKind kind{};std::string path,error;bool cancelled{};};
+    struct StageDialogState {
+        std::mutex mutex;
+        bool active{};
+        StageDialogKind kind{};
+        std::optional<StageDialogReply> reply;
+    };
+    void SDLCALL stage_dialog_result(void* userdata,const char* const* files,int) {
+        std::unique_ptr<std::weak_ptr<StageDialogState>> request(static_cast<std::weak_ptr<StageDialogState>*>(userdata));
+        auto state=request->lock();if(!state)return;
+        std::lock_guard lock(state->mutex);
+        StageDialogReply reply;reply.kind=state->kind;
+        if(!files){reply.error=SDL_GetError();if(reply.error.empty())reply.error="File dialog unavailable";}
+        else if(!files[0])reply.cancelled=true;
+        else reply.path=files[0];
+        state->active=false;state->reply=std::move(reply);
+    }
     constexpr int SCREEN_WIDTH = GameSession::width;
     constexpr int SCREEN_HEIGHT = GameSession::height;
     constexpr unsigned PRESENTATION_FRAMES_IN_FLIGHT = 3;
@@ -83,6 +104,8 @@ int main(int argc, char** argv)try
     bool shuffle_start = false;
     std::optional<uint32_t> shuffle_seed;
     std::string custom_stage_arg;
+    std::vector<std::string> stage_asset_args;
+    std::string stage_sprite_log_path;
     bool boot_to_flight = false, profile = false,integrated_scene=true;
     std::string recording_path, rom_source;
     std::string settings_path, menu_preview, frame_preview, hud_atlas, player_aircraft,shader_preset,shader_runtime;
@@ -105,6 +128,8 @@ int main(int argc, char** argv)try
             shuffle_seed=seed;shuffle_start=true;continue;
         }
         if (option == "--custom-stage" && i+1<argc) { custom_stage_arg=argv[++i]; continue; }
+        if (option == "--stage-assets" && i+1<argc) { stage_asset_args.emplace_back(argv[++i]); continue; }
+        if (option == "--stage-sprite-log" && i+1<argc) { stage_sprite_log_path=argv[++i]; continue; }
         if (option == "--roms" && i+1<argc) { rom_source=argv[++i]; continue; }
         if (option == "--record" && i+1<argc) { recording_path=argv[++i]; continue; }
         if (option == "--settings-file" && i+1<argc) { settings_path=argv[++i]; continue; }
@@ -115,7 +140,7 @@ int main(int argc, char** argv)try
         if (option == "--shader-runtime" && i+1<argc) { shader_runtime=argv[++i]; continue; }
         if (option == "--menu-preview" && i+1<argc) { menu_preview=argv[++i]; continue; }
         if ((option != "--frames" && option != "--stage" && option != "--practice-stage") || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--roms directory|set.zip] [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number] | --custom-stage file.json|preset] [--boot-to-flight] [--record path] [--profile] [--scene-renderer snapshot|integrated] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime library-path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
+        { std::cerr << "Usage: afterburner2 [--roms directory|set.zip] [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number] | --custom-stage stage.json|folder|pack.zip|preset [--stage-assets folder|pack.zip]...] [--boot-to-flight] [--record path] [--profile] [--scene-renderer snapshot|integrated] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime library-path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
         const std::string_view value(argv[++i]);
         auto& count = option == "--stage" ? start_stage : option == "--practice-stage" ? practice_start_stage : frame_limit;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
@@ -130,6 +155,15 @@ int main(int argc, char** argv)try
         throw std::runtime_error("Shuffle cannot be combined with selected-stage startup");
     if(!custom_stage_arg.empty() && (start_stage || practice_start_stage))
         throw std::runtime_error("Custom stage cannot be combined with --stage or --practice-stage");
+    if(!stage_asset_args.empty() && custom_stage_arg.empty())
+        throw std::runtime_error("--stage-assets requires --custom-stage");
+    std::ofstream stage_sprite_log;
+    CustomStage::SpriteFrameLog stage_sprite_frames;
+    if(!stage_sprite_log_path.empty()) {
+        stage_sprite_log.open(CustomStage::utf8_path(stage_sprite_log_path),std::ios::trunc);
+        if(!stage_sprite_log)throw std::runtime_error("Cannot write sprite log: "+stage_sprite_log_path);
+        stage_sprite_log<<"frame,palette,width,height,first_seen_frame\n";
+    }
     if (!recording_path.empty() && (start_stage || practice_start_stage || shuffle_start || !custom_stage_arg.empty()))
         throw std::runtime_error("Natural recording requires normal cold boot without selected-stage startup");
 #ifdef SDL_PLATFORM_ANDROID
@@ -439,7 +473,7 @@ int main(int argc, char** argv)try
     const auto configure_sprite_texture=[&](const Frontend::Settings& value) {
         const bool detached=Frontend::is_wide(value)||value.hud!=Frontend::Hud::original||aircraft_renderer->available();
         if(detached && (!wide_renderer || wide_renderer->view().width!=Frontend::viewport_width(value)))
-            wide_renderer=std::make_unique<Presentation::WideScene>(roms,Frontend::viewport_width(value));
+            wide_renderer=std::make_unique<Presentation::WideScene>(game.current_rom(),Frontend::viewport_width(value));
         if(!detached)wide_renderer.reset();
         if(detached&&integrated_scene){
             // Keep a settings copy for the whole partial frame, including
@@ -480,9 +514,25 @@ int main(int argc, char** argv)try
     game.capture_sprite_scene(native_planes && (settings.clouds || settings.trails || settings.explosions || settings.afterburner));
     game.capture_sprite_presentation(native_planes && (accelerated_sprites() || settings.sprites!=Frontend::SpriteFilter::none || settings.clouds || settings.trails || settings.explosions || settings.afterburner || settings.ground));
     auto menu=std::make_unique<Frontend::NativeMenu>(renderer,roms,settings,Frontend::pixel_art_available());
+    auto custom_stage_renderer=std::make_unique<Frontend::NativeCustomStage>(renderer);
+    std::shared_ptr<CustomStage::StagePackage> active_stage_package;
+    std::shared_ptr<const Frontend::DecodedMusic> active_stage_music;
+    // Scene presentation reads sprite pixels directly, and a custom stage's ROM
+    // view can differ from the canonical set. Rebuild it against the new view.
+    game.rom_changed=[&](const Roms& active){
+        if(!wide_renderer)return;
+        const auto& value=menu->settings;
+        wide_renderer=std::make_unique<Presentation::WideScene>(active,Frontend::viewport_width(value));
+        const unsigned translucent=(value.clouds?(1u<<unsigned(Presentation::Effect::cloud)):0)|
+            (value.trails?(1u<<unsigned(Presentation::Effect::missile_trail)):0)|
+            (value.explosions?(1u<<unsigned(Presentation::Effect::explosion)):0)|
+            (value.afterburner?(1u<<unsigned(Presentation::Effect::afterburner)):0);
+        wide_renderer->player_aircraft(aircraft_renderer->available(),translucent,aircraft_renderer->supported_roots());
+    };
     Frontend::NativePractice practice;
     menu->practice_allowed=recording_path.empty();
     menu->shuffle_allowed=recording_path.empty();
+    menu->custom_stage_allowed=recording_path.empty();
     menu->custom_hud_available=hud_renderer->custom_available();
     menu->feedback=feedback.get();menu->input=input_manager.get();menu->music=music_player.get();
     menu->shader_status=shader_status;
@@ -553,7 +603,7 @@ int main(int argc, char** argv)try
     // Board, audio, input, menus and the current frame remain live throughout.
     const auto rebuild_renderer=[&](bool native_shader,const Frontend::Settings& value) {
         slang_renderer.reset();menu->rebind(nullptr,roms);hud_renderer->rebind(nullptr);
-        aircraft_renderer.reset();crt_renderer.reset();
+        aircraft_renderer.reset();crt_renderer.reset();custom_stage_renderer.reset();
         if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);
         release_sprite_scalers();sprite_texture=nullptr;sprite_texture_factor=0;
         SDL_DestroyTexture(texture);texture=nullptr;
@@ -563,6 +613,8 @@ int main(int argc, char** argv)try
         texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,SCREEN_WIDTH,SCREEN_HEIGHT);
         if(!texture || !Frontend::apply_settings(window,renderer,texture,value))throw std::runtime_error(SDL_GetError());
         hud_renderer->rebind(renderer);crt_renderer=std::make_unique<Frontend::NativeCrt>(renderer);
+        custom_stage_renderer=std::make_unique<Frontend::NativeCustomStage>(renderer);
+        custom_stage_renderer->set_package(active_stage_package);
         aircraft_renderer=std::make_unique<Frontend::NativePlayerAircraft>(renderer);
         if(!player_aircraft.empty() && !aircraft_renderer->load(player_aircraft))
             std::cerr<<"Player-aircraft art reload unavailable: "<<aircraft_renderer->load_error()<<'\n';
@@ -624,15 +676,11 @@ int main(int argc, char** argv)try
 #ifdef SDL_PLATFORM_ANDROID
         content_imports.reset();
 #endif
-        shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);release_sprite_scalers();SDL_DestroyTexture(texture);
+        shader_dialog.reset();slang_renderer.reset();custom_stage_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);release_sprite_scalers();SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);if(gpu_device)SDL_DestroyGPUDevice(gpu_device);SDL_DestroyWindow(window);SDL_Quit();return 0;
     }
-    std::optional<CustomStage::Definition> initial_custom_stage;
-    if(!custom_stage_arg.empty()) {
-        std::error_code ec;
-        if(std::filesystem::exists(custom_stage_arg,ec))initial_custom_stage=CustomStage::Definition::load(custom_stage_arg);
-        else initial_custom_stage=CustomStage::Definition::preset_by_name(custom_stage_arg);
-    }
+    std::shared_ptr<CustomStage::StagePackage> initial_custom_stage;
+    if(!custom_stage_arg.empty()) initial_custom_stage=Frontend::load_stage_package(custom_stage_arg,stage_asset_args);
     if(!frame_limit && !boot_to_flight && !start_stage && !practice_start_stage && !shuffle_start && !initial_custom_stage) menu->open(game);
 
     prepare_fullscreen(settings);
@@ -739,9 +787,23 @@ int main(int argc, char** argv)try
         const auto title=game.custom_stage_active()?"AfterBurner2-Recomp — Custom Stage: "+game.custom_stage_definition()->name+" (F5 to retry)":game.shuffled()?"AfterBurner2-Recomp — Shuffle (F5 retries this order)":practice.stage()?"AfterBurner2-Recomp — Practice from Stage "+std::to_string(practice.stage())+" (F5 to retry)":std::string("AfterBurner2-Recomp");
         SDL_SetWindowTitle(window,(title+(game.paused()?" — Paused (P to resume)":"")).c_str());
     };
-    auto restart_board=[&](unsigned selected_practice=0,bool return_arcade=false,const Shuffle::Plan* new_shuffle=nullptr,const CustomStage::Definition* new_custom=nullptr) {
-        const bool retry_custom=game.custom_stage_active() && !selected_practice && !return_arcade && !new_shuffle && !new_custom;
+    auto restart_board=[&](unsigned selected_practice=0,bool return_arcade=false,const Shuffle::Plan* new_shuffle=nullptr,std::shared_ptr<CustomStage::StagePackage> new_custom=nullptr) {
+        bool retry_custom=game.custom_stage_active() && !selected_practice && !return_arcade && !new_shuffle && !new_custom;
         const bool retry_shuffle=game.shuffled() && !selected_practice && !return_arcade && !new_shuffle && !new_custom;
+        if(retry_custom && active_stage_package) {
+            // Retrying re-reads the stage and its assets, so edits show up on F5.
+            // A broken edit keeps the last good stage playable.
+            try {
+                auto reloaded=Frontend::load_stage_package(active_stage_package->source,active_stage_package->extra_assets);
+                CustomStage::RomView check(roms,reloaded->definition);
+                active_stage_music=Frontend::decode_stage_music(*reloaded);
+                new_custom=std::move(reloaded);
+                retry_custom=false;
+            } catch(const std::exception& error) {
+                std::cerr<<"Custom stage reload failed, retrying the loaded version: "<<error.what()<<std::endl;
+                menu->custom_stage_error=error.what();
+            }
+        }
         const auto target=return_arcade?0:selected_practice?selected_practice:practice.stage();
         if((target || new_shuffle || retry_shuffle || new_custom || retry_custom) && recording)throw std::runtime_error("Enhanced gameplay unavailable while recording");
         if(wide_renderer)wide_renderer->reset();feedback->restart();input_manager->block();music_player->restarted();
@@ -752,7 +814,11 @@ int main(int argc, char** argv)try
         auto* playback=music_player->output;music_player->output=nullptr;
         try {
             if(new_custom || retry_custom) {
-                if(new_custom)game.start_custom_stage(*new_custom);else game.retry_custom_stage();
+                if(new_custom) {
+                    game.start_custom_stage(new_custom->definition);
+                    active_stage_package=new_custom;
+                    custom_stage_renderer->set_package(active_stage_package);
+                } else game.retry_custom_stage();
                 game.set_dip_switches(switches);practice={};start_stage=0;
                 std::cout<<"Custom stage compiled: "<<game.custom_stage_definition()->name
                          <<" (slot "<<game.custom_stage_definition()->slot<<")"<<std::endl;
@@ -779,11 +845,111 @@ int main(int argc, char** argv)try
         menu->active_practice_stage=practice.stage();
         menu->shuffle_active=game.shuffled();
         menu->custom_stage_label=game.custom_stage_active()?"CUSTOM: "+game.custom_stage_definition()->name.substr(0,18):"";
+        if(!game.custom_stage_active()) {
+            active_stage_package.reset();active_stage_music.reset();
+            custom_stage_renderer->set_package(nullptr);
+            music_player->set_stage_music(nullptr);
+        }
         audio_output->clear();
         reset_pacing();sync_audio();
         update_title();
     };
+    // --- Custom stage loading from the menu ---
+    std::vector<std::string> stage_sources;
+    std::vector<std::string> stage_assets=stage_asset_args;
+    std::string opened_stage_path;
+    const auto stage_search_roots=[&] {
+        std::vector<std::filesystem::path> search{"custom_stages","assets/custom_stages","assets/custom_stages/packs"};
+        if(!settings_path.empty())search.push_back(std::filesystem::path(settings_path).parent_path()/"custom_stages");
+        return search;
+    };
+    const auto stage_display_name=[](const std::string& source) {
+        const auto name=CustomStage::path_utf8(CustomStage::utf8_path(source).filename());
+        return name.empty()?source:name;
+    };
+    auto refresh_stage_list=[&] {
+        const auto previous=stage_sources.empty()?std::string{}:stage_sources[menu->custom_stage_index%stage_sources.size()];
+        stage_sources=CustomStage::StagePackage::discover(stage_search_roots());
+        if(!opened_stage_path.empty()) {
+            stage_sources.erase(std::remove(stage_sources.begin(),stage_sources.end(),opened_stage_path),stage_sources.end());
+            stage_sources.insert(stage_sources.begin(),opened_stage_path);
+        }
+        // Built-in presets stay available in packages that ship no stage files.
+        for(const char* preset:{"refuel","carrier-landing","runway-landing","jungle-landing","runway-takeoff","carrier-takeoff","jungle-takeoff","canyon-combat"})
+            stage_sources.emplace_back(preset);
+        menu->custom_stage_names.clear();
+        for(const auto& source:stage_sources)menu->custom_stage_names.push_back(stage_display_name(source));
+        const auto found=std::find(stage_sources.begin(),stage_sources.end(),previous);
+        menu->custom_stage_index=found==stage_sources.end()?0:unsigned(found-stage_sources.begin());
+    };
+    auto refresh_stage_assets=[&] {
+        menu->custom_stage_assets.clear();
+        for(const auto& asset:stage_assets)menu->custom_stage_assets.push_back(stage_display_name(asset));
+    };
+    auto stage_dialog=std::make_shared<StageDialogState>();
+    auto begin_stage_dialog=[&](StageDialogKind kind) {
+        std::lock_guard lock(stage_dialog->mutex);
+        if(stage_dialog->active || stage_dialog->reply)return false;
+        stage_dialog->active=true;stage_dialog->kind=kind;
+        return true;
+    };
+    menu->refresh_custom_stages=[&]{refresh_stage_list();refresh_stage_assets();};
+    menu->open_stage_file=[&] {
+        if(!begin_stage_dialog(StageDialogKind::stage_path))return;
+        static const SDL_DialogFileFilter filters[]{{"Custom stage","json;zip"}};
+        SDL_ShowOpenFileDialog(stage_dialog_result,new std::weak_ptr(stage_dialog),window,filters,1,nullptr,false);
+    };
+    menu->open_stage_folder=[&] {
+        if(!begin_stage_dialog(StageDialogKind::stage_path))return;
+        SDL_ShowOpenFolderDialog(stage_dialog_result,new std::weak_ptr(stage_dialog),window,nullptr,false);
+    };
+    menu->add_assets_folder=[&] {
+        if(!begin_stage_dialog(StageDialogKind::assets_path))return;
+        SDL_ShowOpenFolderDialog(stage_dialog_result,new std::weak_ptr(stage_dialog),window,nullptr,false);
+    };
+    menu->add_assets_zip=[&] {
+        if(!begin_stage_dialog(StageDialogKind::assets_path))return;
+        static const SDL_DialogFileFilter filters[]{{"Asset pack ZIP","zip"}};
+        SDL_ShowOpenFileDialog(stage_dialog_result,new std::weak_ptr(stage_dialog),window,filters,1,nullptr,false);
+    };
+    menu->clear_stage_assets=[&]{stage_assets.clear();refresh_stage_assets();menu->notice="ASSET PACKS CLEARED";};
+    // Android document pickers return content:// URIs. Copy the pack into private
+    // storage first, since a stage's files must stay readable by path afterwards.
+    const auto local_stage_path=[&](const std::string& picked) {
+#ifdef SDL_PLATFORM_ANDROID
+        if(picked.starts_with("content:")) {
+            const auto folder=std::filesystem::path(settings_path).parent_path()/"custom_stages";
+            std::filesystem::create_directories(folder);
+            const auto destination=Frontend::unused_import_path(folder,"imported-stage",".zip");
+            Frontend::copy_import(picked,destination,512ull*1024*1024);
+            return CustomStage::path_utf8(destination);
+        }
+#endif
+        return picked;
+    };
+    auto start_selected_stage=[&] {
+        if(recording){menu->notice="UNAVAILABLE WHILE RECORDING";return;}
+        if(stage_sources.empty())return;
+        const auto source=stage_sources[menu->custom_stage_index%stage_sources.size()];
+        // Validate everything before touching the current run, so a bad stage
+        // leaves it intact and reports the problem in the menu.
+        std::shared_ptr<CustomStage::StagePackage> package;
+        std::shared_ptr<const Frontend::DecodedMusic> music;
+        try {
+            package=Frontend::load_stage_package(source,stage_assets);
+            CustomStage::RomView check(roms,package->definition);
+            music=Frontend::decode_stage_music(*package);
+        } catch(const std::exception& error) {
+            std::cerr<<"Custom stage failed to load: "<<source<<": "<<error.what()<<std::endl;
+            menu->custom_stage_error=error.what();menu->notice="STAGE FAILED TO LOAD";return;
+        }
+        menu->custom_stage_error.clear();
+        active_stage_music=std::move(music);
+        menu->close(game);
+        restart_board(0,false,nullptr,package);
+    };
     auto menu_action=[&](Frontend::NativeMenu::Action action) {
+        if(action==Frontend::NativeMenu::Action::custom_stage){start_selected_stage();return;}
         if(action==Frontend::NativeMenu::Action::shuffle) {
             if(recording){menu->notice="UNAVAILABLE WHILE RECORDING";return;}
             const auto plan=Shuffle::generate(game.stage_count(),std::random_device{}());
@@ -809,7 +975,11 @@ int main(int argc, char** argv)try
     };
     if(practice_start_stage){menu->practice_stage=practice_start_stage;restart_board(practice_start_stage);}
     if(shuffle_start){const auto plan=Shuffle::generate(game.stage_count(),shuffle_seed?*shuffle_seed:std::random_device{}());restart_board(0,false,&plan);}
-    if(initial_custom_stage){restart_board(0,false,nullptr,&*initial_custom_stage);}
+    if(initial_custom_stage){
+        CustomStage::RomView check(roms,initial_custom_stage->definition);
+        active_stage_music=Frontend::decode_stage_music(*initial_custom_stage);
+        restart_board(0,false,nullptr,initial_custom_stage);
+    }
     while (running)
     {
         if(frame_timings.enabled())frame_timings.begin(timing_phases());
@@ -937,6 +1107,36 @@ int main(int argc, char** argv)try
         }
 #endif
         apply_pending_shader();
+        std::optional<StageDialogReply> stage_reply;
+        {
+            std::lock_guard lock(stage_dialog->mutex);
+            stage_reply=std::move(stage_dialog->reply);stage_dialog->reply.reset();
+        }
+        if(stage_reply) {
+            if(!stage_reply->error.empty())menu->notice="FILE DIALOG: "+stage_reply->error;
+            else if(!stage_reply->cancelled) try {
+                const auto picked=local_stage_path(stage_reply->path);
+                if(stage_reply->kind==StageDialogKind::assets_path) {
+                    // Reject an unreadable pack now, rather than when the stage starts.
+                    CustomStage::AssetMounts probe;probe.add(picked);
+                    stage_assets.erase(std::remove(stage_assets.begin(),stage_assets.end(),picked),stage_assets.end());
+                    stage_assets.push_back(picked);refresh_stage_assets();
+                    menu->notice="ADDED "+stage_display_name(picked);
+                } else {
+                    opened_stage_path=picked;
+                    stage_sources.clear();refresh_stage_list();
+                    menu->custom_stage_index=0;
+                    menu->custom_stage_error.clear();
+                    menu->notice="SELECTED "+stage_display_name(picked);
+                }
+            } catch(const std::exception& error) {
+                std::cerr<<"Custom stage selection failed: "<<error.what()<<std::endl;
+                menu->custom_stage_error=error.what();menu->notice="COULD NOT OPEN SELECTION";
+            }
+        }
+        // A stage's own track only applies inside its slot; the run then continues
+        // into arcade stages that use their normal music.
+        music_player->set_stage_music(game.custom_stage_in_slot()?active_stage_music:nullptr);
         if(input_manager->menu_pressed()) {
             if(menu->is_open())menu_action(menu->key(SDLK_ESCAPE));
             else {menu->open(game);reset_pacing();sync_audio();}
@@ -957,6 +1157,13 @@ int main(int argc, char** argv)try
             const auto core_start=measure ? SDL_GetPerformanceCounter() : 0;
             const double scene_before=primary_scene_ms;
             advance(input);
+            if(stage_sprite_log.is_open() && game.custom_stage_in_slot()) {
+                for(const auto& seen:stage_sprite_frames.observe(game.published_sprites(),game.current_rom())) {
+                    char line[64];
+                    std::snprintf(line,sizeof(line),"0x%05x,%u,%u,%u,",unsigned(seen.frame),seen.palette,seen.width,seen.height);
+                    stage_sprite_log<<line<<game.info().number<<'\n'<<std::flush;
+                }
+            }
             const auto cues=game.take_feedback();
             unsigned refill_delay=0;
             if(std::any_of(cues.sequence_events.begin(),cues.sequence_events.end(),[](const auto& cue){return cue.cue==Feedback::SequenceCue::refill;})){
@@ -988,9 +1195,17 @@ int main(int argc, char** argv)try
         }
 
         const bool composed=(accelerated_sprites() || menu->settings.sprites!=Frontend::SpriteFilter::none || menu->settings.clouds || menu->settings.trails || menu->settings.explosions || menu->settings.afterburner || menu->settings.ground || wide_ready) && planes.ready && !menu->is_open();
+        if(composed) {
+            Frontend::NativeCustomStage::Planes sky_planes{planes.background,planes.sprites,scene.heads,scene.fragments};
+            if(custom_stage_renderer->composite_sky(game,sky_planes,render_width,SCREEN_HEIGHT)) {
+                planes.background=sky_planes.background;planes.sprites=sky_planes.sprites;
+                scene.heads=sky_planes.heads;scene.fragments=sky_planes.fragments;
+            }
+        }
         if(!composed){
             const auto frame = game.frame().pixels;
             for(size_t i=0;i<frame.size();++i){const auto p=frame[i];texture_pixels[i]=0xff000000u|uint32_t(p.r)<<16|uint32_t(p.g)<<8|p.b;}
+            if(!menu->is_open())custom_stage_renderer->composite_sky_raster(game,texture_pixels,SCREEN_WIDTH,SCREEN_HEIGHT);
             if(!SDL_UpdateTexture(texture,nullptr,texture_pixels.data(),SCREEN_WIDTH*4))throw std::runtime_error(SDL_GetError());
         }
         SDL_SetRenderViewport(renderer,nullptr);
@@ -1078,7 +1293,7 @@ int main(int argc, char** argv)try
         SDL_SetRenderViewport(renderer,&safe_area);
 
         if(menu->is_open())menu->draw();
-        else {Frontend::CustomStageHud::draw(renderer,game);menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
+        else {custom_stage_renderer->draw_overlays(game,Frontend::viewport_width(menu->settings));Frontend::CustomStageHud::draw(renderer,game);menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
         if(!menu->is_open())touch.draw(renderer);
         if(!frame_preview.empty() && frame_limit && simulated_frames>=frame_limit) {
             SDL_SetRenderViewport(renderer,nullptr);
@@ -1165,7 +1380,7 @@ int main(int argc, char** argv)try
 #ifdef SDL_PLATFORM_ANDROID
     content_imports.reset();
 #endif
-    shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();
+    shader_dialog.reset();slang_renderer.reset();custom_stage_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();
     if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);
     release_sprite_scalers();
     SDL_DestroyTexture(texture);

@@ -1,0 +1,58 @@
+{
+  "$schema": "../../stage.schema.json",
+  "version": 1,
+  "name": "SUNSET STRIKE",
+  "objective": "combat",
+  "environment": "canyon",
+  "slot": 8,
+  "source_stage": 8,
+  "scenery_stage": 8,
+  "music": "super_stripe",
+  "music_file": "audio/sunset-theme.wav",
+  "presentation": {
+    "backdrop": {
+      "asset": "art/sunset-sky.png",
+      "parallax": [0.25, 0.4],
+      "drift": [3, 0],
+      "follow_roll": true
+    }
+  },
+  "sprites": [
+    { "frame": "0x11530", "asset": "art/sprites/flying-wing.png" },
+    { "frame": "0x165f0", "asset": "art/sprites/crystals.png", "own_colors": true }
+  ],
+  "layers": [
+    {
+      "name": "sun haze behind gameplay",
+      "order": -10,
+      "space": "screen",
+      "elements": [
+        {
+          "type": "image",
+          "asset": "art/sun-glow.png",
+          "x": 480,
+          "y": 210,
+          "width": 360,
+          "height": 300,
+          "color": [255, 255, 255, 120]
+        }
+      ]
+    },
+    {
+      "name": "stage title",
+      "order": 1000,
+      "space": "screen",
+      "elements": [
+        {
+          "type": "image",
+          "asset": "art/title-banner.png",
+          "x": 480,
+          "y": 300,
+          "width": 640,
+          "height": 72,
+          "ticks": [1200, 3600]
+        }
+      ]
+    }
+  ]
+}

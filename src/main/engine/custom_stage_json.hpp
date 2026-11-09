@@ -9,6 +9,7 @@
 #include <initializer_list>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -287,6 +288,7 @@ struct OceanPalette {
     RGBColor sky{0, 170, 255};
     RGBColor haze{220, 250, 255};
     RGBColor water{0, 0, 255};
+    std::optional<RGBColor> water_band;   // Second ground color, for scrolling bands.
 
     RGBColor sky_at(double t) const {
         t = std::clamp(t, 0.0, 1.0);
@@ -311,6 +313,13 @@ struct OceanPalette {
     }
 };
 
+// Decoded external image, top-down RGBA8. Produced by the frontend so the engine
+// stays free of SDL and shared between definition copies on stage retries.
+struct DecodedImage {
+    unsigned width{}, height{};
+    std::vector<uint8_t> rgba;
+};
+
 struct LayerElement {
     enum class Type { rectangle, image };
     Type type = Type::rectangle;
@@ -319,6 +328,46 @@ struct LayerElement {
     double width{32.0}, height{32.0}, rotation{};
     unsigned columns{1}, rows{1};
     std::array<uint8_t, 4> color{255, 255, 255, 255};
+    bool nearest{};                         // Pixel-art sampling instead of smooth.
+    std::optional<uint16_t> tick_begin, tick_end; // Stage-timer visibility window.
+};
+
+// External image shown wherever the stage's sky would be, behind every sprite.
+struct Backdrop {
+    std::string asset;
+    double parallax_x{0.25}, parallax_y{0.5};
+    double drift_x{}, drift_y{};            // Constant scrolling, native pixels per second.
+    bool follow_roll{true};                 // Tilt with the aircraft like the horizon does.
+};
+
+// A 16x16 grid of ground objects, in the format $83A8 reads through commands 5..8 of
+// the stream at descriptor+8. One cell spawns per $40 of distance flown, left to right
+// and top to bottom, so a grid lasts about 992 ticks; its last row then repeats until
+// the next pattern. The grid's column is the object's lateral position.
+struct ScenePattern {
+    uint16_t tick{};
+    uint8_t command{8};                     // 5..8 select how $841C flips the cell index.
+    std::array<uint8_t, 144> data{};        // 128 bytes of nibbles, then a 16-entry object table.
+};
+
+// Replaces a ROM sprite frame (and its smaller LOD frames) with an external image.
+struct SpriteOverride {
+    uint32_t frame{};                       // Sub CPU frame record, e.g. 0x16500.
+    std::string asset;
+    std::optional<uint8_t> palette;         // Empty = use the palette the game draws it with.
+    bool own_colors{};                      // Rewrite that palette with the image's colors.
+    bool lods{true};                        // Also rewrite the four smaller LOD frames.
+    bool stretch{};                         // Fill the frame instead of keeping aspect ratio.
+    std::shared_ptr<const DecodedImage> image;
+};
+
+// Overwrites part of a cloned graphics or sample ROM region with external bytes.
+struct RomPatch {
+    enum class Region { tiles, sprites, road, pcm };
+    Region region = Region::road;
+    uint32_t offset{};
+    std::string asset;
+    std::shared_ptr<const std::vector<uint8_t>> data;
 };
 
 struct SceneLayer {
@@ -495,6 +544,21 @@ struct Definition {
     unsigned tanker_variant = 0; // 0 = random cycle across {3, 9, 11, 16, 19, 21}
     std::vector<SceneLayer> layers;
 
+    // External content (see custom_stage_assets.hpp):
+    std::vector<std::string> asset_packs;     // Extra folders/ZIPs, relative to the stage file.
+    std::optional<std::string> music_file;    // WAV/FLAC played instead of the stage's track.
+    std::optional<Backdrop> backdrop;
+    std::vector<SpriteOverride> sprites;
+    std::vector<RomPatch> rom_patches;
+    std::vector<ScenePattern> scenery_patterns;
+
+    // Layers ordered below zero render behind gameplay, inside the sky.
+    bool has_sky_layers() const {
+        return std::any_of(layers.begin(), layers.end(), [](const SceneLayer& l) { return l.order < 0.0; });
+    }
+    // The sky is replaced by keying it to a reserved palette color.
+    bool sky_keyed() const { return backdrop.has_value() || has_sky_layers(); }
+
     // Resolve the canonical donor stage (1..23) used by the ROM-view compiler.
     unsigned donor_stage() const {
         if (source_stage) return source_stage;
@@ -559,7 +623,7 @@ struct Definition {
                 else throw std::runtime_error("Invalid layer space: " + s);
             }
             for (const auto& elem_node : elements_node->array) {
-                elem_node.keys({"type", "asset", "x", "y", "z", "width", "height", "rotation", "color", "repeat"});
+                elem_node.keys({"type", "asset", "x", "y", "z", "width", "height", "rotation", "color", "repeat", "filter", "ticks"});
                 const auto* type_node = elem_node.find("type");
                 if (!type_node) throw std::runtime_error("Layer element requires type");
                 const auto type_str = type_node->text();
@@ -601,6 +665,19 @@ struct Definition {
                     elem.columns = static_cast<unsigned>(rep->array[0].integer(1, 16384));
                     elem.rows = static_cast<unsigned>(rep->array[1].integer(1, 16384));
                 }
+                if (const auto* f = elem_node.find("filter")) {
+                    const auto mode = f->text();
+                    if (mode == "nearest") elem.nearest = true;
+                    else if (mode != "linear") throw std::runtime_error("Element filter must be nearest or linear");
+                }
+                if (const auto* t = elem_node.find("ticks")) {
+                    if (t->kind != Json::Kind::array || t->array.size() != 2u)
+                        throw std::runtime_error("Element ticks requires [begin, end]");
+                    elem.tick_begin = static_cast<uint16_t>(t->array[0].integer(0, 0xffff));
+                    elem.tick_end = static_cast<uint16_t>(t->array[1].integer(0, 0xffff));
+                    if (*elem.tick_end < *elem.tick_begin)
+                        throw std::runtime_error("Element ticks end precedes its begin");
+                }
                 layer.elements.push_back(std::move(elem));
             }
             out.push_back(std::move(layer));
@@ -611,6 +688,173 @@ struct Definition {
         return out;
     }
 
+    // Accepts 0x16500, 91392 or the sprite extractor's "sub_016500" id.
+    static uint32_t parse_frame_address(const Json& node) {
+        uint32_t address{};
+        if (node.kind == Json::Kind::number) {
+            address = static_cast<uint32_t>(node.integer(0, 0x3ffff));
+        } else {
+            auto text = node.text();
+            int base = 10;
+            if (text.starts_with("sub_")) { text.erase(0, 4); base = 16; }
+            else if (text.starts_with("0x") || text.starts_with("0X")) { text.erase(0, 2); base = 16; }
+            const auto result = std::from_chars(text.data(), text.data() + text.size(), address, base);
+            if (result.ec != std::errc{} || result.ptr != text.data() + text.size() || text.empty())
+                throw std::runtime_error("Invalid sprite frame: " + node.string);
+        }
+        if (address < 0x10000u || address >= 0x20000u || address % 16u)
+            throw std::runtime_error("Sprite frame must be a 16-byte record in Sub ROM $10000..$1FFFF");
+        return address;
+    }
+
+    static uint8_t parse_byte(const Json& node) {
+        if (node.kind == Json::Kind::number) return static_cast<uint8_t>(node.integer(0, 255));
+        auto text = node.text();
+        int base = 10;
+        if (text.starts_with("0x") || text.starts_with("0X")) { text.erase(0, 2); base = 16; }
+        unsigned value{};
+        const auto result = std::from_chars(text.data(), text.data() + text.size(), value, base);
+        if (result.ec != std::errc{} || result.ptr != text.data() + text.size() || text.empty() || value > 255u)
+            throw std::runtime_error("Expected a byte value: " + node.string);
+        return static_cast<uint8_t>(value);
+    }
+
+    static unsigned pattern_cell(char c) {
+        if (c == '.' || c == '0') return 0u;
+        if (c >= '1' && c <= '9') return unsigned(c - '0');
+        if (c >= 'a' && c <= 'f') return unsigned(c - 'a') + 10u;
+        if (c >= 'A' && c <= 'F') return unsigned(c - 'A') + 10u;
+        throw std::runtime_error(std::string("Scenery pattern cell must be '.' or 1..F, not: ") + c);
+    }
+
+    static ScenePattern parse_pattern(const Json& node) {
+        node.keys({"tick", "rows", "objects", "flip"});
+        const auto* tick = node.find("tick");
+        const auto* rows = node.find("rows");
+        const auto* objects = node.find("objects");
+        if (!tick || !rows || !objects)
+            throw std::runtime_error("Scenery pattern requires tick, rows and objects");
+        if (rows->kind != Json::Kind::array || rows->array.empty() || rows->array.size() > 16u)
+            throw std::runtime_error("Scenery pattern requires 1 to 16 rows");
+        ScenePattern pattern;
+        pattern.tick = static_cast<uint16_t>(tick->integer(0, 0xfffeu));
+        if (const auto* flip = node.find("flip")) {
+            const auto mode = flip->text();
+            pattern.command = mode == "none" ? 8u : mode == "columns" ? 6u : mode == "rows" ? 7u :
+                              mode == "both" ? 5u : 0u;
+            if (!pattern.command) throw std::runtime_error("Scenery pattern flip must be none, columns, rows or both");
+        }
+        if (objects->kind != Json::Kind::object)
+            throw std::runtime_error("Scenery pattern objects must be a JSON object");
+        for (const auto& [key, value] : objects->object) {
+            if (key.size() != 1u || !pattern_cell(key[0]))
+                throw std::runtime_error("Scenery pattern object keys must be 1..F: " + key);
+            pattern.data[128u + pattern_cell(key[0])] = parse_byte(value);
+        }
+        // Fewer than 16 rows means the last row continues, as it would at runtime anyway.
+        for (unsigned row = 0; row < 16u; ++row) {
+            const auto& text = rows->array[std::min<size_t>(row, rows->array.size() - 1u)].text();
+            if (text.size() != 16u) throw std::runtime_error("Scenery pattern rows need 16 cells: " + text);
+            for (unsigned column = 0; column < 16u; ++column) {
+                const unsigned cell = pattern_cell(text[column]);
+                if (cell && !pattern.data[128u + cell])
+                    throw std::runtime_error(std::string("Scenery pattern uses a cell with no object: ") + text[column]);
+                pattern.data[row * 8u + column / 2u] |= uint8_t(column % 2u ? cell : cell << 4);
+            }
+        }
+        return pattern;
+    }
+
+    static void parse_external_content(const Json& doc, Definition& def) {
+        if (const auto* patterns = doc.find("scenery_patterns")) {
+            if (patterns->kind != Json::Kind::array)
+                throw std::runtime_error("scenery_patterns must be a JSON array");
+            for (const auto& node : patterns->array) def.scenery_patterns.push_back(parse_pattern(node));
+        }
+        if (const auto* packs = doc.find("asset_packs")) {
+            if (packs->kind != Json::Kind::array)
+                throw std::runtime_error("asset_packs must be a JSON array");
+            for (const auto& pack : packs->array) {
+                if (pack.text().empty()) throw std::runtime_error("asset_packs entries must not be empty");
+                def.asset_packs.push_back(pack.text());
+            }
+        }
+        if (const auto* music = doc.find("music_file")) {
+            if (music->text().empty()) throw std::runtime_error("music_file must not be empty");
+            def.music_file = music->text();
+        }
+        if (const auto* list = doc.find("sprites")) {
+            if (list->kind != Json::Kind::array)
+                throw std::runtime_error("sprites must be a JSON array");
+            for (const auto& node : list->array) {
+                node.keys({"frame", "asset", "palette", "own_colors", "lods", "fit"});
+                const auto* frame = node.find("frame");
+                const auto* asset = node.find("asset");
+                if (!frame || !asset || asset->text().empty())
+                    throw std::runtime_error("Sprite override requires frame and asset");
+                SpriteOverride sprite;
+                sprite.frame = parse_frame_address(*frame);
+                sprite.asset = asset->text();
+                if (const auto* p = node.find("palette")) {
+                    if (p->kind == Json::Kind::string) {
+                        if (p->text() != "auto") throw std::runtime_error("Sprite palette must be a number or \"auto\"");
+                    } else {
+                        sprite.palette = static_cast<uint8_t>(p->integer(0, 255));
+                    }
+                }
+                if (const auto* o = node.find("own_colors")) sprite.own_colors = o->flag();
+                if (const auto* l = node.find("lods")) sprite.lods = l->flag();
+                if (const auto* f = node.find("fit")) {
+                    const auto mode = f->text();
+                    if (mode == "stretch") sprite.stretch = true;
+                    else if (mode != "contain") throw std::runtime_error("Sprite fit must be contain or stretch");
+                }
+                def.sprites.push_back(std::move(sprite));
+            }
+        }
+        if (const auto* list = doc.find("rom_patches")) {
+            if (list->kind != Json::Kind::array)
+                throw std::runtime_error("rom_patches must be a JSON array");
+            for (const auto& node : list->array) {
+                node.keys({"region", "offset", "asset"});
+                const auto* region = node.find("region");
+                const auto* asset = node.find("asset");
+                if (!region || !asset || asset->text().empty())
+                    throw std::runtime_error("ROM patch requires region and asset");
+                RomPatch patch;
+                const auto name = region->text();
+                if (name == "tiles") patch.region = RomPatch::Region::tiles;
+                else if (name == "sprites") patch.region = RomPatch::Region::sprites;
+                else if (name == "road") patch.region = RomPatch::Region::road;
+                else if (name == "pcm") patch.region = RomPatch::Region::pcm;
+                else throw std::runtime_error("ROM patch region must be tiles, sprites, road or pcm");
+                if (const auto* offset = node.find("offset"))
+                    patch.offset = static_cast<uint32_t>(offset->integer(0, 0x7fffffff));
+                patch.asset = asset->text();
+                def.rom_patches.push_back(std::move(patch));
+            }
+        }
+    }
+
+    static Backdrop parse_backdrop(const Json& node) {
+        node.keys({"asset", "parallax", "drift", "follow_roll"});
+        const auto* asset = node.find("asset");
+        if (!asset || asset->text().empty())
+            throw std::runtime_error("Backdrop requires an asset");
+        Backdrop backdrop;
+        backdrop.asset = asset->text();
+        auto pair = [](const Json& value, double& x, double& y, const char* field) {
+            if (value.kind != Json::Kind::array || value.array.size() != 2u)
+                throw std::runtime_error(std::string("Backdrop ") + field + " requires [x, y]");
+            x = value.array[0].numeric();
+            y = value.array[1].numeric();
+        };
+        if (const auto* p = node.find("parallax")) pair(*p, backdrop.parallax_x, backdrop.parallax_y, "parallax");
+        if (const auto* d = node.find("drift")) pair(*d, backdrop.drift_x, backdrop.drift_y, "drift");
+        if (const auto* r = node.find("follow_roll")) backdrop.follow_roll = r->flag();
+        return backdrop;
+    }
+
     static Definition from_json(const Json& doc) {
         doc.keys({
             "$schema", "version", "name", "objective", "environment",
@@ -619,7 +863,8 @@ struct Definition {
             "replace_events", "events", "replace_enemy_waves", "enemy_waves",
             "length", "width", "start_distance", "start_height",
             "speed", "glideslope", "tanker_span", "seamless_takeoff", "player_landing",
-            "presentation", "layers"
+            "presentation", "layers",
+            "asset_packs", "music_file", "sprites", "rom_patches", "scenery_patterns"
         });
         const auto* ver = doc.find("version");
         if (!ver || ver->integer(1, 1) != 1)
@@ -777,7 +1022,8 @@ struct Definition {
             def.player_landing = pl->flag();
 
         if (const auto* pres = doc.find("presentation")) {
-            pres->keys({"rom_environment", "ocean", "player_shadow", "tanker_variant", "clouds", "hud"});
+            pres->keys({"rom_environment", "ocean", "player_shadow", "tanker_variant", "clouds", "hud", "backdrop"});
+            if (const auto* bd = pres->find("backdrop")) def.backdrop = parse_backdrop(*bd);
             if (const auto* re = pres->find("rom_environment")) def.rom_environment = re->flag();
             if (const auto* ps = pres->find("player_shadow")) def.player_shadow = ps->flag();
             if (const auto* cl = pres->find("clouds")) def.clouds = cl->flag();
@@ -792,7 +1038,7 @@ struct Definition {
                 }
             }
             if (const auto* oc = pres->find("ocean")) {
-                oc->keys({"sky", "haze", "water"});
+                oc->keys({"sky", "haze", "water", "water_band"});
                 def.custom_ocean = true;
                 auto parse_rgb = [](const Json* node, RGBColor& dst) {
                     if (!node) return;
@@ -805,10 +1051,16 @@ struct Definition {
                 parse_rgb(oc->find("sky"), def.ocean.sky);
                 parse_rgb(oc->find("haze"), def.ocean.haze);
                 parse_rgb(oc->find("water"), def.ocean.water);
+                if (const auto* band = oc->find("water_band")) {
+                    RGBColor color;
+                    parse_rgb(band, color);
+                    def.ocean.water_band = color;
+                }
             }
         }
         if (const auto* lay = doc.find("layers"))
             def.layers = parse_layers(*lay);
+        parse_external_content(doc, def);
         return def;
     }
 
