@@ -1,0 +1,60 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "CANYON / AMBUSH",
+  "objective": "combat",
+  "environment": "canyon",
+  "slot": 8,
+  "source_stage": 8,
+  "enemy_stage": 16,
+  "scenery_stage": 8,
+  "music": "super_stripe",
+  "replace_events": false,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true,
+    "clouds": true,
+    "hud": true,
+    "ocean": {
+      "sky": [68, 22, 36],
+      "haze": [238, 128, 72],
+      "water": [54, 24, 18]
+    }
+  },
+  "events": [
+    {
+      "tick": 16,
+      "command": "special_road_enter",
+      "params": [0, 0, 0, 0, 0]
+    },
+    {
+      "tick": 32,
+      "command": "set_cloud_control",
+      "params": [1, 0, 0, 0, 0]
+    },
+    {
+      "tick": 64,
+      "command": "set_horizon_scroll",
+      "params": [0, 0, 1, 0, 0]
+    },
+    {
+      "tick": 96,
+      "command": "special_road_exit",
+      "params": [0, 0, 0, 0, 0]
+    }
+  ],
+  "enemy_waves": [
+    {
+      "tick": 24,
+      "command": "standard",
+      "formation": 1,
+      "params": [0, 0, 0, 0]
+    },
+    {
+      "tick": 56,
+      "command": "parameterized",
+      "formation": 2,
+      "params": [0, 16, 0, 0]
+    }
+  ]
+}

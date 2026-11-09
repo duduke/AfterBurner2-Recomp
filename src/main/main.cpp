@@ -39,6 +39,7 @@
 #include "frontend/controller_database.hpp"
 #include "frontend/native_rom_picker.hpp"
 #include "frontend/native_touch.hpp"
+#include "frontend/custom_stage_hud.hpp"
 #include "frontend/frame_timings.hpp"
 #include "frontend/frame_pacing.hpp"
 #ifdef SDL_PLATFORM_ANDROID
@@ -81,6 +82,7 @@ int main(int argc, char** argv)try
     unsigned practice_start_stage = 0;
     bool shuffle_start = false;
     std::optional<uint32_t> shuffle_seed;
+    std::string custom_stage_arg;
     bool boot_to_flight = false, profile = false,integrated_scene=true;
     std::string recording_path, rom_source;
     std::string settings_path, menu_preview, frame_preview, hud_atlas, player_aircraft,shader_preset,shader_runtime;
@@ -102,6 +104,7 @@ int main(int argc, char** argv)try
                 throw std::runtime_error("Shuffle seed must be an unsigned 32-bit integer");
             shuffle_seed=seed;shuffle_start=true;continue;
         }
+        if (option == "--custom-stage" && i+1<argc) { custom_stage_arg=argv[++i]; continue; }
         if (option == "--roms" && i+1<argc) { rom_source=argv[++i]; continue; }
         if (option == "--record" && i+1<argc) { recording_path=argv[++i]; continue; }
         if (option == "--settings-file" && i+1<argc) { settings_path=argv[++i]; continue; }
@@ -112,7 +115,7 @@ int main(int argc, char** argv)try
         if (option == "--shader-runtime" && i+1<argc) { shader_runtime=argv[++i]; continue; }
         if (option == "--menu-preview" && i+1<argc) { menu_preview=argv[++i]; continue; }
         if ((option != "--frames" && option != "--stage" && option != "--practice-stage") || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--roms directory|set.zip] [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number]] [--boot-to-flight] [--record path] [--profile] [--scene-renderer snapshot|integrated] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime library-path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
+        { std::cerr << "Usage: afterburner2 [--roms directory|set.zip] [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number] | --custom-stage file.json|preset] [--boot-to-flight] [--record path] [--profile] [--scene-renderer snapshot|integrated] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime library-path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
         const std::string_view value(argv[++i]);
         auto& count = option == "--stage" ? start_stage : option == "--practice-stage" ? practice_start_stage : frame_limit;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
@@ -123,9 +126,11 @@ int main(int argc, char** argv)try
     unsigned simulated_frames = 0;
     if (start_stage && practice_start_stage)
         throw std::runtime_error("Choose either --stage or --practice-stage");
-    if(shuffle_start && (start_stage || practice_start_stage))
+    if(shuffle_start && (start_stage || practice_start_stage || !custom_stage_arg.empty()))
         throw std::runtime_error("Shuffle cannot be combined with selected-stage startup");
-    if (!recording_path.empty() && (start_stage || practice_start_stage || shuffle_start))
+    if(!custom_stage_arg.empty() && (start_stage || practice_start_stage))
+        throw std::runtime_error("Custom stage cannot be combined with --stage or --practice-stage");
+    if (!recording_path.empty() && (start_stage || practice_start_stage || shuffle_start || !custom_stage_arg.empty()))
         throw std::runtime_error("Natural recording requires normal cold boot without selected-stage startup");
 #ifdef SDL_PLATFORM_ANDROID
     // SDL's resizable window otherwise permits portrait despite the manifest.
@@ -213,7 +218,15 @@ int main(int argc, char** argv)try
             advance(input);
             take_audio();game.take_feedback();
         }
-        if (start_stage) {
+        if (game.custom_stage_active()) {
+            SDL_PumpEvents();
+            game.enter_custom_stage([&] { SDL_PumpEvents(); take_audio(); game.take_feedback(); });
+            if (music_player) music_player->mix({}, game.take_music());
+            SDL_PumpEvents();
+            std::cout << "Custom stage ready: " << game.custom_stage_definition()->name
+                      << " (slot " << game.custom_stage_definition()->slot
+                      << ", donor " << game.custom_stage_definition()->donor_stage() << ")" << std::endl;
+        } else if (start_stage) {
             SDL_PumpEvents();
             game.debug_skip_to_stage(start_stage);if(music_player)music_player->mix({},game.take_music());
             SDL_PumpEvents();
@@ -614,7 +627,13 @@ int main(int argc, char** argv)try
         shader_dialog.reset();slang_renderer.reset();menu.reset();aircraft_renderer.reset();crt_renderer.reset();hud_renderer.reset();feedback.reset();input_manager.reset();music_player.reset();if(!accelerated_sprites())SDL_DestroyTexture(sprite_texture);release_sprite_scalers();SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);if(gpu_device)SDL_DestroyGPUDevice(gpu_device);SDL_DestroyWindow(window);SDL_Quit();return 0;
     }
-    if(!frame_limit && !boot_to_flight && !start_stage && !practice_start_stage && !shuffle_start) menu->open(game);
+    std::optional<CustomStage::Definition> initial_custom_stage;
+    if(!custom_stage_arg.empty()) {
+        std::error_code ec;
+        if(std::filesystem::exists(custom_stage_arg,ec))initial_custom_stage=CustomStage::Definition::load(custom_stage_arg);
+        else initial_custom_stage=CustomStage::Definition::preset_by_name(custom_stage_arg);
+    }
+    if(!frame_limit && !boot_to_flight && !start_stage && !practice_start_stage && !shuffle_start && !initial_custom_stage) menu->open(game);
 
     prepare_fullscreen(settings);
 
@@ -622,7 +641,7 @@ int main(int argc, char** argv)try
     menu->audio=audio_output.get();
     bool cockpit_enabled=audio_output->settings.profile!=Frontend::AudioProfile::original;
     game.capture_cockpit(cockpit_enabled);
-    if (!shuffle_start && !practice_start_stage && (boot_to_flight || start_stage)) startup();
+    if (!shuffle_start && !practice_start_stage && !initial_custom_stage && (boot_to_flight || start_stage)) startup();
     music_player->output=audio_output.get();
 
     const double tick_seconds = GameSession::frame_seconds;
@@ -717,13 +736,14 @@ int main(int argc, char** argv)try
         audio_output->clear();reset_pacing();sync_audio();
     };
     auto update_title=[&] {
-        const auto title=game.shuffled()?"AfterBurner2-Recomp — Shuffle (F5 retries this order)":practice.stage()?"AfterBurner2-Recomp — Practice from Stage "+std::to_string(practice.stage())+" (F5 to retry)":std::string("AfterBurner2-Recomp");
+        const auto title=game.custom_stage_active()?"AfterBurner2-Recomp — Custom Stage: "+game.custom_stage_definition()->name+" (F5 to retry)":game.shuffled()?"AfterBurner2-Recomp — Shuffle (F5 retries this order)":practice.stage()?"AfterBurner2-Recomp — Practice from Stage "+std::to_string(practice.stage())+" (F5 to retry)":std::string("AfterBurner2-Recomp");
         SDL_SetWindowTitle(window,(title+(game.paused()?" — Paused (P to resume)":"")).c_str());
     };
-    auto restart_board=[&](unsigned selected_practice=0,bool return_arcade=false,const Shuffle::Plan* new_shuffle=nullptr) {
-        const bool retry_shuffle=game.shuffled() && !selected_practice && !return_arcade && !new_shuffle;
+    auto restart_board=[&](unsigned selected_practice=0,bool return_arcade=false,const Shuffle::Plan* new_shuffle=nullptr,const CustomStage::Definition* new_custom=nullptr) {
+        const bool retry_custom=game.custom_stage_active() && !selected_practice && !return_arcade && !new_shuffle && !new_custom;
+        const bool retry_shuffle=game.shuffled() && !selected_practice && !return_arcade && !new_shuffle && !new_custom;
         const auto target=return_arcade?0:selected_practice?selected_practice:practice.stage();
-        if((target || new_shuffle || retry_shuffle) && recording)throw std::runtime_error("Enhanced gameplay unavailable while recording");
+        if((target || new_shuffle || retry_shuffle || new_custom || retry_custom) && recording)throw std::runtime_error("Enhanced gameplay unavailable while recording");
         if(wide_renderer)wide_renderer->reset();feedback->restart();input_manager->block();music_player->restarted();
         if(slang_renderer)slang_renderer->invalidate();last_shader_frame=UINT64_MAX;
         audio_output->pause(true);audio_output->clear();
@@ -731,7 +751,14 @@ int main(int argc, char** argv)try
         // Follow hidden boot music events without queueing hidden playback.
         auto* playback=music_player->output;music_player->output=nullptr;
         try {
-            if(new_shuffle || retry_shuffle) {
+            if(new_custom || retry_custom) {
+                if(new_custom)game.start_custom_stage(*new_custom);else game.retry_custom_stage();
+                game.set_dip_switches(switches);practice={};start_stage=0;
+                std::cout<<"Custom stage compiled: "<<game.custom_stage_definition()->name
+                         <<" (slot "<<game.custom_stage_definition()->slot<<")"<<std::endl;
+                startup();
+            }
+            else if(new_shuffle || retry_shuffle) {
                 if(new_shuffle)game.start_shuffle(*new_shuffle);else game.retry_shuffle();
                 game.set_dip_switches(switches);practice={};start_stage=0;
                 const auto* plan=game.shuffle_plan();
@@ -751,6 +778,7 @@ int main(int argc, char** argv)try
         music_player->output=playback;
         menu->active_practice_stage=practice.stage();
         menu->shuffle_active=game.shuffled();
+        menu->custom_stage_label=game.custom_stage_active()?"CUSTOM: "+game.custom_stage_definition()->name.substr(0,18):"";
         audio_output->clear();
         reset_pacing();sync_audio();
         update_title();
@@ -781,6 +809,7 @@ int main(int argc, char** argv)try
     };
     if(practice_start_stage){menu->practice_stage=practice_start_stage;restart_board(practice_start_stage);}
     if(shuffle_start){const auto plan=Shuffle::generate(game.stage_count(),shuffle_seed?*shuffle_seed:std::random_device{}());restart_board(0,false,&plan);}
+    if(initial_custom_stage){restart_board(0,false,nullptr,&*initial_custom_stage);}
     while (running)
     {
         if(frame_timings.enabled())frame_timings.begin(timing_phases());
@@ -1049,7 +1078,7 @@ int main(int argc, char** argv)try
         SDL_SetRenderViewport(renderer,&safe_area);
 
         if(menu->is_open())menu->draw();
-        else {menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
+        else {Frontend::CustomStageHud::draw(renderer,game);menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
         if(!menu->is_open())touch.draw(renderer);
         if(!frame_preview.empty() && frame_limit && simulated_frames>=frame_limit) {
             SDL_SetRenderViewport(renderer,nullptr);

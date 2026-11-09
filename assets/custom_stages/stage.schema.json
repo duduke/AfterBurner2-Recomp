@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "After Burner II Custom Stage Definition (Native RomView + Interactive Controller)",
+  "type": "object",
+  "required": ["version", "name", "objective", "environment"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "objective": {
+      "type": "string",
+      "enum": ["combat", "landing", "takeoff", "refuel"]
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["carrier", "runway", "jungle", "sea", "canyon", "night"]
+    },
+    "slot": { "type": "integer", "minimum": 1, "maximum": 22 },
+    "source_stage": { "type": "integer", "minimum": 1, "maximum": 64 },
+    "enemy_stage": { "type": "integer", "minimum": 1, "maximum": 64 },
+    "scenery_stage": { "type": "integer", "minimum": 1, "maximum": 64 },
+    "music": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "maximum": 255 },
+        {
+          "type": "string",
+          "enum": [
+            "maximum_power",
+            "final_take_off",
+            "red_out",
+            "super_stripe",
+            "after_burner",
+            "city_202",
+            "inherit"
+          ]
+        }
+      ]
+    },
+    "road_setup": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "sky_setup": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "curve_setup": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "replace_events": { "type": "boolean" },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tick", "command"],
+        "additionalProperties": false,
+        "properties": {
+          "tick": { "type": "integer", "minimum": 0, "maximum": 65534 },
+          "command": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "enum": [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "music_transition",
+                  "clear_horizon_flags",
+                  "clear_horizon_flags_alt",
+                  "set_horizon_flag",
+                  "nop_5",
+                  "nop_6",
+                  "set_horizon_target",
+                  "set_ground_flag",
+                  "clear_ground_flag",
+                  "set_scroll_state",
+                  "set_cloud_control",
+                  "stage_advance",
+                  "set_camera_bounds",
+                  "refuel",
+                  "set_stage_mode",
+                  "landing",
+                  "special_road_exit",
+                  "special_road_enter",
+                  "set_bank_drift_flag",
+                  "set_horizon_scroll"
+                ]
+              }
+            ]
+          },
+          "params": {
+            "type": "array",
+            "maxItems": 5,
+            "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        }
+      }
+    },
+    "replace_enemy_waves": { "type": "boolean" },
+    "enemy_waves": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tick"],
+        "additionalProperties": false,
+        "properties": {
+          "tick": { "type": "integer", "minimum": 0, "maximum": 65534 },
+          "command": {
+            "oneOf": [
+              { "type": "integer", "enum": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+              {
+                "type": "string",
+                "enum": [
+                  "standard",
+                  "parameterized",
+                  "dual_param",
+                  "formation_0",
+                  "formation_1",
+                  "formation_2",
+                  "formation_3",
+                  "formation_4",
+                  "wave_param_5",
+                  "wave_param_6",
+                  "wave_param_7",
+                  "wave_param_8",
+                  "wave_nop_9",
+                  "enemy_wave"
+                ]
+              }
+            ]
+          },
+          "formation": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "params": {
+            "type": "array",
+            "maxItems": 5,
+            "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        }
+      }
+    },
+    "length": { "type": "number", "minimum": 250, "maximum": 10000 },
+    "width": { "type": "number", "minimum": 20, "maximum": 200 },
+    "start_distance": { "type": "number", "minimum": 0, "maximum": 10000 },
+    "start_height": { "type": "number", "minimum": -50, "maximum": 2000 },
+    "speed": { "type": "number", "minimum": 0, "maximum": 250 },
+    "glideslope": { "type": "number", "minimum": 0.01, "maximum": 0.2 },
+    "tanker_span": { "type": "number", "minimum": 20, "maximum": 100 },
+    "seamless_takeoff": { "type": "boolean" },
+    "player_landing": { "type": "boolean" },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rom_environment": { "type": "boolean" },
+        "player_shadow": { "type": "boolean" },
+        "clouds": { "type": "boolean" },
+        "hud": { "type": "boolean" },
+        "tanker_variant": {
+          "oneOf": [
+            { "type": "string", "const": "random" },
+            { "type": "integer", "minimum": 1, "maximum": 64 }
+          ]
+        },
+        "ocean": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sky": { "$ref": "#/$defs/rgb" },
+            "haze": { "$ref": "#/$defs/rgb" },
+            "water": { "$ref": "#/$defs/rgb" }
+          }
+        }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["elements"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "order": { "type": "number" },
+          "space": { "type": "string", "enum": ["screen", "world"] },
+          "elements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["rectangle", "image"] },
+                "asset": { "type": "string", "minLength": 1 },
+                "x": { "type": "number" },
+                "y": { "type": "number" },
+                "z": { "type": "number" },
+                "width": { "type": "number", "exclusiveMinimum": 0 },
+                "height": { "type": "number", "exclusiveMinimum": 0 },
+                "rotation": { "type": "number" },
+                "color": { "$ref": "#/$defs/rgba" },
+                "repeat": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": { "type": "integer", "minimum": 1, "maximum": 16384 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "rgb": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+    },
+    "rgba": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+    }
+  }
+}

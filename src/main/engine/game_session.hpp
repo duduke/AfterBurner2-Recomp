@@ -10,6 +10,8 @@
 #include "engine/native_stage_skip.hpp"
 #include "engine/stage_catalog.hpp"
 #include "engine/shuffle_rom.hpp"
+#include "engine/custom_stage_rom.hpp"
+#include "engine/custom_stage_interactive.hpp"
 #include <functional>
 #include <span>
 
@@ -58,7 +60,8 @@ public:
     // The optional callback drains hidden startup output and pumps the frontend;
     // it must not advance, pause or restart the session.
     void enter_practice_stage(unsigned stage, const std::function<void()>& after_frame = {}) {
-        if (shuffled()) throw std::runtime_error("Practice entry requires a canonical board restart");
+        if (shuffled() || custom_stage_active())
+            throw std::runtime_error("Practice entry requires a canonical board restart");
         StageCatalog::get(rom, stage); // Reject invalid choices before execution.
         NativeStageSkip::enter(game.board(), rom, stage, [&] {
             advance({});
@@ -78,6 +81,8 @@ public:
         input.analog = physical.analog;
         scene_ready=false;if(capture_wide)wide_clip_count=0;
         game.tick(input);
+        if (custom_stage_controller_ && !entering_custom_stage_)
+            custom_stage_controller_->sync_board(game.board(), active_rom(), controls);
         if(primary_completed)primary_completed(info().number);
         if(capture_feedback_){
             feedback_frame=feedback.take(info().number,info().time_ns,feedback_word(0x29c09c),feedback_word(0x29c0d2),
@@ -106,10 +111,12 @@ public:
     // Ordinary restart restores the canonical ROM data and original cold
     // board defaults. Practice uses this boundary before directed startup.
     void restart() {
-        const bool changed_rom = shuffled();
+        const bool changed_rom = shuffled() || custom_stage_active();
         game.restart(rom); // Drop the bound host before releasing its ROM view.
         shuffle_view.reset();
         shuffle_plan_.reset();
+        custom_stage_view.reset();
+        custom_stage_controller_.reset();
         restarted(changed_rom);
     }
     void start_shuffle(const Shuffle::Plan& plan) {
@@ -121,8 +128,76 @@ public:
         game.restart(next_view->rom());
         shuffle_view = std::move(next_view);
         shuffle_plan_ = std::move(next_plan);
+        custom_stage_view.reset();
+        custom_stage_controller_.reset();
         game.board().switches = switches;
         restarted(true);
+    }
+    void start_custom_stage(const CustomStage::Definition& definition) {
+        auto next_view = std::make_unique<CustomStage::RomView>(rom, definition);
+        auto next_controller = std::make_unique<CustomStage::InteractiveController>(definition);
+        next_controller->start();
+        const auto switches = dip_switches();
+        game.restart(next_view->rom());
+        custom_stage_view = std::move(next_view);
+        custom_stage_controller_ = std::move(next_controller);
+        shuffle_view.reset();
+        shuffle_plan_.reset();
+        game.board().switches = switches;
+        restarted(true);
+    }
+    bool custom_stage_active() const { return bool(custom_stage_view); }
+    const CustomStage::Definition* custom_stage_definition() const {
+        return custom_stage_view ? &custom_stage_view->definition() : nullptr;
+    }
+    CustomStage::InteractiveController* custom_stage_controller() {
+        return custom_stage_controller_.get();
+    }
+    const CustomStage::InteractiveController* custom_stage_controller() const {
+        return custom_stage_controller_.get();
+    }
+    void retry_custom_stage() {
+        if (!custom_stage_view)
+            throw std::runtime_error("Custom stage retry requires an active custom stage");
+        const auto def = custom_stage_view->definition();
+        start_custom_stage(def);
+    }
+    // Advance a freshly started custom stage past the Stage 1 carrier takeoff
+    // cutscene ($29C09C == 15) and into the target custom stage slot ($29C09C == 16),
+    // or stop at carrier catapult state 2 when the custom stage itself is a
+    // Stage 1 carrier-takeoff sequence.
+    void enter_custom_stage(const std::function<void()>& after_frame = {}) {
+        if (!custom_stage_view)
+            throw std::runtime_error("Custom stage entry requires an active custom stage");
+        const auto& def = custom_stage_view->definition();
+        struct RestoreEntering {
+            bool& flag;
+            ~RestoreEntering() { flag = false; }
+        } restore{entering_custom_stage_};
+        entering_custom_stage_ = true;
+
+        auto step_frame = [&] {
+            advance({});
+            if (after_frame) after_frame(); else take_audio();
+        };
+
+        if (def.slot == 1u &&
+            def.objective == CustomStage::Definition::Objective::takeoff &&
+            def.environment == CustomStage::Definition::Environment::carrier) {
+            for (unsigned f = 0; f < 1800u; ++f) {
+                if (feedback_word(0x29c09c) == 15u && feedback_word(0xffff90b0) >= 2u)
+                    break;
+                step_frame();
+            }
+            if (feedback_word(0x29c09c) != 15u)
+                throw std::runtime_error("Carrier takeoff sequence not reached after cold start");
+        } else {
+            NativeStageSkip::enter(game.board(), active_rom(), def.slot, step_frame);
+        }
+        if (custom_stage_controller_) {
+            custom_stage_controller_->reset();
+            custom_stage_controller_->start();
+        }
     }
     bool shuffled() const { return bool(shuffle_view); }
     const Shuffle::Plan* shuffle_plan() const { return shuffle_plan_.get(); }
@@ -252,6 +327,8 @@ private:
     // presentation helpers are gone before their owned runtime ROM storage.
     std::unique_ptr<Shuffle::RomView> shuffle_view;
     std::unique_ptr<Shuffle::Plan> shuffle_plan_;
+    std::unique_ptr<CustomStage::RomView> custom_stage_view;
+    std::unique_ptr<CustomStage::InteractiveController> custom_stage_controller_;
     std::unique_ptr<Presentation::WideVisibility> visibility;
     unsigned prepared_shuffle_position{UINT32_MAX};
     bool capture_wide{}, wide_clip_open{};
@@ -303,9 +380,12 @@ private:
     ObjectAudio::Tracking object_audio;ObjectAudio::Frame object_audio_frame;bool capture_object_audio_{};
     Feedback::Capture feedback;Feedback::Frame feedback_frame;bool capture_feedback_{};
     uint16_t feedback_word(uint32_t a) const {const auto o=MainBus::memory_offset(a);const auto& m=game.board().memory.bytes;return uint16_t(m[o]<<8|m[o+1]);}
-    Roms& active_rom() { return shuffle_view ? shuffle_view->rom() : rom; }
+    Roms& active_rom() {
+        return custom_stage_view ? custom_stage_view->rom() : shuffle_view ? shuffle_view->rom() : rom;
+    }
     void restarted(bool changed_rom) {
         prepared_shuffle_position = UINT32_MAX;
+        entering_custom_stage_ = false;
         if (changed_rom) {
             auto& source = active_rom();
             if(visibility)visibility=std::make_unique<Presentation::WideVisibility>(source,(wide_width-320)/2);
@@ -324,7 +404,7 @@ private:
         if(extensions.restarted)extensions.restarted();
     }
     void prepare_shuffle_palette(const XBoardGame::Host::Phase& phase) {
-        if(!shuffle_view || phase.cpu || !phase.entry)return;
+        if((!shuffle_view && !custom_stage_view) || phase.cpu || !phase.entry)return;
         const auto pc=phase.entry->state.pc;
         if(pc!=0x13ce8 && pc!=0x138fe)return;
         // $138FE completes cold/new-credit initialization separately from
@@ -332,8 +412,13 @@ private:
         // even when another credit starts at a previously observed ordinal.
         if(pc==0x138fe)prepared_shuffle_position=UINT32_MAX;
         const unsigned position=feedback_word(0x29c060);
-        if(position>=shuffle_plan_->stages.size() || position==prepared_shuffle_position)return;
-        if(!shuffle_view->needs_alternate_palette(position)){
+        const unsigned stage_limit=shuffle_plan_?unsigned(shuffle_plan_->stages.size()):stage_count();
+        if(position>=stage_limit || position==prepared_shuffle_position)return;
+        const bool needed=custom_stage_view?custom_stage_view->needs_alternate_palette(position):shuffle_view->needs_alternate_palette(position);
+        const bool custom_primary = custom_stage_view && !needed &&
+            position + 1u == custom_stage_view->definition().slot &&
+            custom_stage_view->definition().custom_ocean;
+        if(!needed && !custom_primary){
             prepared_shuffle_position=position;
             return;
         }
@@ -347,7 +432,10 @@ private:
                 ~RestoreTrace(){bus.trace=previous;}
             } restore{host.bus,host.bus.trace};
             host.bus.trace=nullptr;
-            Shuffle::prepare_alternate_palette(host.bus,shuffle_view->rom(),position);
+            if(needed)
+                Shuffle::prepare_alternate_palette(host.bus,active_rom(),position);
+            else
+                CustomStage::prepare_primary_ocean_palette(host.bus,active_rom(),position);
         }
         ++host.palette_gen;
         prepared_shuffle_position=position;
@@ -355,11 +443,12 @@ private:
     // Sequence cues need carrier/base/nozzle and sound-latch writes excluded by
     // the sprite presentation filter. Use the existing complete passive observer
     // while feedback is enabled; this does not change CPU or device execution.
-    void bind_feedback_capture(){if(!capture_feedback_&&!capture_object_audio_&&!capture_wide&&!shuffle_view){game.board().phase={};game.board().presentation_phase=false;return;}game.board().presentation_phase=!(capture_feedback_||capture_object_audio_);game.board().phase=[this](const auto& p){prepare_shuffle_palette(p);if(capture_object_audio_)object_audio.observe_main(p,feedback_word(0x29c09c),[this](auto a){return feedback_word(a);});if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10,feedback_word(0x29c0b8));if(capture_feedback_&&Feedback::SequenceCapture::interesting(p))feedback.sequences.observe(p,feedback_word(0x29c09c),bool(feedback_word(0xffff90fe)&0x100));};}
+    void bind_feedback_capture(){if(!capture_feedback_&&!capture_object_audio_&&!capture_wide&&!shuffle_view&&!custom_stage_view){game.board().phase={};game.board().presentation_phase=false;return;}game.board().presentation_phase=!(capture_feedback_||capture_object_audio_);game.board().phase=[this](const auto& p){prepare_shuffle_palette(p);if(capture_object_audio_)object_audio.observe_main(p,feedback_word(0x29c09c),[this](auto a){return feedback_word(a);});if(capture_wide&&visibility)visibility->observe(p,game.board());if(capture_feedback_&&!p.cpu && p.write && (p.pc==0x9ef6 || p.pc==0x9ebc || p.pc==0x9c20))feedback.observe(p,feedback_word(0x29c09c)==0x10,feedback_word(0x29c0b8));if(capture_feedback_&&Feedback::SequenceCapture::interesting(p))feedback.sequences.observe(p,feedback_word(0x29c09c),bool(feedback_word(0xffff90fe)&0x100));};}
     XBoardGame game;
     Roms& rom;
     Extensions extensions;
     bool paused_ = false;
+    bool entering_custom_stage_ = false;
     std::vector<int16_t> audio;
     bool capture_sprites{}, presentation_ready{},capture_scene{},scene_ready{},capture_ground{};
     std::unique_ptr<Presentation::GroundHorizon> ground;

@@ -1,0 +1,27 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "CARRIER / LANDING",
+  "objective": "landing",
+  "environment": "carrier",
+  "slot": 13,
+  "source_stage": 13,
+  "length": 300,
+  "width": 70,
+  "start_distance": 1200,
+  "start_height": 76,
+  "speed": 80,
+  "glideslope": 0.06,
+  "seamless_takeoff": true,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true,
+    "clouds": true,
+    "hud": true,
+    "ocean": {
+      "sky": [0, 170, 255],
+      "haze": [220, 250, 255],
+      "water": [0, 0, 255]
+    }
+  }
+}

@@ -73,6 +73,7 @@ public:
     unsigned practice_stage{1},active_practice_stage{};
     bool practice_allowed{true};
     bool shuffle_active{},shuffle_allowed{true};
+    std::string custom_stage_label;
     std::function<bool(const Settings&)> apply;
     enum class Page { root, modes, settings, display, graphics, effects, crt, diagnostics,
         controls, bindings, analog, monitor, feedback, cues, feedback_tests,
@@ -209,8 +210,8 @@ public:
         centered(current==Page::music?"L/R CHANGE  SPACE PREVIEW  ESC BACK":"ENTER SELECT  L/R CHANGE  ESC BACK",214,{73,152,210,255});
     }
     void draw_practice_status() {
-        if(!active_practice_stage && !shuffle_active)return;
-        const std::string label=shuffle_active?"SHUFFLE":"PRACTICE FROM "+std::to_string(active_practice_stage);
+        if(!active_practice_stage && !shuffle_active && custom_stage_label.empty())return;
+        const std::string label=!custom_stage_label.empty()?custom_stage_label:shuffle_active?"SHUFFLE":"PRACTICE FROM "+std::to_string(active_practice_stage);
         // Stay below the score strip and above the native bottom instruments.
         const float top=settings.stats==Stats::detailed?74.f:settings.stats==Stats::fps?36.f:28.f;
         SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);

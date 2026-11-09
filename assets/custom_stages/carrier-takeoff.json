@@ -1,0 +1,26 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "CARRIER / TAKEOFF",
+  "objective": "takeoff",
+  "environment": "carrier",
+  "slot": 1,
+  "source_stage": 1,
+  "length": 300,
+  "width": 70,
+  "start_distance": 0,
+  "start_height": 0,
+  "speed": 0,
+  "glideslope": 0.06,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true,
+    "clouds": true,
+    "hud": true,
+    "ocean": {
+      "sky": [0, 170, 255],
+      "haze": [220, 250, 255],
+      "water": [0, 0, 255]
+    }
+  }
+}

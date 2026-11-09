@@ -1,0 +1,22 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "TANKER / RENDEZVOUS",
+  "objective": "refuel",
+  "environment": "sea",
+  "slot": 3,
+  "source_stage": 3,
+  "length": 2200,
+  "width": 45,
+  "start_distance": 220,
+  "start_height": -5,
+  "speed": 140,
+  "glideslope": 0.06,
+  "tanker_span": 50,
+  "presentation": {
+    "rom_environment": true,
+    "tanker_variant": "random",
+    "clouds": true,
+    "hud": true
+  }
+}

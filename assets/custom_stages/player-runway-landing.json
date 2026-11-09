@@ -1,0 +1,23 @@
+{
+  "$schema": "./stage.schema.json",
+  "version": 1,
+  "name": "PLAYER RUNWAY / LANDING",
+  "objective": "landing",
+  "environment": "runway",
+  "slot": 5,
+  "source_stage": 5,
+  "length": 2200,
+  "width": 45,
+  "start_distance": 1400,
+  "start_height": 88,
+  "speed": 80,
+  "glideslope": 0.06,
+  "seamless_takeoff": true,
+  "presentation": {
+    "rom_environment": true,
+    "player_shadow": true,
+    "clouds": true,
+    "hud": true
+  },
+  "player_landing": true
+}
