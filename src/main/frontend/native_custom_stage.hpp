@@ -12,6 +12,7 @@
 #include "engine/custom_stage_assets.hpp"
 #include "engine/game_session.hpp"
 #include "frontend/music_decoder.hpp"
+#include "frontend/native_boss.hpp"
 
 namespace Frontend {
 
@@ -84,6 +85,18 @@ public:
     // Returns true when `planes` was redirected to composited copies. Key-colored
     // sprite pixels (the horizon strips) are removed so the image shows through.
     bool composite_sky(const GameSession& game, Planes& planes, unsigned width, unsigned height) {
+        const bool sky = composite_keyed_sky(game, planes, width, height);
+        const auto* boss = package ? game.boss_view() : nullptr;
+        if (!boss) return sky;
+        // The boss is painted into the background plane so sprites stay in front.
+        if (planes.background.data() != out_background.data())
+            out_background.assign(planes.background.begin(), planes.background.end());
+        BossPainter::paint(*package, *boss, out_background, width, height);
+        planes.background = out_background;
+        return true;
+    }
+
+    bool composite_keyed_sky(const GameSession& game, Planes& planes, unsigned width, unsigned height) {
         const auto sky_state = game.custom_stage_sky();
         if (!sky_state.active || !package) return false;
         paint_sky(game, sky_state, width, height);
@@ -125,11 +138,14 @@ public:
     // covers the "everything off" display path.
     void composite_sky_raster(const GameSession& game, std::span<uint32_t> pixels, unsigned width, unsigned height) {
         const auto sky_state = game.custom_stage_sky();
-        if (!sky_state.active || !package) return;
-        paint_sky(game, sky_state, width, height);
-        const uint32_t key = argb(sky_state.key), blending = argb(sky_state.blending_key);
-        for (size_t i = 0; i < pixels.size(); ++i)
-            if (pixels[i] == key || pixels[i] == blending) pixels[i] = sky_pixels[i];
+        if (sky_state.active && package) {
+            paint_sky(game, sky_state, width, height);
+            const uint32_t key = argb(sky_state.key), blending = argb(sky_state.blending_key);
+            for (size_t i = 0; i < pixels.size(); ++i)
+                if (pixels[i] == key || pixels[i] == blending) pixels[i] = sky_pixels[i];
+        }
+        if (const auto* boss = package ? game.boss_view() : nullptr)
+            BossPainter::paint(*package, *boss, pixels, width, height);
     }
 
     // --- Overlay layers ---

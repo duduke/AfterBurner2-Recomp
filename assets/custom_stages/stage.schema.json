@@ -642,6 +642,152 @@
           }
         }
       }
+    },
+    "carrier_landing": {
+      "type": "boolean",
+      "description": "Interactive landings in this stage use carrier rules: a narrow deck, a wire window, bolters instead of long landings."
+    },
+    "palette_patches": {
+      "type": "array",
+      "description": "Recolor single palette words of the stage. primary: sky, sky, ground, ground. alternate: sky x2, ground x2, then the eight road/runway colors (4..11). gradient: the horizon strip (1..14 and 17..30).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "table",
+          "color"
+        ],
+        "properties": {
+          "table": {
+            "enum": [
+              "primary",
+              "alternate",
+              "gradient",
+              "road",
+              "1413a",
+              "14196",
+              "1424e"
+            ]
+          },
+          "word": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "color": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        }
+      }
+    },
+    "boss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hull",
+        "parts"
+      ],
+      "description": "A native boss aircraft fought with the player's own guns and missiles. Sizes and positions are 320x224 screen pixels at full size.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "hull": {
+          "type": "string",
+          "description": "Hull image in the pack."
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "appear_tick": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65000
+        },
+        "hold_tick": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65000,
+          "description": "The stage timer is held here while the boss lives."
+        },
+        "time_limit": {
+          "type": "number",
+          "description": "Seconds of battle before the boss escapes."
+        },
+        "bonus": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "asset",
+              "at",
+              "size"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "pod",
+                  "turret",
+                  "core"
+                ]
+              },
+              "asset": {
+                "type": "string"
+              },
+              "broken": {
+                "type": "string"
+              },
+              "at": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "size": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "hp": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {

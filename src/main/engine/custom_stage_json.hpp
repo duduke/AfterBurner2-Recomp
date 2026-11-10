@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -370,6 +371,38 @@ struct RomPatch {
     std::shared_ptr<const std::vector<uint8_t>> data;
 };
 
+// One color word in a stage's palette blocks. "gradient" is the 64-byte
+// sky/ground block ($140DA: words 1..14 initial, 17..30 settled; the last
+// few are the ground), "road" the road/runway colors ($141F2). The other
+// three blocks are reachable by their pointer table address.
+struct PalettePatch {
+    static constexpr uint32_t primary = 1u, alternate = 2u; // descriptor blocks
+    uint32_t table{};
+    unsigned word{};
+    RGBColor color{};
+};
+
+// A native boss: a large aircraft drawn by the frontend from pack images and
+// fought with the player's own guns and missiles (custom_stage_boss.hpp).
+// Positions and sizes are in 320x224 screen pixels at full size.
+struct BossPart {
+    enum class Kind { pod, turret, core };
+    Kind kind = Kind::pod;
+    std::string name, asset, broken_asset;
+    double x{}, y{}, width{}, height{};
+    int hp{100};
+};
+
+struct BossDefinition {
+    std::string name = "BOSS";
+    std::string hull_asset;
+    double width{300}, height{110};
+    std::vector<BossPart> parts;
+    unsigned appear_tick{4000}, hold_tick{6000};
+    double time_limit{150};
+    unsigned bonus{100000};
+};
+
 struct SceneLayer {
     std::string name;
     double order{};
@@ -533,6 +566,9 @@ struct Definition {
     // Host-driven flare on the ROM airbase landing object ($1134A state 4): the
     // player's stick pitch offsets the ROM's per-frame +36(A5) descent.
     bool player_landing = false;
+    // Interactive landings in this stage use carrier rules: a tight deck,
+    // a wire window and bolters instead of long landings.
+    bool carrier_landing = false;
 
     // Presentation & layer options:
     bool rom_environment = true;
@@ -550,6 +586,8 @@ struct Definition {
     std::optional<Backdrop> backdrop;
     std::vector<SpriteOverride> sprites;
     std::vector<RomPatch> rom_patches;
+    std::vector<PalettePatch> palette_patches;
+    std::optional<BossDefinition> boss;
     std::vector<ScenePattern> scenery_patterns;
 
     // Layers ordered below zero render behind gameplay, inside the sky.
@@ -812,6 +850,80 @@ struct Definition {
                 def.sprites.push_back(std::move(sprite));
             }
         }
+        if (const auto* node = doc.find("boss")) {
+            node->keys({"name", "hull", "size", "parts", "appear_tick", "hold_tick", "time_limit", "bonus"});
+            BossDefinition boss;
+            if (const auto* n = node->find("name")) boss.name = n->text();
+            const auto* hull = node->find("hull");
+            if (!hull || hull->text().empty()) throw std::runtime_error("Boss requires a hull image");
+            boss.hull_asset = hull->text();
+            auto pair = [](const Json* v, const char* what) {
+                if (!v || v->kind != Json::Kind::array || v->array.size() != 2u)
+                    throw std::runtime_error(std::string("Boss ") + what + " requires two numbers");
+                return std::pair{v->array[0].numeric(), v->array[1].numeric()};
+            };
+            if (const auto* size = node->find("size")) std::tie(boss.width, boss.height) = pair(size, "size");
+            if (const auto* t = node->find("appear_tick")) boss.appear_tick = unsigned(t->integer(0, 65000));
+            if (const auto* t = node->find("hold_tick")) boss.hold_tick = unsigned(t->integer(0, 65000));
+            if (boss.hold_tick < boss.appear_tick) throw std::runtime_error("Boss hold_tick must not be before appear_tick");
+            if (const auto* t = node->find("time_limit")) boss.time_limit = t->numeric();
+            if (const auto* b = node->find("bonus")) boss.bonus = unsigned(b->integer(0, 9999990));
+            const auto* parts = node->find("parts");
+            if (!parts || parts->kind != Json::Kind::array || parts->array.empty())
+                throw std::runtime_error("Boss requires a parts array");
+            for (const auto& p : parts->array) {
+                p.keys({"name", "kind", "asset", "broken", "at", "size", "hp"});
+                BossPart part;
+                if (const auto* n = p.find("name")) part.name = n->text();
+                const auto* kind = p.find("kind");
+                const auto k = kind ? kind->text() : std::string("pod");
+                part.kind = k == "core" ? BossPart::Kind::core : k == "turret" ? BossPart::Kind::turret :
+                            k == "pod" ? BossPart::Kind::pod : throw std::runtime_error("Boss part kind must be pod, turret or core");
+                const auto* asset = p.find("asset");
+                if (!asset || asset->text().empty()) throw std::runtime_error("Boss part requires an asset");
+                part.asset = asset->text();
+                if (const auto* b = p.find("broken")) part.broken_asset = b->text();
+                std::tie(part.x, part.y) = pair(p.find("at"), "part position");
+                std::tie(part.width, part.height) = pair(p.find("size"), "part size");
+                if (const auto* hp = p.find("hp")) part.hp = int(hp->integer(1, 100000));
+                boss.parts.push_back(std::move(part));
+            }
+            if (std::none_of(boss.parts.begin(), boss.parts.end(), [](const BossPart& p) { return p.kind == BossPart::Kind::core; }))
+                throw std::runtime_error("Boss requires one core part");
+            def.boss = std::move(boss);
+        }
+        if (const auto* list = doc.find("palette_patches")) {
+            if (list->kind != Json::Kind::array)
+                throw std::runtime_error("palette_patches must be a JSON array");
+            for (const auto& node : list->array) {
+                node.keys({"table", "word", "words", "color"});
+                const auto* table = node.find("table");
+                const auto* color = node.find("color");
+                if (!table || !color)
+                    throw std::runtime_error("Palette patch requires table and color");
+                const auto name = table->text();
+                const uint32_t base = name == "primary" ? PalettePatch::primary :
+                                      name == "alternate" ? PalettePatch::alternate :
+                                      name == "gradient" ? 0x140dau : name == "road" ? 0x141f2u :
+                                      name == "1413a" ? 0x1413au : name == "14196" ? 0x14196u :
+                                      name == "1424e" ? 0x1424eu : 0u;
+                if (!base) throw std::runtime_error("Palette patch table must be primary, alternate, gradient, road, 1413a, 14196 or 1424e");
+                const unsigned limit = base == PalettePatch::primary ? 4u : base == PalettePatch::alternate ? 12u :
+                                       base == 0x140dau ? 32u : 128u;
+                if (color->kind != Json::Kind::array || color->array.size() != 3u)
+                    throw std::runtime_error("Palette patch color requires 3 RGB integers");
+                RGBColor rgb{uint8_t(color->array[0].integer(0, 255)), uint8_t(color->array[1].integer(0, 255)),
+                             uint8_t(color->array[2].integer(0, 255))};
+                std::vector<unsigned> words;
+                if (const auto* w = node.find("word")) words.push_back(unsigned(w->integer(0, limit - 1)));
+                if (const auto* ws = node.find("words")) {
+                    if (ws->kind != Json::Kind::array) throw std::runtime_error("Palette patch words must be an array");
+                    for (const auto& w : ws->array) words.push_back(unsigned(w.integer(0, limit - 1)));
+                }
+                if (words.empty()) throw std::runtime_error("Palette patch requires word or words");
+                for (const unsigned w : words) def.palette_patches.push_back({base, w, rgb});
+            }
+        }
         if (const auto* list = doc.find("rom_patches")) {
             if (list->kind != Json::Kind::array)
                 throw std::runtime_error("rom_patches must be a JSON array");
@@ -862,9 +974,9 @@ struct Definition {
             "music", "road_setup", "sky_setup", "curve_setup",
             "replace_events", "events", "replace_enemy_waves", "enemy_waves",
             "length", "width", "start_distance", "start_height",
-            "speed", "glideslope", "tanker_span", "seamless_takeoff", "player_landing",
+            "speed", "glideslope", "tanker_span", "seamless_takeoff", "player_landing", "carrier_landing",
             "presentation", "layers",
-            "asset_packs", "music_file", "sprites", "rom_patches", "scenery_patterns"
+            "asset_packs", "music_file", "sprites", "rom_patches", "scenery_patterns", "palette_patches", "boss"
         });
         const auto* ver = doc.find("version");
         if (!ver || ver->integer(1, 1) != 1)
@@ -1020,6 +1132,8 @@ struct Definition {
             def.seamless_takeoff = st->flag();
         if (const auto* pl = doc.find("player_landing"))
             def.player_landing = pl->flag();
+        if (const auto* cl = doc.find("carrier_landing"))
+            def.carrier_landing = cl->flag();
 
         if (const auto* pres = doc.find("presentation")) {
             pres->keys({"rom_environment", "ocean", "player_shadow", "tanker_variant", "clouds", "hud", "backdrop"});

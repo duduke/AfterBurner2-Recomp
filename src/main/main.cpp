@@ -27,6 +27,7 @@
 #include "engine/game_session.hpp"
 #include "engine/physical_recording.hpp"
 #include "frontend/native_menu.hpp"
+#include "frontend/rearm_hud.hpp"
 #include "frontend/native_practice.hpp"
 #include "hwvideo/wide_scene.hpp"
 #include "frontend/gpu_sprite_filter.hpp"
@@ -1145,6 +1146,7 @@ int main(int argc, char** argv)try
         if(wants_cockpit!=cockpit_enabled){game.capture_cockpit(wants_cockpit);cockpit_enabled=wants_cockpit;}
         game.capture_feedback(feedback->settings.enabled);
         feedback->update(game.paused() || menu->is_open());
+        game.set_interactive_rearm(menu->settings.interactive_rearm);
         GameControls input=input_manager->read(menu->is_open());
         if(!menu->is_open() && !game.paused() && input_manager->focused)touch.merge(input,touch_aspect());
 
@@ -1293,7 +1295,7 @@ int main(int argc, char** argv)try
         SDL_SetRenderViewport(renderer,&safe_area);
 
         if(menu->is_open())menu->draw();
-        else {custom_stage_renderer->draw_overlays(game,Frontend::viewport_width(menu->settings));Frontend::CustomStageHud::draw(renderer,game);menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
+        else {custom_stage_renderer->draw_overlays(game,Frontend::viewport_width(menu->settings));Frontend::CustomStageHud::draw(renderer,game);Frontend::BossHud::draw(renderer,game.boss_view(),[&](const std::string& s,float x,float y,SDL_Color c,float k){menu->overlay_text(s,x,y,c,k);});Frontend::RearmHud::draw(renderer,game.rearm_hud(),0,[&](const std::string& s,float x,float y,SDL_Color c,float k){menu->overlay_text(s,x,y,c,k);});menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
         if(!menu->is_open())touch.draw(renderer);
         if(!frame_preview.empty() && frame_limit && simulated_frames>=frame_limit) {
             SDL_SetRenderViewport(renderer,nullptr);

@@ -12,6 +12,8 @@
 #include "engine/shuffle_rom.hpp"
 #include "engine/custom_stage_rom.hpp"
 #include "engine/custom_stage_interactive.hpp"
+#include "engine/interactive_rearm.hpp"
+#include "engine/custom_stage_boss.hpp"
 #include <functional>
 #include <span>
 
@@ -85,6 +87,11 @@ public:
             update_custom_sprites();
         if (custom_stage_controller_ && !entering_custom_stage_)
             custom_stage_controller_->sync_board(game.board(), active_rom(), controls);
+        if (!entering_custom_stage_) {
+            rearm_.carrier = custom_stage_in_slot() && custom_stage_view->definition().carrier_landing;
+            rearm_.sync(game.board().memory, active_rom(), controls);
+            if (boss_ && custom_stage_in_slot()) boss_->sync(game.board().memory, custom_stage_tick(), controls);
+        }
         if(primary_completed)primary_completed(info().number);
         if(capture_feedback_){
             feedback_frame=feedback.take(info().number,info().time_ns,feedback_word(0x29c09c),feedback_word(0x29c0d2),
@@ -118,6 +125,7 @@ public:
         shuffle_view.reset();
         shuffle_plan_.reset();
         custom_stage_view.reset();
+        boss_.reset();
         custom_stage_controller_.reset();
         restarted(changed_rom);
     }
@@ -131,6 +139,7 @@ public:
         shuffle_view = std::move(next_view);
         shuffle_plan_ = std::move(next_plan);
         custom_stage_view.reset();
+        boss_.reset();
         custom_stage_controller_.reset();
         game.board().switches = switches;
         restarted(true);
@@ -143,12 +152,22 @@ public:
         game.restart(next_view->rom());
         custom_stage_view = std::move(next_view);
         custom_stage_controller_ = std::move(next_controller);
+        boss_.reset();
+        if (custom_stage_view->definition().boss)
+            boss_ = std::make_unique<CustomStage::BossFight>(*custom_stage_view->definition().boss);
         shuffle_view.reset();
         shuffle_plan_.reset();
         game.board().switches = switches;
         restarted(true);
     }
     bool custom_stage_active() const { return bool(custom_stage_view); }
+    // Player-flown landings and tanker hook-ups (see interactive_rearm.hpp).
+    void set_interactive_rearm(bool on) { if (rearm_.enabled == on) return; rearm_.enabled = on; rearm_.reset(); }
+    bool interactive_rearm() const { return rearm_.enabled; }
+    const Rearm::Hud& rearm_hud() const { return rearm_.hud(); }
+    const CustomStage::BossFight::View* boss_view() const {
+        return boss_ && custom_stage_in_slot() && boss_->view().active ? &boss_->view() : nullptr;
+    }
     // True while the run is inside the slot the custom stage was compiled into.
     // Completing it continues the run into the following arcade stage.
     bool custom_stage_in_slot() const {
@@ -245,6 +264,7 @@ public:
             custom_stage_controller_->reset();
             custom_stage_controller_->start();
         }
+        if (boss_) boss_->reset();
     }
     // ROM data the board is currently running from. Presentation code must read
     // sprite pixels through this, since a custom stage can rewrite its own copy.
@@ -384,6 +404,8 @@ private:
     std::unique_ptr<Shuffle::Plan> shuffle_plan_;
     std::unique_ptr<CustomStage::RomView> custom_stage_view;
     std::unique_ptr<CustomStage::InteractiveController> custom_stage_controller_;
+    Rearm::Controller rearm_;
+    std::unique_ptr<CustomStage::BossFight> boss_;
     std::unique_ptr<Presentation::WideVisibility> visibility;
     unsigned prepared_shuffle_position{UINT32_MAX};
     bool capture_wide{}, wide_clip_open{};
@@ -440,6 +462,7 @@ private:
     }
     void restarted(bool changed_rom) {
         prepared_shuffle_position = UINT32_MAX;
+        rearm_.reset();
         entering_custom_stage_ = false;
         if (changed_rom) {
             auto& source = active_rom();

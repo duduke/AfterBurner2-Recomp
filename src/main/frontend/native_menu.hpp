@@ -147,6 +147,7 @@ public:
             if(row.id==0)changed.lives^=1;
             if(row.id==1)changed.difficulty=(changed.difficulty+(direction<0?3:1))%4;
             if(row.id==2)changed.lives^=2;
+            if(row.id==3)changed.interactive_rearm=!changed.interactive_rearm;
             change(changed);
         } else if(current==Page::practice){
             practice_stage=(practice_stage-1+practice_stages+direction)%practice_stages+1;
@@ -231,6 +232,8 @@ public:
         centered(help.substr(0,38),198,{125,153,180,255});
         centered(current==Page::music?"L/R CHANGE  SPACE PREVIEW  ESC BACK":"ENTER SELECT  L/R CHANGE  ESC BACK",214,{73,152,210,255});
     }
+    // ROM-font text for gameplay overlays drawn outside the menu.
+    void overlay_text(const std::string& value,float x,float y,SDL_Color color,float scale=1) {text(value,x,y,color,scale);}
     void draw_practice_status() {
         if(!active_practice_stage && !shuffle_active && custom_stage_label.empty())return;
         const std::string label=!custom_stage_label.empty()?custom_stage_label:shuffle_active?"SHUFFLE":"PRACTICE FROM "+std::to_string(active_practice_stage);
@@ -431,6 +434,7 @@ private:
         }
         case Page::arcade:
             setting(0,"LIVES/CREDIT",lives_labels[settings.lives%2]);setting(1,"DIFFICULTY",difficulty_labels[settings.difficulty]);setting(2,"SHIP INCREASE",settings.lives>=2?"YES":"NO");
+            setting(3,"INTERACTIVE REARM",settings.interactive_rearm?"ON":"OFF","FLY LANDINGS AND TANKER HOOK-UPS");
             action("APPLY AND RESTART",Action::restart,"RESTART ENDS THE CURRENT GAME");back();break;
         case Page::practice:
             setting(0,"STAGE",std::to_string(practice_stage)+" / "+std::to_string(practice_stages),practice_allowed?"NORMAL LIVES / DAMAGE":recording,practice_allowed);

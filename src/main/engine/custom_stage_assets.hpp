@@ -385,6 +385,13 @@ private:
                     decode(element.asset, decode_image);
         if (definition.backdrop)
             decode(definition.backdrop->asset, decode_image);
+        if (definition.boss) {
+            decode(definition.boss->hull_asset, decode_image);
+            for (const auto& part : definition.boss->parts) {
+                decode(part.asset, decode_image);
+                if (!part.broken_asset.empty()) decode(part.broken_asset, decode_image);
+            }
+        }
         for (auto& sprite : definition.sprites)
             sprite.image = decode(sprite.asset, decode_image);
         for (auto& patch : definition.rom_patches)

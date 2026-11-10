@@ -6,6 +6,7 @@
 #include "engine/shuffle_rom.hpp"
 #include "engine/stage_catalog.hpp"
 #include <algorithm>
+#include <tuple>
 #include <array>
 #include <cctype>
 #include <cstdint>
@@ -221,6 +222,10 @@ public:
                         Shuffle::Detail::write16(owned, relocated + 34u + w * 2u, color);
                     }
                 }
+                if (pos == target_pos)
+                    for (const auto& patch : def.palette_patches)
+                        if (patch.table == base)
+                            Shuffle::Detail::write16(owned, relocated + patch.word * 2u, patch.color.rgb555());
                 Shuffle::Detail::write32(owned, base + pos * 4u, relocated);
             }
         }
@@ -280,6 +285,26 @@ public:
                         }
                     }
                     Shuffle::Detail::write32(owned, descriptor + 4u, custom_alt);
+                }
+            }
+
+            // Palette patches on the descriptor's own sky/ground blocks: primary
+            // (+0: sky, sky, ground, ground) and alternate (+4: sky x2, ground x2,
+            // then the eight road/runway colors).
+            if (pos == target_pos) {
+                for (const auto& [tag, offset, bytes] : {std::tuple{PalettePatch::primary, 0u, 8u},
+                                                         std::tuple{PalettePatch::alternate, 4u, 24u}}) {
+                    if (std::none_of(def.palette_patches.begin(), def.palette_patches.end(),
+                                     [&](const PalettePatch& p) { return p.table == tag; }))
+                        continue;
+                    uint32_t block = StageCatalog::Detail::pointer(owned, descriptor + offset);
+                    if (block < 0x40000u) {
+                        block = append(canonical, block, bytes, cursor);
+                        Shuffle::Detail::write32(owned, descriptor + offset, block);
+                    }
+                    for (const auto& patch : def.palette_patches)
+                        if (patch.table == tag)
+                            Shuffle::Detail::write16(owned, block + patch.word * 2u, patch.color.rgb555());
                 }
             }
 
