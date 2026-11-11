@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
+#include <vector>
 
 namespace Rearm {
 
@@ -70,6 +71,9 @@ struct Hud {
         double height{};   // camera height above the deck
         double lateral{};  // camera offset from the deck centerline
         double length{}, half_width{}, wire_first{}, wire_spacing{};
+        // Expanding rings on the water from the jet blast after liftoff.
+        struct Ripple { double along{}, lateral{}, age{}, strength{}; };
+        std::vector<Ripple> ripples;
     } deck;
 };
 
@@ -170,7 +174,10 @@ private:
     int last_sink_{}, depth_{};
     int16_t base42_{}, base44_{};
     bool screen_base_{};
-    double bank_{}, deck_speed_{};
+    double bank_{}, deck_speed_{}, park_along_{}, lifted_{}, last_along_{};
+    int16_t lift_base_{};
+    bool departing_{};
+    unsigned ripple_clock_{};
     double flare_k_{};
     // Refuel state.
     double off_x_{}, off_y_{}, vel_x_{}, vel_y_{}, window_{};
@@ -227,6 +234,9 @@ private:
         airspeed_ = 168.0;
         distance_valid_ = touched_ = flare_seen_ = outcome_applied_ = service_cut_ = screen_base_ = false;
         bank_ = 0;
+        departing_ = false;
+        lifted_ = 0;
+        ripple_clock_ = 0;
         flare_frames_ = flare_steps_ = rollout_frames_ = 0;
         last_sink_ = 0;
         flare_k_ = 0;
@@ -440,15 +450,34 @@ private:
     void carrier_deck(MainBus::Memory& m, uint32_t p, uint16_t state, bool airborne) {
         auto& d = hud_.deck;
         if (!d.active) {
-            d = {true, approach_start, 30.0, 0.0, deck_length, deck_half_width, wire_first, wire_spacing};
+            d = {true, approach_start, 30.0, 0.0, deck_length, deck_half_width, wire_first, wire_spacing, {}};
+            last_along_ = approach_start;
             deck_speed_ = approach_speed;
         }
         const bool trapped = touched_ && hud_.grade != Grade::bolter && hud_.grade != Grade::crash;
         if (airborne) deck_speed_ = approach_speed * std::clamp(airspeed_ / 140.0, 0.8, 1.25);
         else if (state == 4u && trapped) deck_speed_ = std::max(0.0, deck_speed_ - 52.0 * dt);
         else if (state == 8u) deck_speed_ = trapped ? 0.0 : deck_speed_;
-        else if (state >= 12u) deck_speed_ = std::min(190.0, deck_speed_ + 120.0 * dt);
-        d.along += deck_speed_ * dt;
+        double climb = 0.0;
+        if (state >= 12u) {
+            // Departure follows the arcade's own takeoff: speed +54 climbs from 0 and
+            // the wheels leave at $140 ($11592), after which +44 shrinks as it climbs.
+            // Run up the deck so the bow passes under the plane exactly at liftoff.
+            const double speed = double(int16_t(peek16(m, p + 54u)));
+            const int16_t screen_height = int16_t(peek16(m, p + 44u));
+            if (!departing_) { departing_ = true; park_along_ = d.along; lift_base_ = screen_height; }
+            const double run = std::max(20.0, d.length - plane_ahead - park_along_);
+            const double k = std::clamp(speed / double(0x140), 0.0, 1.0);
+            if (k < 1.0) {
+                d.along = park_along_ + run * k * k;
+            } else {
+                lifted_ += dt;
+                d.along += run * 0.75 * (1.0 + 0.8 * lifted_) * dt;
+            }
+            climb = std::max(0.0, double(lift_base_ - screen_height));
+        } else {
+            d.along += deck_speed_ * dt;
+        }
         // Height: down the glide path on final, the flare depth in state 4, then the deck.
         // The chase camera rides a little above and behind the plane.
         double h = camera_height;
@@ -457,10 +486,21 @@ private:
         else if (state == 4u && airborne)
             h = camera_height + 9.0 * std::clamp(double(int16_t(peek16(m, p + 36u)) - 0x20) / double(0x400 - 0x20), 0.0, 1.0);
         else if (state >= 12u)
-            h = camera_height + std::max(0.0, d.along + plane_ahead - deck_length) * 0.09;
+            h = camera_height + climb * 0.07 + lifted_ * lifted_ * 1.5; // the sea drops away as it climbs
         d.height += (std::max(camera_height * 0.6, h) - d.height) * std::min(1.0, 8.0 * dt);
         d.lateral = lat_;
-        if (d.along > deck_length + 700.0) d.active = false;
+        // Jet wash: once past the bow and still low, the exhaust stirs rings on the
+        // sea. The disturbance is carried along under the plane and slowly falls
+        // behind, so the rings trail it instead of vanishing off the bottom at once.
+        const double moved = d.along - last_along_;
+        last_along_ = d.along;
+        for (auto& r : d.ripples) { r.age += dt; r.along += moved * 0.82; }
+        d.ripples.erase(std::remove_if(d.ripples.begin(), d.ripples.end(), [](const Hud::Deck::Ripple& r) { return r.age > 2.2; }),
+                        d.ripples.end());
+        const double plane = d.along + plane_ahead;
+        if (state >= 12u && plane > d.length && d.height < camera_height + 30.0 && ++ripple_clock_ % 6u == 0u)
+            d.ripples.push_back({plane, lat_ + (random_unit() - 0.5) * 4.0, 0.0, std::clamp(1.0 - (d.height - camera_height) / 30.0, 0.25, 1.0)});
+        if (d.along > deck_length + 900.0) d.active = false;
     }
 
     // Where along the deck the wheels meet it: high on the glide path lands long.

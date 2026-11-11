@@ -262,6 +262,29 @@ private:
                 }
             }
         }
+        // Jet-wash rings spreading on the water under the departing plane. Each is
+        // an ellipse in perspective, anchored where the water under it would be,
+        // kept just inside the bottom edge like the plane's own shadow.
+        for (const auto& r : d.ripples) {
+            const double z = std::max(4.0, r.along - d.along);
+            const double sy = std::min(double(height) - 8.0, horizon + f * d.height / z);
+            const double scale = std::min(f / z, 14.0);
+            const double sx = cx + (r.lateral - d.lateral) * scale;
+            const double rx = (3.0 + 20.0 * r.age) * scale, ry = rx * 0.26;
+            const double fade = r.strength * std::max(0.0, 1.0 - r.age / 2.2);
+            if (rx < 1.0 || fade <= 0.0) continue;
+            const double band = 0.10 + 0.05 / (1.0 + r.age);
+            const int x0 = std::max(0, int(sx - rx * 1.2)), x1 = std::min(int(width) - 1, int(sx + rx * 1.2));
+            const int y0 = std::max(horizon + 1, int(sy - ry * 1.2)), y1 = std::min(int(height) - 1, int(sy + ry * 1.2));
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) {
+                    const double q = std::hypot((x + 0.5 - sx) / rx, (y + 0.5 - sy) / ry);
+                    double a = 0.0;
+                    if (std::abs(q - 1.0) < band) a = (1.0 - std::abs(q - 1.0) / band) * 175.0 * fade;
+                    if (r.age < 0.5 && q < 0.45) a = std::max(a, 200.0 * fade * (1.0 - r.age / 0.5) * (1.0 - q / 0.45));
+                    if (a > 1.0) BossPainter::blend(px[size_t(y) * width + size_t(x)], 236, 246, 252, unsigned(a));
+                }
+        }
         // The island stands on the starboard edge, a third of the way up from the stern.
         const auto island = art.island.empty() ? nullptr : package->image(art.island);
         const double zi = d.length * 0.52 - d.along;
