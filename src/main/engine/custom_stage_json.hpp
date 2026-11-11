@@ -569,6 +569,10 @@ struct Definition {
     // Interactive landings in this stage use carrier rules: a tight deck,
     // a wire window and bolters instead of long landings.
     bool carrier_landing = false;
+    // Art for a carrier drawn under an interactive carrier landing: a top-down
+    // deck plan (stern at the bottom) and the island, standing on the starboard edge.
+    struct CarrierArt { std::string deck, island; };
+    std::optional<CarrierArt> carrier_art;
 
     // Presentation & layer options:
     bool rom_environment = true;
@@ -974,7 +978,7 @@ struct Definition {
             "music", "road_setup", "sky_setup", "curve_setup",
             "replace_events", "events", "replace_enemy_waves", "enemy_waves",
             "length", "width", "start_distance", "start_height",
-            "speed", "glideslope", "tanker_span", "seamless_takeoff", "player_landing", "carrier_landing",
+            "speed", "glideslope", "tanker_span", "seamless_takeoff", "player_landing", "carrier_landing", "carrier_art",
             "presentation", "layers",
             "asset_packs", "music_file", "sprites", "rom_patches", "scenery_patterns", "palette_patches", "boss"
         });
@@ -1134,6 +1138,14 @@ struct Definition {
             def.player_landing = pl->flag();
         if (const auto* cl = doc.find("carrier_landing"))
             def.carrier_landing = cl->flag();
+        if (const auto* ca = doc.find("carrier_art")) {
+            ca->keys({"deck", "island"});
+            Definition::CarrierArt art;
+            if (const auto* d = ca->find("deck")) art.deck = d->text();
+            if (const auto* i = ca->find("island")) art.island = i->text();
+            if (art.deck.empty()) throw std::runtime_error("carrier_art requires a deck image");
+            def.carrier_art = std::move(art);
+        }
 
         if (const auto* pres = doc.find("presentation")) {
             pres->keys({"rom_environment", "ocean", "player_shadow", "tanker_variant", "clouds", "hud", "backdrop"});

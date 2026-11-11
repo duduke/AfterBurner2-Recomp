@@ -87,11 +87,13 @@ public:
     bool composite_sky(const GameSession& game, Planes& planes, unsigned width, unsigned height) {
         const bool sky = composite_keyed_sky(game, planes, width, height);
         const auto* boss = package ? game.boss_view() : nullptr;
-        if (!boss) return sky;
-        // The boss is painted into the background plane so sprites stay in front.
+        const bool deck = carrier_visible(game);
+        if (!boss && !deck) return sky;
+        // Painted into the background plane so sprites stay in front.
         if (planes.background.data() != out_background.data())
             out_background.assign(planes.background.begin(), planes.background.end());
-        BossPainter::paint(*package, *boss, out_background, width, height);
+        if (deck) paint_carrier(game.rearm_hud().deck, out_background, width, height);
+        if (boss) BossPainter::paint(*package, *boss, out_background, width, height);
         planes.background = out_background;
         return true;
     }
@@ -144,6 +146,7 @@ public:
             for (size_t i = 0; i < pixels.size(); ++i)
                 if (pixels[i] == key || pixels[i] == blending) pixels[i] = sky_pixels[i];
         }
+        if (carrier_visible(game)) paint_carrier(game.rearm_hud().deck, pixels, width, height);
         if (const auto* boss = package ? game.boss_view() : nullptr)
             BossPainter::paint(*package, *boss, pixels, width, height);
     }
@@ -190,6 +193,92 @@ private:
 
     static uint32_t argb(RGB888 color) {
         return 0xff000000u | uint32_t(color.r) << 16 | uint32_t(color.g) << 8 | color.b;
+    }
+
+    bool carrier_visible(const GameSession& game) const {
+        return package && package->definition.carrier_art && game.custom_stage_in_slot() &&
+               game.rearm_hud().deck.active;
+    }
+
+    // A carrier floor in perspective. The horizon is the first row of the
+    // board's own sea, so the deck sits on the same water the arcade draws;
+    // the runway underneath is painted sea-colored by the stage.
+    void paint_carrier(const Rearm::Hud::Deck& d, std::span<uint32_t> px, unsigned width, unsigned height) {
+        const auto& art = *package->definition.carrier_art;
+        const auto deck = package->image(art.deck);
+        if (!deck || width < 8 || height < 8) return;
+        // Sea: the commonest color along the bottom row.
+        const uint32_t* bottom = px.data() + size_t(height - 1) * width;
+        uint32_t sea = bottom[4], alt = sea;
+        unsigned count = 0;
+        for (unsigned x = 0; x < width; x += 3) {
+            unsigned n = 0;
+            for (unsigned k = 0; k < width; k += 3) n += bottom[k] == bottom[x];
+            if (n > count) { count = n; sea = bottom[x]; }
+        }
+        for (unsigned x = 0; x < width; x += 3) if (bottom[x] != sea) { alt = bottom[x]; break; }
+        int horizon = int(height);
+        for (unsigned y = 0; y < height; ++y) {
+            const uint32_t c = px[size_t(y) * width + 3u];
+            if (c == sea || c == alt) { horizon = int(y); break; }
+        }
+        if (horizon >= int(height) - 2) return;
+        const double f = 150.0, cx = width / 2.0;
+        const double wt = d.half_width * 1.25;             // texture spans the overhangs
+        const auto* tex = deck->rgba.data();
+        const unsigned tw = deck->width, th = deck->height;
+        for (int y = horizon + 1; y < int(height); ++y) {
+            const double dy = y - horizon + 0.5;
+            const double z = f * d.height / dy;
+            const double along = d.along + z;
+            uint32_t* row = px.data() + size_t(y) * width;
+            const double step = z / f;
+            if (along >= 0.0 && along < d.length) {
+                const unsigned v = std::min(th - 1u, unsigned((1.0 - along / d.length) * th));
+                double world = d.lateral + (0.5 - cx) * step;
+                for (unsigned x = 0; x < width; ++x, world += step) {
+                    if (world <= -wt || world >= wt) continue;
+                    const unsigned u = std::min(tw - 1u, unsigned((world + wt) / (2.0 * wt) * tw));
+                    const uint8_t* p = tex + (size_t(v) * tw + u) * 4u;
+                    if (p[3] < 128) continue;
+                    row[x] = 0xff000000u | uint32_t(p[0]) << 16 | uint32_t(p[1]) << 8 | p[2];
+                }
+            } else if (along < 0.0 && along > -8.0) {
+                // The transom below the stern edge.
+                double world = d.lateral + (0.5 - cx) * step;
+                for (unsigned x = 0; x < width; ++x, world += step)
+                    if (std::abs(world) < d.half_width * 0.9) row[x] = 0xff3a3e48u;
+            } else if (along <= -8.0 && along > -320.0) {
+                // Churned wake astern, widening and fading.
+                const double spread = d.half_width * 0.45 + (-along) * 0.06;
+                const double fade = 1.0 + along / 320.0;
+                double world = d.lateral + (0.5 - cx) * step;
+                for (unsigned x = 0; x < width; ++x, world += step) {
+                    const double a = std::abs(world) / spread;
+                    if (a >= 1.0) continue;
+                    const unsigned n = (unsigned(along * 7.0) * 2654435761u ^ unsigned(world * 13.0 + 999) * 40503u) >> 27;
+                    const unsigned k = unsigned(fade * (1.0 - a) * (120 + n * 3));
+                    BossPainter::blend(row[x], 235, 245, 250, std::min(255u, k));
+                }
+            }
+        }
+        // The island stands on the starboard edge, a third of the way up from the stern.
+        const auto island = art.island.empty() ? nullptr : package->image(art.island);
+        const double zi = d.length * 0.52 - d.along;
+        if (island && zi > 3.0) {
+            const double base_y = horizon + f * d.height / zi;
+            const double sx = cx + (d.half_width * 0.86 - d.lateral) * f / zi;
+            const double h = 34.0 * f / zi, w = h * island->width / island->height;
+            const int x0 = std::max(0, int(sx - w / 2)), x1 = std::min(int(width), int(sx + w / 2));
+            const int y0 = std::max(0, int(base_y - h)), y1 = std::min(int(height), int(base_y));
+            for (int y = y0; y < y1; ++y)
+                for (int x = x0; x < x1; ++x) {
+                    const unsigned u = std::min(island->width - 1u, unsigned((x - (sx - w / 2)) / w * island->width));
+                    const unsigned v = std::min(island->height - 1u, unsigned((y - (base_y - h)) / h * island->height));
+                    const uint8_t* p = island->rgba.data() + (size_t(v) * island->width + u) * 4u;
+                    if (p[3] >= 128) px[size_t(y) * width + x] = 0xff000000u | uint32_t(p[0]) << 16 | uint32_t(p[1]) << 8 | p[2];
+                }
+        }
     }
 
     void release_textures() {

@@ -36,141 +36,165 @@ def write_png(path, width, height, pixels):
                      + chunk(b'IDAT', zlib.compress(bytes(raw), 9)) + chunk(b'IEND', b''))
 
 
-class Canvas:
-    def __init__(self, w, h):
-        self.w, self.h = w, h
-        self.px = [CLEAR] * (w * h)
-
-    def put(self, x, y, c):
-        if 0 <= x < self.w and 0 <= y < self.h:
-            self.px[y * self.w + x] = c
-
-    def rect(self, x0, y0, x1, y1, c):
-        for y in range(max(0, int(y0)), min(self.h, int(y1))):
-            for x in range(max(0, int(x0)), min(self.w, int(x1))):
-                self.px[y * self.w + x] = c
-
-    def poly(self, pts, shade):
-        """Fill a polygon; shade(x, y) returns the color."""
-        ys = [p[1] for p in pts]
-        for y in range(max(0, int(min(ys))), min(self.h, int(max(ys)) + 1)):
-            xs = []
-            for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]):
-                if (y0 <= y + 0.5 < y1) or (y1 <= y + 0.5 < y0):
-                    xs.append(x0 + (y + 0.5 - y0) * (x1 - x0) / (y1 - y0))
-            xs.sort()
-            for a, b in zip(xs[0::2], xs[1::2]):
-                for x in range(max(0, int(a)), min(self.w, int(b) + 1)):
-                    self.px[y * self.w + x] = shade(x, y)
-
-    def disk(self, cx, cy, r, shade):
-        for y in range(int(cy - r), int(cy + r) + 1):
-            for x in range(int(cx - r), int(cx + r) + 1):
-                d = math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r
-                if d <= 1:
-                    self.put(x, y, shade(d))
-
-    def out(self):
-        return self.w, self.h, self.px
+def render(w, h, shade, ss=2):
+    """Supersampled painter: shade(u, v) -> (r, g, b, a) with u, v in 0..1."""
+    px = []
+    for y in range(h):
+        for x in range(w):
+            acc = [0.0, 0.0, 0.0, 0.0]
+            for sy in range(ss):
+                for sx in range(ss):
+                    c = shade((x + (sx + 0.5) / ss) / w, (y + (sy + 0.5) / ss) / h)
+                    a = c[3] / 255.0
+                    acc[0] += c[0] * a
+                    acc[1] += c[1] * a
+                    acc[2] += c[2] * a
+                    acc[3] += c[3]
+            alpha = acc[3] / (ss * ss)
+            k = 255.0 / max(1e-6, acc[3])
+            px.append((acc[0] * k, acc[1] * k, acc[2] * k, alpha) if alpha > 0 else CLEAR)
+    return w, h, px
 
 
-def steel(v, warm=0):
-    v = max(0, min(255, int(v)))
-    return (v, v + 4, v + 14 - warm, 255)
+def noise(x, y, seed=0):
+    n = (int(x * 913 + y * 6271 + seed * 113) * 2654435761) & 0xffffffff
+    return ((n >> 13) & 1023) / 1023.0
 
 
-def hull(w=640, h=240):
-    """The carrier from astern: swept wings, a flat deck slab, a keel and tail fins."""
-    c = Canvas(w, h)
-    cx = w / 2
-    # Wings: thick swept surfaces, darker underneath.
-    wing = [(cx - 40, 92), (8, 150), (20, 172), (cx - 30, 150), (cx + 30, 150), (w - 20, 172), (w - 8, 150), (cx + 40, 92)]
-    c.poly(wing, lambda x, y: steel(118 - (y - 92) * 0.9 - abs(x - cx) * 0.03))
-    # Panel lines on the wing undersides.
-    for k in range(1, 9):
+def crack(u, v):
+    """Thin glowing fissures across a wreck."""
+    a = math.sin(u * 23 + math.cos(v * 17) * 3) * math.sin(v * 19 + u * 7)
+    return abs(a) < 0.07
+
+
+def metal(base, light, u, v, seed=0):
+    """Plated metal: a lit base color with panel seams and fine grain."""
+    seam = (abs((u * 46) % 1 - 0.5) < 0.035) or (abs((v * 18) % 1 - 0.5) < 0.05)
+    grain = noise(u * 400, v * 400, seed) * 10 - 5
+    k = light * (0.82 if seam else 1.0)
+    return (base[0] * k + grain, base[1] * k + grain, base[2] * k + grain, 255)
+
+
+def hull(w=800, h=300):
+    """LEVIATHAN from astern: a flying-wing carrier with its flight deck on top."""
+    pods = [(-0.77, 0.857), (-0.44, 0.768), (0.44, 0.768), (0.77, 0.857)]
+    steel, deck = (112, 120, 138), (52, 56, 64)
+
+    def shade(u, v):
+        x = u * 2 - 1
+        ax = abs(x)
+        # Engine housings: dark recesses where the pods hang.
+        for px_, pv in pods:
+            d = ((x - px_) / 0.15) ** 2 + ((v - pv) / 0.11) ** 2
+            if d < 1:
+                return metal((70, 74, 86), 0.6 + 0.4 * d, u, v, 3)
+        # Twin canted tail fins rising from the deck's rear corners.
         for side in (-1, 1):
-            x0 = cx + side * (40 + k * 30)
-            for t in range(40):
-                c.put(int(x0 + side * t * 0.35), int(100 + t * 1.2), (60, 64, 76, 255))
-    # Central fuselage body.
-    body = [(cx - 70, 60), (cx + 70, 60), (cx + 92, 120), (cx + 62, 182), (cx - 62, 182), (cx - 92, 120)]
-    c.poly(body, lambda x, y: steel(132 - (y - 60) * 0.55))
-    # Flight deck slab on top, with deck edge lights and a center stripe.
-    deck = [(cx - 150, 52), (cx + 150, 52), (cx + 128, 70), (cx - 128, 70)]
-    c.poly(deck, lambda x, y: steel(96 + (70 - y) * 0.8))
-    c.rect(cx - 150, 50, cx + 150, 53, (176, 182, 196, 255))
-    for x in range(int(cx - 140), int(cx + 140), 14):
-        c.rect(x, 50, x + 3, 53, (255, 210, 80, 255))
-    c.rect(cx - 2, 53, cx + 2, 70, (230, 230, 230, 255))
-    # Twin tail fins rising behind the deck.
-    for side in (-1, 1):
-        fin = [(cx + side * 96, 54), (cx + side * 112, 54), (cx + side * 132, 6), (cx + side * 124, 6)]
-        c.poly(fin, lambda x, y: steel(124 - (54 - y) * 0.6))
-        c.disk(cx + side * 128, 10, 3, lambda d: (255, 60, 50, 255))
-    # Keel and the hangar mouth glowing at the stern.
-    c.rect(cx - 46, 120, cx + 46, 150, (34, 36, 46, 255))
-    for y in range(124, 146):
-        glow = int(150 * (1 - abs(y - 135) / 12))
-        c.rect(cx - 42, y, cx + 42, y + 1, (glow + 40, glow // 2 + 30, 30, 255))
-    c.rect(cx - 6, 182, cx + 6, 230, (70, 74, 86, 255))
-    # Navigation lights at the wingtips.
-    c.disk(16, 160, 4, lambda d: (255, 70, 60, 255))
-    c.disk(w - 16, 160, 4, lambda d: (80, 255, 120, 255))
-    return c.out()
+            fx = x * side
+            if 0.30 < fx < 0.42 and v < 0.20 and (fx - 0.30) < (0.20 - v) * 0.5 + 0.02:
+                return metal(steel, 1.15 - v * 1.2, u, v, 5) if fx < 0.40 else (220, 60, 50, 255)
+        # Flight deck on top, a lit trapezoid.
+        deck_half = 0.40 + (v - 0.16) * 0.55
+        if 0.16 <= v <= 0.30 and ax < deck_half:
+            if ax < 0.006 or (abs(ax - deck_half * 0.55) < 0.004 and int(v * 120) % 3):
+                return (230, 200, 60, 255)
+            if abs(ax - deck_half) < 0.012:
+                return (255, 220, 120, 255) if int(x * 90) % 4 == 0 else (150, 156, 170, 255)
+            g = noise(u * 300, v * 300) * 8
+            return (deck[0] + g, deck[1] + g, deck[2] + g + 4, 255)
+        # Deck edge / hull side below it.
+        if 0.30 < v <= 0.36 and ax < 0.40 + 0.14 * 0.55 + 0.02:
+            return metal(steel, 0.65, u, v, 7)
+        # Central body, with the hangar bay glowing at the stern.
+        if 0.30 < v < 0.92 and ax < 0.30 - (v - 0.62) * 0.4 * (v > 0.62):
+            if ax < 0.12 and 0.62 < v < 0.80:
+                glow = 1 - abs(v - 0.71) / 0.09
+                return (120 + 135 * glow, 60 + 110 * glow, 30 + 40 * glow, 255)
+            return metal(steel, 1.05 - (v - 0.30) * 0.7 - ax * 0.4, u, v, 1)
+        # Wings: swept leading edge, notched trailing edge, striped tips.
+        lead = 0.30 + ax * 0.32
+        trail = 0.82 - ax * 0.10 + 0.04 * abs(math.sin(ax * 9))
+        if ax <= 1.0 and lead <= v <= trail:
+            if ax > 0.93:
+                return (230, 230, 230, 255) if int(v * 40) % 2 else (210, 50, 44, 255)
+            t = (v - lead) / max(0.01, trail - lead)
+            light = 1.45 if t < 0.06 else 1.25 - t * 0.75 - ax * 0.15
+            return metal(steel, light, u, v, 2)
+        return CLEAR
+
+    return render(w, h, shade)
 
 
-def pod(broken=False, w=96, h=72):
-    c = Canvas(w, h)
-    cx, cy = w / 2, h / 2
-    if broken:
-        c.disk(cx, cy, 30, lambda d: (40 + 30 * d, 34 + 20 * d, 34, 255))
-        rng = random.Random(3)
-        for _ in range(60):
-            a, r = rng.random() * 6.28, rng.random() * 24
-            c.disk(cx + math.cos(a) * r, cy + math.sin(a) * r, 2 + rng.random() * 3,
-                   lambda d: (255, 120 + int(100 * (1 - d)), 40, 255))
-        return c.out()
-    c.disk(cx, cy, 34, lambda d: steel(150 - d * 60))
-    c.disk(cx, cy, 24, lambda d: (40, 40, 50, 255))
-    c.disk(cx, cy, 18, lambda d: (255, int(120 + 120 * (1 - d)), int(40 + 180 * (1 - d) ** 2), 255))
-    for k in range(8):
-        a = k * math.pi / 4
-        for t in range(18, 25):
-            c.put(int(cx + math.cos(a) * t), int(cy + math.sin(a) * t), (70, 70, 80, 255))
-    return c.out()
+def pod(broken=False, w=120, h=90):
+    def shade(u, v):
+        x, y = u * 2 - 1, (v * 2 - 1) * 1.15
+        r = math.hypot(x, y)
+        if broken:
+            # Torn, charred nacelle with glowing cracks.
+            edge = 0.92 + 0.08 * math.sin(math.atan2(y, x) * 7)
+            if r > edge:
+                return CLEAR
+            if crack(u, v) or r < 0.18:
+                return (255, 150, 50, 255)
+            v0 = 34 + 26 * (1 - r)
+            return (v0 + 8, v0, v0 - 2, 255)
+        if r > 1:
+            return CLEAR
+        if r > 0.80:                                  # nacelle lip, lit from above
+            return metal((150, 156, 172), 0.9 - 0.25 * y, u, v, 4)
+        if r > 0.66:
+            return (40, 42, 50, 255)
+        if r > 0.30:                                  # turbine blades
+            a = math.atan2(y, x)
+            c = 70 if math.sin(a * 11 + r * 6) > 0.2 else 46
+            return (c, c + 2, c + 8, 255)
+        glow = 1 - r / 0.30                           # hot core
+        return (255, 140 + 115 * glow, 60 + 190 * glow * glow, 255)
+    return render(w, h, shade)
 
 
-def turret(broken=False, w=64, h=48):
-    c = Canvas(w, h)
-    cx = w / 2
-    if broken:
-        c.rect(10, 26, w - 10, h, (46, 44, 46, 255))
-        for k in range(5):
-            c.disk(18 + k * 7, 26, 4, lambda d: (255, 150, 40, 255))
-        return c.out()
-    c.rect(8, 30, w - 8, h, steel(88))
-    c.disk(cx, 30, 18, lambda d: steel(170 - d * 70))
-    for side in (-1, 1):
-        c.rect(cx + side * 6 - 2, 2, cx + side * 6 + 2, 22, (60, 62, 72, 255))
-    c.disk(cx, 28, 4, lambda d: (255, 70, 60, 255))
-    return c.out()
+def turret(broken=False, w=80, h=64):
+    def shade(u, v):
+        x, y = u * 2 - 1, v
+        if broken:
+            if y > 0.55 + 0.08 * math.sin(x * 9) and abs(x) < 0.8:
+                return (255, 150, 40, 255) if crack(u, v) else (46, 42, 44, 255)
+            return CLEAR
+        for bx in (-0.22, 0.22):                      # twin barrels, pointing up
+            if abs(x - bx) < 0.07 and 0.02 < y < 0.55:
+                return (56 + 40 * (abs(x - bx) < 0.025), 60, 70, 255)
+        if (x / 0.62) ** 2 + ((y - 0.62) / 0.36) ** 2 < 1:
+            return metal((140, 146, 160), 1.3 - (y - 0.3) * 0.9 - x * 0.2, u, v, 6)
+        if 0.86 < y < 1.0 and abs(x) < 0.85:          # base ring
+            return metal((90, 94, 106), 0.9, u, v, 6)
+        return CLEAR
+    return render(w, h, shade)
 
 
-def bridge(broken=False, w=120, h=84):
-    c = Canvas(w, h)
-    if broken:
-        c.poly([(14, h), (24, 40), (60, 28), (96, 44), (106, h)], lambda x, y: (52, 48, 50, 255))
-        rng = random.Random(9)
-        for _ in range(40):
-            c.disk(20 + rng.random() * 80, 40 + rng.random() * 40, 2 + rng.random() * 4, lambda d: (255, 140, 40, 255))
-        return c.out()
-    c.poly([(10, h), (22, 26), (98, 26), (110, h)], lambda x, y: steel(150 - (y - 26) * 0.8))
-    c.rect(56, 0, 64, 26, (70, 74, 86, 255))
-    c.rect(36, 8, 84, 12, (90, 94, 106, 255))
-    for x in range(28, 92, 10):
-        c.rect(x, 36, x + 7, 46, (120, 220, 255, 255))
-    c.rect(20, 56, 100, 60, (255, 80, 60, 255))
-    return c.out()
+def bridge(broken=False, w=150, h=110):
+    def shade(u, v):
+        x = u * 2 - 1
+        ax = abs(x)
+        if broken:
+            if v > 0.45 + 0.1 * math.sin(x * 8) and ax < 0.75 - (1 - v) * 0.3:
+                return (255, 140, 40, 255) if crack(u, v) else (52, 46, 48, 255)
+            return CLEAR
+        if ax < 0.025 and v < 0.30:                    # mast
+            return (80, 84, 96, 255)
+        if abs(v - 0.10) < 0.025 and ax < 0.30:        # radar bar
+            return (190, 196, 208, 255)
+        if 0.22 < v < 0.46 and ax < 0.42:              # upper bridge
+            if 0.30 < v < 0.38 and int(u * 40) % 3:
+                return (140, 220, 255, 255)
+            return metal((140, 146, 162), 1.15 - v * 0.6 - x * 0.15, u, v, 8)
+        if 0.46 <= v and ax < 0.48 + (v - 0.46) * 0.6:  # main block, widening
+            if 0.56 < v < 0.64 and int(u * 52) % 3 and ax < 0.6:
+                return (120, 200, 240, 255)
+            if 0.78 < v < 0.82:
+                return (220, 60, 50, 255)
+            return metal((128, 134, 150), 1.05 - (v - 0.46) * 0.6 - x * 0.15, u, v, 8)
+        return CLEAR
+    return render(w, h, shade)
 
 
 def storm_sky(w=1024, h=512):
@@ -197,13 +221,13 @@ def storm_sky(w=1024, h=512):
 
 PARTS = [
     # name, kind, image, broken image, position from hull center, size, hp
-    ('PORT OUTER ENGINE', 'pod', -116, 40, 48, 36, 60),
-    ('PORT INNER ENGINE', 'pod', -66, 30, 48, 36, 60),
-    ('STBD INNER ENGINE', 'pod', 66, 30, 48, 36, 60),
-    ('STBD OUTER ENGINE', 'pod', 116, 40, 48, 36, 60),
+    ('PORT OUTER ENGINE', 'pod', -116, 40, 44, 34, 60),
+    ('PORT INNER ENGINE', 'pod', -66, 30, 44, 34, 60),
+    ('STBD INNER ENGINE', 'pod', 66, 30, 44, 34, 60),
+    ('STBD OUTER ENGINE', 'pod', 116, 40, 44, 34, 60),
     ('PORT TURRET', 'turret', -40, -32, 32, 24, 50),
     ('STBD TURRET', 'turret', 40, -32, 32, 24, 50),
-    ('BRIDGE', 'core', 0, -42, 60, 42, 160),
+    ('BRIDGE', 'core', 0, -44, 58, 42, 160),
 ]
 
 

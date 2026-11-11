@@ -38,10 +38,12 @@ struct BossPainter {
             const int x0 = std::max(0, int(cx - reach)), x1 = std::min(int(width) - 1, int(cx + reach));
             const int y0 = std::max(0, int(cy - reach)), y1 = std::min(int(height) - 1, int(cy + reach));
             const unsigned flash = unsigned(std::clamp(sprite.flash, 0.f, 1.f) * 150.f);
+            const double cb = std::cos(sprite.angle), sb = std::sin(sprite.angle);
             for (int y = y0; y <= y1; ++y) {
                 for (int x = x0; x <= x1; ++x) {
                     const double ox = x + 0.5 - cx, oy = y + 0.5 - cy;
-                    const double lx = ox * c - oy * s, ly = ox * s + oy * c;
+                    const double rx = ox * c - oy * s, ry = ox * s + oy * c;   // undo the horizon roll
+                    const double lx = rx * cb + ry * sb, ly = -rx * sb + ry * cb; // and the sprite's own bank
                     if (std::abs(lx) >= hw || std::abs(ly) >= hh) continue;
                     const unsigned sx = std::min(image->width - 1u, unsigned((lx + hw) / sprite.width * image->width));
                     const unsigned sy = std::min(image->height - 1u, unsigned((ly + hh) / sprite.height * image->height));
@@ -126,6 +128,21 @@ public:
             SDL_RenderLine(r, x0 - 9, y0, x0 - 4, y0); SDL_RenderLine(r, x0 + 4, y0, x0 + 9, y0);
             SDL_RenderLine(r, x0, y0 - 9, x0, y0 - 4); SDL_RenderLine(r, x0, y0 + 4, x0, y0 + 9);
         }
+        threats(r, *v);
+        if (v->hit_flash > 0.f) {
+            // A red flash on the screen edges when the player is hit.
+            const uint8_t a = uint8_t(150 * v->hit_flash);
+            SDL_SetRenderDrawColor(r, 255, 40, 30, a);
+            for (float k = 0; k < 6; ++k) { SDL_FRect e{k, k, 320 - 2 * k, 224 - 2 * k}; SDL_RenderRect(r, &e); }
+        }
+        if (*v->alert && v->alert_age < 1.6f && (int(v->alert_age * 6) % 2 == 0)) {
+            const std::string a = v->alert;
+            const bool hit = a.rfind("HIT", 0) == 0;
+            SDL_SetRenderDrawColor(r, 0, 0, 0, 150);
+            SDL_FRect box{160 - float(a.size()) * 4 - 6, 150, float(a.size()) * 8 + 12, 12};
+            SDL_RenderFillRect(r, &box);
+            text(a, 160 - float(a.size()) * 4, 152, hit ? red : amber, 1);
+        }
         if (*v->banner && v->banner_age < 3.5f) {
             const bool warn = v->phase == P::approach;
             if (warn && (int(v->banner_age * 4) % 2)) { SDL_SetRenderDrawBlendMode(r, previous); return; }
@@ -143,6 +160,75 @@ public:
     }
 
 private:
+    // Everything that can hit the player, drawn last so nothing hides it.
+    static void threats(SDL_Renderer* r, const View& v) {
+        using K = CustomStage::BossFight::Threat::Kind;
+        for (const auto& t : v.threats) {
+            const auto [x, y] = BossPainter::to_screen(v, t.x, t.y, 0.0);
+            switch (t.kind) {
+            case K::tracer: {
+                const auto [x2, y2] = BossPainter::to_screen(v, t.x2, t.y2, 0.0);
+                // A long hot streak with a bright head.
+                SDL_SetRenderDrawColor(r, 255, 120, 30, 170);
+                for (float o = -1.f; o <= 1.f; o += 1.f) {
+                    SDL_RenderLine(r, float(x2) + o, float(y2), float(x) + o, float(y));
+                    SDL_RenderLine(r, float(x2), float(y2) + o, float(x), float(y) + o);
+                }
+                SDL_SetRenderDrawColor(r, 255, 200, 80, 255);
+                SDL_RenderLine(r, float(x2), float(y2), float(x), float(y));
+                SDL_SetRenderDrawColor(r, 255, 255, 220, 255);
+                SDL_FRect head{float(x) - 2.f, float(y) - 2.f, 4, 4};
+                SDL_RenderFillRect(r, &head);
+                break;
+            }
+            case K::flak: {
+                // A closing ring marks where a shell will burst: leave it.
+                const float k = std::clamp(t.progress, 0.f, 1.f);
+                const float radius = float(t.radius) * (2.2f - 1.2f * k);
+                const bool blink = int(k * 14) % 2 == 0;
+                SDL_SetRenderDrawColor(r, 255, 60, 40, uint8_t(blink ? 230 : 120));
+                ring(r, float(x), float(y), radius);
+                ring(r, float(x), float(y), radius - 1);
+                SDL_SetRenderDrawColor(r, 255, 60, 40, 90);
+                ring(r, float(x), float(y), float(t.radius));
+                SDL_RenderLine(r, float(x) - 3, float(y), float(x) + 3, float(y));
+                SDL_RenderLine(r, float(x), float(y) - 3, float(x), float(y) + 3);
+                break;
+            }
+            case K::missile: {
+                const auto [x2, y2] = BossPainter::to_screen(v, t.x2, t.y2, 0.0);
+                SDL_SetRenderDrawColor(r, 200, 200, 210, 140);
+                SDL_RenderLine(r, float(x2), float(y2), float(x), float(y));
+                SDL_RenderLine(r, float(x2), float(y2) + 1, float(x), float(y) + 1);
+                SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+                SDL_FRect body{float(x) - 2.5f, float(y) - 2.5f, 5, 5};
+                SDL_RenderFillRect(r, &body);
+                SDL_SetRenderDrawColor(r, 255, 60, 40, 255);
+                ring(r, float(x), float(y), 6);
+                break;
+            }
+            case K::burst: {
+                const float k = std::clamp(t.progress, 0.f, 1.f);
+                SDL_SetRenderDrawColor(r, 255, uint8_t(200 - 120 * k), 60, uint8_t(255 * (1 - k)));
+                for (float rr = 2; rr < float(t.radius) * (0.6f + 0.6f * k); rr += 2) ring(r, float(x), float(y), rr);
+                break;
+            }
+            }
+        }
+    }
+
+    static void ring(SDL_Renderer* r, float x, float y, float radius) {
+        if (radius <= 0) return;
+        const int n = std::max(10, int(radius * 1.5f));
+        float px = x + radius, py = y;
+        for (int i = 1; i <= n; ++i) {
+            const float a = float(i) / float(n) * 6.2831853f;
+            const float nx = x + radius * std::cos(a), ny = y + radius * std::sin(a);
+            SDL_RenderLine(r, px, py, nx, ny);
+            px = nx; py = ny;
+        }
+    }
+
     static void corners(SDL_Renderer* r, float x, float y, float hw, float hh) {
         const float a = std::min(hw, hh) * 0.6f;
         for (int sx : {-1, 1})

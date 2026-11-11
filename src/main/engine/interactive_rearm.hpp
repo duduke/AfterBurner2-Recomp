@@ -62,6 +62,15 @@ struct Hud {
     Grade grade{Grade::none};
     float result_age{};    // seconds since the grade was decided
     unsigned frame{};
+    // Carrier deck seen from the chase camera, for the frontend to draw.
+    // Units are the controller's lateral units; along is measured from the stern.
+    struct Deck {
+        bool active{};
+        double along{};    // camera position along the deck (negative: astern)
+        double height{};   // camera height above the deck
+        double lateral{};  // camera offset from the deck centerline
+        double length{}, half_width{}, wire_first{}, wire_spacing{};
+    } deck;
 };
 
 class Controller {
@@ -76,6 +85,13 @@ public:
     static constexpr double refuel_contact = 9.0, refuel_break = 17.0;
     static constexpr double transfer_window = 9.0, delivery_spacing = 1.0;
     static constexpr double descent_stretch = 2.6;
+    static constexpr double screen_gain = 1.0;
+    // Carrier deck geometry, in lateral units (half-width matches "off the deck").
+    static constexpr double deck_length = 320.0, deck_half_width = 28.0;
+    static constexpr double wire_first = 34.0, wire_spacing = 8.0;   // four wires
+    static constexpr double approach_speed = 76.0;                   // units per second
+    static constexpr double approach_start = -296.0;                 // where state 0 begins
+    static constexpr double camera_height = 12.0, plane_ahead = 16.0; // chase camera offsets
     static constexpr int flare_base_sink = 0x16, hard_sink = 0x24, crash_sink = 0x34;
 
     void reset() {
@@ -152,6 +168,9 @@ private:
     bool distance_valid_{}, touched_{}, flare_seen_{}, outcome_applied_{}, service_cut_{};
     unsigned flare_frames_{}, flare_steps_{}, rollout_frames_{};
     int last_sink_{}, depth_{};
+    int16_t base42_{}, base44_{};
+    bool screen_base_{};
+    double bank_{}, deck_speed_{};
     double flare_k_{};
     // Refuel state.
     double off_x_{}, off_y_{}, vel_x_{}, vel_y_{}, window_{};
@@ -206,7 +225,8 @@ private:
         wind_ = side * (0.45 + 0.55 * random_unit());
         glide_drift_ = (random_unit() - 0.5) * 0.5;
         airspeed_ = 168.0;
-        distance_valid_ = touched_ = flare_seen_ = outcome_applied_ = service_cut_ = false;
+        distance_valid_ = touched_ = flare_seen_ = outcome_applied_ = service_cut_ = screen_base_ = false;
+        bank_ = 0;
         flare_frames_ = flare_steps_ = rollout_frames_ = 0;
         last_sink_ = 0;
         flare_k_ = 0;
@@ -283,9 +303,25 @@ private:
         } else if (!outcome_applied_ || hud_.grade != Grade::crash) {
             lat_ += (0.0 - lat_) * std::min(1.0, 1.6 * dt); // roll back to the centreline
         }
-        poke16(m, p + 4u, uint16_t(int16_t(std::lround(lat_))));
+        // Each time the handler runs, $11ED0 re-derives the world X (+4) from the
+        // plane's screen offset +42: X = -(+42) * k + $29C08E, k = $7FE0 /
+        // ((+36 >> 5) + $20) * 64 / 65536. The camera follows X. Writing X alone
+        // made it alternate with the ROM's value every other frame (flicker), so
+        // write X and the matching +42 together.
+        if (!screen_base_) {
+            base44_ = int16_t(peek16(m, p + 44u));
+            screen_base_ = true;
+        }
+        if (state <= 4u) {
+            const int16_t camera = int16_t(peek16(m, 0x29c08eu));
+            const double k = double(0x7fe0 / ((peek16(m, p + 36u) >> 5) + 0x20)) * 64.0 / 65536.0;
+            const double world = lat_ * screen_gain;
+            poke16(m, p + 4u, uint16_t(int16_t(std::lround(world))));
+            poke16(m, p + 42u, uint16_t(int16_t(std::lround(-(world - camera) / std::max(0.05, k)))));
+        }
         const double lane = carrier_rules ? 20.0 : 34.0;
         hud_.localizer = float(std::clamp(lat_ / lane, -1.5, 1.5));
+        if (carrier_rules) carrier_deck(m, p, state, airborne);
 
         if (state == 0u) {
             hud_.phase = Phase::final_approach;
@@ -300,15 +336,18 @@ private:
                 last_distance_ = distance;
             }
             distance_valid_ = true;
-            glide_ += (in.y * 0.62 + glide_drift_ + 0.18 * std::sin(0.9 * t_ + phase_[2])) * dt;
+            // Arcade convention: pushing the stick (positive Y) dives.
+            glide_ += (-in.y * 0.62 + glide_drift_ + 0.18 * std::sin(0.9 * t_ + phase_[2])) * dt;
             glide_ = std::clamp(glide_, -1.6, 1.6);
+            // Above the glide path the plane sits higher on screen, below it lower.
+            poke16(m, p + 44u, uint16_t(int16_t(base44_ - std::lround(glide_ * 60.0))));
             hud_.glideslope = float(std::clamp(glide_, -1.5, 1.5));
             hud_.prompt = "FOLLOW THE GLIDE PATH";
             hud_.detail = std::abs(lat_) > lane * 0.6 ? (lat_ > 0 ? "STEER LEFT" : "STEER RIGHT") :
                           airspeed_ > hud_.airspeed_high ? "TOO FAST - THROTTLE BACK" :
                           airspeed_ < hud_.airspeed_low ? "TOO SLOW - ADD POWER" :
-                          glide_ > 0.45 ? "TOO HIGH - NOSE DOWN" :
-                          glide_ < -0.45 ? "TOO LOW - NOSE UP" : "ON GLIDE PATH";
+                          glide_ > 0.45 ? "TOO HIGH - PUSH DOWN" :
+                          glide_ < -0.45 ? "TOO LOW - PULL BACK" : "ON GLIDE PATH";
             return;
         }
 
@@ -316,8 +355,14 @@ private:
             if (airborne) {
                 flare(m, p, in);
                 hud_.phase = Phase::flare;
-                hud_.prompt = "FLARE";
-                hud_.detail = in.y > 0.2 ? "EASE IT DOWN" : "PULL BACK GENTLY";
+                if (hud_.carrier) {
+                    // Carrier pilots fly it into the wires; a flare floats past them.
+                    hud_.prompt = "NO FLARE";
+                    hud_.detail = in.y < -0.2 ? "FLOATING - PUSH DOWN" : "FLY IT INTO THE WIRES";
+                } else {
+                    hud_.prompt = "FLARE";
+                    hud_.detail = in.y < -0.2 ? "EASE IT DOWN" : "PULL BACK GENTLY";
+                }
                 return;
             }
             if (!touched_) touchdown(m, p);
@@ -341,7 +386,7 @@ private:
                 poke16(m, 0xffff9100u, uint16_t(peek16(m, 0xffff9100u) / 2u));
                 service_cut_ = true;
             }
-            if (hud_.result_age > 3.0f) { hud_.prompt = "REARMING"; hud_.detail = "CREW ON DECK"; }
+            if (hud_.result_age > 3.0f) { hud_.prompt = "REARMING"; hud_.detail = carrier_rules ? "DECK CREW LOADING" : "GROUND CREW LOADING"; }
             return;
         }
 
@@ -368,7 +413,7 @@ private:
         ++flare_frames_;
         // Neutral stick sinks at flare_base_sink per ROM step; pulling back slows
         // it, pushing roughly doubles it, and arriving low adds extra sink.
-        const double wanted = flare_base_sink * (1.0 - 0.85 * in.y) + std::max(0.0, glide_ * -10.0);
+        const double wanted = flare_base_sink * (1.0 + 0.85 * in.y) + std::max(0.0, glide_ * -10.0);
         const int delta = std::clamp(int(std::lround(wanted)), 2, 0x60);
         hud_.sink = float(std::clamp(double(delta) / hard_sink, 0.0, 1.5));
         // The handler does not run every frame: only replace a step it took.
@@ -386,8 +431,40 @@ private:
         poke16(m, p + 44u, uint16_t(int16_t(std::lround(flare_k_ * q))));
         last_sink_ = delta;
         // Floating keeps the plane off the deck past the wires.
-        if (flare_steps_ > 70u) glide_ += 0.9 * dt;
+        if (!hud_.carrier && flare_steps_ > 70u) glide_ += 0.9 * dt; // the carrier measures it on the deck
     }
+
+    // Where the camera is relative to the carrier. The ship moves under the plane
+    // at approach speed; after a trap it stops within a couple of seconds; on a
+    // bolter or the departure it keeps going and the bow passes underneath.
+    void carrier_deck(MainBus::Memory& m, uint32_t p, uint16_t state, bool airborne) {
+        auto& d = hud_.deck;
+        if (!d.active) {
+            d = {true, approach_start, 30.0, 0.0, deck_length, deck_half_width, wire_first, wire_spacing};
+            deck_speed_ = approach_speed;
+        }
+        const bool trapped = touched_ && hud_.grade != Grade::bolter && hud_.grade != Grade::crash;
+        if (airborne) deck_speed_ = approach_speed * std::clamp(airspeed_ / 140.0, 0.8, 1.25);
+        else if (state == 4u && trapped) deck_speed_ = std::max(0.0, deck_speed_ - 52.0 * dt);
+        else if (state == 8u) deck_speed_ = trapped ? 0.0 : deck_speed_;
+        else if (state >= 12u) deck_speed_ = std::min(190.0, deck_speed_ + 120.0 * dt);
+        d.along += deck_speed_ * dt;
+        // Height: down the glide path on final, the flare depth in state 4, then the deck.
+        // The chase camera rides a little above and behind the plane.
+        double h = camera_height;
+        if (state == 0u)
+            h = camera_height + std::max(0.0, wire_first - plane_ahead - d.along) * 0.07 + glide_ * 7.0;
+        else if (state == 4u && airborne)
+            h = camera_height + 9.0 * std::clamp(double(int16_t(peek16(m, p + 36u)) - 0x20) / double(0x400 - 0x20), 0.0, 1.0);
+        else if (state >= 12u)
+            h = camera_height + std::max(0.0, d.along + plane_ahead - deck_length) * 0.09;
+        d.height += (std::max(camera_height * 0.6, h) - d.height) * std::min(1.0, 8.0 * dt);
+        d.lateral = lat_;
+        if (d.along > deck_length + 700.0) d.active = false;
+    }
+
+    // Where along the deck the wheels meet it: high on the glide path lands long.
+    double touch_along() const { return hud_.deck.along + plane_ahead + glide_ * 30.0; }
 
     void touchdown(MainBus::Memory& m, uint32_t p) {
         touched_ = true;
@@ -399,10 +476,22 @@ private:
             decide(Grade::crash, c ? "OFF THE DECK" : "OFF THE RUNWAY", "AIRCRAFT LOST");
         } else if (last_sink_ >= crash_sink) {
             decide(Grade::crash, "HARD IMPACT", "AIRCRAFT LOST");
-        } else if (c && glide_ < -0.75) {
+        } else if (c && touch_along() < 0.0) {
             decide(Grade::crash, "RAMP STRIKE", "AIRCRAFT LOST");
-        } else if (c && (glide_ > 0.6 || flare_steps_ > 80u || fast)) {
+        } else if (c && (touch_along() > wire_first + 3.5 * wire_spacing || fast)) {
             decide(Grade::bolter, "BOLTER", "MISSED THE WIRES - NO REARM");
+        } else if (c) {
+            const int wire = std::clamp(int((touch_along() - wire_first) / wire_spacing + 1.5), 1, 4);
+            static const char* names[] = {"", "TRAPPED ON THE 1 WIRE", "TRAPPED ON THE 2 WIRE", "TRAPPED ON THE 3 WIRE", "TRAPPED ON THE 4 WIRE"};
+            unsigned issues = 0;
+            issues += wire != 3;
+            issues += lat > good;
+            issues += last_sink_ >= hard_sink;
+            issues += slow;
+            issues += lat > rough;
+            if (issues == 0) decide(Grade::perfect, "PERFECT TRAP", names[wire]);
+            else if (issues <= 1) decide(Grade::good, "GOOD TRAP", names[wire]);
+            else decide(Grade::rough, "ROUGH TRAP", "HALF REARM");
         } else {
             unsigned issues = 0;
             issues += lat > good;
@@ -435,7 +524,7 @@ private:
         if (flying) {
             const double turbulence = state >= 3u ? 1.0 : 0.6;
             vel_x_ += (in.x * steer_accel - vel_x_ * steer_damping) * dt;
-            vel_y_ += (in.y * steer_accel - vel_y_ * steer_damping) * dt;
+            vel_y_ += (-in.y * steer_accel - vel_y_ * steer_damping) * dt; // push = down
             off_x_ += (vel_x_ + gust(t_, 16.0 * turbulence)) * dt;
             off_y_ += (vel_y_ + gust2(t_, 11.0 * turbulence)) * dt;
             off_x_ = std::clamp(off_x_, -60.0, 60.0);

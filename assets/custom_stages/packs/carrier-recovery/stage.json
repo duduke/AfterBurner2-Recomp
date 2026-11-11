@@ -9,6 +9,10 @@
   "slot": 5,
   "source_stage": 5,
   "carrier_landing": true,
+  "carrier_art": {
+    "deck": "art/carrier/deck.png",
+    "island": "art/carrier/island.png"
+  },
   "replace_enemy_waves": true,
   "enemy_waves": [],
   "scenery_patterns": [
@@ -221,13 +225,23 @@
     {
       "table": "primary",
       "words": [
-        2,
-        3
+        2
       ],
       "color": [
         20,
         64,
         150
+      ]
+    },
+    {
+      "table": "primary",
+      "words": [
+        3
+      ],
+      "color": [
+        24,
+        70,
+        158
       ]
     },
     {
@@ -245,7 +259,11 @@
     {
       "table": "alternate",
       "words": [
-        2
+        2,
+        4,
+        6,
+        8,
+        10
       ],
       "color": [
         20,
@@ -256,60 +274,16 @@
     {
       "table": "alternate",
       "words": [
-        3
-      ],
-      "color": [
-        26,
-        76,
-        166
-      ]
-    },
-    {
-      "table": "alternate",
-      "words": [
-        4,
-        6,
-        10
-      ],
-      "color": [
-        96,
-        100,
-        108
-      ]
-    },
-    {
-      "table": "alternate",
-      "words": [
+        3,
         5,
+        7,
         9,
         11
       ],
       "color": [
-        108,
-        112,
-        120
-      ]
-    },
-    {
-      "table": "alternate",
-      "words": [
-        7
-      ],
-      "color": [
-        240,
-        240,
-        240
-      ]
-    },
-    {
-      "table": "alternate",
-      "words": [
-        8
-      ],
-      "color": [
-        236,
-        200,
-        40
+        24,
+        70,
+        158
       ]
     },
     {

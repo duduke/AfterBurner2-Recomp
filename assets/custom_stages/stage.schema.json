@@ -788,6 +788,22 @@
           }
         }
       }
+    },
+    "carrier_art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deck"
+      ],
+      "description": "Art for a carrier drawn in perspective during an interactive carrier landing: a top-down deck plan (stern at the bottom; it spans 2.5x the deck half-width across and the full deck length) and the island, standing on the starboard edge.",
+      "properties": {
+        "deck": {
+          "type": "string"
+        },
+        "island": {
+          "type": "string"
+        }
+      }
     }
   },
   "$defs": {
