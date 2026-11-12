@@ -62,7 +62,22 @@ private:
     static void landing(SDL_Renderer* r, const Rearm::Hud& h, const Text& text) {
         using P = Rearm::Phase;
         if (h.phase == P::service || h.phase == P::departure || h.phase == P::rollout) {
-            if (*h.prompt) { banner(r, 150.f, 22.f); centered(text, h.prompt, 152.f, cyan); centered(text, h.detail, 162.f, white); }
+            if (h.throttle_gate) {
+                // Throttle gauge: push it to the top to launch.
+                const float top = 70.f, height = 60.f;
+                color(r, white, 120); box(r, 282.f, top, 12.f, height);
+                color(r, green, 140); fill(r, 283.f, top + 1, 10.f, height * 0.1f);
+                const float k = std::clamp(h.throttle, 0.f, 1.f);
+                color(r, k >= 0.9f ? green : amber, 230);
+                fill(r, 283.f, top + height - 1 - (height - 2) * k, 10.f, (height - 2) * k);
+                text("THR", 276.f, top + height + 3, white, 1);
+            }
+            // High on the screen, clear of the aircraft rolling and lifting off below.
+            if (*h.prompt) {
+                banner(r, 58.f, 22.f);
+                centered(text, h.prompt, 60.f, h.throttle_gate && blink(h, 12) ? amber : cyan);
+                centered(text, h.detail, 70.f, white);
+            }
             return;
         }
         // Instrument landing box: needles point to where the glide path is.

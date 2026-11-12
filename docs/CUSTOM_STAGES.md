@@ -321,6 +321,7 @@ takes over a few values at the end of each frame, and
 | Final approach | Steer against the wind (stick left/right): the plane slides across the screen and the view pans with it. Hold the glide path (as in flight, pushing the stick dives and pulling climbs; the plane rises and sinks on screen). Keep the airspeed in band (throttle) | Instrument box: LOC needle (lateral), G/S needle (glide path); SPD readout |
 | Flare | Ease the stick back so the sink meter stays out of the red | Sink per descent step; floating too long brings the wheels down anyway |
 | Touchdown | — | Graded from lateral offset, sink, glide path and airspeed |
+| Takeoff | Once the crew has reloaded, push the throttle to full | The aircraft waits on the deck or runway until you do |
 
 | Result | Effect |
 | --- | --- |
@@ -328,8 +329,12 @@ takes over a few values at the end of each frame, and
 | Rough | Half the missiles |
 | Off the runway / Hard impact | The plane bounces back into the air and is lost (the arcade's own collision, explosion and life loss) |
 
-The descent is stretched to roughly three times its arcade length so there is
-time to fly it. Under the hood: the player record's handler is `$111BE`
+The descent is stretched to between four and five times its arcade length, so
+there is time to fly it. On the final approach the plane banks into turns and
+pitches with the stick. It uses the arcade's own player frames: the table at
+`$28C94` has one row per pitch band and 16-byte entries indexed by a signed bank
+from -5 to 5, with the mirror flag (byte `+0` bit 5) set for one side. The flare
+keeps the arcade's poses, because state 4 rewrites `+12` before it draws. Under the hood: the player record's handler is `$111BE`
 (fly-in) then `$1122E`; the descent is `$29C322`, the flare depth is `+36` (the
 arcade only touches down when it lands exactly on `$20`, so the controller snaps
 to it), and state 8 is the parked reload. Each time the handler runs, `$11ED0`
@@ -352,18 +357,32 @@ chase camera, and arriving high on the glide path lands longer.
 | Beyond the deck edge | Off the deck: the aircraft is lost |
 
 As on a real carrier there is no flare: hold the descent and fly it into the
-wires; easing back floats the plane past them.
+wires; easing back floats the plane past them. The ship starts about 450 units
+out, a speck on the horizon.
+
+After a landing the parked timer (`+26`) is held just short of zero until the
+reload is finished and the throttle is full. On a carrier, the run up the deck
+follows the arcade's takeoff speed (`+54`), so the bow passes under the plane
+exactly at liftoff (`$140`). As it climbs out, its jet wash churns a wake on the
+water below, which thins and disappears with height.
 
 With `carrier_art` the frontend draws the ship itself
-([`NativeCustomStage::paint_carrier`](../src/main/frontend/native_custom_stage.hpp)):
-the deck plan in perspective, a transom, a wake and the island, painted into the
-background plane under the arcade's own sea. The horizon is the first row of
+([`NativeCustomStage::paint_carrier`](../src/main/frontend/native_custom_stage.hpp)),
+painted into the background plane under the arcade's own sky:
+
+- the flight deck in perspective, standing 7 units above the waterline
+- the hull below it: the transom and sides, with a red boot-top at the waterline
+- the island and parked jets standing on deck
+- the ship's own wake astern
+- an animated sea from the `water` texture, drifting in two layers like the
+  arcade's water stage and fading into haze toward the horizon The horizon is the first row of
 that sea, so the stage should paint the arcade runway in sea colors (see
 `carrier-recovery`).
 
 ```json
 "carrier_landing": true,
-"carrier_art": { "deck": "art/carrier/deck.png", "island": "art/carrier/island.png" }
+"carrier_art": { "deck": "art/carrier/deck.png", "island": "art/carrier/island.png",
+                 "jet": "art/carrier/parked-jet.png", "water": "art/carrier/water.png" }
 ```
 
 The deck plan is drawn stern at the bottom. It spans 2.5 times the deck

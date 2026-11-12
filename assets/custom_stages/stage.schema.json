@@ -795,13 +795,21 @@
       "required": [
         "deck"
       ],
-      "description": "Art for a carrier drawn in perspective during an interactive carrier landing: a top-down deck plan (stern at the bottom; it spans 2.5x the deck half-width across and the full deck length) and the island, standing on the starboard edge.",
+      "description": "Art for a carrier drawn in perspective during an interactive carrier landing: a top-down deck plan (stern at the bottom; it spans 2.5x the deck half-width across and the full deck length), the island, parked jets and an animated sea.",
       "properties": {
         "deck": {
           "type": "string"
         },
         "island": {
           "type": "string"
+        },
+        "jet": {
+          "type": "string",
+          "description": "A parked aircraft seen from astern and above, placed around the deck."
+        },
+        "water": {
+          "type": "string",
+          "description": "A tileable sea texture, drawn in perspective and animated around the ship."
         }
       }
     }

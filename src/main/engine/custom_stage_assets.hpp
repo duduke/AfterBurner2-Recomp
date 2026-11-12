@@ -387,7 +387,8 @@ private:
             decode(definition.backdrop->asset, decode_image);
         if (definition.carrier_art) {
             decode(definition.carrier_art->deck, decode_image);
-            if (!definition.carrier_art->island.empty()) decode(definition.carrier_art->island, decode_image);
+            for (const auto* extra : {&definition.carrier_art->island, &definition.carrier_art->jet, &definition.carrier_art->water})
+                if (!extra->empty()) decode(*extra, decode_image);
         }
         if (definition.boss) {
             decode(definition.boss->hull_asset, decode_image);

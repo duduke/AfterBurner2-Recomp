@@ -571,7 +571,7 @@ struct Definition {
     bool carrier_landing = false;
     // Art for a carrier drawn under an interactive carrier landing: a top-down
     // deck plan (stern at the bottom) and the island, standing on the starboard edge.
-    struct CarrierArt { std::string deck, island; };
+    struct CarrierArt { std::string deck, island, jet, water; };
     std::optional<CarrierArt> carrier_art;
 
     // Presentation & layer options:
@@ -1139,10 +1139,12 @@ struct Definition {
         if (const auto* cl = doc.find("carrier_landing"))
             def.carrier_landing = cl->flag();
         if (const auto* ca = doc.find("carrier_art")) {
-            ca->keys({"deck", "island"});
+            ca->keys({"deck", "island", "jet", "water"});
             Definition::CarrierArt art;
             if (const auto* d = ca->find("deck")) art.deck = d->text();
             if (const auto* i = ca->find("island")) art.island = i->text();
+            if (const auto* j = ca->find("jet")) art.jet = j->text();
+            if (const auto* w = ca->find("water")) art.water = w->text();
             if (art.deck.empty()) throw std::runtime_error("carrier_art requires a deck image");
             def.carrier_art = std::move(art);
         }

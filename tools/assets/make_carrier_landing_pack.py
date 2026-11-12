@@ -180,6 +180,52 @@ def island(w=96, h=176):
     return w, h, px
 
 
+def water(w=128, h=64):
+    """Tileable swell in the arcade's sea palette: deep blue, lighter crests, white caps."""
+    deep, mid, light, cap = (18, 56, 158), (40, 96, 196), (110, 170, 236), (236, 246, 255)
+    px = [deep] * (w * h)
+    rng = random.Random(12)
+    for band in range(10):
+        y0 = band * h / 10 + rng.random() * 3
+        k = rng.choice((1, 2, 3))
+        phase = rng.random() * 6.283
+        for x in range(w):
+            if math.sin(2 * math.pi * x / w * (k + 2) + phase * 2) < -0.35:
+                continue                                  # broken crests, not stripes
+            y = y0 + 2.2 * math.sin(2 * math.pi * x / w * k + phase)
+            for dy, c in ((0, cap), (1, light), (2, mid), (-1, mid)):
+                yy = int(math.floor(y + dy)) % h
+                if c is cap and math.sin(2 * math.pi * x / w * 5 + phase) < 0.55:
+                    c = light
+                px[yy * w + x] = c
+    return w, h, [(r, g, b, 255) for r, g, b in px]
+
+
+def parked_jet(w=72, h=40):
+    """A carrier fighter parked on deck, seen from astern and above."""
+    px = [CLEAR] * (w * h)
+
+    def rect(x0, y0, x1, y1, c):
+        for y in range(max(0, int(y0)), min(h, int(y1))):
+            for x in range(max(0, int(x0)), min(w, int(x1))):
+                px[y * w + x] = c
+
+    body, dark, light = (150, 156, 168, 255), (70, 74, 84, 255), (190, 196, 206, 255)
+    cx = w // 2
+    for y in range(16, 30):                               # swept wings, widening aft
+        span = 8 + (y - 16) * 1.9
+        rect(cx - span, y, cx + span, y + 1, body if y % 5 else dark)
+    rect(cx - 6, 6, cx + 6, 36, body)                     # fuselage
+    rect(cx - 4, 8, cx + 4, 15, (40, 60, 80, 255))        # canopy
+    rect(cx - 5, 7, cx + 5, 9, light)
+    for side in (-1, 1):                                  # twin tails
+        rect(cx + side * 7 - 1, 2, cx + side * 7 + 2, 28, light)
+    for side in (-1, 1):                                  # nozzles
+        rect(cx + side * 4 - 3, 32, cx + side * 4 + 3, 38, dark)
+    rect(cx - 1, 36, cx + 1, 40, (60, 60, 64, 255))       # tie-down
+    return w, h, px
+
+
 def swell_pattern(rng, tick):
     """Scattered swell far either side; the ship's lane stays clear."""
     rows = []
@@ -204,10 +250,12 @@ def stage(rng):
         'slot': 5,
         'source_stage': 5,
         'carrier_landing': True,
-        'carrier_art': {'deck': 'art/carrier/deck.png', 'island': 'art/carrier/island.png'},
+        'carrier_art': {'deck': 'art/carrier/deck.png', 'island': 'art/carrier/island.png',
+                        'jet': 'art/carrier/parked-jet.png', 'water': 'art/carrier/water.png'},
         'replace_enemy_waves': True,
         'enemy_waves': [],
-        'scenery_patterns': [swell_pattern(rng, 400 + k * GRID_TICKS) for k in range(8)],
+        # The drawn sea is animated, so the arcade's swell objects are cleared out.
+        'scenery_patterns': [{'tick': 400, 'rows': ['.' * 16] * 16, 'objects': {}}],
         # Descriptor blocks: primary is sky, sky, ground, ground; alternate repeats
         # them and then holds the eight runway colors (4..11), painted as sea here
         # so the arcade runway disappears under the drawn carrier.
@@ -230,6 +278,8 @@ def main():
     out = args.output
     write_png(out / 'art/carrier/deck.png', *deck_plan())
     write_png(out / 'art/carrier/island.png', *island())
+    write_png(out / 'art/carrier/parked-jet.png', *parked_jet())
+    write_png(out / 'art/carrier/water.png', *water())
     (out / 'stage.json').write_text(json.dumps(stage(random.Random(41)), indent=2) + '\n', encoding='utf-8')
     print(f'Wrote {out}')
 

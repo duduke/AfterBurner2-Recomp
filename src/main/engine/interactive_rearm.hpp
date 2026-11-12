@@ -62,6 +62,8 @@ struct Hud {
     const char* detail{""};
     Grade grade{Grade::none};
     float result_age{};    // seconds since the grade was decided
+    bool throttle_gate{};  // parked and waiting for full throttle
+    float throttle{};
     unsigned frame{};
     // Carrier deck seen from the chase camera, for the frontend to draw.
     // Units are the controller's lateral units; along is measured from the stern.
@@ -71,9 +73,11 @@ struct Hud {
         double height{};   // camera height above the deck
         double lateral{};  // camera offset from the deck centerline
         double length{}, half_width{}, wire_first{}, wire_spacing{};
-        // Expanding rings on the water from the jet blast after liftoff.
-        struct Ripple { double along{}, lateral{}, age{}, strength{}; };
-        std::vector<Ripple> ripples;
+        double hull{};     // flight deck height above the waterline
+        // Wake disturbance on the water behind the plane after liftoff: churned
+        // spots laid down under it, falling behind, weaker the higher it climbs.
+        struct Wash { double along{}, lateral{}, age{}, strength{}; };
+        std::vector<Wash> wake;
     } deck;
 };
 
@@ -88,14 +92,15 @@ public:
     static constexpr double steer_accel = 150.0, steer_damping = 3.2;
     static constexpr double refuel_contact = 9.0, refuel_break = 17.0;
     static constexpr double transfer_window = 9.0, delivery_spacing = 1.0;
-    static constexpr double descent_stretch = 2.6;
+    static constexpr double descent_stretch = 4.6;
     static constexpr double screen_gain = 1.0;
     // Carrier deck geometry, in lateral units (half-width matches "off the deck").
     static constexpr double deck_length = 320.0, deck_half_width = 28.0;
     static constexpr double wire_first = 34.0, wire_spacing = 8.0;   // four wires
     static constexpr double approach_speed = 76.0;                   // units per second
-    static constexpr double approach_start = -296.0;                 // where state 0 begins
+    static constexpr double approach_start = -452.0;                 // where state 0 begins
     static constexpr double camera_height = 12.0, plane_ahead = 16.0; // chase camera offsets
+    static constexpr double hull_height = 7.0;                         // deck above the water
     static constexpr int flare_base_sink = 0x16, hard_sink = 0x24, crash_sink = 0x34;
 
     void reset() {
@@ -127,7 +132,7 @@ public:
             return;
         }
         const Input in = clean(input);
-        if (now == Kind::landing) landing(memory, handler, in);
+        if (now == Kind::landing) landing(memory, rom, handler, in);
         else refuel(memory, rom, in);
         age_result();
     }
@@ -174,7 +179,8 @@ private:
     int last_sink_{}, depth_{};
     int16_t base42_{}, base44_{};
     bool screen_base_{};
-    double bank_{}, deck_speed_{}, park_along_{}, lifted_{}, last_along_{};
+    double bank_{}, deck_speed_{}, park_along_{}, lifted_{}, last_along_{}, bank_pose_{}, pitch_pose_{};
+    bool throttle_released_{};
     int16_t lift_base_{};
     bool departing_{};
     unsigned ripple_clock_{};
@@ -233,7 +239,8 @@ private:
         glide_drift_ = (random_unit() - 0.5) * 0.5;
         airspeed_ = 168.0;
         distance_valid_ = touched_ = flare_seen_ = outcome_applied_ = service_cut_ = screen_base_ = false;
-        bank_ = 0;
+        bank_ = bank_pose_ = pitch_pose_ = 0;
+        throttle_released_ = false;
         departing_ = false;
         lifted_ = 0;
         ripple_clock_ = 0;
@@ -277,7 +284,7 @@ private:
     }
 
     // ---------------------------------------------------------------- landing
-    void landing(MainBus::Memory& m, uint32_t handler, const Input& in) {
+    void landing(MainBus::Memory& m, const Roms& rom, uint32_t handler, const Input& in) {
         t_ += dt;
         const uint32_t p = record_;
         const uint16_t state = handler == 0x1122eu ? peek16(m, p + 40u) : 0xffffu;
@@ -352,6 +359,7 @@ private:
             // Above the glide path the plane sits higher on screen, below it lower.
             poke16(m, p + 44u, uint16_t(int16_t(base44_ - std::lround(glide_ * 60.0))));
             hud_.glideslope = float(std::clamp(glide_, -1.5, 1.5));
+            pose(m, rom, p, in);
             hud_.prompt = "FOLLOW THE GLIDE PATH";
             hud_.detail = std::abs(lat_) > lane * 0.6 ? (lat_ > 0 ? "STEER LEFT" : "STEER RIGHT") :
                           airspeed_ > hud_.airspeed_high ? "TOO FAST - THROTTLE BACK" :
@@ -396,6 +404,25 @@ private:
                 poke16(m, 0xffff9100u, uint16_t(peek16(m, 0xffff9100u) / 2u));
                 service_cut_ = true;
             }
+            // $114E2 counts the parked timer +26 down to the departure. Hold it just
+            // short of zero once the crew is done, until the throttle is full.
+            const bool reloading = peek8(m, 0xffff90ffu) || int16_t(peek16(m, 0xffff9100u)) > 0;
+            const uint8_t timer = peek8(m, p + 26u);
+            hud_.throttle = float(std::clamp(in.throttle, 0.0, 1.0));
+            if (!throttle_released_ && timer <= 4u) {
+                if (!reloading && in.throttle >= 0.9) {
+                    throttle_released_ = true;
+                } else {
+                    poke8(m, p + 26u, 4u);
+                    hud_.throttle_gate = !reloading;
+                    if (hud_.result_age > 3.0f && !reloading) {
+                        hud_.prompt = "READY FOR TAKEOFF";
+                        hud_.detail = "FULL THROTTLE TO LAUNCH";
+                        return;
+                    }
+                }
+            }
+            hud_.throttle_gate = false;
             if (hud_.result_age > 3.0f) { hud_.prompt = "REARMING"; hud_.detail = carrier_rules ? "DECK CREW LOADING" : "GROUND CREW LOADING"; }
             return;
         }
@@ -406,6 +433,31 @@ private:
         if (hud_.grade == Grade::crash) { hud_.prompt = "AIRCRAFT DAMAGED"; hud_.detail = "LOSING CONTROL"; }
         else if (hud_.grade == Grade::bolter) { hud_.prompt = "WAVE OFF"; hud_.detail = "NO REARM THIS PASS"; }
         else { hud_.prompt = "CLEARED FOR TAKEOFF"; hud_.detail = ""; }
+    }
+
+    // The approach shows the aircraft banking into turns and pitching with the
+    // stick, using the arcade's own player frames: $28C94 holds a pointer per
+    // pitch row (0 nose down .. 2 level .. 4 nose up), each row 16-byte entries
+    // indexed by a signed bank -5..5 (frame address first). The descent never
+    // rewrites +12 in state 0, so the chosen frame is what gets drawn.
+    void pose(MainBus::Memory& m, const Roms& rom, uint32_t p, const Input& in) {
+        bank_pose_ += (std::clamp(in.x * 3.6 + lat_vel_ * 0.02, -4.0, 4.0) - bank_pose_) * std::min(1.0, 7.0 * dt);
+        pitch_pose_ += (std::clamp(-in.y * 1.6, -1.6, 1.6) - pitch_pose_) * std::min(1.0, 5.0 * dt);
+        const int bank = int(std::lround(bank_pose_));
+        const int row = std::clamp(2 + int(std::lround(pitch_pose_)), 0, 4);
+        const uint32_t row_ptr = uint32_t(rom_long(rom, 0x28c94u + uint32_t(row) * 4u));
+        const uint32_t frame = uint32_t(rom_long(rom, row_ptr + uint32_t(bank * 16)));
+        if (frame < 0x10000u || frame >= 0x20000u) return;
+        poke32(m, p + 12u, frame);
+        // The bank frames are drawn for one side; the other side mirrors them.
+        const uint8_t flags = peek8(m, p);
+        poke8(m, p, uint8_t(bank < 0 ? flags | 0x20u : flags & ~0x20u));
+    }
+
+    static int64_t rom_long(const Roms& rom, uint32_t a) {
+        if (!rom.maincpu.rom || a + 4u > rom.maincpu.length) return 0;
+        return int64_t(uint32_t(rom.maincpu.rom[a]) << 24 | uint32_t(rom.maincpu.rom[a + 1]) << 16 |
+                       uint32_t(rom.maincpu.rom[a + 2]) << 8 | rom.maincpu.rom[a + 3]);
     }
 
     // Player flare. In state 4 the ROM subtracts $40 from +36 each frame and
@@ -450,7 +502,7 @@ private:
     void carrier_deck(MainBus::Memory& m, uint32_t p, uint16_t state, bool airborne) {
         auto& d = hud_.deck;
         if (!d.active) {
-            d = {true, approach_start, 30.0, 0.0, deck_length, deck_half_width, wire_first, wire_spacing, {}};
+            d = {true, approach_start, 30.0, 0.0, deck_length, deck_half_width, wire_first, wire_spacing, hull_height, {}};
             last_along_ = approach_start;
             deck_speed_ = approach_speed;
         }
@@ -489,17 +541,23 @@ private:
             h = camera_height + climb * 0.07 + lifted_ * lifted_ * 1.5; // the sea drops away as it climbs
         d.height += (std::max(camera_height * 0.6, h) - d.height) * std::min(1.0, 8.0 * dt);
         d.lateral = lat_;
-        // Jet wash: once past the bow and still low, the exhaust stirs rings on the
-        // sea. The disturbance is carried along under the plane and slowly falls
-        // behind, so the rings trail it instead of vanishing off the bottom at once.
+        // Wake disturbance: once past the bow, the exhaust churns the water under
+        // the plane. Each spot falls behind (toward the camera) and fades; spots
+        // stop forming as the plane climbs, so the wake dies away with height.
         const double moved = d.along - last_along_;
         last_along_ = d.along;
-        for (auto& r : d.ripples) { r.age += dt; r.along += moved * 0.82; }
-        d.ripples.erase(std::remove_if(d.ripples.begin(), d.ripples.end(), [](const Hud::Deck::Ripple& r) { return r.age > 2.2; }),
-                        d.ripples.end());
+        for (auto& w : d.wake) { w.age += dt; w.along += moved * 0.93; }
+        d.wake.erase(std::remove_if(d.wake.begin(), d.wake.end(), [](const Hud::Deck::Wash& w) { return w.age > 1.8; }),
+                     d.wake.end());
         const double plane = d.along + plane_ahead;
-        if (state >= 12u && plane > d.length && d.height < camera_height + 30.0 && ++ripple_clock_ % 6u == 0u)
-            d.ripples.push_back({plane, lat_ + (random_unit() - 0.5) * 4.0, 0.0, std::clamp(1.0 - (d.height - camera_height) / 30.0, 0.25, 1.0)});
+        const double low = 1.0 - (d.height - camera_height) / 55.0;
+        if (state >= 12u && plane > d.length && low > 0.0) {
+            ++ripple_clock_;
+            // Laid where the water shows under the plane on screen: further out as it
+            // climbs, since the chase camera looks down past it.
+            const double ahead = 14.0 + (d.height - camera_height) * 2.2;
+            d.wake.push_back({plane + ahead, lat_ + (random_unit() - 0.5) * 1.5, 0.0, std::clamp(low * 1.1, 0.0, 1.0)});
+        }
         if (d.along > deck_length + 900.0) d.active = false;
     }
 

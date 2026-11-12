@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -200,14 +201,15 @@ private:
                game.rearm_hud().deck.active;
     }
 
-    // A carrier floor in perspective. The horizon is the first row of the
-    // board's own sea, so the deck sits on the same water the arcade draws;
-    // the runway underneath is painted sea-colored by the stage.
+    // The carrier in perspective, in three planes: the flight deck, the hull
+    // (transom and sides) between deck and waterline, and the sea below it.
+    // The horizon is the first row of the board's own sea, so everything sits
+    // under the arcade's sky; the runway underneath is painted out by the stage.
     void paint_carrier(const Rearm::Hud::Deck& d, std::span<uint32_t> px, unsigned width, unsigned height) {
         const auto& art = *package->definition.carrier_art;
         const auto deck = package->image(art.deck);
         if (!deck || width < 8 || height < 8) return;
-        // Sea: the commonest color along the bottom row.
+        // Sea: the commonest color along the bottom row of the board's picture.
         const uint32_t* bottom = px.data() + size_t(height - 1) * width;
         uint32_t sea = bottom[4], alt = sea;
         unsigned count = 0;
@@ -223,83 +225,142 @@ private:
             if (c == sea || c == alt) { horizon = int(y); break; }
         }
         if (horizon >= int(height) - 2) return;
+
         const double f = 150.0, cx = width / 2.0;
-        const double wt = d.half_width * 1.25;             // texture spans the overhangs
+        const double hd = d.height, hs = d.height + d.hull;      // camera above deck / sea
+        const double wt = d.half_width * 1.25, hw = d.half_width * 0.92;
         const auto* tex = deck->rgba.data();
         const unsigned tw = deck->width, th = deck->height;
+        const auto water = art.water.empty() ? nullptr : package->image(art.water);
+        const double t = double(elapsed_frames) / 60.0;
+        const uint32_t haze = px[size_t(horizon) * width + 3u];
+        const double zt = -d.along;                               // to the stern face, when astern
+        auto rgb = [](unsigned r, unsigned g, unsigned b) { return 0xff000000u | r << 16 | g << 8 | b; };
+        auto mix = [](uint32_t a, uint32_t b, double k) {
+            const auto ch = [&](int s) { return unsigned(double((a >> s) & 255u) * (1 - k) + double((b >> s) & 255u) * k); };
+            return 0xff000000u | ch(16) << 16 | ch(8) << 8 | ch(0);
+        };
         for (int y = horizon + 1; y < int(height); ++y) {
             const double dy = y - horizon + 0.5;
-            const double z = f * d.height / dy;
-            const double along = d.along + z;
+            const double zd = f * hd / dy, zs = f * hs / dy;
+            const double along_d = d.along + zd, along_s = d.along + zs;
+            const bool deck_row = along_d >= 0.0 && along_d < d.length;
+            const unsigned v = deck_row ? std::min(th - 1u, unsigned((1.0 - along_d / d.length) * th)) : 0u;
+            const bool transom_row = zt > 0.5 && dy >= f * hd / zt && dy <= f * hs / zt;
+            const double depth = transom_row ? (dy * zt / f - hd) / d.hull : 0.0; // 0 deck edge .. 1 waterline
+            const double distant = std::clamp(zs / 260.0, 0.0, 1.0), mist = std::clamp(zs / 1400.0, 0.0, 0.85);
             uint32_t* row = px.data() + size_t(y) * width;
-            const double step = z / f;
-            if (along >= 0.0 && along < d.length) {
-                const unsigned v = std::min(th - 1u, unsigned((1.0 - along / d.length) * th));
-                double world = d.lateral + (0.5 - cx) * step;
-                for (unsigned x = 0; x < width; ++x, world += step) {
-                    if (world <= -wt || world >= wt) continue;
-                    const unsigned u = std::min(tw - 1u, unsigned((world + wt) / (2.0 * wt) * tw));
-                    const uint8_t* p = tex + (size_t(v) * tw + u) * 4u;
-                    if (p[3] < 128) continue;
-                    row[x] = 0xff000000u | uint32_t(p[0]) << 16 | uint32_t(p[1]) << 8 | p[2];
+            for (unsigned x = 0; x < width; ++x) {
+                const double rx = (x + 0.5 - cx) / f;
+                // 1. Flight deck.
+                if (deck_row) {
+                    const double xd = d.lateral + rx * zd;
+                    if (std::abs(xd) < wt) {
+                        const unsigned u = std::min(tw - 1u, unsigned((xd + wt) / (2.0 * wt) * tw));
+                        const uint8_t* p = tex + (size_t(v) * tw + u) * 4u;
+                        if (p[3] >= 128) { row[x] = rgb(p[0], p[1], p[2]); continue; }
+                    }
                 }
-            } else if (along < 0.0 && along > -8.0) {
-                // The transom below the stern edge.
-                double world = d.lateral + (0.5 - cx) * step;
-                for (unsigned x = 0; x < width; ++x, world += step)
-                    if (std::abs(world) < d.half_width * 0.9) row[x] = 0xff3a3e48u;
-            } else if (along <= -8.0 && along > -320.0) {
-                // Churned wake astern, widening and fading.
-                const double spread = d.half_width * 0.45 + (-along) * 0.06;
-                const double fade = 1.0 + along / 320.0;
-                double world = d.lateral + (0.5 - cx) * step;
-                for (unsigned x = 0; x < width; ++x, world += step) {
-                    const double a = std::abs(world) / spread;
-                    if (a >= 1.0) continue;
-                    const unsigned n = (unsigned(along * 7.0) * 2654435761u ^ unsigned(world * 13.0 + 999) * 40503u) >> 27;
-                    const unsigned k = unsigned(fade * (1.0 - a) * (120 + n * 3));
-                    BossPainter::blend(row[x], 235, 245, 250, std::min(255u, k));
+                // 2. Transom: the stern face below the deck edge.
+                if (transom_row && std::abs(d.lateral + rx * zt) < hw) {
+                    row[x] = depth > 0.82 ? rgb(150, 40, 36) : depth > 0.76 ? rgb(30, 30, 34)
+                                          : rgb(unsigned(96 - 30 * depth), unsigned(100 - 30 * depth), unsigned(110 - 28 * depth));
+                    continue;
                 }
+                // 3. Hull sides, lit on the port side, shaded to starboard.
+                bool side = false;
+                for (const double s : {-1.0, 1.0}) {
+                    if (rx * s <= 1e-6) continue;
+                    const double z = (s * hw - d.lateral) / rx;
+                    const double drop = z * dy / f;
+                    if (z > 0.5 && drop >= hd && drop <= hs && d.along + z >= 0.0 && d.along + z <= d.length * 0.9) {
+                        const double k = (drop - hd) / d.hull;
+                        const unsigned base = s < 0 ? 104u : 74u;
+                        row[x] = k > 0.82 ? rgb(150, 40, 36) : rgb(unsigned(base - 24 * k), unsigned(base + 4 - 24 * k), unsigned(base + 12 - 20 * k));
+                        side = true;
+                        break;
+                    }
+                }
+                if (side) continue;
+                // 4. The sea: arcade-style swell, drifting, fading into the haze far out.
+                const double xs = d.lateral + rx * zs;
+                uint32_t c = sea;
+                if (water) {
+                    const auto sample = [&](double su, double sv) {
+                        const long iu = long(std::floor(su)) % long(water->width), iv = long(std::floor(sv)) % long(water->height);
+                        const uint8_t* p = water->rgba.data() + (size_t(iv < 0 ? iv + water->height : iv) * water->width +
+                                                                  size_t(iu < 0 ? iu + water->width : iu)) * 4u;
+                        return rgb(p[0], p[1], p[2]);
+                    };
+                    const uint32_t a = sample(xs * 6.0 + t * 4.0, -along_s * 3.2 + t * 18.0);
+                    const uint32_t b = sample(xs * 4.2 - t * 2.8 + 37.0, -along_s * 2.3 + t * 10.0 + 91.0);
+                    c = ((a >> 8) & 255u) + (a & 255u) > ((b >> 8) & 255u) + (b & 255u) ? a : b; // brighter crest shows
+                    c = mix(c, sea, distant * 0.75);
+                }
+                // The carrier's own wake astern, churned white and widening.
+                if (along_s < 0.0 && along_s > -360.0) {
+                    const double spread = d.half_width * 0.5 + (-along_s) * 0.06;
+                    const double k = std::abs(xs) / spread;
+                    if (k < 1.0) {
+                        const unsigned n = (unsigned(along_s * 5.0 + t * 30.0) * 2654435761u ^ unsigned(xs * 11.0 + 999) * 40503u) >> 27;
+                        c = mix(c, rgb(232, 244, 250), std::min(1.0, (1.0 + along_s / 360.0) * (1.0 - k) * (0.45 + n * 0.02)));
+                    }
+                }
+                row[x] = mix(c, haze, mist);
             }
         }
-        // Jet-wash rings spreading on the water under the departing plane. Each is
-        // an ellipse in perspective, anchored where the water under it would be,
-        // kept just inside the bottom edge like the plane's own shadow.
-        for (const auto& r : d.ripples) {
-            const double z = std::max(4.0, r.along - d.along);
-            const double sy = std::min(double(height) - 8.0, horizon + f * d.height / z);
-            const double scale = std::min(f / z, 14.0);
-            const double sx = cx + (r.lateral - d.lateral) * scale;
-            const double rx = (3.0 + 20.0 * r.age) * scale, ry = rx * 0.26;
-            const double fade = r.strength * std::max(0.0, 1.0 - r.age / 2.2);
-            if (rx < 1.0 || fade <= 0.0) continue;
-            const double band = 0.10 + 0.05 / (1.0 + r.age);
-            const int x0 = std::max(0, int(sx - rx * 1.2)), x1 = std::min(int(width) - 1, int(sx + rx * 1.2));
-            const int y0 = std::max(horizon + 1, int(sy - ry * 1.2)), y1 = std::min(int(height) - 1, int(sy + ry * 1.2));
+
+        // Wake disturbance after liftoff: churned spray spots under the plane.
+        for (const auto& w : d.wake) {
+            const double z = w.along - d.along;
+            if (z < 2.0) continue;
+            const double sy = horizon + f * hs / z;
+            const double scale = f / z;
+            const double sx = cx + (w.lateral - d.lateral) * scale;
+            // Churned water, elongated along the track so the spots read as one streak.
+            const double rx = (1.6 + 4.5 * w.age) * scale, ry = rx * 0.9;
+            const double fade = w.strength * std::max(0.0, 1.0 - w.age / 1.8);
+            if (fade <= 0.02 || sy - ry > height) continue;
+            const int x0 = std::max(0, int(sx - rx)), x1 = std::min(int(width) - 1, int(sx + rx));
+            const int y0 = std::max(horizon + 1, int(sy - ry)), y1 = std::min(int(height) - 1, int(sy + ry));
             for (int y = y0; y <= y1; ++y)
                 for (int x = x0; x <= x1; ++x) {
                     const double q = std::hypot((x + 0.5 - sx) / rx, (y + 0.5 - sy) / ry);
-                    double a = 0.0;
-                    if (std::abs(q - 1.0) < band) a = (1.0 - std::abs(q - 1.0) / band) * 175.0 * fade;
-                    if (r.age < 0.5 && q < 0.45) a = std::max(a, 200.0 * fade * (1.0 - r.age / 0.5) * (1.0 - q / 0.45));
-                    if (a > 1.0) BossPainter::blend(px[size_t(y) * width + size_t(x)], 236, 246, 252, unsigned(a));
+                    if (q >= 1.0) continue;
+                    const unsigned n = (unsigned(x * 7 + int(t * 24.0)) * 2654435761u ^ unsigned(y * 13) * 40503u) >> 26;
+                    const double a = fade * std::sqrt(1.0 - q) * (0.35 + 0.65 * double(n) / 63.0) * 200.0;
+                    BossPainter::blend(px[size_t(y) * width + size_t(x)], 236, 246, 252, unsigned(std::min(255.0, a)));
                 }
         }
-        // The island stands on the starboard edge, a third of the way up from the stern.
+
+        // Things standing on the deck, drawn far to near: the island and parked jets.
+        struct Standing { const CustomStage::DecodedImage* image; double along, lateral, height; bool flip; };
+        std::vector<Standing> standing;
         const auto island = art.island.empty() ? nullptr : package->image(art.island);
-        const double zi = d.length * 0.52 - d.along;
-        if (island && zi > 3.0) {
-            const double base_y = horizon + f * d.height / zi;
-            const double sx = cx + (d.half_width * 0.86 - d.lateral) * f / zi;
-            const double h = 34.0 * f / zi, w = h * island->width / island->height;
+        if (island) standing.push_back({island.get(), d.length * 0.52, d.half_width * 0.86, 34.0, false});
+        if (const auto jet = art.jet.empty() ? nullptr : package->image(art.jet)) {
+            static constexpr std::array<std::pair<double, double>, 9> spots{{
+                {0.60, 0.80}, {0.65, 0.80}, {0.70, 0.80}, {0.40, 0.84},
+                {0.78, -0.66}, {0.83, -0.66}, {0.88, -0.60}, {0.92, 0.30}, {0.35, -0.62}}};
+            for (const auto& [a, x] : spots)
+                standing.push_back({jet.get(), d.length * a, d.half_width * x, 4.6, x < 0});
+        }
+        std::sort(standing.begin(), standing.end(), [&](const Standing& a, const Standing& b) { return a.along > b.along; });
+        for (const auto& s : standing) {
+            const double z = s.along - d.along;
+            if (z <= 3.0) continue;
+            const double base_y = horizon + f * hd / z;
+            const double sx = cx + (s.lateral - d.lateral) * f / z;
+            const double h = s.height * f / z, w = h * s.image->width / s.image->height;
             const int x0 = std::max(0, int(sx - w / 2)), x1 = std::min(int(width), int(sx + w / 2));
             const int y0 = std::max(0, int(base_y - h)), y1 = std::min(int(height), int(base_y));
             for (int y = y0; y < y1; ++y)
                 for (int x = x0; x < x1; ++x) {
-                    const unsigned u = std::min(island->width - 1u, unsigned((x - (sx - w / 2)) / w * island->width));
-                    const unsigned v = std::min(island->height - 1u, unsigned((y - (base_y - h)) / h * island->height));
-                    const uint8_t* p = island->rgba.data() + (size_t(v) * island->width + u) * 4u;
-                    if (p[3] >= 128) px[size_t(y) * width + x] = 0xff000000u | uint32_t(p[0]) << 16 | uint32_t(p[1]) << 8 | p[2];
+                    unsigned u = std::min(s.image->width - 1u, unsigned((x - (sx - w / 2)) / w * s.image->width));
+                    if (s.flip) u = s.image->width - 1u - u;
+                    const unsigned vv = std::min(s.image->height - 1u, unsigned((y - (base_y - h)) / h * s.image->height));
+                    const uint8_t* p = s.image->rgba.data() + (size_t(vv) * s.image->width + u) * 4u;
+                    if (p[3] >= 128) px[size_t(y) * width + x] = rgb(p[0], p[1], p[2]);
                 }
         }
     }
