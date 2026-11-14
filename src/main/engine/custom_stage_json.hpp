@@ -403,6 +403,40 @@ struct BossDefinition {
     unsigned bonus{100000};
 };
 
+// Mission interface: what the run asks of the player.
+struct MissionDef {
+    enum class Type { destroy, survive } type = Type::destroy;
+    std::string briefing = "MISSION";
+    std::string detail;
+    unsigned target{10};          // kills for destroy
+    double time_limit{90};        // seconds; survive wins at the end, destroy fails
+    unsigned bonus{50000};
+    std::optional<unsigned> hold_tick; // stage timer held here until the mission ends
+};
+
+// Art and behavior interface: the conditions the stage is flown in.
+struct ConditionsDef {
+    double night{};               // 0 day .. 1 black night
+    unsigned searchlights{};      // sweeping beams; held on the plane they call in flak
+    double flak{};                // ambient anti-aircraft fire, 0..1
+    double rain{}, lightning{}, fog{}, turbulence{}, wind{};
+    bool sea{};                   // animated water drawn over the ground
+    std::string fighter_art, ship_art, water_art;
+};
+
+// Native squadrons laid out from a seed: patterns, entry angles and pace.
+struct FormationDef {
+    uint32_t seed{1};
+    unsigned waves{8};
+    unsigned start_tick{1600};
+    double spacing{5.0};          // seconds between waves
+    std::vector<std::string> patterns{"v", "line", "echelon", "diamond"};
+    std::vector<std::string> entries{"front", "rear", "left", "right", "dive"};
+    unsigned min_size{3}, max_size{5};
+    double aggression{0.5};       // how often they fire
+    unsigned ships{};             // naval targets added per wave
+};
+
 struct SceneLayer {
     std::string name;
     double order{};
@@ -592,6 +626,30 @@ struct Definition {
     std::vector<RomPatch> rom_patches;
     std::vector<PalettePatch> palette_patches;
     std::optional<BossDefinition> boss;
+    std::optional<MissionDef> mission;
+    ConditionsDef conditions;
+    std::optional<FormationDef> formations;
+    std::string entry = "level";              // level, dive, climb or roll
+    std::vector<std::string> mutators;
+    bool has_conditions() const {
+        return mission || formations || conditions.night > 0 || conditions.searchlights || conditions.flak > 0 ||
+               conditions.rain > 0 || conditions.lightning > 0 || conditions.fog > 0 || conditions.turbulence > 0 ||
+               conditions.sea || entry != "level" || !mutators.empty();
+    }
+    // Run mutators change the conditions they name; applied once, after loading.
+    void apply_mutators() {
+        for (const auto& m : mutators) {
+            if (m == "night") conditions.night = std::max(conditions.night, 0.7);
+            else if (m == "fog") conditions.fog = std::max(conditions.fog, 0.6);
+            else if (m == "storm") { conditions.rain = std::max(conditions.rain, 0.8); conditions.lightning = std::max(conditions.lightning, 0.7); conditions.turbulence = std::max(conditions.turbulence, 0.5); }
+            else if (m == "turbulence") conditions.turbulence = std::max(conditions.turbulence, 0.8);
+            else if (m == "flak_alley") conditions.flak = std::min(1.0, conditions.flak + 0.6);
+            else if (m == "ace_pilots") { if (formations) formations->aggression = std::min(1.0, formations->aggression + 0.4); }
+            else if (m == "swarm") { if (formations) { formations->min_size += 2; formations->max_size += 3; formations->spacing *= 0.75; } }
+            else if (m == "afterburner") {} // read at run time: throttle pinned to full
+            else throw std::runtime_error("Unknown mutator: " + m + " (night, fog, storm, turbulence, flak_alley, ace_pilots, swarm, afterburner)");
+        }
+    }
     std::vector<ScenePattern> scenery_patterns;
 
     // Layers ordered below zero render behind gameplay, inside the sky.
@@ -896,6 +954,81 @@ struct Definition {
                 throw std::runtime_error("Boss requires one core part");
             def.boss = std::move(boss);
         }
+        auto unit = [](const Json* v) { return v ? std::clamp(v->numeric(), 0.0, 1.0) : 0.0; };
+        if (const auto* node = doc.find("mission")) {
+            node->keys({"type", "briefing", "detail", "target", "time_limit", "bonus", "hold_tick"});
+            MissionDef m;
+            if (const auto* t = node->find("type")) {
+                const auto name = t->text();
+                m.type = name == "survive" ? MissionDef::Type::survive : name == "destroy" ? MissionDef::Type::destroy :
+                         throw std::runtime_error("Mission type must be destroy or survive");
+            }
+            if (const auto* b = node->find("briefing")) m.briefing = b->text();
+            if (const auto* d = node->find("detail")) m.detail = d->text();
+            if (const auto* t = node->find("target")) m.target = unsigned(t->integer(1, 999));
+            if (const auto* t = node->find("time_limit")) m.time_limit = std::clamp(t->numeric(), 10.0, 900.0);
+            if (const auto* b = node->find("bonus")) m.bonus = unsigned(b->integer(0, 9999990));
+            if (const auto* h = node->find("hold_tick")) m.hold_tick = unsigned(h->integer(0, 65000));
+            def.mission = std::move(m);
+        }
+        if (const auto* node = doc.find("conditions")) {
+            node->keys({"night", "searchlights", "flak", "rain", "lightning", "fog", "turbulence", "wind", "sea", "art"});
+            auto& c = def.conditions;
+            c.night = unit(node->find("night"));
+            if (const auto* n = node->find("searchlights")) c.searchlights = unsigned(n->integer(0, 6));
+            c.flak = unit(node->find("flak"));
+            c.rain = unit(node->find("rain"));
+            c.lightning = unit(node->find("lightning"));
+            c.fog = unit(node->find("fog"));
+            c.turbulence = unit(node->find("turbulence"));
+            if (const auto* w = node->find("wind")) c.wind = std::clamp(w->numeric(), -1.0, 1.0);
+            if (const auto* sea = node->find("sea")) c.sea = sea->flag();
+            if (const auto* art = node->find("art")) {
+                art->keys({"fighter", "ship", "water"});
+                if (const auto* a = art->find("fighter")) c.fighter_art = a->text();
+                if (const auto* a = art->find("ship")) c.ship_art = a->text();
+                if (const auto* a = art->find("water")) c.water_art = a->text();
+            }
+        }
+        if (const auto* node = doc.find("formations")) {
+            node->keys({"seed", "waves", "start_tick", "spacing", "patterns", "entries", "size", "aggression", "ships"});
+            FormationDef f;
+            if (const auto* v = node->find("seed")) f.seed = uint32_t(v->integer(0, 2147483647));
+            if (const auto* v = node->find("waves")) f.waves = unsigned(v->integer(1, 60));
+            if (const auto* v = node->find("start_tick")) f.start_tick = unsigned(v->integer(0, 65000));
+            if (const auto* v = node->find("spacing")) f.spacing = std::clamp(v->numeric(), 1.5, 30.0);
+            auto names = [](const Json* v, std::vector<std::string>& out, std::initializer_list<const char*> allowed, const char* what) {
+                if (!v) return;
+                if (v->kind != Json::Kind::array || v->array.empty()) throw std::runtime_error(std::string(what) + " must be a non-empty array");
+                out.clear();
+                for (const auto& e : v->array) {
+                    const auto n = e.text();
+                    if (std::none_of(allowed.begin(), allowed.end(), [&](const char* a) { return n == a; }))
+                        throw std::runtime_error("Unknown " + std::string(what) + ": " + n);
+                    out.push_back(n);
+                }
+            };
+            names(node->find("patterns"), f.patterns, {"v", "line", "echelon", "diamond"}, "formation pattern");
+            names(node->find("entries"), f.entries, {"front", "rear", "left", "right", "dive"}, "formation entry");
+            if (const auto* v = node->find("size")) {
+                if (v->kind != Json::Kind::array || v->array.size() != 2u) throw std::runtime_error("Formation size needs [min, max]");
+                f.min_size = unsigned(v->array[0].integer(1, 8));
+                f.max_size = unsigned(v->array[1].integer(int(f.min_size), 8));
+            }
+            f.aggression = unit(node->find("aggression"));
+            if (const auto* v = node->find("ships")) f.ships = unsigned(v->integer(0, 4));
+            def.formations = std::move(f);
+        }
+        if (const auto* e = doc.find("entry")) {
+            def.entry = e->text();
+            if (def.entry != "level" && def.entry != "dive" && def.entry != "climb" && def.entry != "roll")
+                throw std::runtime_error("Entry must be level, dive, climb or roll");
+        }
+        if (const auto* list = doc.find("mutators")) {
+            if (list->kind != Json::Kind::array) throw std::runtime_error("mutators must be an array");
+            for (const auto& m : list->array) def.mutators.push_back(m.text());
+        }
+        def.apply_mutators();
         if (const auto* list = doc.find("palette_patches")) {
             if (list->kind != Json::Kind::array)
                 throw std::runtime_error("palette_patches must be a JSON array");
@@ -980,7 +1113,8 @@ struct Definition {
             "length", "width", "start_distance", "start_height",
             "speed", "glideslope", "tanker_span", "seamless_takeoff", "player_landing", "carrier_landing", "carrier_art",
             "presentation", "layers",
-            "asset_packs", "music_file", "sprites", "rom_patches", "scenery_patterns", "palette_patches", "boss"
+            "asset_packs", "music_file", "sprites", "rom_patches", "scenery_patterns", "palette_patches", "boss",
+            "mission", "conditions", "formations", "entry", "mutators"
         });
         const auto* ver = doc.find("version");
         if (!ver || ver->integer(1, 1) != 1)

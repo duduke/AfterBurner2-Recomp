@@ -14,6 +14,7 @@
 #include "engine/game_session.hpp"
 #include "frontend/music_decoder.hpp"
 #include "frontend/native_boss.hpp"
+#include "frontend/native_conditions.hpp"
 
 namespace Frontend {
 
@@ -88,14 +89,23 @@ public:
     bool composite_sky(const GameSession& game, Planes& planes, unsigned width, unsigned height) {
         const bool sky = composite_keyed_sky(game, planes, width, height);
         const auto* boss = package ? game.boss_view() : nullptr;
+        const auto* conditions = package ? game.conditions_view() : nullptr;
         const bool deck = carrier_visible(game);
-        if (!boss && !deck) return sky;
+        if (!boss && !deck && !conditions) return sky;
         // Painted into the background plane so sprites stay in front.
         if (planes.background.data() != out_background.data())
             out_background.assign(planes.background.begin(), planes.background.end());
         if (deck) paint_carrier(game.rearm_hud().deck, out_background, width, height);
+        if (conditions) ConditionsPainter::paint(*package, *conditions, out_background, width, height);
         if (boss) BossPainter::paint(*package, *boss, out_background, width, height);
         planes.background = out_background;
+        if (conditions && conditions->night > 0.01) {
+            // Night dims the arcade's sprites as well, a little less than the ground.
+            if (planes.sprites.data() != out_sprites.data())
+                out_sprites.assign(planes.sprites.begin(), planes.sprites.end());
+            ConditionsPainter::darken(out_sprites, conditions->night * 0.92, true);
+            planes.sprites = out_sprites;
+        }
         return true;
     }
 
@@ -148,6 +158,8 @@ public:
                 if (pixels[i] == key || pixels[i] == blending) pixels[i] = sky_pixels[i];
         }
         if (carrier_visible(game)) paint_carrier(game.rearm_hud().deck, pixels, width, height);
+        if (const auto* conditions = package ? game.conditions_view() : nullptr)
+            ConditionsPainter::paint(*package, *conditions, pixels, width, height);
         if (const auto* boss = package ? game.boss_view() : nullptr)
             BossPainter::paint(*package, *boss, pixels, width, height);
     }

@@ -1,0 +1,138 @@
+{
+  "$schema": "../../stage.schema.json",
+  "version": 1,
+  "objective": "combat",
+  "name": "NIGHT RAID",
+  "slot": 2,
+  "source_stage": 2,
+  "music": "city_202",
+  "palette_patches": [
+    {
+      "table": "primary",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        10,
+        12,
+        34
+      ]
+    },
+    {
+      "table": "primary",
+      "words": [
+        2,
+        3
+      ],
+      "color": [
+        40,
+        36,
+        30
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        10,
+        12,
+        34
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        2,
+        3
+      ],
+      "color": [
+        40,
+        36,
+        30
+      ]
+    },
+    {
+      "table": "gradient",
+      "words": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "color": [
+        30,
+        32,
+        70
+      ]
+    }
+  ],
+  "mission": {
+    "type": "destroy",
+    "briefing": "NIGHT RAID",
+    "detail": "BREAK THE CITY DEFENSES",
+    "target": 12,
+    "time_limit": 100,
+    "bonus": 80000,
+    "hold_tick": 20000
+  },
+  "conditions": {
+    "night": 0.8,
+    "searchlights": 2,
+    "flak": 0.518447048926952,
+    "art": {
+      "fighter": "art/fighter.png",
+      "ship": "art/ship.png",
+      "water": "art/water.png"
+    }
+  },
+  "formations": {
+    "seed": 7,
+    "waves": 12,
+    "start_tick": 1600,
+    "spacing": 6.0,
+    "patterns": [
+      "v",
+      "diamond",
+      "echelon"
+    ],
+    "entries": [
+      "right",
+      "front",
+      "rear"
+    ],
+    "size": [
+      2,
+      4
+    ],
+    "aggression": 0.45
+  },
+  "entry": "dive"
+}

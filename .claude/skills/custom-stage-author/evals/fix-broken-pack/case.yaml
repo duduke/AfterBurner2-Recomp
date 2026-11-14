@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: fix-broken-pack
+expected_outcome: |
+  The repaired pack validates: the name is uppercase without unsupported characters, the misspelled conditions key is corrected or removed, the boss has a core part and its images exist (generated or the references fixed), and the answer explains each problem found.
+context:
+  scaffold_script: place-files.sh

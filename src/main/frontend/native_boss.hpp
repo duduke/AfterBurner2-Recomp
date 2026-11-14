@@ -12,6 +12,7 @@
 #include <functional>
 #include <span>
 #include <string>
+#include <type_traits>
 #include "engine/custom_stage_assets.hpp"
 #include "engine/custom_stage_boss.hpp"
 
@@ -128,7 +129,7 @@ public:
             SDL_RenderLine(r, x0 - 9, y0, x0 - 4, y0); SDL_RenderLine(r, x0 + 4, y0, x0 + 9, y0);
             SDL_RenderLine(r, x0, y0 - 9, x0, y0 - 4); SDL_RenderLine(r, x0, y0 + 4, x0, y0 + 9);
         }
-        threats(r, *v);
+        threats_of(r, v->threats, *v);
         if (v->hit_flash > 0.f) {
             // A red flash on the screen edges when the player is hit.
             const uint8_t a = uint8_t(150 * v->hit_flash);
@@ -159,15 +160,21 @@ public:
         SDL_SetRenderDrawBlendMode(r, previous);
     }
 
-private:
-    // Everything that can hit the player, drawn last so nothing hides it.
-    static void threats(SDL_Renderer* r, const View& v) {
-        using K = CustomStage::BossFight::Threat::Kind;
-        for (const auto& t : v.threats) {
-            const auto [x, y] = BossPainter::to_screen(v, t.x, t.y, 0.0);
+    // Everything that can hit the player, drawn last so nothing hides it. Shared
+    // by the boss and the stage conditions: any threat list with the same fields,
+    // and any view carrying the horizon roll.
+    template <class Threats, class V>
+    static void threats_of(SDL_Renderer* r, const Threats& list, const V& v) {
+        const auto to_screen = [&](double px, double py) {
+            const double dx = px - 160.0, dy = py - 112.0, c = std::cos(v.roll), s = std::sin(v.roll);
+            return std::pair{160.0 + dx * c + dy * s, 112.0 - dx * s + dy * c};
+        };
+        using K = typename std::decay_t<decltype(list.front())>::Kind;
+        for (const auto& t : list) {
+            const auto [x, y] = to_screen(t.x, t.y);
             switch (t.kind) {
             case K::tracer: {
-                const auto [x2, y2] = BossPainter::to_screen(v, t.x2, t.y2, 0.0);
+                const auto [x2, y2] = to_screen(t.x2, t.y2);
                 // A long hot streak with a bright head.
                 SDL_SetRenderDrawColor(r, 255, 120, 30, 170);
                 for (float o = -1.f; o <= 1.f; o += 1.f) {
@@ -196,7 +203,7 @@ private:
                 break;
             }
             case K::missile: {
-                const auto [x2, y2] = BossPainter::to_screen(v, t.x2, t.y2, 0.0);
+                const auto [x2, y2] = to_screen(t.x2, t.y2);
                 SDL_SetRenderDrawColor(r, 200, 200, 210, 140);
                 SDL_RenderLine(r, float(x2), float(y2), float(x), float(y));
                 SDL_RenderLine(r, float(x2), float(y2) + 1, float(x), float(y) + 1);
@@ -217,6 +224,7 @@ private:
         }
     }
 
+private:
     static void ring(SDL_Renderer* r, float x, float y, float radius) {
         if (radius <= 0) return;
         const int n = std::max(10, int(radius * 1.5f));

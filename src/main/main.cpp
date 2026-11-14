@@ -106,6 +106,7 @@ int main(int argc, char** argv)try
     std::optional<uint32_t> shuffle_seed;
     std::string custom_stage_arg;
     std::vector<std::string> stage_asset_args;
+    std::vector<std::string> run_mutators; // --stage-mutators: added to whichever custom stage starts
     std::string stage_sprite_log_path;
     bool boot_to_flight = false, profile = false,integrated_scene=true;
     std::string recording_path, rom_source;
@@ -131,6 +132,11 @@ int main(int argc, char** argv)try
         if (option == "--custom-stage" && i+1<argc) { custom_stage_arg=argv[++i]; continue; }
         if (option == "--stage-assets" && i+1<argc) { stage_asset_args.emplace_back(argv[++i]); continue; }
         if (option == "--stage-sprite-log" && i+1<argc) { stage_sprite_log_path=argv[++i]; continue; }
+        if (option == "--stage-mutators" && i+1<argc) {
+            const std::string list=argv[++i];size_t p=0;
+            while(p<=list.size()){const size_t q=std::min(list.find(',',p),list.size());if(q>p)run_mutators.push_back(list.substr(p,q-p));p=q+1;}
+            continue;
+        }
         if (option == "--roms" && i+1<argc) { rom_source=argv[++i]; continue; }
         if (option == "--record" && i+1<argc) { recording_path=argv[++i]; continue; }
         if (option == "--settings-file" && i+1<argc) { settings_path=argv[++i]; continue; }
@@ -141,7 +147,7 @@ int main(int argc, char** argv)try
         if (option == "--shader-runtime" && i+1<argc) { shader_runtime=argv[++i]; continue; }
         if (option == "--menu-preview" && i+1<argc) { menu_preview=argv[++i]; continue; }
         if ((option != "--frames" && option != "--stage" && option != "--practice-stage") || i+1>=argc)
-        { std::cerr << "Usage: afterburner2 [--roms directory|set.zip] [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number] | --custom-stage stage.json|folder|pack.zip|preset [--stage-assets folder|pack.zip]...] [--boot-to-flight] [--record path] [--profile] [--scene-renderer snapshot|integrated] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime library-path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
+        { std::cerr << "Usage: afterburner2 [--roms directory|set.zip] [--frames positive-count] [--stage number | --practice-stage number | --shuffle [--shuffle-seed number] | --custom-stage stage.json|folder|pack.zip|preset [--stage-assets folder|pack.zip]... [--stage-mutators night,fog,storm,turbulence,flak_alley,ace_pilots,swarm,afterburner]] [--boot-to-flight] [--record path] [--profile] [--scene-renderer snapshot|integrated] [--settings-file path] [--hud-atlas image.png] [--player-aircraft image.png|pack.aircraft] [--shader-preset preset.slangp] [--shader-runtime library-path] [--menu-preview image.bmp] [--frame-preview image.bmp --frames count]\n"; return 1; }
         const std::string_view value(argv[++i]);
         auto& count = option == "--stage" ? start_stage : option == "--practice-stage" ? practice_start_stage : frame_limit;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), count);
@@ -816,7 +822,15 @@ int main(int argc, char** argv)try
         try {
             if(new_custom || retry_custom) {
                 if(new_custom) {
-                    game.start_custom_stage(new_custom->definition);
+                    // Run mutators from the command line come on top of the stage's own.
+                    CustomStage::Definition definition=new_custom->definition;
+                    if(!run_mutators.empty()) {
+                        const auto own=definition.mutators;
+                        definition.mutators=run_mutators;
+                        definition.apply_mutators();
+                        definition.mutators.insert(definition.mutators.begin(),own.begin(),own.end());
+                    }
+                    game.start_custom_stage(definition);
                     active_stage_package=new_custom;
                     custom_stage_renderer->set_package(active_stage_package);
                 } else game.retry_custom_stage();
@@ -1295,7 +1309,7 @@ int main(int argc, char** argv)try
         SDL_SetRenderViewport(renderer,&safe_area);
 
         if(menu->is_open())menu->draw();
-        else {custom_stage_renderer->draw_overlays(game,Frontend::viewport_width(menu->settings));Frontend::CustomStageHud::draw(renderer,game);Frontend::BossHud::draw(renderer,game.boss_view(),[&](const std::string& s,float x,float y,SDL_Color c,float k){menu->overlay_text(s,x,y,c,k);});Frontend::RearmHud::draw(renderer,game.rearm_hud(),0,[&](const std::string& s,float x,float y,SDL_Color c,float k){menu->overlay_text(s,x,y,c,k);});menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
+        else {custom_stage_renderer->draw_overlays(game,Frontend::viewport_width(menu->settings));Frontend::CustomStageHud::draw(renderer,game);Frontend::ConditionsHud::draw(renderer,game.conditions_view(),[&](const std::string& s,float x,float y,SDL_Color c,float k){menu->overlay_text(s,x,y,c,k);});Frontend::BossHud::draw(renderer,game.boss_view(),[&](const std::string& s,float x,float y,SDL_Color c,float k){menu->overlay_text(s,x,y,c,k);});Frontend::RearmHud::draw(renderer,game.rearm_hud(),0,[&](const std::string& s,float x,float y,SDL_Color c,float k){menu->overlay_text(s,x,y,c,k);});menu->draw_stats(performance,game.paused());menu->draw_practice_status();}
         if(!menu->is_open())touch.draw(renderer);
         if(!frame_preview.empty() && frame_limit && simulated_frames>=frame_limit) {
             SDL_SetRenderViewport(renderer,nullptr);

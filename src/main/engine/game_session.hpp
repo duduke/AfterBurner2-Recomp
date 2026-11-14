@@ -14,6 +14,7 @@
 #include "engine/custom_stage_interactive.hpp"
 #include "engine/interactive_rearm.hpp"
 #include "engine/custom_stage_boss.hpp"
+#include "engine/custom_stage_conditions.hpp"
 #include <functional>
 #include <span>
 
@@ -77,7 +78,11 @@ public:
     // admits no inputs and advances no CPU, audio device or gameplay timer.
     bool advance(const GameControls& controls) {
         if (paused_) return false;
-        const auto physical = arcade_inputs(controls);
+        // Stage conditions (turbulence, wind, entry maneuver, mutators) shape the
+        // controls before the board reads them.
+        GameControls shaped = controls;
+        if (conditions_ && !entering_custom_stage_ && custom_stage_in_slot()) conditions_->shape_input(shaped);
+        const auto physical = arcade_inputs(shaped);
         XBoardGame::Host::Input input;
         input.buttons = physical.buttons;
         input.analog = physical.analog;
@@ -91,6 +96,7 @@ public:
             rearm_.carrier = custom_stage_in_slot() && custom_stage_view->definition().carrier_landing;
             rearm_.sync(game.board().memory, active_rom(), controls);
             if (boss_ && custom_stage_in_slot()) boss_->sync(game.board().memory, custom_stage_tick(), controls);
+            if (conditions_ && custom_stage_in_slot()) conditions_->sync(game.board().memory, custom_stage_tick(), shaped);
         }
         if(primary_completed)primary_completed(info().number);
         if(capture_feedback_){
@@ -126,6 +132,7 @@ public:
         shuffle_plan_.reset();
         custom_stage_view.reset();
         boss_.reset();
+        conditions_.reset();
         custom_stage_controller_.reset();
         restarted(changed_rom);
     }
@@ -140,6 +147,7 @@ public:
         shuffle_plan_ = std::move(next_plan);
         custom_stage_view.reset();
         boss_.reset();
+        conditions_.reset();
         custom_stage_controller_.reset();
         game.board().switches = switches;
         restarted(true);
@@ -155,6 +163,9 @@ public:
         boss_.reset();
         if (custom_stage_view->definition().boss)
             boss_ = std::make_unique<CustomStage::BossFight>(*custom_stage_view->definition().boss);
+        conditions_.reset();
+        if (custom_stage_view->definition().has_conditions())
+            conditions_ = std::make_unique<CustomStage::ConditionsDirector>(custom_stage_view->definition());
         shuffle_view.reset();
         shuffle_plan_.reset();
         game.board().switches = switches;
@@ -165,6 +176,9 @@ public:
     void set_interactive_rearm(bool on) { if (rearm_.enabled == on) return; rearm_.enabled = on; rearm_.reset(); }
     bool interactive_rearm() const { return rearm_.enabled; }
     const Rearm::Hud& rearm_hud() const { return rearm_.hud(); }
+    const CustomStage::ConditionsDirector::View* conditions_view() const {
+        return conditions_ && custom_stage_in_slot() && conditions_->view().active ? &conditions_->view() : nullptr;
+    }
     const CustomStage::BossFight::View* boss_view() const {
         return boss_ && custom_stage_in_slot() && boss_->view().active ? &boss_->view() : nullptr;
     }
@@ -265,6 +279,7 @@ public:
             custom_stage_controller_->start();
         }
         if (boss_) boss_->reset();
+        if (conditions_) conditions_->reset();
     }
     // ROM data the board is currently running from. Presentation code must read
     // sprite pixels through this, since a custom stage can rewrite its own copy.
@@ -406,6 +421,7 @@ private:
     std::unique_ptr<CustomStage::InteractiveController> custom_stage_controller_;
     Rearm::Controller rearm_;
     std::unique_ptr<CustomStage::BossFight> boss_;
+    std::unique_ptr<CustomStage::ConditionsDirector> conditions_;
     std::unique_ptr<Presentation::WideVisibility> visibility;
     unsigned prepared_shuffle_position{UINT32_MAX};
     bool capture_wide{}, wide_clip_open{};

@@ -4,9 +4,7 @@
   "type": "object",
   "required": [
     "version",
-    "name",
-    "objective",
-    "environment"
+    "name"
   ],
   "additionalProperties": false,
   "properties": {
@@ -812,6 +810,200 @@
           "description": "A tileable sea texture, drawn in perspective and animated around the ship."
         }
       }
+    },
+    "mission": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Mission interface: a briefing card, a tracker and a bonus.",
+      "properties": {
+        "type": {
+          "enum": [
+            "destroy",
+            "survive"
+          ]
+        },
+        "briefing": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "target": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "time_limit": {
+          "type": "number",
+          "minimum": 10
+        },
+        "bonus": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hold_tick": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Stage timer held here until the mission ends."
+        }
+      }
+    },
+    "conditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Art and behavior interface: night, searchlights, flak and weather.",
+      "properties": {
+        "night": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "searchlights": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "flak": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "rain": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "lightning": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fog": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "turbulence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "wind": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "sea": {
+          "type": "boolean",
+          "description": "Animated water drawn over the ground (needs art.water)."
+        },
+        "art": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fighter": {
+              "type": "string"
+            },
+            "ship": {
+              "type": "string"
+            },
+            "water": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "formations": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Native squadrons laid out from a seed.",
+      "properties": {
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "waves": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "start_tick": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "spacing": {
+          "type": "number",
+          "minimum": 1.5
+        },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "v",
+              "line",
+              "echelon",
+              "diamond"
+            ]
+          }
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "front",
+              "rear",
+              "left",
+              "right",
+              "dive"
+            ]
+          }
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "aggression": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ships": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        }
+      }
+    },
+    "entry": {
+      "enum": [
+        "level",
+        "dive",
+        "climb",
+        "roll"
+      ],
+      "description": "Entry maneuver flown for the first seconds of the stage."
+    },
+    "mutators": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "night",
+          "fog",
+          "storm",
+          "turbulence",
+          "flak_alley",
+          "ace_pilots",
+          "swarm",
+          "afterburner"
+        ]
+      },
+      "description": "Run mutators; --stage-mutators adds more at launch."
     }
   },
   "$defs": {

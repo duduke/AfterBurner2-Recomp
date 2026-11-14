@@ -390,6 +390,8 @@ private:
             for (const auto* extra : {&definition.carrier_art->island, &definition.carrier_art->jet, &definition.carrier_art->water})
                 if (!extra->empty()) decode(*extra, decode_image);
         }
+        for (const auto* art : {&definition.conditions.fighter_art, &definition.conditions.ship_art, &definition.conditions.water_art})
+            if (!art->empty()) decode(*art, decode_image);
         if (definition.boss) {
             decode(definition.boss->hull_asset, decode_image);
             for (const auto& part : definition.boss->parts) {
