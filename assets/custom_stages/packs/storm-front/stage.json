@@ -1,0 +1,139 @@
+{
+  "$schema": "../../stage.schema.json",
+  "version": 1,
+  "objective": "combat",
+  "name": "STORM FRONT",
+  "slot": 10,
+  "source_stage": 10,
+  "music": "red_out",
+  "palette_patches": [
+    {
+      "table": "primary",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        60,
+        66,
+        80
+      ]
+    },
+    {
+      "table": "primary",
+      "words": [
+        2,
+        3
+      ],
+      "color": [
+        52,
+        58,
+        50
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        60,
+        66,
+        80
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        2,
+        3
+      ],
+      "color": [
+        52,
+        58,
+        50
+      ]
+    },
+    {
+      "table": "gradient",
+      "words": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "color": [
+        86,
+        92,
+        104
+      ]
+    }
+  ],
+  "mission": {
+    "type": "survive",
+    "briefing": "STORM FRONT",
+    "detail": "HOLD TOGETHER THROUGH THE CELL",
+    "time_limit": 80,
+    "bonus": 60000
+  },
+  "conditions": {
+    "rain": 0.85,
+    "lightning": 0.75,
+    "fog": 0.35,
+    "turbulence": 0.6,
+    "wind": -0.14,
+    "flak": 0.15,
+    "art": {
+      "fighter": "art/fighter.png",
+      "ship": "art/ship.png",
+      "water": "art/water.png"
+    }
+  },
+  "formations": {
+    "seed": 7,
+    "waves": 8,
+    "start_tick": 1800,
+    "spacing": 8.0,
+    "patterns": [
+      "line",
+      "diamond"
+    ],
+    "entries": [
+      "rear",
+      "front",
+      "left",
+      "right"
+    ],
+    "size": [
+      2,
+      4
+    ],
+    "aggression": 0.4
+  },
+  "entry": "climb"
+}

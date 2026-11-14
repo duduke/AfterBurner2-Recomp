@@ -43,6 +43,7 @@ struct Settings {
     bool clouds{},trails{},explosions{},afterburner{};
     unsigned lives{},difficulty{1};
     bool ground{true};
+    bool interactive_rearm{true};
     Viewport viewport{Viewport::original};
     Hud hud{Hud::original};
     std::string hud_atlas;
@@ -105,6 +106,8 @@ inline Settings load_settings(const std::string& path, bool pixel_art) {
         else if (line=="widescreen=0") result.viewport=Viewport::original;
         else if (line=="ground=1") result.ground=true;
         else if (line=="ground=0") result.ground=false;
+        else if (line=="interactive-rearm=1") result.interactive_rearm=true;
+        else if (line=="interactive-rearm=0") result.interactive_rearm=false;
         else if (line=="stats=0") result.stats=Stats::off;
         else if (line=="stats=1") result.stats=Stats::fps;
         else if (line=="stats=2") result.stats=Stats::detailed;
@@ -128,7 +131,7 @@ inline bool save_settings(const std::string& path, const Settings& settings) {
     file << "AB2SETTINGS1\nscaling=" << scales[static_cast<int>(settings.scaling)]
          << "\nclouds=" << settings.clouds << "\ntrails=" << settings.trails
          << "\nexplosions=" << settings.explosions << "\nafterburner=" << settings.afterburner
-         << "\nwidescreen=" << is_wide(settings) << "\nviewport=" << viewport_keys[static_cast<unsigned>(settings.viewport)] << "\nground=" << settings.ground
+         << "\nwidescreen=" << is_wide(settings) << "\nviewport=" << viewport_keys[static_cast<unsigned>(settings.viewport)] << "\nground=" << settings.ground << "\ninteractive-rearm=" << settings.interactive_rearm
          << "\nhud=" << hud_keys[static_cast<unsigned>(settings.hud)] << "\nhud-atlas=" << settings.hud_atlas
          << "\ncrt=" << crt_keys[static_cast<unsigned>(settings.crt)] << "\ncrt-scanlines=" << settings.crt_scanlines << "\ncrt-mask=" << settings.crt_mask
          << "\nshader-preset=" << settings.shader_preset << "\nshader-runtime=" << settings.shader_runtime

@@ -24,7 +24,7 @@ struct Performance {
 // board's RAM, palette, frame pixels, registers or device clocks.
 class NativeMenu {
 public:
-    enum class Action { none, close, start, restart, practice, shuffle, arcade, quit };
+    enum class Action { none, close, start, restart, practice, shuffle, custom_stage, arcade, quit };
     NativeMenu(SDL_Renderer* renderer, const Roms& rom, Settings settings, bool pixel_art)
         : settings(settings), renderer(nullptr), scale_count(pixel_art?4:3), practice_stages(StageCatalog::count(rom)) {
         rebind(renderer,rom);
@@ -74,10 +74,18 @@ public:
     bool practice_allowed{true};
     bool shuffle_active{},shuffle_allowed{true};
     std::string custom_stage_label;
+    // Custom stage loading. The list holds presets and stages found on disk; the
+    // frontend owns the file dialogs and runs them only on explicit selection.
+    std::vector<std::string> custom_stage_names;
+    unsigned custom_stage_index{};
+    std::vector<std::string> custom_stage_assets;
+    std::string custom_stage_error;
+    bool custom_stage_allowed{true};
+    std::function<void()> open_stage_file,open_stage_folder,add_assets_folder,add_assets_zip,clear_stage_assets,refresh_custom_stages;
     std::function<bool(const Settings&)> apply;
     enum class Page { root, modes, settings, display, graphics, effects, crt, diagnostics,
         controls, bindings, analog, monitor, feedback, cues, feedback_tests,
-        audio, music, volumes, output, arcade, practice, shuffle, shader_library };
+        audio, music, volumes, output, arcade, practice, shuffle, shader_library, custom_stage };
     Page page() const {return current;}
     int row_count() const {return int(rows().size());}
     std::string row_label(int row) const {return rows().at(row).label;}
@@ -101,6 +109,7 @@ public:
     bool in_options() const {return current==Page::settings || in_video() || current==Page::diagnostics;}
     bool in_practice() const {return current==Page::practice;}
     bool in_shuffle() const {return current==Page::shuffle;}
+    bool in_custom_stage() const {return current==Page::custom_stage;}
     int selection() const {return selected;}
     bool fullscreen_toggle() {auto changed=settings;changed.fullscreen=!changed.fullscreen;return change(changed);}
     bool stats_toggle() {auto changed=settings;changed.stats=static_cast<Stats>((int(changed.stats)+1)%3);return change(changed);}
@@ -138,9 +147,21 @@ public:
             if(row.id==0)changed.lives^=1;
             if(row.id==1)changed.difficulty=(changed.difficulty+(direction<0?3:1))%4;
             if(row.id==2)changed.lives^=2;
+            if(row.id==3)changed.interactive_rearm=!changed.interactive_rearm;
             change(changed);
         } else if(current==Page::practice){
             practice_stage=(practice_stage-1+practice_stages+direction)%practice_stages+1;
+        } else if(current==Page::custom_stage){
+            if(row.id==0 && !custom_stage_names.empty()){
+                const int count=int(custom_stage_names.size());
+                custom_stage_index=unsigned((int(custom_stage_index)+count+direction)%count);
+                custom_stage_error.clear();
+            }
+            else if(enter && row.id==1 && open_stage_file)open_stage_file();
+            else if(enter && row.id==2 && open_stage_folder)open_stage_folder();
+            else if(enter && row.id==3 && add_assets_folder)add_assets_folder();
+            else if(enter && row.id==4 && add_assets_zip)add_assets_zip();
+            else if(enter && row.id==5 && clear_stage_assets)clear_stage_assets();
         } else if(current==Page::controls || current==Page::analog || current==Page::bindings){
             if(row.id==0)input->cycle(direction);
             if(row.id==1)input->deadzone(direction);
@@ -199,6 +220,8 @@ public:
         scrollbar(first_row(),int(entries.size()),capacity(),row_top(first_row()),spacing()*capacity());
         auto help=notice.empty()?entries.at(selected).help:notice;
         if(help.empty())help=page_help();
+        // The ROM font has no lowercase; file names and errors can contain it.
+        std::transform(help.begin(),help.end(),help.begin(),[](unsigned char c){return std::toupper(c);});
         // Full device/preset names remain readable without widening the native UI.
         auto detail=entries.at(selected).value;
         std::transform(detail.begin(),detail.end(),detail.begin(),[](unsigned char c){return std::toupper(c);});
@@ -209,6 +232,8 @@ public:
         centered(help.substr(0,38),198,{125,153,180,255});
         centered(current==Page::music?"L/R CHANGE  SPACE PREVIEW  ESC BACK":"ENTER SELECT  L/R CHANGE  ESC BACK",214,{73,152,210,255});
     }
+    // ROM-font text for gameplay overlays drawn outside the menu.
+    void overlay_text(const std::string& value,float x,float y,SDL_Color color,float scale=1) {text(value,x,y,color,scale);}
     void draw_practice_status() {
         if(!active_practice_stage && !shuffle_active && custom_stage_label.empty())return;
         const std::string label=!custom_stage_label.empty()?custom_stage_label:shuffle_active?"SHUFFLE":"PRACTICE FROM "+std::to_string(active_practice_stage);
@@ -262,7 +287,7 @@ private:
     const unsigned practice_stages;
     bool opened{},was_paused{},initial{};
     mutable int scroll{};
-    void visit(Page page){history.push_back({current,selected,scroll});current=page;selected=0;scroll=0;notice.clear();if(page==Page::music)music->refresh();}
+    void visit(Page page){history.push_back({current,selected,scroll});current=page;selected=0;scroll=0;notice.clear();if(page==Page::music)music->refresh();if(page==Page::custom_stage && refresh_custom_stages)refresh_custom_stages();}
     Action back(){
         if(current==Page::root)return Action::close;
         if(feedback)feedback->stop();if(current==Page::output && audio)audio->clear();
@@ -270,8 +295,8 @@ private:
         const auto previous=history.back();history.pop_back();current=previous.page;selected=previous.selected;scroll=previous.scroll;notice.clear();
         return Action::none;
     }
-    int capacity()const{return current==Page::root?5:current==Page::settings?8:7;}
-    float spacing()const{return current==Page::settings?16.f:17.f;}
+    int capacity()const{return current==Page::root?6:current==Page::settings?8:7;}
+    float spacing()const{return current==Page::root?15.f:current==Page::settings?16.f:17.f;}
     int first_row()const {
         scroll=std::clamp(scroll,0,std::max(0,row_count()-capacity()));
         if(selected<scroll)scroll=selected;
@@ -281,7 +306,7 @@ private:
     float row_top(int row)const{return (current==Page::root?106.f:60.f)+(row-first_row())*spacing();}
     std::string page_title()const {
         switch(current){
-        case Page::root:return active_practice_stage?"PAUSED - PRACTICE "+std::to_string(active_practice_stage):shuffle_active?"PAUSED - SHUFFLE":"PAUSED - ARCADE";
+        case Page::root:return !custom_stage_label.empty()?"PAUSED - CUSTOM STAGE":active_practice_stage?"PAUSED - PRACTICE "+std::to_string(active_practice_stage):shuffle_active?"PAUSED - SHUFFLE":"PAUSED - ARCADE";
         case Page::modes:return "CHANGE MODE";case Page::settings:return "SETTINGS";
         case Page::display:return "DISPLAY";case Page::graphics:return "GRAPHICS";case Page::effects:return "TRANSPARENCY EFFECTS";
         case Page::shader_library:return "IMPORTED SHADER PRESETS";
@@ -291,13 +316,14 @@ private:
         case Page::cues:return "FEEDBACK CUES";case Page::feedback_tests:return "FEEDBACK TESTS";
         case Page::audio:return "AUDIO";case Page::music:return "MUSIC REPLACEMENTS";case Page::volumes:return "TRACK VOLUMES";
         case Page::output:return "AUDIO OUTPUT";case Page::arcade:return "ARCADE SETTINGS";
-        case Page::practice:return "STAGE SELECT / PRACTICE";case Page::shuffle:return "SHUFFLE MODE";
+        case Page::practice:return "STAGE SELECT / PRACTICE";case Page::shuffle:return "SHUFFLE MODE";case Page::custom_stage:return "CUSTOM STAGE";
         }
         return {};
     }
     std::string page_context()const {
         if(current==Page::settings)return "CHOOSE A CATEGORY";
         if(current==Page::practice)return "STARTS A FRESH SESSION";
+        if(current==Page::custom_stage)return "LOAD A STAGE AND EXTRA ASSETS";
         if(current==Page::shuffle)return std::to_string(practice_stages-1)+" STAGES THEN FINALE";
         if(current==Page::modes)return "STARTING A MODE ENDS THIS RUN";
         if(current==Page::arcade)return "CHANGES REQUIRE A RESTART";
@@ -307,6 +333,7 @@ private:
     std::string page_help()const {
         if(current==Page::shader_library)return import_status;
         if(current==Page::practice)return "F5 RETRIES ACTIVE PRACTICE STAGE";
+        if(current==Page::custom_stage)return "F5 RELOADS THE STAGE FROM DISK";
         if(current==Page::shuffle)return "F5 RESTARTS THE SAME ORDER";
         if(current==Page::bindings)return input->status.empty()?"ENTER REMAP - BACKSPACE CLEAR":input->status;
         if(current==Page::feedback || current==Page::feedback_tests)return feedback->notice;
@@ -324,13 +351,14 @@ private:
         switch(current){
         case Page::root:
             action(initial?"ARCADE":"RESUME",initial?Action::start:Action::close,initial?"INSERT COIN / START IN ARCADE":"");
-            if(initial){link("PRACTICE",Page::practice,practice_allowed?"START AT A SELECTED STAGE":recording,practice_allowed);link("SHUFFLE",Page::shuffle,shuffle_allowed?"PLAY STAGES IN RANDOM ORDER":recording,shuffle_allowed);}
+            if(initial){link("PRACTICE",Page::practice,practice_allowed?"START AT A SELECTED STAGE":recording,practice_allowed);link("SHUFFLE",Page::shuffle,shuffle_allowed?"PLAY STAGES IN RANDOM ORDER":recording,shuffle_allowed);link("CUSTOM STAGE",Page::custom_stage,custom_stage_allowed?"LOAD A STAGE FROM A FILE":recording,custom_stage_allowed);}
             else {action("RESTART RUN",Action::restart,"ENDS AND RESTARTS THE CURRENT RUN");link("CHANGE MODE...",Page::modes,"STARTING A MODE ENDS THIS RUN");}
             link("SETTINGS",Page::settings);action("QUIT",Action::quit);break;
         case Page::modes:
             action("ARCADE",Action::arcade,practice_allowed&&shuffle_allowed?"START A FRESH ARCADE SESSION":recording,practice_allowed&&shuffle_allowed);
             link("PRACTICE",Page::practice,practice_allowed?"START AT A SELECTED STAGE":recording,practice_allowed);
-            link("SHUFFLE",Page::shuffle,shuffle_allowed?"PLAY STAGES IN RANDOM ORDER":recording,shuffle_allowed);back();break;
+            link("SHUFFLE",Page::shuffle,shuffle_allowed?"PLAY STAGES IN RANDOM ORDER":recording,shuffle_allowed);
+            link("CUSTOM STAGE",Page::custom_stage,custom_stage_allowed?"LOAD A STAGE FROM A FILE":recording,custom_stage_allowed);back();break;
         case Page::settings:
             link("DISPLAY",Page::display);link("GRAPHICS",Page::graphics);link("CRT AND SHADERS",Page::crt);
             if(input)link("CONTROLS",Page::controls);if(music)link("AUDIO",Page::audio);
@@ -406,6 +434,7 @@ private:
         }
         case Page::arcade:
             setting(0,"LIVES/CREDIT",lives_labels[settings.lives%2]);setting(1,"DIFFICULTY",difficulty_labels[settings.difficulty]);setting(2,"SHIP INCREASE",settings.lives>=2?"YES":"NO");
+            setting(3,"INTERACTIVE REARM",settings.interactive_rearm?"ON":"OFF","FLY LANDINGS AND TANKER HOOK-UPS");
             action("APPLY AND RESTART",Action::restart,"RESTART ENDS THE CURRENT GAME");back();break;
         case Page::practice:
             setting(0,"STAGE",std::to_string(practice_stage)+" / "+std::to_string(practice_stages),practice_allowed?"NORMAL LIVES / DAMAGE":recording,practice_allowed);
@@ -414,6 +443,18 @@ private:
         case Page::shuffle:
             action(shuffle_active?"NEW SHUFFLE":"START SHUFFLE",Action::shuffle,shuffle_allowed?"NEW SHUFFLE STARTS A FRESH RUN":recording,shuffle_allowed);
             action("RETURN TO ARCADE",Action::arcade,shuffle_allowed?"STARTS A FRESH ARCADE SESSION":recording,shuffle_allowed&&shuffle_active);back();break;
+        case Page::custom_stage: {
+            const auto chosen=custom_stage_names.empty()?std::string("NONE"):custom_stage_names[custom_stage_index%custom_stage_names.size()];
+            setting(0,"STAGE",chosen,"L/R CHOOSES A STAGE",!custom_stage_names.empty());
+            setting(1,"OPEN STAGE FILE","","A .JSON STAGE OR A .ZIP STAGE PACK");
+            setting(2,"OPEN STAGE FOLDER","","A FOLDER HOLDING STAGE.JSON");
+            setting(3,"ADD ASSETS FOLDER","","IMAGES AND AUDIO THE STAGE CAN USE");
+            setting(4,"ADD ASSETS ZIP","","IMAGES AND AUDIO THE STAGE CAN USE");
+            setting(5,"ASSET PACKS",custom_stage_assets.empty()?"NONE":std::to_string(custom_stage_assets.size())+" - "+custom_stage_assets.back(),custom_stage_assets.empty()?"NEWEST PACK OVERRIDES OLDER FILES":"ENTER CLEARS THE ASSET PACKS");
+            if(!custom_stage_error.empty())setting(6,"LOAD ERROR",custom_stage_error,"FULL TEXT ALSO GOES TO THE CONSOLE");
+            action("START CUSTOM STAGE",Action::custom_stage,custom_stage_allowed?"STARTS A FRESH SESSION":recording,custom_stage_allowed&&!custom_stage_names.empty());
+            action("RETURN TO ARCADE",Action::arcade,"STARTS A FRESH ARCADE SESSION",!custom_stage_label.empty());back();break;
+        }
         case Page::monitor:back();break;
         }
         return result;

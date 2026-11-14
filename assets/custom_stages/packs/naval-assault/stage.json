@@ -1,0 +1,183 @@
+{
+  "$schema": "../../stage.schema.json",
+  "version": 1,
+  "objective": "combat",
+  "name": "NAVAL ASSAULT",
+  "slot": 4,
+  "source_stage": 4,
+  "music": "after_burner",
+  "palette_patches": [
+    {
+      "table": "primary",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        150,
+        196,
+        236
+      ]
+    },
+    {
+      "table": "primary",
+      "words": [
+        2,
+        3
+      ],
+      "color": [
+        20,
+        64,
+        150
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        150,
+        196,
+        236
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        2,
+        3
+      ],
+      "color": [
+        20,
+        64,
+        150
+      ]
+    },
+    {
+      "table": "gradient",
+      "words": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "color": [
+        176,
+        212,
+        240
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "color": [
+        20,
+        64,
+        150
+      ]
+    }
+  ],
+  "replace_enemy_waves": true,
+  "enemy_waves": [],
+  "scenery_patterns": [
+    {
+      "tick": 400,
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................"
+      ],
+      "objects": {}
+    }
+  ],
+  "mission": {
+    "type": "destroy",
+    "briefing": "NAVAL ASSAULT",
+    "detail": "SKIM THE WAVES - SINK THE GROUP",
+    "target": 14,
+    "time_limit": 110,
+    "bonus": 90000,
+    "hold_tick": 20000
+  },
+  "conditions": {
+    "sea": true,
+    "flak": 0.35,
+    "wind": 0.27,
+    "art": {
+      "fighter": "art/fighter.png",
+      "ship": "art/ship.png",
+      "water": "art/water.png"
+    }
+  },
+  "formations": {
+    "seed": 7,
+    "waves": 12,
+    "start_tick": 1500,
+    "spacing": 6.5,
+    "patterns": [
+      "line",
+      "echelon",
+      "v"
+    ],
+    "entries": [
+      "right",
+      "left",
+      "front"
+    ],
+    "size": [
+      2,
+      3
+    ],
+    "aggression": 0.4,
+    "ships": 2
+  },
+  "entry": "dive"
+}

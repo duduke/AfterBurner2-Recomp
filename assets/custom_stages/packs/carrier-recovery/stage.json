@@ -1,0 +1,160 @@
+{
+  "$schema": "../../stage.schema.json",
+  "version": 1,
+  "name": "CARRIER RECOVERY",
+  "objective": "combat",
+  "presentation": {
+    "hud": false
+  },
+  "slot": 5,
+  "source_stage": 5,
+  "carrier_landing": true,
+  "carrier_art": {
+    "deck": "art/carrier/deck.png",
+    "island": "art/carrier/island.png",
+    "jet": "art/carrier/parked-jet.png",
+    "water": "art/carrier/water.png"
+  },
+  "replace_enemy_waves": true,
+  "enemy_waves": [],
+  "scenery_patterns": [
+    {
+      "tick": 400,
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................"
+      ],
+      "objects": {}
+    }
+  ],
+  "palette_patches": [
+    {
+      "table": "primary",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        150,
+        200,
+        240
+      ]
+    },
+    {
+      "table": "primary",
+      "words": [
+        2
+      ],
+      "color": [
+        20,
+        64,
+        150
+      ]
+    },
+    {
+      "table": "primary",
+      "words": [
+        3
+      ],
+      "color": [
+        24,
+        70,
+        158
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        0,
+        1
+      ],
+      "color": [
+        150,
+        200,
+        240
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        2,
+        4,
+        6,
+        8,
+        10
+      ],
+      "color": [
+        20,
+        64,
+        150
+      ]
+    },
+    {
+      "table": "alternate",
+      "words": [
+        3,
+        5,
+        7,
+        9,
+        11
+      ],
+      "color": [
+        24,
+        70,
+        158
+      ]
+    },
+    {
+      "table": "gradient",
+      "words": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "color": [
+        176,
+        214,
+        240
+      ]
+    }
+  ]
+}

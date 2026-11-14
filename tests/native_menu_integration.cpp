@@ -302,7 +302,7 @@ int main(int argc,char** argv) try {
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::quit,"menu quit action failed");menu.close(game);
         GameSession cold(roms);menu.open(cold);
         require(menu.key(SDLK_RETURN)==Frontend::NativeMenu::Action::start,"cold menu Start action failed");
-        require(menu.row_label(0)=="ARCADE" && menu.row_label(1)=="PRACTICE" && menu.row_label(2)=="SHUFFLE" && menu.row_label(3)=="SETTINGS","startup mode/settings order wrong");
+        require(menu.row_label(0)=="ARCADE" && menu.row_label(1)=="PRACTICE" && menu.row_label(2)=="SHUFFLE" && menu.row_label(3)=="CUSTOM STAGE" && menu.row_label(4)=="SETTINGS","startup mode/settings order wrong");
         menu.pointer(60,123,true);require(menu.in_practice(),"startup Practice pointer entry failed");menu.key(SDLK_ESCAPE);
         menu.pointer(60,140,true);require(menu.in_shuffle(),"startup Shuffle pointer entry failed");menu.key(SDLK_ESCAPE);
         menu.close(cold);menu.open(game);

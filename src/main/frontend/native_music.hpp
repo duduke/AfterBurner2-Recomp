@@ -85,6 +85,12 @@ public:
         if(!SDL_PutAudioStreamData(preview_stream,preview_data->stereo.data()+preview_cursor,int(count*sizeof(float)))){stop_preview();notice="PREVIEW PLAYBACK FAILED";return;}
         preview_cursor+=count;
     }
+    // A custom stage's own track replaces whatever its slot would play. It is
+    // separate from the saved per-song mappings and never written to settings.
+    void set_stage_music(std::shared_ptr<const DecodedMusic> music){
+        if(music==stage_music)return;
+        stage_music=std::move(music);mapping_dirty=true;
+    }
     void restarted(){active=-1;active_file.reset();cursor=0;events.clear();playing=replacement=mapping_dirty=false;fade=1;music_gain=effects_gain=1;stop_preview();}
     std::vector<int16_t> mix(std::vector<int16_t> original,std::vector<XBoardGame::AudioPresentation> chunks) {
         poll();
@@ -93,7 +99,7 @@ public:
         if(mapping_dirty) {
             mapping_dirty=false;
             if(playing && active>=0) {
-                active_file=settings.files[active].empty()?nullptr:lookup(settings.files[active]);
+                active_file=stage_music?stage_music:settings.files[active].empty()?nullptr:lookup(settings.files[active]);
                 replacement=bool(active_file);cursor=0;
             }
         }
@@ -155,7 +161,7 @@ private:
     std::mutex mutex;std::condition_variable wake;std::deque<std::string> jobs;std::map<std::string,Entry> cache;
     bool stopping{};uint64_t clock{};std::thread worker;
     int pending=-1,candidate=-1,active=-1;bool playing{},replacement{},mapping_dirty{};std::string pending_file;
-    std::shared_ptr<const DecodedMusic> active_file,preview_data;size_t cursor{},preview_cursor{};int preview_track{};
+    std::shared_ptr<const DecodedMusic> active_file,preview_data,stage_music;size_t cursor{},preview_cursor{};int preview_track{};
     SDL_AudioStream* preview_stream{};float fade=1,music_gain=1,effects_gain=1;std::deque<MusicRouting::Event> events;
     static uint64_t event_sample(uint64_t ns){return ns/1000000000*48000+ns%1000000000*48000/1000000000;}
     void save(){notice=save_music_settings(config,settings)?"AUDIO SETTINGS SAVED":"AUDIO SETTINGS SAVE FAILED";}
@@ -189,7 +195,8 @@ private:
     void event(const MusicRouting::Event& e) {
         if(e.kind==MusicRouting::Kind::start) {
             active=e.track;cursor=0;fade=1;active_file.reset();playing=true;replacement=false;const auto& file=settings.files[active];
-            if(!file.empty()){active_file=lookup(file);if(!active_file){request(file);notice="MUSIC NOT READY - USING ORIGINAL";}}replacement=bool(active_file);
+            if(stage_music)active_file=stage_music;
+            else if(!file.empty()){active_file=lookup(file);if(!active_file){request(file);notice="MUSIC NOT READY - USING ORIGINAL";}}replacement=bool(active_file);
         } else if(e.kind==MusicRouting::Kind::stop) {playing=false;}
         else fade=e.gain;
     }

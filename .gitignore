@@ -34,6 +34,9 @@ __pycache__/
 # User-provided replacement music
 /soundtrack/
 
+# User-provided custom stages and asset packs
+/custom_stages/
+
 # Android local toolchain, Gradle caches and private signing configuration.
 /android/.gradle/
 /android/.cxx/

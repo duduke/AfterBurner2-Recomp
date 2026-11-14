@@ -31,6 +31,9 @@ public:
     // byte-interleaved per docs/HARDWARE.md section 6) into 32-bit words
     // matching the real ROM_REGION32_LE layout.
     void init(const uint8_t* rom, uint32_t rom_length);
+    // Re-decode the pixel data after an owned ROM copy changed. Leaves sprite RAM
+    // and the published list alone, so it is safe between frames.
+    void refresh_rom(const uint8_t* rom, uint32_t rom_length);
 
     // CPU-side write into live sprite RAM (byte address within the 0x1000
     // sprite RAM window, per docs/HARDWARE.md section 2).

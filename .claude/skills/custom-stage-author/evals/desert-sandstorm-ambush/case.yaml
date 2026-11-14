@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: desert-sandstorm-ambush
+expected_outcome: |
+  A new pack under assets/custom_stages/packs (ideally built by a generator script in tools/assets) whose stage.json validates, uses conditions for the sandstorm (fog and/or turbulence, dusk-ish palette or backdrop), formations that include rear entries with fighter art, and a destroy mission with target 10; on-screen text is uppercase; the answer says how to launch it and what was verified.

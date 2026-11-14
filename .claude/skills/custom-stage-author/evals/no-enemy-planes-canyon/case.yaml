@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: no-enemy-planes-canyon
+expected_outcome: |
+  Explains that stage 8 switches air enemies off with event 0 (music_transition) sub-code 12 and that scenery_stage chooses the air-enemy stream; suggests adding a music_transition event with params [0,0,0,0,0] at tick 0 and/or setting scenery_stage to a stage with air enemies.

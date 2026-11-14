@@ -1,10 +1,12 @@
 #pragma once
 
 #include "engine/custom_stage_json.hpp"
+#include "engine/custom_stage_sprites.hpp"
 #include "engine/mainbus.hpp"
 #include "engine/shuffle_rom.hpp"
 #include "engine/stage_catalog.hpp"
 #include <algorithm>
+#include <tuple>
 #include <array>
 #include <cctype>
 #include <cstdint>
@@ -133,6 +135,9 @@ public:
                             &Roms::road, &Roms::soundcpu, &Roms::pcm})
             Shuffle::Detail::clone(canonical.*member, owned.*member);
 
+        apply_rom_patches();
+        sprite_overrides.prepare(owned, def.sprites);
+
         const unsigned target_pos = def.slot - 1u;
         const unsigned donor_pos = donor - 1u;
 
@@ -192,6 +197,7 @@ public:
 
         // 4. Relocate all 5 indexed palette blocks into upper ROM (0x40000+) before
         // touching cold-start aliases, then apply custom ocean/atmosphere colors.
+        const bool keyed = def.sky_keyed();
         uint32_t cursor = 0x40000u;
         constexpr std::array<std::pair<uint32_t, unsigned>, 5> palette_tables{{
             {0x140dau, 64u}, {0x1413au, 256u}, {0x14196u, 256u},
@@ -202,7 +208,9 @@ public:
                 const unsigned src = (pos == target_pos) ? donor_pos : pos;
                 const uint32_t source_addr = StageCatalog::Detail::pointer(canonical, base + src * 4u);
                 const uint32_t relocated = append(canonical, source_addr, bytes, cursor);
-                if (pos == target_pos && def.custom_ocean && base == 0x140dau) {
+                if (pos == target_pos && base == 0x140dau && keyed) {
+                    key_sky_gradient(canonical, donor, relocated);
+                } else if (pos == target_pos && base == 0x140dau && def.custom_ocean) {
                     // Populate both the initial (+2) and target (+34) 14-word horizon/sea
                     // gradients in the 64-byte 0x140da block used by OMainPalette::blend.
                     for (unsigned w = 0; w < 14u; ++w) {
@@ -214,6 +222,10 @@ public:
                         Shuffle::Detail::write16(owned, relocated + 34u + w * 2u, color);
                     }
                 }
+                if (pos == target_pos)
+                    for (const auto& patch : def.palette_patches)
+                        if (patch.table == base)
+                            Shuffle::Detail::write16(owned, relocated + patch.word * 2u, patch.color.rgb555());
                 Shuffle::Detail::write32(owned, base + pos * 4u, relocated);
             }
         }
@@ -232,20 +244,24 @@ public:
             alternate[pos] = Detail::stage_has_command18(canonical, src_stage);
 
             const uint32_t descriptor = append(canonical, source.descriptor, 20u, cursor);
-            if (pos == target_pos && def.custom_ocean) {
+            if (pos == target_pos && (def.custom_ocean || keyed)) {
                 // Clone the 8-byte primary sky-ground block at descriptor+0 and the
                 // 24-byte alternate sky-ground block at descriptor+4 ($13D10 / $13DF0)
                 // and install custom X-Board RGB555 colors.
-                const uint16_t sky555 = def.ocean.sky.rgb555();
-                const uint16_t haze555 = def.ocean.haze.rgb555();
+                const uint16_t sky555 = keyed ? sky_key_color().rgb555() : def.ocean.sky.rgb555();
+                const uint16_t haze555 = keyed ? sky555 : def.ocean.haze.rgb555();
                 const uint16_t sea555 = def.ocean.water.rgb555();
+                const uint16_t band555 = def.ocean.water_band.value_or(def.ocean.water).rgb555();
                 const uint32_t primary_pal = StageCatalog::Detail::pointer(canonical, source.descriptor);
                 if (primary_pal + 8u <= canonical.maincpu.length) {
+                    sky_fill = def.custom_ocean ? def.ocean.sky.rgb555() : StageCatalog::Detail::word(canonical, primary_pal);
                     const uint32_t custom_pal = append(canonical, primary_pal, 8u, cursor);
                     Shuffle::Detail::write16(owned, custom_pal, sky555);
                     Shuffle::Detail::write16(owned, custom_pal + 2u, sky555);
-                    Shuffle::Detail::write16(owned, custom_pal + 4u, sea555);
-                    Shuffle::Detail::write16(owned, custom_pal + 6u, sea555);
+                    if (def.custom_ocean) {
+                        Shuffle::Detail::write16(owned, custom_pal + 4u, sea555);
+                        Shuffle::Detail::write16(owned, custom_pal + 6u, band555);
+                    }
                     Shuffle::Detail::write32(owned, descriptor, custom_pal);
                 }
                 const uint32_t alt_pal = StageCatalog::Detail::pointer(canonical, source.descriptor + 4u);
@@ -253,13 +269,42 @@ public:
                     const uint32_t custom_alt = append(canonical, alt_pal, 24u, cursor);
                     Shuffle::Detail::write16(owned, custom_alt + 0u, haze555);
                     Shuffle::Detail::write16(owned, custom_alt + 2u, haze555);
-                    Shuffle::Detail::write16(owned, custom_alt + 4u, sky555);
-                    Shuffle::Detail::write16(owned, custom_alt + 6u, sky555);
-                    for (unsigned w = 0; w < 8u; ++w) {
-                        const uint16_t stripe = def.ocean.sea_at(double(w) / 7.0).rgb555();
-                        Shuffle::Detail::write16(owned, custom_alt + 8u + w * 2u, stripe);
+                    // In the ROM these two words hold the stage's ground color, so a
+                    // keyed sky has to leave them alone or the ground would key too.
+                    if (keyed && def.custom_ocean) {
+                        Shuffle::Detail::write16(owned, custom_alt + 4u, sea555);
+                        Shuffle::Detail::write16(owned, custom_alt + 6u, band555);
+                    } else if (!keyed) {
+                        Shuffle::Detail::write16(owned, custom_alt + 4u, sky555);
+                        Shuffle::Detail::write16(owned, custom_alt + 6u, sky555);
+                    }
+                    if (def.custom_ocean) {
+                        for (unsigned w = 0; w < 8u; ++w) {
+                            const uint16_t stripe = def.ocean.sea_at(double(w) / 7.0).rgb555();
+                            Shuffle::Detail::write16(owned, custom_alt + 8u + w * 2u, stripe);
+                        }
                     }
                     Shuffle::Detail::write32(owned, descriptor + 4u, custom_alt);
+                }
+            }
+
+            // Palette patches on the descriptor's own sky/ground blocks: primary
+            // (+0: sky, sky, ground, ground) and alternate (+4: sky x2, ground x2,
+            // then the eight road/runway colors).
+            if (pos == target_pos) {
+                for (const auto& [tag, offset, bytes] : {std::tuple{PalettePatch::primary, 0u, 8u},
+                                                         std::tuple{PalettePatch::alternate, 4u, 24u}}) {
+                    if (std::none_of(def.palette_patches.begin(), def.palette_patches.end(),
+                                     [&](const PalettePatch& p) { return p.table == tag; }))
+                        continue;
+                    uint32_t block = StageCatalog::Detail::pointer(owned, descriptor + offset);
+                    if (block < 0x40000u) {
+                        block = append(canonical, block, bytes, cursor);
+                        Shuffle::Detail::write32(owned, descriptor + offset, block);
+                    }
+                    for (const auto& patch : def.palette_patches)
+                        if (patch.table == tag)
+                            Shuffle::Detail::write16(owned, block + patch.word * 2u, patch.color.rgb555());
                 }
             }
 
@@ -272,9 +317,10 @@ public:
                 const unsigned enemy_donor_stage = def.enemy_stage ? *def.enemy_stage : donor;
                 const auto en_donor = StageCatalog::get(canonical, enemy_donor_stage);
                 const uint32_t donor_enemies = StageCatalog::Detail::pointer(canonical, en_donor.descriptor + 8u);
-                if (!def.custom_enemy_waves.empty() || def.replace_enemy_waves) {
+                if (!def.custom_enemy_waves.empty() || def.replace_enemy_waves || !def.scenery_patterns.empty()) {
+                    const auto patterns = emit_scenery_patterns(canonical, cursor);
                     const uint32_t enemies_addr = cursor;
-                    compile_target_enemy_waves(canonical, donor_enemies, cursor);
+                    compile_target_enemy_waves(canonical, donor_enemies, cursor, patterns);
                     Shuffle::Detail::write32(owned, descriptor + 8u, enemies_addr);
                 } else if (def.enemy_stage) {
                     Shuffle::Detail::write32(owned, descriptor + 8u, donor_enemies);
@@ -321,10 +367,68 @@ public:
         return StageCatalog::Detail::pointer(owned, stage.descriptor + 8u);
     }
 
+    // Reserved sky color. Dark and otherwise unused by the game's art, so that a
+    // pixel of exactly this value can only be sky, and so that a palette blend
+    // leaving the stage dims the sky for a moment rather than flashing it.
+    static constexpr RGBColor sky_key_color() { return {24, 16, 32}; }
+    // What a keyed sky with no backdrop image shows behind its layers: the stage's
+    // ocean color if it sets one, otherwise the donor stage's own sky color.
+    uint16_t sky_fill_word() const { return sky_fill; }
+
+    SpriteOverrides sprite_overrides;
+
 private:
+    uint16_t sky_fill{};
     Definition def;
     Roms owned;
     std::vector<bool> alternate;
+
+    // The 14 gradient words run from sky down into the ground, and how many of each
+    // varies by stage (13+1 on stage 1, 10+4 on stage 8's target gradient). OMainPalette
+    // blends the two lists position by position, so a position is ground when either
+    // list holds a ground color there; keying only one end would fade key into ground.
+    void key_sky_gradient(const Roms& canonical, unsigned donor, uint32_t relocated) {
+        const auto source = StageCatalog::get(canonical, donor);
+        const uint32_t primary = StageCatalog::Detail::pointer(canonical, source.descriptor);
+        const uint32_t alt = StageCatalog::Detail::pointer(canonical, source.descriptor + 4u);
+        std::vector<uint16_t> ground;
+        if (primary + 8u <= canonical.maincpu.length) {
+            ground.push_back(StageCatalog::Detail::word(canonical, primary + 4u));
+            ground.push_back(StageCatalog::Detail::word(canonical, primary + 6u));
+        }
+        if (alt + 8u <= canonical.maincpu.length) {
+            ground.push_back(StageCatalog::Detail::word(canonical, alt + 4u));
+            ground.push_back(StageCatalog::Detail::word(canonical, alt + 6u));
+        }
+        const uint16_t key = sky_key_color().rgb555();
+        const uint16_t water = def.ocean.water.rgb555();
+        const auto is_ground = [&](uint32_t address) {
+            return std::find(ground.begin(), ground.end(), StageCatalog::Detail::word(owned, address)) != ground.end();
+        };
+        for (unsigned w = 0; w < 14u; ++w) {
+            const uint32_t initial = relocated + 2u + w * 2u, target = relocated + 34u + w * 2u;
+            const bool ground_position = is_ground(initial) || is_ground(target);
+            if (!ground_position) {
+                Shuffle::Detail::write16(owned, initial, key);
+                Shuffle::Detail::write16(owned, target, key);
+            } else if (def.custom_ocean) {
+                Shuffle::Detail::write16(owned, initial, water);
+                Shuffle::Detail::write16(owned, target, water);
+            }
+        }
+    }
+
+    void apply_rom_patches() {
+        for (const auto& patch : def.rom_patches) {
+            if (!patch.data) throw std::runtime_error("ROM patch has no data: " + patch.asset);
+            auto& region = patch.region == RomPatch::Region::tiles ? owned.tiles :
+                           patch.region == RomPatch::Region::sprites ? owned.sprites :
+                           patch.region == RomPatch::Region::road ? owned.road : owned.pcm;
+            if (uint64_t(patch.offset) + patch.data->size() > region.length)
+                throw std::runtime_error("ROM patch extends past its region: " + patch.asset);
+            std::copy(patch.data->begin(), patch.data->end(), region.rom + patch.offset);
+        }
+    }
 
     void copy_owned(uint32_t destination, uint32_t source, unsigned bytes) {
         StageCatalog::Detail::range(owned, source, bytes);
@@ -427,7 +531,32 @@ private:
         emit_record(sentinel_record, cursor);
     }
 
-    void compile_target_enemy_waves(const Roms& canonical, uint32_t donor_waves, uint32_t& cursor) {
+    // Places each grid in upper ROM and returns the stream records that select them.
+    std::vector<EventRecord> emit_scenery_patterns(const Roms& canonical, uint32_t& cursor) {
+        std::vector<EventRecord> records;
+        for (const auto& pattern : def.scenery_patterns) {
+            for (unsigned entry = 1; entry < 16u; ++entry) {
+                const uint8_t object = pattern.data[128u + entry];
+                if (!object) continue;
+                const uint32_t table = 0x3f000u + uint32_t(object) * 8u;
+                StageCatalog::Detail::range(canonical, table, 8u);
+                StageCatalog::Detail::range(canonical, StageCatalog::Detail::pointer(canonical, table), 4u);
+            }
+            StageCatalog::Detail::range(owned, cursor, uint32_t(pattern.data.size()));
+            const uint32_t address = cursor;
+            std::copy(pattern.data.begin(), pattern.data.end(), owned.maincpu.rom + cursor);
+            cursor += uint32_t(pattern.data.size());
+            EventRecord record;
+            record.tick = pattern.tick;
+            record.command = pattern.command;
+            record.params = {0u, uint8_t(address >> 24), uint8_t(address >> 16), uint8_t(address >> 8), uint8_t(address)};
+            records.push_back(record);
+        }
+        return records;
+    }
+
+    void compile_target_enemy_waves(const Roms& canonical, uint32_t donor_waves, uint32_t& cursor,
+                                    const std::vector<EventRecord>& patterns) {
         std::vector<EventRecord> stream;
         if (!def.replace_enemy_waves && donor_waves + 8u <= canonical.maincpu.length) {
             for (unsigned record = 0; record < 8192u && donor_waves + 8u <= canonical.maincpu.length; ++record, donor_waves += 8u) {
@@ -449,6 +578,7 @@ private:
             StageCatalog::Detail::range(canonical, wave_ptr, 4u);
             stream.push_back(custom);
         }
+        stream.insert(stream.end(), patterns.begin(), patterns.end());
         std::stable_sort(stream.begin(), stream.end(), [](const EventRecord& a, const EventRecord& b) {
             return a.tick < b.tick;
         });

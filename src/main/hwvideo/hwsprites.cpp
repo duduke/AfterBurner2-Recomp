@@ -13,6 +13,14 @@ HWSprites::HWSprites() = default;
 
 void HWSprites::init(const uint8_t* rom, uint32_t rom_length)
 {
+    refresh_rom(rom, rom_length);
+
+    std::memset(ram, 0, sizeof(ram));
+    std::memset(ram_buffer, 0, sizeof(ram_buffer));
+}
+
+void HWSprites::refresh_rom(const uint8_t* rom, uint32_t rom_length)
+{
     sprites.assign(rom_length / 4, 0);
     for (uint32_t i = 0; i < sprites.size(); i++)
     {
@@ -27,9 +35,6 @@ void HWSprites::init(const uint8_t* rom, uint32_t rom_length)
                      (static_cast<uint32_t>(b1) << 8) | static_cast<uint32_t>(b0);
     }
     numbanks = static_cast<uint32_t>(sprites.size()) / BANK_WORDS;
-
-    std::memset(ram, 0, sizeof(ram));
-    std::memset(ram_buffer, 0, sizeof(ram_buffer));
 }
 
 void HWSprites::write16(uint32_t byte_addr, uint16_t data)
